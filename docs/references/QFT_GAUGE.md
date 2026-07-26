@@ -205,9 +205,10 @@ Three observations that matter to us:
    scalar `4`. The return type depends on whether any free index survives.
    That is an API wart to avoid reproducing, not to imitate.
 
-**This is the only one of the four upstreams whose licence would permit
-deriving an implementation without imposing GPL terms on Phy-nspire.** See
-[§10](#10-licence-obligations).
+**Of these four upstreams, SymPy is the only permissively licensed codebase.**
+That makes it the least encumbered candidate if source reuse is ever proposed,
+but reuse would still require compliance with its notice terms and the project
+licensing review described in [§10](#10-licence-obligations).
 
 ### 3.4 Cadabra — the structurally different approach
 
