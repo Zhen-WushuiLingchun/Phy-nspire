@@ -4,19 +4,26 @@ Each phase must leave a runnable or independently testable artifact.
 
 ## Phase 0 — reproducible native baseline
 
+Status: implemented, pending on-device verification.
+
 Output:
 
-- pinned Ndless SDK and upstream references;
-- host and ARM build entry points;
-- size-report and symbol-report targets;
+- pinned Ndless SDK and upstream references — `research/upstreams.lock.json`,
+  resolved by `tools/bootstrap-ndless.sh`;
+- host and ARM build entry points — `CMakeLists.txt` and `Makefile`;
+- size-report and symbol-report targets — `make size-report`,
+  `make symbol-report`;
 - a native program that initializes the CX II framebuffer, input, and clean
-  exit path.
+  exit path — `src/app`, `src/platform/ndless`.
 
 Verification:
 
-- host smoke test;
-- generated `.tns` size report;
-- launch/exit on the real CX II without display corruption.
+- host smoke test — done, `ctest` runs four suites covering the platform
+  contract, drawing, and the full lifecycle;
+- generated `.tns` size report — done, 12,676 bytes against a 6 MB ceiling;
+- launch/exit on the real CX II without display corruption — **not done**, no
+  hardware has been used. `docs/BUILD.md` records the procedure, including the
+  RGB channel-order check and the exit check that Phase 0 exists to protect.
 
 ## Phase 1 — notebook and CAS boundary
 
