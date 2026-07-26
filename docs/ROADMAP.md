@@ -4,7 +4,8 @@ Each phase must leave a runnable or independently testable artifact.
 
 ## Phase 0 — reproducible native baseline
 
-Status: implemented, pending on-device verification.
+Status: implemented, with the first on-device execution complete and the
+clean-exit acceptance still pending.
 
 Output:
 
@@ -21,14 +22,16 @@ Verification:
 - host smoke test — done, `ctest` runs nine tests covering the platform
   contract, drawing, IR, tensor storage, CAS, QFT oracle, and full lifecycle;
 - generated `.tns` size report — done, 13,440 bytes against a 6 MB ceiling;
-- launch/exit of a Phy-nspire artifact on the real CX II without display
-  corruption — **not done**. `docs/BUILD.md` records the procedure, including
-  the RGB channel-order check and the exit check that Phase 0 exists to protect.
+- launch of a Phy-nspire artifact on the real CX II — done on 2026-07-26 with
+  the observable CAS smoke screen;
+- clean exit without display corruption, plus the RGB channel-order and
+  pointer checks — **not yet recorded**. `docs/BUILD.md` records the procedure.
 
 ## Phase 1 — notebook and CAS boundary
 
-Status: the typed expression IR and the scalar CAS over it are implemented; the
-notebook shell is not started.
+Status: the typed expression IR and the scalar CAS over it are implemented and
+the CAS has passed its first physical-device smoke test; the graphical
+notebook shell is not started. The smoke screen is not the notebook UI.
 
 Output:
 
@@ -65,8 +68,9 @@ consumes declared symmetries stay in Phase 2.
 
 The real Ndless r2022/ARM GNU toolchain link check is done: 24/24 CAS APIs
 survive garbage collection and the probe packages to a 37,720-byte `.tns`
-without float formatting, libm, or ARM soft-float dependencies. Running that
-probe on the physical CX II remains a hardware acceptance step.
+without float formatting, libm, or ARM soft-float dependencies. The observable
+`phy-cas-smoke.tns` then ran seven symbolic cases on the physical CX II on
+2026-07-26 and displayed 7/7 PASS.
 
 ## Phase 2 — tensor and manifold CAS
 

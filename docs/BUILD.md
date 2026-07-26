@@ -93,6 +93,7 @@ takes precedence.
 make                # dist/phy-nspire.tns, then a size report
 make size-report
 make symbol-report
+make cas-smoke      # dist/phy-cas-smoke.tns, visible CAS acceptance test
 make clean
 make DEBUG=TRUE     # -O0 -g instead of -Os
 ```
@@ -115,18 +116,40 @@ can be attributed rather than argued about.
 Requires a TI-Nspire CX II CAS running OS 6.4.0.74 with Ndless r2022 already
 installed.
 
-1. Copy `dist/phy-nspire.tns` to the calculator with TI-Nspire Computer Link
-   or `n-link`.
-2. Open it from the Documents browser.
-3. Confirm the baseline frame: a title bar reading `Phy-nspire 0.1.0` on the
+1. Create a top-level `phy-nspire` folder in Documents if it does not already
+   exist. Keep production applications, smoke tests, and later notebook assets
+   there instead of scattering them across the Documents root.
+2. Copy `dist/phy-nspire.tns` into that folder with TI-Nspire Computer Link or
+   `n-link`.
+3. Open it from the Documents browser.
+4. Confirm the baseline frame: a title bar reading `Phy-nspire 0.1.0` on the
    left and `ndless` on the right, a panel of framebuffer facts, and a
    red/green/blue strip.
-4. Confirm the strip really is red, then green, then blue, left to right. Any
+5. Confirm the strip really is red, then green, then blue, left to right. Any
    other order means the panel is wired BGR and `PHY_RGB565` needs to change.
-5. Move the pointer with the touchpad and confirm the crosshair tracks it.
-6. Press `ESC`.
+6. Move the pointer with the touchpad and confirm the crosshair tracks it.
+7. Press `ESC`.
 
 The exit is the part that matters most. After `ESC` the Documents browser must
 come back rendering normally. Leftover garbage or a wrong-looking display
 means `phy_platform_shutdown` did not restore the panel mode, which is the
 defect Phase 0 exists to rule out.
+
+### Native symbolic CAS acceptance test
+
+The production shell does not call the CAS yet, so launching
+`dist/phy-nspire.tns` cannot validate symbolic algebra. Build and copy the
+separate `dist/phy-cas-smoke.tns` instead:
+
+```sh
+make cas-link-check
+make cas-smoke
+```
+
+Open `phy-cas-smoke.tns` from Documents. It performs seven calculations on the
+calculator itself: exact rational addition, coefficient collection,
+differentiation, expansion, a trigonometric identity, a general-relativity
+identity, and an inexact-real boundary check. The last case must report
+`Unknown`, demonstrating that an inexact real atom was not guessed about
+numerically. Accept the run only when all seven rows are green and the footer
+reads `7/7 PASS`. Press `ESC` or `ENTER` to restore the Documents browser.

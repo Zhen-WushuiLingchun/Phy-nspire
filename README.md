@@ -47,9 +47,12 @@ integrating Giac.
 Measured on the pinned toolchain: the `.tns` is 13,440 bytes, 0.2% of the 6 MB
 ceiling.
 
-Not yet done: the roadmap's on-device check. Nothing here has been run on real
-hardware, so "launch and exit without display corruption" is still unverified.
-[docs/BUILD.md](docs/BUILD.md) has the procedure.
+The native CAS smoke artifact has now run on the target CX II and shown all
+seven exact symbolic checks passing. That acceptance screen is deliberately
+not the notebook UI: Markdown cells, two-dimensional formula layout, editing,
+and pointer interaction are still the next Phase 1 deliverable. The clean-exit
+and baseline channel/pointer checks remain separately tracked in
+[docs/BUILD.md](docs/BUILD.md).
 
 Start here:
 
