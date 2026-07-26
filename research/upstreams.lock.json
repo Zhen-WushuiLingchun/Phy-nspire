@@ -1,0 +1,25 @@
+{
+  "schema": 1,
+  "upstreams": {
+    "nmarkdown": {
+      "repository": "https://github.com/KaraRyougi/nMarkdown.git",
+      "tag": "v0.2.0",
+      "commit": "936b04854fc0838de9986b4bfee66a4da9db6166",
+      "release_asset": "nmarkdown.tns",
+      "release_asset_bytes": 1269572,
+      "release_asset_sha256": "55c71c31fe432382a44a67128eb8dddd05e4ea8983bd7ef9fad9795b9db2c933",
+      "license": "GPL-3.0"
+    },
+    "khicas_cx2": {
+      "archive": "https://www-fourier.univ-grenoble-alpes.fr/~parisse/ti/khicas52.zip",
+      "archive_bytes": 11947330,
+      "archive_sha256": "4ee6b97b51a4c46b5ea8a6c48b0fac6e79f732b797003cd6e5314e5664a2cb55",
+      "native_binary": "khicas.tns",
+      "native_binary_bytes": 4138955,
+      "lua_module": "luagiac.luax.tns",
+      "lua_module_bytes": 4138210,
+      "lua_module_sha256": "794f65c0b9851c23a14f1eb1ce2a0e1bfe12e5053acc4525951ce86554484052",
+      "license": "GPL-3.0"
+    }
+  }
+}

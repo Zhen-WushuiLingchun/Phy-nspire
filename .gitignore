@@ -1,0 +1,21 @@
+# Build and generated outputs
+build/
+dist/
+coverage/
+*.o
+*.a
+*.elf
+*.map
+*.tns
+*.tcc2
+
+# Downloaded research artifacts and local upstream checkouts
+research/upstream/
+research/*.zip
+research/*.tns
+
+# Editor and operating-system files
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
