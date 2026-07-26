@@ -373,8 +373,9 @@ not the check itself.
 
 `make cas-link-check` has been run with the real Ndless linker and packager:
 all **24/24** public entry points derived from `include/phy/cas.h` survive
-`--gc-sections`; the CAS+IR+platform probe packages to a **37,984-byte `.tns`**;
-and no `_dtoa`, `_strtod`, `_printf_float`, libm, or `stdio` formatting
-dependency reaches the image. The corresponding IR check retains **50/50**
-entry points. Execution of the CAS probe on the physical CX II remains a
-separate hardware acceptance step.
+`--gc-sections`; the CAS+IR+platform probe packages to a **37,720-byte `.tns`**;
+and no `_dtoa`, `_strtod`, `_printf_float`, libm, `stdio` formatting, or ARM
+soft-float helper reaches the image. Real IR atoms are ordered by their
+IEEE-754 bit keys rather than by executing a floating-point comparison. The
+corresponding IR check retains **50/50** entry points. Execution of the CAS
+probe on the physical CX II remains a separate hardware acceptance step.

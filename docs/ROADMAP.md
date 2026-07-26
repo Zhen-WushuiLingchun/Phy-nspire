@@ -52,7 +52,7 @@ Verification:
 - cancellation and expression-limit tests — done for the CAS, `tests/test_cas.c`:
   the step budget, the cancellation hook, and the IR's term limit each surface as
   a typed status and leave both layers validating;
-- IR unit tests — done, `tests/test_ir.c`, 2,259 checks covering interning,
+- IR unit tests — done, `tests/test_ir.c`, 2,577 checks covering interning,
   canonical ordering, the construction ceilings, and text round-trips;
 - CAS unit tests — done, `tests/test_cas.c`, 742 checks covering the normal
   form, exact arithmetic and its overflow statuses, differentiation, and the
@@ -64,9 +64,9 @@ substrate those work on. Dummy-index canonicalization and anything that
 consumes declared symmetries stay in Phase 2.
 
 The real Ndless r2022/ARM GNU toolchain link check is done: 24/24 CAS APIs
-survive garbage collection and the probe packages to a 37,984-byte `.tns`
-without float-formatting dependencies. Running that probe on the physical
-CX II remains a hardware acceptance step.
+survive garbage collection and the probe packages to a 37,720-byte `.tns`
+without float formatting, libm, or ARM soft-float dependencies. Running that
+probe on the physical CX II remains a hardware acceptance step.
 
 ## Phase 2 — tensor and manifold CAS
 

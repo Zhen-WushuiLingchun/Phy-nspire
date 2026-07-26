@@ -209,19 +209,31 @@ fi
 printf '  ok    %d/%d public entry points retained\n' \
     "${#declared[@]}" "${#declared[@]}"
 
-# ---- 2. no floating-point formatter ----------------------------------------
-banned=$("$NM" "$ELF" |
-    grep -Ei '(^|[[:space:]_])(_dtoa|_strtod|_printf_float|_scanf_float|_vfprintf|__sf_fake)' || true)
+# ---- 2. no accidental floating-point dependency -----------------------------
+#
+# The IR deliberately carries finite real literals, so its probe may retain
+# comparison helpers. The scalar CAS is stricter: it carries those atoms
+# without evaluating them, and therefore must retain neither libm nor any
+# soft-float arithmetic/comparison helper.
+BANNED_PATTERN='(^|[[:space:]_])(_dtoa|_strtod|_printf_float|_scanf_float|_vfprintf|__sf_fake)'
+if [ "$LAYER" = "cas" ]; then
+    BANNED_PATTERN+='|[[:space:]]_?(sin|cos|tan|exp|log|pow|sqrt|floor|ceil|fmod)$|__aeabi_[df]'
+fi
+banned=$("$NM" "$ELF" | grep -Ei "$BANNED_PATTERN" || true)
 if [ -n "$banned" ]; then
     echo >&2
-    echo "  FAIL: a float formatter or parser reached the image." >&2
+    echo "  FAIL: a forbidden floating-point dependency reached the image." >&2
     echo "        The IR formats integers by hand and serializes reals as bit" >&2
     echo "        patterns, and the CAS computes only in exact rationals," >&2
     echo "        precisely to keep this out. Offending symbols:" >&2
     printf '%s\n' "$banned" | sed 's/^/          /' >&2
     exit 1
 fi
-printf '  ok    no _dtoa / _strtod / _printf_float in the image\n'
+if [ "$LAYER" = "cas" ]; then
+    printf '  ok    no float formatter, libm call, or soft-float helper\n'
+else
+    printf '  ok    no _dtoa / _strtod / _printf_float in the image\n'
+fi
 
 # ---- 3. it packages ---------------------------------------------------------
 genzehn --input "$ELF" --output "$BUILD_DIR/$PROBE_NAME.zehn" \

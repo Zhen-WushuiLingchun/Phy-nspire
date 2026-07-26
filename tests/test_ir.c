@@ -430,6 +430,24 @@ static void test_canonical_order_is_a_total_order(void)
     PHY_CHECK(phy_ir_compare(ctx, phy_ir_integer(ctx, 3),
                              phy_ir_real(ctx, 0.25)) < 0);
     PHY_CHECK(phy_ir_compare(ctx, phy_ir_real(ctx, 0.25), sym(ctx, "a")) < 0);
+
+    /*
+     * Real-to-real ordering is numerical but implemented from IEEE-754 bits,
+     * so canonical sorting does not pull soft-float comparisons into the ARM
+     * CAS image.
+     */
+    const phy_ir_ref ordered_reals[] = {
+        phy_ir_real(ctx, -2.0), phy_ir_real(ctx, -0.5),
+        phy_ir_real(ctx, 0.0),  phy_ir_real(ctx, 0.5),
+        phy_ir_real(ctx, 2.0),
+    };
+    for (size_t i = 0u;
+         i + 1u < sizeof ordered_reals / sizeof ordered_reals[0]; ++i) {
+        PHY_CHECK(phy_ir_compare(ctx, ordered_reals[i],
+                                 ordered_reals[i + 1u]) < 0);
+        PHY_CHECK(phy_ir_compare(ctx, ordered_reals[i + 1u],
+                                 ordered_reals[i]) > 0);
+    }
     /* Exact comparison across integers and rationals, by value. */
     PHY_CHECK(phy_ir_compare(ctx, phy_ir_rational(ctx, 1, 2),
                              phy_ir_integer(ctx, 1)) < 0);

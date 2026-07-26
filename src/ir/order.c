@@ -16,6 +16,23 @@ static uint64_t magnitude(int64_t value)
     return (value < 0) ? (~(uint64_t)value + 1u) : (uint64_t)value;
 }
 
+/*
+ * Map a finite IEEE-754 binary64 value to an unsigned key with the same total
+ * order as the numeric value, without executing a floating-point comparison.
+ *
+ * The IR already serializes reals by their 64-bit representation and rejects
+ * NaN/infinity at construction. Negative zero is normalized to positive zero,
+ * so equal keys are equal interned values.
+ */
+static uint64_t ordered_real_key(double value)
+{
+    uint64_t bits;
+    memcpy(&bits, &value, sizeof bits);
+    return (bits & 0x8000000000000000u) != 0u
+               ? ~bits
+               : bits ^ 0x8000000000000000u;
+}
+
 /* 64x64 -> 128, in 32-bit pieces. The device is 32-bit, so there is no
    __int128 to lean on and exact cross-multiplication has to be built. */
 static void umul64(uint64_t a, uint64_t b, uint64_t *out_high,
@@ -141,13 +158,11 @@ int phy_ir_compare(const phy_ir_context *ctx, phy_ir_ref a, phy_ir_ref b)
         return compare_exact(an, ad, bn, bd);
     }
 
-    case PHY_IR_REAL:
-        if (na->u.real < nb->u.real) {
-            return -1;
-        }
-        /* Equal doubles would have interned to one node, so anything reaching
-           here that is not less is greater. */
-        return 1;
+    case PHY_IR_REAL: {
+        const uint64_t key_a = ordered_real_key(na->u.real);
+        const uint64_t key_b = ordered_real_key(nb->u.real);
+        return (key_a > key_b) - (key_a < key_b);
+    }
 
     case PHY_IR_SYMBOL:
         return compare_names(ctx, na->head, nb->head);
