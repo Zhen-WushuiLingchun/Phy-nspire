@@ -25,7 +25,7 @@ BUILDDIR := build/arm
 
 # Ndless links a C++ runtime regardless, so -lstdc++ comes from nspire-ld.
 GCCFLAGS := -Wall -Wextra -Wshadow -Wpointer-arith -std=c11 -marm \
-            -ffunction-sections -fdata-sections -Iinclude -Isrc/gfx
+            -ffunction-sections -fdata-sections -Iinclude -Isrc/gfx -Isrc/ir
 # The Ndless ldscript intentionally produces a single RWX load segment, which
 # binutils 2.39+ warns about. Ndless's own toolchain build disables that
 # warning at configure time; we silence it at link time instead.
@@ -44,6 +44,9 @@ SOURCES := \
     src/core/status.c \
     src/gfx/gfx.c \
     src/app/app.c \
+    src/ir/ir.c \
+    src/ir/order.c \
+    src/ir/text.c \
     src/app/main_ndless.c \
     src/platform/ndless/platform_ndless.c \
     src/platform/ndless/crt_compat.c

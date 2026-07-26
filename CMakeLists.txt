@@ -38,8 +38,11 @@ add_library(phy_core STATIC
     src/core/status.c
     src/gfx/gfx.c
     src/app/app.c
+    src/ir/ir.c
+    src/ir/order.c
+    src/ir/text.c
 )
-target_include_directories(phy_core PUBLIC include PRIVATE src/gfx)
+target_include_directories(phy_core PUBLIC include PRIVATE src/gfx src/ir)
 target_link_libraries(phy_core PRIVATE phy_warnings)
 
 # Host platform backend: offscreen framebuffer, scripted input, virtual clock.
@@ -57,7 +60,7 @@ include(CTest)
 if(BUILD_TESTING)
     set(PHY_FIXTURE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
 
-    foreach(suite test_gfx test_platform test_smoke)
+    foreach(suite test_gfx test_platform test_smoke test_ir)
         add_executable(${suite} tests/${suite}.c)
         target_link_libraries(${suite} PRIVATE phy_core phy_platform_host phy_warnings)
         target_include_directories(${suite} PRIVATE tests)

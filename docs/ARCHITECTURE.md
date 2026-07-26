@@ -115,8 +115,15 @@ incrementally.
 ## Error handling
 
 Errors are typed values, not strings mixed with valid expressions. Categories
-include parse, domain, assumption, unsupported, interrupted, timeout,
-term-limit, memory-limit, backend, and corrupt-document errors.
+include parse, type, domain, assumption, unsupported, overflow, interrupted,
+timeout, node-limit, depth-limit, term-limit, memory-limit, backend, and
+corrupt-document errors.
+
+Type, overflow, node-limit, and depth-limit joined the list when the
+expression IR landed: a node kind rejecting an operand's kind is not a domain
+error, and the three construction ceilings are separately actionable. The
+enumeration is `phy_status` in `include/phy/phy.h`; its values are written
+into saved documents, so they are appended and never reordered.
 
 The notebook must remain saveable after a failed calculation. A backend crash
 or rejected result may invalidate one cell, never the whole document.
