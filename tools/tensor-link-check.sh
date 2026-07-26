@@ -30,7 +30,6 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 cd "$REPO_ROOT"
 
-BUILD_DIR="build/arm-tensor-linkcheck"
 PROBE="tests/device/tensor_link_probe.c"
 HEADER="include/phy/tensor.h"
 
@@ -81,7 +80,30 @@ GCCFLAGS=(-Wall -Wextra -Wshadow -Wpointer-arith -std=c11 -marm -Os -DNDEBUG
           -ffunction-sections -fdata-sections -Iinclude -Isrc/ir -Isrc/tensor)
 LDFLAGS=(-Wl,--gc-sections -Wl,--no-warn-rwx-segments)
 
-rm -rf "$BUILD_DIR"
+# Resolve and validate the exact recursive-delete target. In particular, do
+# not follow a user-created build/ symlink outside the checkout.
+BUILD_PARENT="$REPO_ROOT/build"
+mkdir -p "$BUILD_PARENT"
+RESOLVED_ROOT="$(cd "$REPO_ROOT" && pwd -P)"
+RESOLVED_PARENT="$(cd "$BUILD_PARENT" && pwd -P)"
+case "$RESOLVED_PARENT" in
+    "$RESOLVED_ROOT"|"$RESOLVED_ROOT"/*) ;;
+    *)
+        echo "error: resolved build directory escapes the repository:" >&2
+        echo "       $RESOLVED_PARENT" >&2
+        exit 1
+        ;;
+esac
+BUILD_DIR="$RESOLVED_PARENT/arm-tensor-linkcheck"
+if [ -e "$BUILD_DIR" ]; then
+    RESOLVED_BUILD_DIR="$(cd "$BUILD_DIR" && pwd -P)"
+    if [ "$RESOLVED_BUILD_DIR" != "$BUILD_DIR" ]; then
+        echo "error: refusing to recursively remove unexpected target:" >&2
+        echo "       $RESOLVED_BUILD_DIR" >&2
+        exit 1
+    fi
+fi
+rm -rf -- "$BUILD_DIR"
 mkdir -p "$BUILD_DIR"
 
 printf '== tensor core device link check ==\n\n'
@@ -107,16 +129,15 @@ mapfile -t declared < <(
         sort -u
 )
 
-# Intersect with what the tensor core actually defines, so a name mentioned
-# only in prose, or a type that happens to match, cannot fail the check.
 mapfile -t defined < <(
     for object in "$BUILD_DIR"/src_tensor_*.o; do
         "$NM" --defined-only "$object"
     done | awk '$2 == "T" { print $3 }' | sort -u
 )
 
-mapfile -t expected < <(
-    comm -12 <(printf '%s\n' "${declared[@]}") <(printf '%s\n' "${defined[@]}")
+mapfile -t missing_definitions < <(
+    comm -23 <(printf '%s\n' "${declared[@]}") \
+             <(printf '%s\n' "${defined[@]}")
 )
 
 mapfile -t retained < <(
@@ -125,15 +146,22 @@ mapfile -t retained < <(
 )
 
 missing=()
-for symbol in "${expected[@]}"; do
+for symbol in "${declared[@]}"; do
     if ! printf '%s\n' "${retained[@]}" | grep -qx "$symbol"; then
         missing+=("$symbol")
     fi
 done
 
-if [ "${#expected[@]}" -lt 25 ]; then
-    echo "  FAIL: only ${#expected[@]} entry points derived from $HEADER;" >&2
+if [ "${#declared[@]}" -lt 25 ]; then
+    echo "  FAIL: only ${#declared[@]} entry points derived from $HEADER;" >&2
     echo "        the extraction is probably broken, not the link." >&2
+    exit 1
+fi
+
+if [ "${#missing_definitions[@]}" -ne 0 ]; then
+    echo >&2
+    echo "  FAIL: ${#missing_definitions[@]} public declaration(s) have no tensor-core definition:" >&2
+    printf '          %s\n' "${missing_definitions[@]}" >&2
     exit 1
 fi
 
@@ -145,7 +173,7 @@ if [ "${#missing[@]}" -ne 0 ]; then
     exit 1
 fi
 printf '  ok    %d/%d public entry points retained\n' \
-    "${#expected[@]}" "${#expected[@]}"
+    "${#declared[@]}" "${#declared[@]}"
 
 # ---- 2. no floating-point formatter -----------------------------------------
 banned=$("$NM" "$BUILD_DIR/tensor_link_probe.elf" |

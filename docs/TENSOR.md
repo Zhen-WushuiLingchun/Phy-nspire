@@ -157,6 +157,13 @@ therefore `PHY_ERR_TYPE`, not silently accepted.
 each with its group element's sign. One call populates all the dependents, so
 "fill" is not a separate phase a caller can forget.
 
+The ownership rule is deliberately simple: a tensor borrows its chart, and a
+chart borrows its IR context. Destroy tensors first, then charts, then the IR
+context. Likewise, a `phy_ir_ref` is valid only in the context that issued it;
+the compact handle carries no runtime context tag, so passing a ref from
+another context is a caller-contract violation rather than an error this layer
+can reliably diagnose.
+
 The orbit is validated in full before anything is written, so a rejected
 assignment leaves the tensor exactly as it was. Two things are rejected:
 

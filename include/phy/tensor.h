@@ -157,6 +157,10 @@ unsigned phy_chart_axis_of(const phy_chart *chart, phy_ir_symbol symbol);
  * Every component starts as the canonical zero handle with sign +1. The dense
  * table is sized from `chart` and `rank` at construction and never grows, so
  * no component loop in this layer allocates.
+ *
+ * `chart` must outlive the tensor, and the chart's IR context must therefore
+ * outlive both. The tensor stores the chart pointer; it does not copy or own
+ * the chart.
  */
 phy_status phy_tensor_create(phy_chart *chart, const char *name, unsigned rank,
                              const phy_ir_variance *valence,
@@ -312,6 +316,10 @@ phy_status phy_tensor_get_flat(const phy_tensor *tensor, size_t flat,
  * structural equality. It is not equality up to simplification, which needs
  * the scalar layer; two spellings of the same value are currently a conflict.
  * Clear the component to reassign it.
+ *
+ * A phy_ir_ref is context-local, but its compact numeric representation does
+ * not carry a context identity. Passing a ref from another context is
+ * therefore a caller-contract violation that this API cannot reliably detect.
  */
 phy_status phy_tensor_set(phy_tensor *tensor, const unsigned *indices,
                           phy_ir_ref value);
