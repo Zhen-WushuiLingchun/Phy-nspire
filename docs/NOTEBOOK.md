@@ -74,6 +74,11 @@ commands and eleven matrix/alignment environments; the exact audited boundary
 is recorded in
 [`plans/2026-07-27-nmarkdown-adaptation.md`](plans/2026-07-27-nmarkdown-adaptation.md).
 
+Calculator input aliases make the delimiters and structural characters
+reachable without an on-screen keyboard: `Ctrl+.` types `$`, `Ctrl+/` types
+`\`, and the Shift/Ctrl variants of the parenthesis keys type brackets and
+braces. Both held modifiers and tap-then-key modifiers are accepted.
+
 ## Verification
 
 - `test_notebook`: 126 checks over exact results, editing, insertion, stale

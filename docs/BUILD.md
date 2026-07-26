@@ -140,6 +140,7 @@ installed.
 5. Use `+MD`, put `LaTeX` in the heading, press `TAB`, and enter
    `$$R=g^{\mu\nu}R_{\mu\nu}$$`. Press `ESC` and confirm a centered,
    two-dimensional equation with Greek indices and raised/lowered scripts.
+   `Ctrl+.` types `$`; `Ctrl+/` types `\`.
 6. Move a finger, lift it, then touch a different part of the touchpad. The
    pointer must continue from its last screen position; a new contact must not
    jump to an absolute mapped position.

@@ -99,7 +99,8 @@ static const text_binding kTextBindings[] = {
     PLAIN(KEY_NSPIRE_EXP, '^'),
     {&KEY_NSPIRE_LP, '(', '[', ']'},
     {&KEY_NSPIRE_RP, ')', '{', '}'},
-    {&KEY_NSPIRE_PERIOD, '.', ':', '\0'},
+    /* Ctrl+. supplies the Markdown math delimiter, which has no keycap. */
+    {&KEY_NSPIRE_PERIOD, '.', ':', '$'},
     {&KEY_NSPIRE_COMMA, ',', ';', '\0'},
     {&KEY_NSPIRE_SPACE, ' ', '_', '\0'},
     {&KEY_NSPIRE_EQU, '=', '|', '\0'},
