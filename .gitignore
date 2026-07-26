@@ -23,3 +23,6 @@ research/*.tns
 .idea/
 .DS_Store
 Thumbs.db
+
+# Reviewer and sanitizer scratch trees alongside build/
+build-*/

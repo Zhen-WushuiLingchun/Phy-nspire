@@ -27,19 +27,28 @@ Verification:
 
 ## Phase 1 — notebook and CAS boundary
 
+Status: the typed expression IR is implemented; the rest is not started.
+
 Output:
 
 - Markdown and two-dimensional math cells;
 - touchpad selection and palette shell;
 - editable source cells;
-- backend-neutral typed expression IR;
+- backend-neutral typed expression IR — done, `include/phy/ir.h`, `src/ir`,
+  documented in `docs/IR.md`;
 - native Giac adapter for a small scalar command set.
 
 Verification:
 
 - deterministic framebuffer fixtures;
 - parse/evaluate/render/save/reopen workflow;
-- cancellation and expression-limit tests.
+- cancellation and expression-limit tests;
+- IR unit tests — done, `tests/test_ir.c`, 2,259 checks covering interning,
+  canonical ordering, the construction ceilings, and text round-trips.
+
+The IR carries no simplification, evaluation, or arithmetic: it is the
+substrate those work on. Dummy-index canonicalization and anything that
+consumes declared symmetries stay in Phase 2.
 
 ## Phase 2 — tensor and manifold CAS
 

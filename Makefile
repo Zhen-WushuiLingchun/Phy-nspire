@@ -11,6 +11,7 @@
 #   all            build dist/phy-nspire.tns
 #   size-report    installed size against the 5-6 MB budget
 #   symbol-report  largest symbols in the ELF
+#   ir-link-check  prove the expression IR links on device
 #   clean
 
 DEBUG ?= FALSE
@@ -25,7 +26,7 @@ BUILDDIR := build/arm
 
 # Ndless links a C++ runtime regardless, so -lstdc++ comes from nspire-ld.
 GCCFLAGS := -Wall -Wextra -Wshadow -Wpointer-arith -std=c11 -marm \
-            -ffunction-sections -fdata-sections -Iinclude -Isrc/gfx
+            -ffunction-sections -fdata-sections -Iinclude -Isrc/gfx -Isrc/ir
 # The Ndless ldscript intentionally produces a single RWX load segment, which
 # binutils 2.39+ warns about. Ndless's own toolchain build disables that
 # warning at configure time; we silence it at link time instead.
@@ -44,6 +45,9 @@ SOURCES := \
     src/core/status.c \
     src/gfx/gfx.c \
     src/app/app.c \
+    src/ir/ir.c \
+    src/ir/order.c \
+    src/ir/text.c \
     src/app/main_ndless.c \
     src/platform/ndless/platform_ndless.c \
     src/platform/ndless/crt_compat.c
@@ -52,7 +56,7 @@ OBJECTS := $(patsubst %.c,$(BUILDDIR)/%.o,$(SOURCES))
 ELF := $(DISTDIR)/$(EXE).elf
 TNS := $(DISTDIR)/$(EXE).tns
 
-.PHONY: all clean size-report symbol-report check-sdk
+.PHONY: all clean size-report symbol-report ir-link-check check-sdk
 
 all: $(TNS)
 
@@ -84,5 +88,10 @@ size-report: $(TNS)
 symbol-report: $(ELF)
 	@tools/symbol-report.sh $(ELF)
 
+# Deliberately not a dependency of `all`. The probe must never be linked into
+# the product, or the size report would measure the probe instead.
+ir-link-check: check-sdk
+	@tools/ir-link-check.sh
+
 clean:
-	rm -rf $(BUILDDIR) $(DISTDIR)
+	rm -rf $(BUILDDIR) $(DISTDIR) build/arm-linkcheck
