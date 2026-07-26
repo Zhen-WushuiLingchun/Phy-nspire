@@ -25,8 +25,7 @@ assumption without executing the verification step named beside it.
 
 | Property | Value |
 | --- | --- |
-| Repository worktree | `.claude/worktrees/qft-source-pack`, branch `worktree-qft-source-pack` |
-| Base commit | Phase 0 baseline, cherry-picked from `631fd53` |
+| Base commit | `1cb35cb`, "Phase 0: reproducible native baseline (#2)" — the current tip of `main` at the time of writing |
 | Host | Windows 11 Pro 10.0.26300; build and test executed under WSL |
 | Build/test toolchain | cmake 3.22.1, gcc 11.4.0 (Ubuntu 11.4.0-1ubuntu1~22.04.3) |
 | Upstream access | GitHub REST API and `gh` (authenticated), arXiv API, INSPIRE-HEP API |
@@ -61,7 +60,7 @@ cut.
 | Fierz / SU(N) completeness rearrangement | **Deferred** | Needs the `1/N` colour-singlet bookkeeping and a canonical spinor-chain ordering; neither exists yet. |
 | Spinors, spin and polarization sums | **Deferred** | Depends on external-state objects, which depend on a particle/model layer. |
 | Squared amplitudes, tree-level processes | **Deferred** | Depends on all of the above. |
-| Loop integrals, tensor reduction | **Deferred** | Out of scope for the device entirely; see [§8](#8-resource-behaviour). |
+| Loop integrals, tensor reduction | **Deferred** | Deferred from this MVP pending a later feasibility and budget design based on measured device data. Not foreclosed: small analytic cases may well be tractable, but nothing here has been measured, so the question stays open rather than being decided by assumption. See [§8](#8-resource-behaviour). |
 | Diagram generation / topology enumeration | **Deferred** | Phase 6, and a separate problem. |
 | Full Yang-Mills algebra: covariant derivatives, field strength, Bianchi, gauge transformations | **Deferred** | Requires the tensor/manifold core from Phase 2. The colour algebra in scope here is the flat, purely algebraic part that does **not** need it. |
 
@@ -541,10 +540,11 @@ contractions, `N = 3` for Jacobi.
 
 ## 8. Resource behaviour
 
-The device budget is the binding constraint (`research/REFERENCE_CORPUS.md` §4,
-which lives on the `worktree-reference-corpus` branch and is not present in
-this one). Dirac traces are the classic place where a symbolic engine
-detonates, so the growth law must be in the design, not discovered at runtime.
+The device budget is the binding constraint: the application target is
+nominally 5–6 MB against a 6 MB ceiling, and `README.md` records the Phase 0
+`.tns` at 12,676 bytes. Dirac traces are the classic place where a symbolic
+engine detonates, so the growth law must be in the design, not discovered at
+runtime.
 
 **Combinatorics.** A trace of `2n` gamma matrices with all indices distinct
 expands into `(2n−1)!!` metric terms before any simplification:
@@ -632,29 +632,41 @@ be well-defined.
 
 ## 10. Licence obligations
 
-| Upstream | Licence | Permitted use here |
+This section is engineering guidance for scoping work, **not legal advice**.
+Phy-nspire's own licence is not yet settled — `README.md` records that "the
+final project license and retained notices will be fixed before any upstream
+code is copied or linked". Any actual incorporation of upstream code needs
+project licensing and legal review before it happens, not a judgement call by
+an implementing agent.
+
+| Upstream | Licence | Use relied on in this document |
 | --- | --- | --- |
-| FeynCalc | GPL-3.0 | Consult as specification; cite behaviour and option names. Copying code imposes GPL-3 on Phy-nspire. |
-| FORM | GPL-3.0 | Same. The manual's algorithm descriptions may be paraphrased and cited. |
+| FeynCalc | GPL-3.0 | Read as specification; behaviour, option names and documented identities cited. |
+| FORM | GPL-3.0 | Same, plus paraphrase and citation of the manual's algorithm descriptions. |
 | Cadabra | GPL-3.0 | Same. |
-| SymPy | 3-clause BSD | **Derivation permitted with attribution and licence retention**, without GPL obligations. |
+| SymPy | 3-clause BSD | Same. Its permissive terms make it the least encumbered starting point *if* code is ever reused. |
 
-No upstream code has been copied into this repository. Everything in
+**No upstream code has been copied into this repository.** Everything in
 `tests/oracle/` was written for this project from the identities themselves.
+Nothing in this document depends on copying any upstream implementation.
 
-Two points a future agent must not get wrong:
+Two points a future agent should keep straight:
 
-1. **Mathematical identities are not the licensed material.** `Tr[γ^μγ^ν] =
-   4g^{μν}` carries no copyright; a specific implementation of a trace engine
-   does. Recording identities and option names from GPL projects, as this
-   document does, does not create an obligation. Transcribing
-   `DiracTrick.m`'s rewrite rules into C would.
-2. Phy-nspire already intends GPL-3 compatibility (`research/upstreams.lock.json`
-   records nMarkdown and KhiCAS as GPL-3). So the GPL licences above are not
-   blocking. But **SymPy's BSD licence is still strictly more useful**: it is
-   the only upstream from which an implementation could be derived if the
-   project's licence position ever changes, and it is the one to reach for
-   first if a Kahane implementation is ported rather than written.
+1. **Reading a specification is not the same as incorporating an
+   implementation.** A mathematical identity such as `Tr[γ^μγ^ν] = 4g^{μν}` is
+   a fact, and recording it — or an option name, or a documented algorithm
+   rule — as this document does, is ordinary referencing. Lifting
+   `DiracTrick.m`'s rewrite rules into C is a different act: that is
+   incorporating someone else's implementation, and distributing the result
+   would generally require complying with that project's licence terms.
+   Whether and how those terms can be satisfied here is a question for
+   licensing review, which has not happened.
+2. **The MVP is designed so this question never has to be answered.** Every
+   contract in the task pack is written to be implemented from the identities
+   and the algorithm description, not from upstream source. If an agent finds
+   itself wanting to port code rather than write it, that is the moment to
+   stop and escalate — and SymPy's BSD terms are the least encumbered place to
+   start that conversation, not a licence to skip it.
 
 ---
 

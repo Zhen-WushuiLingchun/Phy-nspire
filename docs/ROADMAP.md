@@ -118,9 +118,10 @@ Verification:
 - Clifford and group-theory identities — done. Ward-identity checks move with
   the deferred amplitude layer;
 - resource-limit behavior on intentionally explosive expressions — **not
-  done**. The limits proposed in reference §8 are combinatorial arithmetic plus
-  figures quoted from FORM's manual, and no hardware has been used. Contract
-  Q-7 settles this.
+  done**, and the proposed ceilings are **UNVERIFIED**. They are combinatorial
+  arithmetic plus figures quoted from FORM's manual, measured on unspecified
+  workstation hardware. No CX II has been used at any point, so device
+  performance is unmeasured. Contract Q-7 settles this.
 
 ## Phase 6 — diagram notebook cells
 

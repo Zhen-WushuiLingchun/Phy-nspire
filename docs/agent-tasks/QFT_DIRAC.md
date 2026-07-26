@@ -20,9 +20,13 @@ errors rather than algorithm errors.
    deferred. A contract here never widens it. If a contract appears to require
    `γ⁵`, Fierz, spinors, loops or Yang-Mills connections, the contract is
    wrong — stop and say so rather than implementing the deferred item.
-2. **No upstream code.** FeynCalc, FORM and Cadabra are GPL-3.0 and are
-   consulted as specifications only. SymPy is BSD-3 and is the only upstream
-   from which code may be derived, with attribution. See the reference §10.
+2. **Write from the specification, not from upstream source.** Every contract
+   below is designed to be implementable from the identities and algorithm
+   descriptions in the reference document alone. Do not port upstream
+   implementation code. If a contract seems to require it, stop and escalate:
+   incorporating and distributing someone else's implementation raises
+   licensing questions that need project licensing and legal review, and that
+   review has not happened. See the reference §10.
 3. **Warnings are errors.** The host build runs `-Wall -Wextra -Wshadow
    -Wconversion -Wsign-conversion -Wstrict-prototypes -Wmissing-prototypes
    -Wpointer-arith -Wcast-qual -Werror`. Code that needs a warning suppressed
@@ -41,7 +45,7 @@ last. Q-0 is already done and is listed for provenance.
 
 ## Q-0 — Numeric oracle and golden cases *(complete)*
 
-**Status:** landed on `worktree-qft-source-pack`.
+**Status:** complete. Landed together with this document.
 
 **Deliverables.**
 
@@ -67,11 +71,10 @@ cannot mask a physics regression.
 
 ## Q-1 — Lorentz index and scalar-product objects in the typed IR
 
-**Depends on** the typed expression IR. That work is contract `P1-6` in
-`docs/TASK_CONTRACTS.md` — a file that currently exists only on the
-`worktree-reference-corpus` branch — and is being implemented on
-`worktree-typed-ir-core`. Neither is merged into this branch, so **Q-1 is
-blocked until the IR lands on `main`.**
+**Depends on** the canonical typed expression IR — the interface in
+`include/phy/ir.h` and its specification in `docs/IR.md`. **Q-1 is blocked
+until those land on `main`**, and must be written against them as merged
+rather than against any in-flight draft.
 
 **Deliver.**
 
@@ -307,7 +310,7 @@ is a proposal.
 | ID | Contract | Depends on | Status |
 | --- | --- | --- | --- |
 | Q-0 | Numeric oracle and golden cases | — | **done** |
-| Q-1 | Lorentz index and scalar-product objects | typed IR (P1-6) | blocked |
+| Q-1 | Lorentz index and scalar-product objects | `include/phy/ir.h`, `docs/IR.md` on `main` | blocked |
 | Q-2 | Gamma objects, Clifford normalisation | Q-1 | pending |
 | Q-3 | Lorentz contraction | Q-2 | pending |
 | Q-4 | Dirac traces without `γ⁵` | Q-3 | pending |
