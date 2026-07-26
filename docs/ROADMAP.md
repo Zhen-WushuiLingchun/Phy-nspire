@@ -93,17 +93,34 @@ Verification:
 
 ## Phase 5 — QFT and gauge theory
 
-Output:
+Status: scoped and sourced, not implemented. The MVP boundary, the pinned
+conventions, the algorithm specification and the verified identity set are in
+[`docs/references/QFT_GAUGE.md`](references/QFT_GAUGE.md); the contracts that
+implement them are in
+[`docs/agent-tasks/QFT_DIRAC.md`](agent-tasks/QFT_DIRAC.md).
 
-- Lorentz contraction, Dirac algebra/traces, spin and polarization sums,
-  Mandelstam substitutions, SU(N) color algebra, covariant derivatives, and
-  field strengths.
+Output, MVP:
+
+- Lorentz contraction, Dirac algebra and traces without gamma-5, Mandelstam
+  substitutions, and SU(N) color algebra.
+
+Output, deferred with a named blocking dependency (reference §2):
+
+- gamma-5 and chiral projectors, Fierz rearrangement, spin and polarization
+  sums, squared amplitudes, loop integrals, and the covariant
+  derivative/field-strength layer, which needs the Phase 2 tensor core.
 
 Verification:
 
-- small FeynCalc-compatible golden corpus;
-- Clifford, Ward-identity, and group-theory identities;
-- resource-limit behavior on intentionally explosive expressions.
+- golden corpus certified against an explicit matrix representation in
+  `tests/oracle/` — done for the MVP set, 44,295 checks over 19 identities in
+  both the Dirac and Weyl representations;
+- Clifford and group-theory identities — done. Ward-identity checks move with
+  the deferred amplitude layer;
+- resource-limit behavior on intentionally explosive expressions — **not
+  done**. The limits proposed in reference §8 are combinatorial arithmetic plus
+  figures quoted from FORM's manual, and no hardware has been used. Contract
+  Q-7 settles this.
 
 ## Phase 6 — diagram notebook cells
 

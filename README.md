@@ -52,6 +52,8 @@ Start here:
 - [Roadmap](docs/ROADMAP.md)
 - [ADR-0001: native Ndless architecture](docs/adr/0001-native-ndless-architecture.md)
 - [Initial feasibility evidence](research/feasibility-2026-07-26.md)
+- [QFT and gauge theory: MVP source reference](docs/references/QFT_GAUGE.md)
+- [Agent task pack: Dirac algebra and SU(N)](docs/agent-tasks/QFT_DIRAC.md)
 
 ## Layout
 
@@ -63,7 +65,10 @@ src/app/          Phase 0 application and the two entry points
 src/platform/     one subdirectory per backend: ndless (device), host (tests)
 src/tools/        developer utilities
 tests/            host test suite and framebuffer fixtures
+tests/oracle/     host-only numeric oracle certifying the QFT golden cases
 tools/            SDK bootstrap, size and symbol reports
+docs/references/  source-backed capability references
+docs/agent-tasks/ executable contracts derived from those references
 ```
 
 ## Licensing

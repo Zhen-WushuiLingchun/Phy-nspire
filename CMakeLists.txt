@@ -83,6 +83,22 @@ if(BUILD_TESTING)
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_symbol_report.sh"
                 "${CMAKE_CURRENT_SOURCE_DIR}")
     endif()
+
+    # QFT/gauge golden cases. The oracle deliberately links against nothing
+    # else: it certifies the identities in docs/references/QFT_GAUGE.md from an
+    # explicit matrix representation and must not acquire a dependency on the
+    # portable core, which would let a core regression mask a physics one.
+    add_executable(test_qo_golden
+        tests/oracle/test_qo_golden.c
+        tests/oracle/qo_dirac.c
+        tests/oracle/qo_color.c
+    )
+    target_include_directories(test_qo_golden PRIVATE tests tests/oracle)
+    target_link_libraries(test_qo_golden PRIVATE phy_warnings)
+    if(NOT MSVC)
+        target_link_libraries(test_qo_golden PRIVATE m)
+    endif()
+    add_test(NAME test_qo_golden COMMAND test_qo_golden)
 endif()
 
 # Host size report. The device budget is enforced by tools/size-report.sh
