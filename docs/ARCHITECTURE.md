@@ -14,8 +14,10 @@ flowchart TD
     PHYS --> GR["GR / black-hole layer"]
     PHYS --> QM["Quantum mechanics"]
     PHYS --> QFT["QFT / gauge layer"]
+    IR --> SCALAR["Native scalar CAS<br/>normal form, exact zero decision"]
+    SCALAR --> PHYS
     IR --> BACKEND["CAS backend interface"]
-    BACKEND --> GIAC["Trimmed native Giac"]
+    BACKEND --> GIAC["Trimmed native Giac<br/>not integrated"]
     TENSOR --> XPERM["Optional xPerm C core"]
     RENDER --> PLATFORM["Ndless LCD / keypad / touchpad"]
     UI --> PLATFORM
@@ -73,11 +75,29 @@ The IR owns:
 - assumptions and declared symmetries;
 - serialization independent of any one CAS backend.
 
+### Scalar rewrite layer
+
+Between the IR and any backend sits a native scalar algebra layer,
+`include/phy/cas.h` and `src/cas`, documented in [`docs/CAS.md`](CAS.md). It owns
+exact rational arithmetic, the normal form, expansion, substitution,
+differentiation, and — the capability the tensor and curvature phases turn on —
+an *exact* zero decision that answers "unknown" rather than guessing outside the
+class it can decide.
+
+It exists because the operations those phases need are the ones a backend
+boundary is worst at: a curvature pass asks "is this component zero?" thousands
+of times, and an answer that arrives as a backend string, parsed and
+size-checked, is both slower and less trustworthy than one computed on the IR.
+The layer is the first and largest instance of the incremental replacement the
+narrow boundary below was designed to permit.
+
 ### CAS backend
 
-The first backend is a size-trimmed native Giac library derived from the
-working KhiCAS target configuration. It handles scalar simplification,
-polynomials, calculus, matrices, equations, and numerical fallback.
+The planned backend is a size-trimmed native Giac library derived from the
+working KhiCAS target configuration, for what the layer above does not cover:
+integration, limits, series, solving, polynomial factoring, and matrices. It has
+not been integrated, and the scalar operations the tensor and general-relativity
+phases require no longer wait on it.
 
 The boundary is intentionally narrow:
 

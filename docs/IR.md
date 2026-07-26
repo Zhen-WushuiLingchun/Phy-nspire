@@ -365,7 +365,11 @@ Makefile's `SOURCES`. It builds into `build/arm-linkcheck/` and never touches
 
 ## Not in this layer
 
-Simplification, evaluation, and arithmetic. Dummy-index canonicalization and
-contraction. Anything that consumes declared symmetries. Arbitrary-precision
-numbers. The CAS backend boundary. These are later phases; the IR is the
-substrate they operate on.
+Simplification, evaluation, and arithmetic — these are the scalar CAS, which
+landed on top of this one and is documented in [`docs/CAS.md`](CAS.md). Nothing
+in the IR changed to accommodate it: it reaches everything it needs through the
+public header, which is the check that the substrate was the right shape.
+
+Dummy-index canonicalization and contraction. Anything that consumes declared
+symmetries. Arbitrary-precision numbers. The Giac backend boundary. These are
+later phases; the IR is the substrate they operate on.

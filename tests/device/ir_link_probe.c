@@ -11,7 +11,7 @@
  *
  * This translation unit closes that gap by referencing every public entry
  * point, so the linker must keep and resolve all of them.
- * tools/ir-link-check.sh builds it, verifies the expected symbols survived,
+ * tools/link-check.sh ir builds it, verifies the expected symbols survived,
  * verifies no floating-point formatter was dragged in, and packages the
  * result to a real .tns.
  *
