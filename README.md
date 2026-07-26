@@ -36,6 +36,18 @@ Start here:
 - [ADR-0001: native Ndless architecture](docs/adr/0001-native-ndless-architecture.md)
 - [Initial feasibility evidence](research/feasibility-2026-07-26.md)
 
+Before writing code, read these two. They are the measured evidence base and
+the work breakdown derived from it:
+
+- [Reference corpus](research/REFERENCE_CORPUS.md) — verified upstream
+  inventory, flash **and RAM** budgets, nMarkdown reuse classification,
+  capability gaps, licence obligations, and corrections to the documents above.
+- [Task contracts](docs/TASK_CONTRACTS.md) — numbered work units with
+  acceptance tests and dependency order.
+
+Two contracts currently block all build work: the Ndless SDK toolchain is not
+provisioned (P0-1) and no buildable Giac source has been obtained (P0-3).
+
 ## Licensing
 
 The selected upstream references include GPL-3 software. The final project
