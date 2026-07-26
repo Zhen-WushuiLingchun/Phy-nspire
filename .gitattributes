@@ -1,0 +1,11 @@
+# Keep the working tree LF on every platform.
+#
+# The device build runs under Linux or WSL through tools/bootstrap-ndless.sh
+# and the Ndless SDK's shell wrappers. A CRLF checkout on Windows turns those
+# scripts into syntax errors, so line endings are not left to core.autocrlf.
+* text=auto eol=lf
+
+*.png binary
+*.ppm binary
+*.tns binary
+*.zehn binary

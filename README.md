@@ -25,16 +25,45 @@ workflows.
 
 ## Current status
 
-Repository initialization, feasibility research, and architecture definition.
-No calculator application has been implemented yet.
+Phase 0, the reproducible native baseline, is implemented. The repository
+builds two artifacts from one portable core:
+
+- a host binary and test suite that run anywhere with a C11 compiler;
+- `dist/phy-nspire.tns`, a native ARM program that brings up the CX II
+  framebuffer, samples the keypad and touchpad, and exits cleanly.
+
+The Phase 0 application is not the notebook. It renders one baseline frame and
+proves the platform boundary; cells, the expression IR, and the CAS backend
+begin in Phase 1.
+
+Measured on the pinned toolchain: the `.tns` is 12,676 bytes, 0.2% of the 6 MB
+ceiling.
+
+Not yet done: the roadmap's on-device check. Nothing here has been run on real
+hardware, so "launch and exit without display corruption" is still unverified.
+[docs/BUILD.md](docs/BUILD.md) has the procedure.
 
 Start here:
 
+- [Building](docs/BUILD.md)
 - [Scientific calculation scope](docs/SCIENTIFIC_SCOPE.md)
 - [Native architecture](docs/ARCHITECTURE.md)
 - [Roadmap](docs/ROADMAP.md)
 - [ADR-0001: native Ndless architecture](docs/adr/0001-native-ndless-architecture.md)
 - [Initial feasibility evidence](research/feasibility-2026-07-26.md)
+
+## Layout
+
+```
+include/phy/      public headers: platform boundary, drawing, app shell
+src/core/         portable, backend-neutral core
+src/gfx/          RGB565 primitives and the built-in debug font
+src/app/          Phase 0 application and the two entry points
+src/platform/     one subdirectory per backend: ndless (device), host (tests)
+src/tools/        developer utilities
+tests/            host test suite and framebuffer fixtures
+tools/            SDK bootstrap, size and symbol reports
+```
 
 ## Licensing
 

@@ -1,6 +1,33 @@
 {
-  "schema": 1,
+  "schema": 2,
+  "notes": [
+    "ndless_sdk and arm_gnu_toolchain are build-time dependencies resolved by tools/bootstrap-ndless.sh.",
+    "nmarkdown and khicas_cx2 are reference upstreams. No code from either has been copied into this repository yet; see docs/adr/0001-native-ndless-architecture.md for the licensing obligations that attach when it is."
+  ],
   "upstreams": {
+    "ndless_sdk": {
+      "repository": "https://github.com/ndless-nspire/Ndless.git",
+      "tag": "r2022",
+      "commit": "b88e4af2f74f10f3b28c9f7290a79de8fd9108b8",
+      "role": "Build toolchain wrappers, libndls, libsyscalls, crt0/ldscript, genzehn and make-prg.",
+      "linked_into_application": true,
+      "license": "MPL-1.1 for libndls, libsyscalls and thirdparty/nspire-io; ndless-sdk/system and ndless-sdk/include are public domain.",
+      "device_requirement": "TI-Nspire CX II CAS, OS 6.4.0.74, Ndless r2022 installed on the calculator."
+    },
+    "arm_gnu_toolchain": {
+      "release": "14.3.rel1",
+      "target": "arm-none-eabi",
+      "archive": "https://developer.arm.com/-/media/Files/downloads/gnu/14.3.rel1/binrel/arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-eabi.tar.xz",
+      "archive_bytes": 149789432,
+      "archive_sha256": "8f6903f8ceb084d9227b9ef991490413014d991874a1e34074443c2a72b14dbd",
+      "extracted_directory": "arm-gnu-toolchain-14.3.rel1-x86_64-arm-none-eabi",
+      "gcc_version": "14.3.1",
+      "binutils_version": "2.44",
+      "role": "Prebuilt cross compiler for tools/bootstrap-ndless.sh --toolchain=prebuilt. Avoids building GCC, which needs root to install its build dependencies.",
+      "why_this_release": "ndless-sdk/system/ldscript uses REVERSE(), a linker-script feature added in binutils 2.44. Ndless's own build_toolchain.sh pins binutils 2.44 for the same reason, so any older prebuilt toolchain fails to link with a syntax error on that line.",
+      "linked_into_application": "Only the newlib C runtime and libgcc.",
+      "license": "GPL-3.0-with-GCC-exception; newlib is BSD-style."
+    },
     "nmarkdown": {
       "repository": "https://github.com/KaraRyougi/nMarkdown.git",
       "tag": "v0.2.0",
@@ -8,6 +35,8 @@
       "release_asset": "nmarkdown.tns",
       "release_asset_bytes": 1269572,
       "release_asset_sha256": "55c71c31fe432382a44a67128eb8dddd05e4ea8983bd7ef9fad9795b9db2c933",
+      "role": "Reference for the platform adapter, RGB565 renderer, Markdown and math layout.",
+      "linked_into_application": false,
       "license": "GPL-3.0"
     },
     "khicas_cx2": {
@@ -19,6 +48,8 @@
       "lua_module": "luagiac.luax.tns",
       "lua_module_bytes": 4138210,
       "lua_module_sha256": "794f65c0b9851c23a14f1eb1ce2a0e1bfe12e5053acc4525951ce86554484052",
+      "role": "Reference Giac build configuration and comparison oracle for scalar results.",
+      "linked_into_application": false,
       "license": "GPL-3.0"
     }
   }
