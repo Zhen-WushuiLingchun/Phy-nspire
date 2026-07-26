@@ -38,8 +38,13 @@ errors rather than algorithm errors.
    labelled so.
 
 **Dependency order.** Q-1 → Q-2 → Q-3 → Q-4 are strictly sequential. Q-5 and
-Q-6 depend on Q-2 but are independent of each other and of Q-3/Q-4. Q-7 is
-last. Q-0 is already done and is listed for provenance.
+Q-6 depend only on Q-1, and are independent of each other and of Q-2…Q-4, so
+all three can proceed in parallel once Q-1 lands. Q-7 is last. Q-0 is already
+done and is listed for provenance.
+
+**Current state.** The typed IR is merged on `main`, so **Q-1 is ready to
+start** and is the only thing standing between the pack and three parallel
+tracks.
 
 ---
 
@@ -72,9 +77,15 @@ cannot mask a physics regression.
 ## Q-1 — Lorentz index and scalar-product objects in the typed IR
 
 **Depends on** the canonical typed expression IR — the interface in
-`include/phy/ir.h` and its specification in `docs/IR.md`. **Q-1 is blocked
-until those land on `main`**, and must be written against them as merged
-rather than against any in-flight draft.
+[`include/phy/ir.h`](../../include/phy/ir.h) and its specification in
+[`docs/IR.md`](../IR.md). **Both are merged on `main`, so Q-1 is ready to
+start.** Write against those as merged; do not reintroduce a parallel index or
+scalar-product representation alongside them.
+
+Note what the IR does *not* carry, per `docs/IR.md`: no simplification, no
+evaluation, no arithmetic, and no dummy-index canonicalization — that is Phase
+2. Q-1 therefore adds the index and scalar-product *objects* on top of the IR's
+node model, and stops there. Rewriting belongs to Q-2 onward.
 
 **Deliver.**
 
@@ -310,7 +321,7 @@ is a proposal.
 | ID | Contract | Depends on | Status |
 | --- | --- | --- | --- |
 | Q-0 | Numeric oracle and golden cases | — | **done** |
-| Q-1 | Lorentz index and scalar-product objects | `include/phy/ir.h`, `docs/IR.md` on `main` | blocked |
+| Q-1 | Lorentz index and scalar-product objects | `include/phy/ir.h`, `docs/IR.md` — **merged on `main`** | **ready** |
 | Q-2 | Gamma objects, Clifford normalisation | Q-1 | pending |
 | Q-3 | Lorentz contraction | Q-2 | pending |
 | Q-4 | Dirac traces without `γ⁵` | Q-3 | pending |

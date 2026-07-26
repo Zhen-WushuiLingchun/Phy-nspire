@@ -25,7 +25,7 @@ assumption without executing the verification step named beside it.
 
 | Property | Value |
 | --- | --- |
-| Base commit | `1cb35cb`, "Phase 0: reproducible native baseline (#2)" — the current tip of `main` at the time of writing |
+| Base commit | `7e24783`, "Typed expression IR core (Phase 1) (#4)" — the tip of `main` at the time of writing |
 | Host | Windows 11 Pro 10.0.26300; build and test executed under WSL |
 | Build/test toolchain | cmake 3.22.1, gcc 11.4.0 (Ubuntu 11.4.0-1ubuntu1~22.04.3) |
 | Upstream access | GitHub REST API and `gh` (authenticated), arXiv API, INSPIRE-HEP API |
