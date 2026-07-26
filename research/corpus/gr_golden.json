@@ -1,0 +1,403 @@
+{
+  "schema": 1,
+  "generator": "tools/gen-gr-golden.py",
+  "generated_with": "sympy 1.14.0",
+  "purpose": "Golden curvature values for the Phase 3 general-relativity slice. Values are computed from each metric and cross-checked against an independent closed form from the literature; see cross_checks on every entry.",
+  "scope": {
+    "mvp_fields": [
+      "metric",
+      "christoffel",
+      "riemann_covariant",
+      "ricci",
+      "ricci_scalar",
+      "einstein"
+    ],
+    "post_mvp_fields": [
+      "kretschmann"
+    ],
+    "max_dimension": 4,
+    "deferred_metrics": [
+      "kerr_boyer_lindquist"
+    ],
+    "note": "kretschmann is emitted because the generator computes it anyway, but it is not an MVP acceptance target: it needs three index raisings on the full Riemann tensor. Kerr is excluded entirely; see docs/agent-tasks/GR_CURVATURE.md."
+  },
+  "conventions": {
+    "christoffel": "Gamma^a_bc = 1/2 g^ad (d_b g_dc + d_c g_db - d_d g_bc)",
+    "riemann": "R^a_bcd = d_c Gamma^a_bd - d_d Gamma^a_bc + Gamma^a_ce Gamma^e_bd - Gamma^a_de Gamma^e_bc",
+    "ricci": "R_bd = R^a_bad",
+    "ricci_scalar": "R = g^bd R_bd",
+    "einstein": "G_ab = R_ab - 1/2 R g_ab",
+    "kretschmann": "K = R_abcd R^abcd",
+    "units": "Geometrized, G = c = 1.",
+    "component_keys": "christoffel 'a;b,c' is Gamma^a_bc with b <= c; riemann_covariant 'a,b,c,d' is R_abcd restricted to a<b, c<d, (a,b) <= (c,d); symmetric rank-2 maps list i <= j. Omitted components are zero, up to the stated symmetries."
+  },
+  "metrics": [
+    {
+      "name": "minkowski_cartesian",
+      "description": "Flat spacetime in Cartesian coordinates. The trivial floor: every curvature object vanishes identically.",
+      "source": "Any GR text; definitional.",
+      "dimension": 4,
+      "signature": "(-,+,+,+)",
+      "coordinates": [
+        "t",
+        "x",
+        "y",
+        "z"
+      ],
+      "parameters": [],
+      "metric": {
+        "t,t": "-1",
+        "x,x": "1",
+        "y,y": "1",
+        "z,z": "1"
+      },
+      "christoffel": {},
+      "riemann_covariant": {},
+      "ricci": {},
+      "ricci_scalar": "0",
+      "einstein": {},
+      "kretschmann": "0",
+      "cross_checks": {
+        "ricci_scalar": {
+          "agrees": true,
+          "method": "symbolic",
+          "expected": "0"
+        },
+        "ricci_flat": {
+          "agrees": true,
+          "value": true
+        },
+        "riemann_zero": {
+          "agrees": true,
+          "value": true
+        },
+        "kretschmann": {
+          "agrees": true,
+          "method": "symbolic",
+          "expected": "0"
+        }
+      }
+    },
+    {
+      "name": "minkowski_spherical",
+      "description": "Flat spacetime in spherical coordinates. Christoffel symbols are non-zero while every curvature tensor still vanishes, so this separates a genuine curvature bug from a coordinate artifact.",
+      "source": "Any GR text; flat metric in curvilinear coordinates.",
+      "dimension": 4,
+      "signature": "(-,+,+,+)",
+      "coordinates": [
+        "t",
+        "r",
+        "theta",
+        "phi"
+      ],
+      "parameters": [],
+      "metric": {
+        "t,t": "-1",
+        "r,r": "1",
+        "theta,theta": "r**2",
+        "phi,phi": "r**2*sin(theta)**2"
+      },
+      "christoffel": {
+        "r;theta,theta": "-r",
+        "r;phi,phi": "-r*sin(theta)**2",
+        "theta;r,theta": "1/r",
+        "theta;phi,phi": "-sin(theta)*cos(theta)",
+        "phi;r,phi": "1/r",
+        "phi;theta,phi": "cos(theta)/sin(theta)"
+      },
+      "riemann_covariant": {},
+      "ricci": {},
+      "ricci_scalar": "0",
+      "einstein": {},
+      "kretschmann": "0",
+      "cross_checks": {
+        "ricci_scalar": {
+          "agrees": true,
+          "method": "symbolic",
+          "expected": "0"
+        },
+        "ricci_flat": {
+          "agrees": true,
+          "value": true
+        },
+        "riemann_zero": {
+          "agrees": true,
+          "value": true
+        },
+        "kretschmann": {
+          "agrees": true,
+          "method": "symbolic",
+          "expected": "0"
+        }
+      }
+    },
+    {
+      "name": "sphere_2d",
+      "description": "Round 2-sphere of radius a_0. Maximally symmetric Riemannian check with R = 2/a_0^2 and K = 4/a_0^4.",
+      "source": "Standard: R = 2/a^2 for S^2 of radius a; K = R_abcd R^abcd = 4/a^4 in 2D.",
+      "dimension": 2,
+      "signature": "(+,+)",
+      "coordinates": [
+        "theta",
+        "phi"
+      ],
+      "parameters": [
+        "a_0"
+      ],
+      "metric": {
+        "theta,theta": "a_0**2",
+        "phi,phi": "a_0**2*sin(theta)**2"
+      },
+      "christoffel": {
+        "theta;phi,phi": "-sin(2*theta)/2",
+        "phi;theta,phi": "1/tan(theta)"
+      },
+      "riemann_covariant": {
+        "theta,phi,theta,phi": "a_0**2*(sin(2*theta)/(2*tan(theta)) - cos(2*theta))"
+      },
+      "ricci": {
+        "theta,theta": "1",
+        "phi,phi": "sin(2*theta)/(2*tan(theta)) - cos(2*theta)"
+      },
+      "ricci_scalar": "2/a_0**2",
+      "einstein": {},
+      "kretschmann": "4/a_0**4",
+      "cross_checks": {
+        "ricci_scalar": {
+          "agrees": true,
+          "method": "symbolic",
+          "expected": "2/a_0**2"
+        },
+        "ricci_flat": {
+          "agrees": true,
+          "value": false
+        },
+        "riemann_zero": {
+          "agrees": true,
+          "value": false
+        },
+        "kretschmann": {
+          "agrees": true,
+          "method": "symbolic",
+          "expected": "4/a_0**4"
+        }
+      }
+    },
+    {
+      "name": "schwarzschild",
+      "description": "Schwarzschild vacuum in Schwarzschild coordinates. Ricci-flat with a non-zero Kretschmann scalar, which is the standard demonstration that r = 2M is a coordinate singularity and r = 0 is not.",
+      "source": "MTW Gravitation Box 31.2; Wald General Relativity ch. 6. K = 48 M^2 / r^6.",
+      "dimension": 4,
+      "signature": "(-,+,+,+)",
+      "coordinates": [
+        "t",
+        "r",
+        "theta",
+        "phi"
+      ],
+      "parameters": [
+        "M"
+      ],
+      "metric": {
+        "t,t": "(2*M - r)/r",
+        "r,r": "r/(-2*M + r)",
+        "theta,theta": "r**2",
+        "phi,phi": "r**2*sin(theta)**2"
+      },
+      "christoffel": {
+        "t;t,r": "M/(-2*M*r + r**2)",
+        "r;t,t": "(-2*M**2 + M*r)/r**3",
+        "r;r,r": "-M/(-2*M*r + r**2)",
+        "r;theta,theta": "2*M - r",
+        "r;phi,phi": "2*M*sin(theta)**2 - r*sin(theta)**2",
+        "theta;r,theta": "1/r",
+        "theta;phi,phi": "-sin(theta)*cos(theta)",
+        "phi;r,phi": "1/r",
+        "phi;theta,phi": "cos(theta)/sin(theta)"
+      },
+      "riemann_covariant": {
+        "t,r,t,r": "-2*M/r**3",
+        "t,theta,t,theta": "(-2*M**2 + M*r)/r**2",
+        "t,phi,t,phi": "(-2*M**2*sin(theta)**2 + M*r*sin(theta)**2)/r**2",
+        "r,theta,r,theta": "-M/(-2*M + r)",
+        "r,phi,r,phi": "-M*sin(theta)**2/(-2*M + r)",
+        "theta,phi,theta,phi": "2*M*r*sin(theta)**2"
+      },
+      "ricci": {},
+      "ricci_scalar": "0",
+      "einstein": {},
+      "kretschmann": "48*M**2/r**6",
+      "cross_checks": {
+        "ricci_scalar": {
+          "agrees": true,
+          "method": "symbolic",
+          "expected": "0"
+        },
+        "ricci_flat": {
+          "agrees": true,
+          "value": true
+        },
+        "riemann_zero": {
+          "agrees": true,
+          "value": false
+        },
+        "kretschmann": {
+          "agrees": true,
+          "method": "symbolic",
+          "expected": "48*M**2/r**6"
+        }
+      }
+    },
+    {
+      "name": "reissner_nordstrom",
+      "description": "Charged non-rotating black hole. Ricci scalar still vanishes because the Maxwell stress tensor is trace-free in four dimensions, but the Ricci tensor itself does not, which distinguishes 'R = 0' from 'Ricci-flat'.",
+      "source": "Henry, 'Kretschmann scalar for a Kerr-Newman black hole', ApJ 535 (2000) 350; reduces to 48M^2/r^6 - 96MQ^2/r^7 + 56Q^4/r^8 at a = 0.",
+      "dimension": 4,
+      "signature": "(-,+,+,+)",
+      "coordinates": [
+        "t",
+        "r",
+        "theta",
+        "phi"
+      ],
+      "parameters": [
+        "M",
+        "Q"
+      ],
+      "metric": {
+        "t,t": "(2*M*r - Q**2 - r**2)/r**2",
+        "r,r": "r**2/(-2*M*r + Q**2 + r**2)",
+        "theta,theta": "r**2",
+        "phi,phi": "r**2*sin(theta)**2"
+      },
+      "christoffel": {
+        "t;t,r": "(M*r - Q**2)/(-2*M*r**2 + Q**2*r + r**3)",
+        "r;t,t": "(-2*M**2*r**2 + 3*M*Q**2*r + M*r**3 - Q**4 - Q**2*r**2)/r**5",
+        "r;r,r": "(-M*r + Q**2)/(-2*M*r**2 + Q**2*r + r**3)",
+        "r;theta,theta": "(2*M*r - Q**2 - r**2)/r",
+        "r;phi,phi": "(2*M*r*sin(theta)**2 - Q**2*sin(theta)**2 - r**2*sin(theta)**2)/r",
+        "theta;r,theta": "1/r",
+        "theta;phi,phi": "-sin(theta)*cos(theta)",
+        "phi;r,phi": "1/r",
+        "phi;theta,phi": "cos(theta)/sin(theta)"
+      },
+      "riemann_covariant": {
+        "t,r,t,r": "(-2*M*r + 3*Q**2)/r**4",
+        "t,theta,t,theta": "(-2*M**2*r**2 + 3*M*Q**2*r + M*r**3 - Q**4 - Q**2*r**2)/r**4",
+        "t,phi,t,phi": "(-2*M**2*r**2*sin(theta)**2 + 3*M*Q**2*r*sin(theta)**2 + M*r**3*sin(theta)**2 - Q**4*sin(theta)**2 - Q**2*r**2*sin(theta)**2)/r**4",
+        "r,theta,r,theta": "(-M*r + Q**2)/(-2*M*r + Q**2 + r**2)",
+        "r,phi,r,phi": "(-M*r*sin(theta)**2 + Q**2*sin(theta)**2)/(-2*M*r + Q**2 + r**2)",
+        "theta,phi,theta,phi": "2*M*r*sin(theta)**2 - Q**2*sin(theta)**2"
+      },
+      "ricci": {
+        "t,t": "(-2*M*Q**2*r + Q**4 + Q**2*r**2)/r**6",
+        "r,r": "-Q**2/(-2*M*r**3 + Q**2*r**2 + r**4)",
+        "theta,theta": "Q**2/r**2",
+        "phi,phi": "Q**2*sin(theta)**2/r**2"
+      },
+      "ricci_scalar": "0",
+      "einstein": {
+        "t,t": "(-2*M*Q**2*r + Q**4 + Q**2*r**2)/r**6",
+        "r,r": "-Q**2/(-2*M*r**3 + Q**2*r**2 + r**4)",
+        "theta,theta": "Q**2/r**2",
+        "phi,phi": "Q**2*sin(theta)**2/r**2"
+      },
+      "kretschmann": "(48*M**2*r**2 - 96*M*Q**2*r + 56*Q**4)/r**8",
+      "cross_checks": {
+        "ricci_scalar": {
+          "agrees": true,
+          "method": "symbolic",
+          "expected": "0"
+        },
+        "ricci_flat": {
+          "agrees": true,
+          "value": false
+        },
+        "riemann_zero": {
+          "agrees": true,
+          "value": false
+        },
+        "kretschmann": {
+          "agrees": true,
+          "method": "symbolic",
+          "expected": "48*M**2/r**6 - 96*M*Q**2/r**7 + 56*Q**4/r**8"
+        }
+      }
+    },
+    {
+      "name": "de_sitter_static",
+      "description": "de Sitter space in the static patch. Maximally symmetric Lorentzian vacuum with a cosmological constant: R = 12/L^2 and K = 24/L^4.",
+      "source": "Maximally symmetric space with Lambda = 3/L^2: R = 4 Lambda = 12/L^2, K = 8 Lambda^2/3 = 24/L^4.",
+      "dimension": 4,
+      "signature": "(-,+,+,+)",
+      "coordinates": [
+        "t",
+        "r",
+        "theta",
+        "phi"
+      ],
+      "parameters": [
+        "L"
+      ],
+      "metric": {
+        "t,t": "(-L**2 + r**2)/L**2",
+        "r,r": "-L**2/(-L**2 + r**2)",
+        "theta,theta": "r**2",
+        "phi,phi": "r**2*sin(theta)**2"
+      },
+      "christoffel": {
+        "t;t,r": "r/(-L**2 + r**2)",
+        "r;t,t": "(-L**2*r + r**3)/L**4",
+        "r;r,r": "-r/(-L**2 + r**2)",
+        "r;theta,theta": "(-L**2*r + r**3)/L**2",
+        "r;phi,phi": "(-L**2*r*sin(theta)**2 + r**3*sin(theta)**2)/L**2",
+        "theta;r,theta": "1/r",
+        "theta;phi,phi": "-sin(theta)*cos(theta)",
+        "phi;r,phi": "1/r",
+        "phi;theta,phi": "cos(theta)/sin(theta)"
+      },
+      "riemann_covariant": {
+        "t,r,t,r": "-1/L**2",
+        "t,theta,t,theta": "(-L**2*r**2 + r**4)/L**4",
+        "t,phi,t,phi": "(-L**2*r**2*sin(theta)**2 + r**4*sin(theta)**2)/L**4",
+        "r,theta,r,theta": "-r**2/(-L**2 + r**2)",
+        "r,phi,r,phi": "-r**2*sin(theta)**2/(-L**2 + r**2)",
+        "theta,phi,theta,phi": "r**4*sin(theta)**2/L**2"
+      },
+      "ricci": {
+        "t,t": "(-3*L**2 + 3*r**2)/L**4",
+        "r,r": "-3/(-L**2 + r**2)",
+        "theta,theta": "3*r**2/L**2",
+        "phi,phi": "3*r**2*sin(theta)**2/L**2"
+      },
+      "ricci_scalar": "12/L**2",
+      "einstein": {
+        "t,t": "(3*L**2 - 3*r**2)/L**4",
+        "r,r": "3/(-L**2 + r**2)",
+        "theta,theta": "-3*r**2/L**2",
+        "phi,phi": "-3*r**2*sin(theta)**2/L**2"
+      },
+      "kretschmann": "24/L**4",
+      "cross_checks": {
+        "ricci_scalar": {
+          "agrees": true,
+          "method": "symbolic",
+          "expected": "12/L**2"
+        },
+        "ricci_flat": {
+          "agrees": true,
+          "value": false
+        },
+        "riemann_zero": {
+          "agrees": true,
+          "value": false
+        },
+        "kretschmann": {
+          "agrees": true,
+          "method": "symbolic",
+          "expected": "24/L**4"
+        }
+      }
+    }
+  ]
+}
