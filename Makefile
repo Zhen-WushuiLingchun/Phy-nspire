@@ -12,6 +12,7 @@
 #   size-report    installed size against the 5-6 MB budget
 #   symbol-report  largest symbols in the ELF
 #   ir-link-check  prove the expression IR links on device
+#   tensor-link-check  prove the component tensor core links on device
 #   clean
 
 DEBUG ?= FALSE
@@ -26,7 +27,8 @@ BUILDDIR := build/arm
 
 # Ndless links a C++ runtime regardless, so -lstdc++ comes from nspire-ld.
 GCCFLAGS := -Wall -Wextra -Wshadow -Wpointer-arith -std=c11 -marm \
-            -ffunction-sections -fdata-sections -Iinclude -Isrc/gfx -Isrc/ir
+            -ffunction-sections -fdata-sections -Iinclude -Isrc/gfx -Isrc/ir \
+            -Isrc/tensor
 # The Ndless ldscript intentionally produces a single RWX load segment, which
 # binutils 2.39+ warns about. Ndless's own toolchain build disables that
 # warning at configure time; we silence it at link time instead.
@@ -48,6 +50,9 @@ SOURCES := \
     src/ir/ir.c \
     src/ir/order.c \
     src/ir/text.c \
+    src/tensor/chart.c \
+    src/tensor/symmetry.c \
+    src/tensor/tensor.c \
     src/app/main_ndless.c \
     src/platform/ndless/platform_ndless.c \
     src/platform/ndless/crt_compat.c
@@ -56,7 +61,8 @@ OBJECTS := $(patsubst %.c,$(BUILDDIR)/%.o,$(SOURCES))
 ELF := $(DISTDIR)/$(EXE).elf
 TNS := $(DISTDIR)/$(EXE).tns
 
-.PHONY: all clean size-report symbol-report ir-link-check check-sdk
+.PHONY: all clean size-report symbol-report ir-link-check tensor-link-check \
+        check-sdk
 
 all: $(TNS)
 
@@ -93,5 +99,9 @@ symbol-report: $(ELF)
 ir-link-check: check-sdk
 	@tools/ir-link-check.sh
 
+tensor-link-check: check-sdk
+	@tools/tensor-link-check.sh
+
 clean:
-	rm -rf $(BUILDDIR) $(DISTDIR) build/arm-linkcheck
+	rm -rf $(BUILDDIR) $(DISTDIR) build/arm-linkcheck \
+	    build/arm-tensor-linkcheck

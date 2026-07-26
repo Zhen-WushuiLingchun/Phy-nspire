@@ -49,6 +49,7 @@ Start here:
 - [Scientific calculation scope](docs/SCIENTIFIC_SCOPE.md)
 - [Native architecture](docs/ARCHITECTURE.md)
 - [Typed expression IR](docs/IR.md)
+- [Component tensor core](docs/TENSOR.md)
 - [Roadmap](docs/ROADMAP.md)
 - [ADR-0001: native Ndless architecture](docs/adr/0001-native-ndless-architecture.md)
 - [Initial feasibility evidence](research/feasibility-2026-07-26.md)
