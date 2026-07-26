@@ -378,4 +378,8 @@ and no `_dtoa`, `_strtod`, `_printf_float`, libm, `stdio` formatting, or ARM
 soft-float helper reaches the image. Real IR atoms are ordered by their
 IEEE-754 bit keys rather than by executing a floating-point comparison. The
 corresponding IR check retains **50/50** entry points. Execution of the CAS
-probe on the physical CX II remains a separate hardware acceptance step.
+probe on the physical CX II is also complete: on 2026-07-26,
+`phy-cas-smoke.tns` displayed **7/7 PASS** on the target OS 6.4.0.74 / Ndless
+r2022 calculator and `ESC` returned normally to Documents. That test is an
+observable backend acceptance screen, not a claim that the notebook UI is
+implemented.

@@ -14,6 +14,7 @@
 #   ir-link-check  prove the expression IR links on device
 #   tensor-link-check  prove the component tensor core links on device
 #   cas-link-check prove the scalar CAS links on device
+#   cas-smoke      build an observable on-device symbolic CAS acceptance test
 #   clean
 
 DEBUG ?= FALSE
@@ -25,6 +26,8 @@ GENZEHN := genzehn
 EXE := phy-nspire
 DISTDIR := dist
 BUILDDIR := build/arm
+CAS_SMOKE_EXE := phy-cas-smoke
+CAS_SMOKE_BUILDDIR := build/arm-cas-smoke
 
 # Ndless links a C++ runtime regardless, so -lstdc++ comes from nspire-ld.
 GCCFLAGS := -Wall -Wextra -Wshadow -Wpointer-arith -std=c11 -marm \
@@ -67,8 +70,27 @@ OBJECTS := $(patsubst %.c,$(BUILDDIR)/%.o,$(SOURCES))
 ELF := $(DISTDIR)/$(EXE).elf
 TNS := $(DISTDIR)/$(EXE).tns
 
+CAS_SMOKE_SOURCES := \
+    src/core/status.c \
+    src/gfx/gfx.c \
+    src/ir/ir.c \
+    src/ir/order.c \
+    src/ir/text.c \
+    src/cas/num.c \
+    src/cas/engine.c \
+    src/cas/simplify.c \
+    src/cas/diff.c \
+    src/cas/normal.c \
+    tests/device/cas_smoke.c \
+    src/platform/ndless/platform_ndless.c \
+    src/platform/ndless/crt_compat.c
+CAS_SMOKE_OBJECTS := \
+    $(patsubst %.c,$(CAS_SMOKE_BUILDDIR)/%.o,$(CAS_SMOKE_SOURCES))
+CAS_SMOKE_ELF := $(DISTDIR)/$(CAS_SMOKE_EXE).elf
+CAS_SMOKE_TNS := $(DISTDIR)/$(CAS_SMOKE_EXE).tns
+
 .PHONY: all clean size-report symbol-report ir-link-check tensor-link-check \
-        cas-link-check check-sdk
+        cas-link-check cas-smoke check-sdk
 
 all: $(TNS)
 
@@ -111,6 +133,24 @@ cas-link-check: check-sdk
 tensor-link-check: check-sdk
 	@tools/tensor-link-check.sh
 
+$(CAS_SMOKE_BUILDDIR)/%.o: %.c | check-sdk
+	@mkdir -p $(dir $@)
+	$(GCC) $(GCCFLAGS) -c $< -o $@
+
+$(CAS_SMOKE_ELF): $(CAS_SMOKE_OBJECTS)
+	@mkdir -p $(DISTDIR)
+	$(LD) $^ -o $@ $(LDFLAGS)
+
+$(CAS_SMOKE_TNS): $(CAS_SMOKE_ELF)
+	$(GENZEHN) --input $< --output $@.zehn \
+	    --name "Phy CAS Smoke" --version 1 --ndless-rev-min 2022 \
+	    --uses-lcd-blit 1 --240x320-support 0
+	make-prg $@.zehn $@
+	@rm -f $@.zehn
+	@tools/size-report.sh $@ $(CAS_SMOKE_ELF)
+
+cas-smoke: $(CAS_SMOKE_TNS)
+
 clean:
-	rm -rf $(BUILDDIR) $(DISTDIR) build/arm-linkcheck \
+	rm -rf $(BUILDDIR) $(CAS_SMOKE_BUILDDIR) $(DISTDIR) build/arm-linkcheck \
 	    build/arm-tensor-linkcheck
