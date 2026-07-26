@@ -4,8 +4,8 @@ Each phase must leave a runnable or independently testable artifact.
 
 ## Phase 0 — reproducible native baseline
 
-Status: implemented, with the first on-device execution complete and the
-clean-exit acceptance still pending.
+Status: implemented, with the first on-device execution and clean-exit
+acceptance complete.
 
 Output:
 
@@ -24,8 +24,10 @@ Verification:
 - generated `.tns` size report — done, 13,440 bytes against a 6 MB ceiling;
 - launch of a Phy-nspire artifact on the real CX II — done on 2026-07-26 with
   the observable CAS smoke screen;
-- clean exit without display corruption, plus the RGB channel-order and
-  pointer checks — **not yet recorded**. `docs/BUILD.md` records the procedure.
+- clean exit without display corruption — done; `ESC` returned normally to
+  Documents;
+- the separate RGB channel-order and pointer checks — **not yet recorded**.
+  `docs/BUILD.md` records the procedure.
 
 ## Phase 1 — notebook and CAS boundary
 
@@ -70,7 +72,7 @@ The real Ndless r2022/ARM GNU toolchain link check is done: 24/24 CAS APIs
 survive garbage collection and the probe packages to a 37,720-byte `.tns`
 without float formatting, libm, or ARM soft-float dependencies. The observable
 `phy-cas-smoke.tns` then ran seven symbolic cases on the physical CX II on
-2026-07-26 and displayed 7/7 PASS.
+2026-07-26, displayed 7/7 PASS, and returned cleanly to Documents.
 
 ## Phase 2 — tensor and manifold CAS
 

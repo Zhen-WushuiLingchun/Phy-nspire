@@ -50,9 +50,9 @@ ceiling.
 The native CAS smoke artifact has now run on the target CX II and shown all
 seven exact symbolic checks passing. That acceptance screen is deliberately
 not the notebook UI: Markdown cells, two-dimensional formula layout, editing,
-and pointer interaction are still the next Phase 1 deliverable. The clean-exit
-and baseline channel/pointer checks remain separately tracked in
-[docs/BUILD.md](docs/BUILD.md).
+and pointer interaction are still the next Phase 1 deliverable. Returning from
+the smoke artifact restored Documents normally; the separate baseline
+channel-order and pointer checks remain tracked in [docs/BUILD.md](docs/BUILD.md).
 
 Start here:
 
