@@ -1,5 +1,7 @@
 {
-  "schema": 1,
+  "schema": 2,
+  "verified_on": "2026-07-26",
+  "notes": "Hashes marked verified were recomputed in this environment. See research/REFERENCE_CORPUS.md for method and for the Zehn-derived RAM figures.",
   "upstreams": {
     "nmarkdown": {
       "repository": "https://github.com/KaraRyougi/nMarkdown.git",
@@ -8,18 +10,121 @@
       "release_asset": "nmarkdown.tns",
       "release_asset_bytes": 1269572,
       "release_asset_sha256": "55c71c31fe432382a44a67128eb8dddd05e4ea8983bd7ef9fad9795b9db2c933",
-      "license": "GPL-3.0"
+      "release_asset_sha256_verified": true,
+      "zehn": {
+        "file_size": 1256840,
+        "alloc_size": 2160104,
+        "reloc_count": 7485,
+        "flag_count": 11,
+        "extra_size": 36,
+        "compression": "zlib",
+        "resident_image_bytes": 2130052,
+        "peak_load_bytes": 3386780,
+        "ndless_version_min": 31,
+        "ndless_revision_min": 2004
+      },
+      "license": "GPL-3.0",
+      "role": "UI, text, and math rendering donor"
     },
     "khicas_cx2": {
       "archive": "https://www-fourier.univ-grenoble-alpes.fr/~parisse/ti/khicas52.zip",
       "archive_bytes": 11947330,
       "archive_sha256": "4ee6b97b51a4c46b5ea8a6c48b0fac6e79f732b797003cd6e5314e5664a2cb55",
+      "archive_sha256_verified": true,
+      "archive_host_reachable_on_2026_07_26": false,
       "native_binary": "khicas.tns",
       "native_binary_bytes": 4138955,
+      "native_binary_sha256": "1d6f9dd8a543c136da99b8307d3540cd25f66838df8c72b9fcb65ec2c1b1f880",
+      "native_binary_sha256_verified": true,
       "lua_module": "luagiac.luax.tns",
       "lua_module_bytes": 4138210,
       "lua_module_sha256": "794f65c0b9851c23a14f1eb1ce2a0e1bfe12e5053acc4525951ce86554484052",
-      "license": "GPL-3.0"
+      "lua_module_sha256_verified": true,
+      "zehn": {
+        "file_size": 4125663,
+        "alloc_size": 8908288,
+        "reloc_count": 83424,
+        "flag_count": 8,
+        "extra_size": 8,
+        "compression": "zlib",
+        "resident_image_bytes": 8574520,
+        "peak_load_bytes": 12700111,
+        "executable_name": "giac"
+      },
+      "license": "GPL-3.0",
+      "source_included": false,
+      "source_offer": "https://www-fourier.univ-grenoble-alpes.fr/~parisse/giac.html",
+      "excluded_siblings": {
+        "ptt.tns": "closed source - must not be copied or linked",
+        "upsilon.tns": "CC BY-NC-SA 4.0 - non-commercial clause is GPL-incompatible"
+      },
+      "role": "CAS backend donor (binary reference only)"
+    },
+    "khicas_ti_ce_giac": {
+      "repository": "https://github.com/KhiCAS/ti-ce-giac.git",
+      "default_branch": "main",
+      "blob_count": 144,
+      "source_bytes": 6630453,
+      "declared_version": "1.4.9-57",
+      "target": "TI-84 Plus CE (eZ80); config.h sets SIZEOF_INT 3",
+      "license": "GPL-3.0 (upstream giac); GitHub detects NOASSERTION",
+      "role": "only public evidence of a calculator giac trimming configuration",
+      "commit": null,
+      "commit_todo": "pin a commit SHA as part of task P0-3"
+    },
+    "ndless_sdk": {
+      "repository": "https://github.com/ndless-nspire/Ndless.git",
+      "default_branch": "master",
+      "observed_head": "9484d8da7c7a4dde9766138c2e42e1d1e3acfcd4",
+      "observed_head_date": "2026-07-06T19:02:24Z",
+      "published_tags": ["v4.5", "v4.4", "v4.2", "v4.0", "v3.9", "v3.6"],
+      "note": "There is no 'r2022' git tag. r2022 is an Ndless revision number consumed by the Zehn NDLESS_REVISION_MIN flag. Pin by commit SHA plus minimum revision.",
+      "format_references": [
+        "ndless-sdk/include/zehn.h",
+        "ndless/src/resources/zehn_loader.cpp"
+      ],
+      "commit": null,
+      "commit_todo": "pin a commit SHA as part of task P0-1"
+    },
+    "giac_source": {
+      "status": "not yet acquired",
+      "blocking_task": "P0-3",
+      "primary_host_reachable_on_2026_07_26": false,
+      "verified_reachable_alternates": [
+        {
+          "channel": "https://sources.debian.org/api/src/giac/",
+          "versions": ["1.9.0.93+dfsg2-4", "1.9.0.93+dfsg2-3", "1.9.0.35+dfsg2-1.1", "1.6.0.41+dfsg1-1", "1.4.9.69+dfsg1-2"],
+          "caveat": "+dfsg repack removes non-free components; confirm nothing needed was stripped"
+        },
+        {
+          "channel": "https://sourceforge.net/projects/xcas/files/",
+          "versions": null
+        },
+        {
+          "channel": "https://github.com/KhiCAS/ti-ce-giac",
+          "versions": ["1.4.9-57"],
+          "caveat": "eZ80 target, not ARM"
+        }
+      ]
     }
+  },
+  "device": {
+    "model": "TI-Nspire CX II CAS",
+    "os": "6.4.0.74",
+    "ndless": "r2022",
+    "flash_total_bytes": 96862208,
+    "flash_free_bytes": 91090944,
+    "ram_total_bytes": 35650680,
+    "ram_free_bytes": 31805820
+  },
+  "budget": {
+    "flash_target_bytes": 6291456,
+    "flash_reference_sum_bytes": 5408527,
+    "flash_headroom_bytes": 882929,
+    "ram_resident_ceiling_bytes": 12582912,
+    "ram_peak_ceiling_bytes": 20971520,
+    "ram_reference_resident_bytes": 10704572,
+    "ram_reference_peak_bytes": 16086891,
+    "note": "flash_reference_sum uses khicas.tns (native) rather than luagiac.luax.tns (TI-Lua module); see REFERENCE_CORPUS.md section 4"
   }
 }
