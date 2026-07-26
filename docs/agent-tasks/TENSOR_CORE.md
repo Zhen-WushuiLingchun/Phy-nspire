@@ -37,33 +37,62 @@ Explicitly **not** in scope, and not to be designed around:
   in `docs/ARCHITECTURE.md` has not landed; nothing in this task may depend on
   it, and the operations below come from the typed IR instead.
 
-## Dependency on the typed IR
+## Dependency on the typed IR and the scalar CAS layer
 
-The handle-based typed expression IR is being implemented in parallel and is the
-dependency for this task. Cherry-pick the IR commit and bind against the real
-`include/phy/ir.h`.
+> **Correction, recorded when the storage half landed.** This section
+> originally attributed every capability in the table below to the typed IR.
+> Three of them are not there and were never going to be:
+> `include/phy/ir.h` builds and interns expressions, it does not evaluate
+> them. `phy_ir_add` produces `(+ 2 3)`, not `5`; `phy_ir_derivative` produces
+> an unevaluated `(d f x)` node; and there is no simplify and no zero decision
+> anywhere in the header. `docs/IR.md` agrees — "simplification, evaluation,
+> and arithmetic" are listed there as *not in that layer* — so it is this
+> document that was wrong, not the IR.
+>
+> Those three capabilities come from the **canonical scalar CAS layer**, which
+> is a separate dependency landing in parallel. The table below now says which
+> layer each capability comes from.
+>
+> **Component-independent tensor storage is implemented first**, against the
+> IR alone: charts, rank and per-slot valence, dense `n^r` storage,
+> flat-index encoding, the declared symmetry group, canonical component
+> lookup, fill, assignment validation, and the allocation-failure unwind. That
+> is the half of this task that never forms an expression, and it is complete
+> and tested. See `docs/TENSOR.md`. The index operations — raise, lower,
+> contract, componentwise derivative — bind to the scalar header when it
+> lands.
+
+The handle-based typed expression IR is the substrate for this task. Bind
+against the real `include/phy/ir.h`.
 
 Do not define an expression type here. Do not wrap the IR in an adapter layer,
 and do not introduce a second set of construction, lifetime, or ownership rules:
 `include/phy/ir.h` is the single authority on the handle type, on how handles are
 created and released, and on which arena they come from. Where this document and
 that header disagree about anything the header covers, the header wins — raise
-the conflict rather than working around it.
+the conflict rather than working around it. The correction above is what that
+rule produced.
 
 What follows is an operation-level contract: the capabilities the component
-tensor core requires from the IR, stated in terms of what each one must decide or
-produce. Bind each to whatever the header actually names it.
+tensor core requires, stated in terms of what each one must decide or produce.
+Bind each to whatever the owning header actually names it.
 
-| Capability | Required behaviour | Used by |
-| --- | --- | --- |
-| Integer and rational literals | Exact, no floating point anywhere in the pipeline | Metric entries, the `1/2` in the Christoffel formula |
-| Coordinate symbol reference | Resolve a chart axis to its IR symbol | Every derivative |
-| Add, subtract, negate | — | All four curvature stages |
-| Multiply, divide | Division only by an expression established non-zero, i.e. `det(g)` | Inverse metric, Christoffel |
-| Partial derivative w.r.t. a coordinate | Componentwise, exact | Christoffel, Riemann |
-| Simplify | Must reach a normal form on which the zero decision below is exact | End of each stage |
-| **Zero decision** | Must *decide*, not estimate — see below | Symmetry fill, corpus comparison, resource unwinding |
-| Bounded-arena allocation with a live-node cap | Allocation failure surfaces as a recoverable status, never an abort | Whole pipeline |
+| Capability | From | Required behaviour | Used by |
+| --- | --- | --- | --- |
+| Integer and rational literals | typed IR | Exact, no floating point anywhere in the pipeline | Metric entries, the `1/2` in the Christoffel formula |
+| Coordinate symbol reference | typed IR | Resolve a chart axis to its IR symbol | Every derivative |
+| Bounded-arena allocation with a live-node cap | typed IR | Allocation failure surfaces as a recoverable status, never an abort | Whole pipeline |
+| Add, subtract, negate | scalar CAS | — | All four curvature stages; also the sign fold described below |
+| Multiply, divide | scalar CAS | Division only by an expression established non-zero, i.e. `det(g)` | Inverse metric, Christoffel |
+| Partial derivative w.r.t. a coordinate | scalar CAS | Componentwise, exact | Christoffel, Riemann |
+| Simplify | scalar CAS | Must reach a normal form on which the zero decision below is exact | End of each stage |
+| **Zero decision** | scalar CAS | Must *decide*, not estimate — see below | Symmetry fill, corpus comparison, resource unwinding |
+
+Note that negation is on the scalar side, and that this is what fixes the
+boundary between the two halves of this task. Filling an antisymmetric orbit
+means writing `-x` into the mirrored component, so the storage layer stores a
+handle and a sign rather than a negated expression, and folding the sign back
+into a single expression is the scalar layer's first job here.
 
 ### The zero decision
 
@@ -91,13 +120,18 @@ the next section.
 
 ### Sequencing
 
-If the IR commit is not yet available to cherry-pick, the correct move is to
-implement and test the parts of this task that do not touch expressions —
-chart and tensor construction, valence and rank bookkeeping, index arithmetic,
-symmetry fill and validation on placeholder components, and the resource-limit
-unwind path — and to land the expression-dependent operations once it is. Do not
-unblock yourself by inventing a stand-in expression type; that is precisely the
-competing ownership model this section exists to prevent.
+If a dependency is not yet available, the correct move is to implement and test
+the parts of this task that do not touch expressions — chart and tensor
+construction, valence and rank bookkeeping, index arithmetic, symmetry fill and
+validation on placeholder components, and the resource-limit unwind path — and
+to land the expression-dependent operations once it is. Do not unblock yourself
+by inventing a stand-in expression type; that is precisely the competing
+ownership model this section exists to prevent.
+
+**This is what happened.** The typed IR landed; the scalar CAS layer had not,
+so the storage half was built and tested against the IR alone and the index
+operations were left for the scalar header. `docs/TENSOR.md` records the split
+and the exact point the boundary falls on.
 
 ## Storage
 
@@ -168,6 +202,20 @@ is invoked and where those calls sit, not the loops.
 
 All tests must be exact and reproducible; no floating point, no tolerances.
 
+Status after the storage half. Tests 3 and 6 are done, and 7 is done for the
+allocation path; 1, 2, 4 and 5 all compare expressions and so wait on the zero
+decision. `tests/test_tensor.c` carries the four that landed, 12,377 checks.
+
+| test | state |
+| --- | --- |
+| 1 Kronecker round trip | waits on scalar CAS (needs the inverse metric and the zero decision) |
+| 2 raise/lower involution | waits on scalar CAS |
+| 3 symmetry fill agreement | **done**, at `n = 2` and `n = 4` |
+| 4 first Bianchi identity | waits on scalar CAS |
+| 5 contraction against known traces | waits on scalar CAS |
+| 6 dimension independence | **done**, every structural test runs at `n = 2, 3, 4` |
+| 7 resource limit | **allocation half done** — injected failure swept across every allocation; the IR node-cap half waits on scalar CAS, since only expression construction can reach it |
+
 1. **Kronecker round trip.** `g^ac g_cb` equals `delta^a_b` for every metric in
    the corpus. Trace is `n`.
 2. **Raise/lower involution.** Lowering then raising any slot of a randomly
@@ -202,10 +250,26 @@ All tests must be exact and reproducible; no floating point, no tolerances.
 - Peak arena usage for a dimension-4 curvature pass is measured and written into
   this document, replacing the estimate above.
 
+### Measured after the storage half
+
+- The tensor core's own dense tables, which were budgeted at about 1 KB for a
+  rank-4 tensor at `n = 4`, measure **1,536 bytes**: 1,024 of handles plus 256
+  of signs plus 256 of assignment flags. The two extra tables are what a fill
+  discipline that never forms a negated expression costs. Pinned by
+  `test_storage_is_bounded`.
+- ARM text for the layer, `-Os -marm`: **5,168 bytes** (`chart.o` 552,
+  `symmetry.o` 1,116, `tensor.o` 3,500). None of it reaches
+  `dist/phy-nspire.tns` yet — nothing calls it, so `--gc-sections` drops it,
+  exactly as with the IR.
+- Peak *arena* usage still cannot be measured. It is dominated by expression
+  storage during a curvature pass, and no expression is formed until the
+  scalar CAS layer lands. The estimate above stands until then.
+
 ## Dependencies
 
-Depends on the handle-based typed IR. Cherry-pick that commit and bind to
-`include/phy/ir.h` as described above; if it is not yet available, follow the
+Depends on the handle-based typed IR, and on the canonical scalar CAS layer for
+the capabilities marked "scalar CAS" in the table above. Bind to
+`include/phy/ir.h` as described; if a dependency is not yet available, follow the
 sequencing note in that section rather than substituting a stand-in.
 
 `docs/agent-tasks/GR_CURVATURE.md` depends on this task and should not start
