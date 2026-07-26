@@ -9,6 +9,10 @@ coverage/
 *.tns
 *.tcc2
 
+# Host-side generator caches (tools/gen-gr-golden.py)
+__pycache__/
+*.pyc
+
 # Downloaded research artifacts and local upstream checkouts
 research/upstream/
 research/*.zip

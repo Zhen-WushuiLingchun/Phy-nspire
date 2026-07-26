@@ -11,9 +11,22 @@ marked as such.
 
 ## How each upstream may be used
 
-The project links Giac (GPL-3) and libndls (MPL-1.1), so GPL-3 is already
-compatible with the distribution. The restriction below is an engineering
-choice, not a licensing one.
+Project licensing is **not settled**, and nothing in this pack should be read as
+assuming otherwise. Two facts from the current tree:
+
+- `README.md` records that the selected upstream references include GPL-3
+  software, and that "the final project license and retained notices will be
+  fixed before any upstream code is copied".
+- The application does not link Giac today. `docs/ARCHITECTURE.md` plans a
+  size-trimmed native Giac backend; that work has not landed, so no GPL-3
+  obligation has attached to the binary yet.
+
+Reference-only is therefore load-bearing in two directions at once. It is an
+engineering judgement — see the assessment of `xperm.c` below — and it is also
+what keeps the licensing question open, because reading a source imposes nothing
+while copying one would force the decision `README.md` defers. Neither
+justification depends on the other, and neither should be weakened without the
+licensing question being answered first.
 
 | Upstream | Role | Vendored? |
 | --- | --- | --- |

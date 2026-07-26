@@ -95,7 +95,8 @@ cross-checked symbolically against an independently sourced closed form. Read
 `scope.mvp_fields` from the corpus and ignore the rest.
 
 **Comparison rule.** Compare by computing `got - want` and deciding it is zero
-through the expression layer. Never compare serialized strings: `2*M/r` and
+through the IR's zero decision, as specified in
+`docs/agent-tasks/TENSOR_CORE.md`. Never compare serialized strings: `2*M/r` and
 `2*M*r**(-1)` are the same expression and a string test would reject one of
 them. This rule is the difference between a corpus that catches bugs and a
 corpus that manufactures them.
@@ -129,7 +130,8 @@ Required tests:
 7. **Determinism.** Two runs over the whole corpus produce byte-identical
    serialized output. The host and device builds produce the same output for
    every metric.
-8. **Resource limit.** With the node cap from `docs/agent-tasks/TENSOR_CORE.md`
+8. **Resource limit.** With the IR live-node cap described in
+   `docs/agent-tasks/TENSOR_CORE.md`
    set low, the pipeline returns the resource-limit status cleanly, with no
    partial results presented as complete.
 

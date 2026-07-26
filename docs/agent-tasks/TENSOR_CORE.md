@@ -33,38 +33,71 @@ Explicitly **not** in scope, and not to be designed around:
 - differential forms, wedge products, Lie derivatives, torsion, tetrads, frames;
 - dimensions above 4, and rank above 4;
 - symmetrization and antisymmetrization operators;
-- anything that requires Giac.
+- anything that requires a CAS backend. The planned trimmed native Giac backend
+  in `docs/ARCHITECTURE.md` has not landed; nothing in this task may depend on
+  it, and the operations below come from the typed IR instead.
 
-## The expression seam
+## Dependency on the typed IR
 
-The typed expression IR (Phase 1) does not exist yet. Do not block on it and do
-not assume its shape. Define a narrow interface and build against a stub:
+The handle-based typed expression IR is being implemented in parallel and is the
+dependency for this task. Cherry-pick the IR commit and bind against the real
+`include/phy/ir.h`.
 
-```c
-typedef struct phy_expr phy_expr;   /* opaque, owned by the expression layer */
+Do not define an expression type here. Do not wrap the IR in an adapter layer,
+and do not introduce a second set of construction, lifetime, or ownership rules:
+`include/phy/ir.h` is the single authority on the handle type, on how handles are
+created and released, and on which arena they come from. Where this document and
+that header disagree about anything the header covers, the header wins — raise
+the conflict rather than working around it.
 
-phy_expr *phy_expr_zero(void);
-phy_expr *phy_expr_int(long v);
-phy_expr *phy_expr_symbol(const char *name);
-phy_expr *phy_expr_add(phy_expr *a, phy_expr *b);
-phy_expr *phy_expr_sub(phy_expr *a, phy_expr *b);
-phy_expr *phy_expr_mul(phy_expr *a, phy_expr *b);
-phy_expr *phy_expr_div(phy_expr *a, phy_expr *b);
-phy_expr *phy_expr_neg(phy_expr *a);
-phy_expr *phy_expr_diff(phy_expr *a, const char *coord);
-phy_expr *phy_expr_simplify(phy_expr *a);
-int       phy_expr_is_zero(phy_expr *a);   /* must be decisive, see below */
-```
+What follows is an operation-level contract: the capabilities the component
+tensor core requires from the IR, stated in terms of what each one must decide or
+produce. Bind each to whatever the header actually names it.
 
-`phy_expr_is_zero` is the load-bearing one. It must decide zero, not guess: the
-whole corpus turns on distinguishing "this component is zero" from "this
-component simplified badly". For the MVP a rational-function normal form over
-the coordinate symbols is sufficient and decidable, which is why the corpus was
-restricted to metrics whose components are rational in the coordinates and
-`sin`/`cos` of the angles.
+| Capability | Required behaviour | Used by |
+| --- | --- | --- |
+| Integer and rational literals | Exact, no floating point anywhere in the pipeline | Metric entries, the `1/2` in the Christoffel formula |
+| Coordinate symbol reference | Resolve a chart axis to its IR symbol | Every derivative |
+| Add, subtract, negate | — | All four curvature stages |
+| Multiply, divide | Division only by an expression established non-zero, i.e. `det(g)` | Inverse metric, Christoffel |
+| Partial derivative w.r.t. a coordinate | Componentwise, exact | Christoffel, Riemann |
+| Simplify | Must reach a normal form on which the zero decision below is exact | End of each stage |
+| **Zero decision** | Must *decide*, not estimate — see below | Symmetry fill, corpus comparison, resource unwinding |
+| Bounded-arena allocation with a live-node cap | Allocation failure surfaces as a recoverable status, never an abort | Whole pipeline |
 
-Deliver a stub implementation adequate for the corpus. The seam is what makes
-this task independently testable, as `docs/ROADMAP.md` requires of every phase.
+### The zero decision
+
+This is the load-bearing capability and the one to confirm first. It must decide
+whether an expression is zero, not guess. The entire corpus turns on
+distinguishing "this component is genuinely zero" from "this component did not
+simplify well enough to tell" — `minkowski_spherical` is exactly the case where
+a non-zero connection must yield provably zero curvature, and a heuristic answer
+there converts a passing test into a meaningless one.
+
+For the MVP, a rational-function normal form over the coordinate symbols is
+sufficient and decidable. That is why the corpus is restricted to metrics whose
+components are rational in the coordinates and in `sin`/`cos` of the angles: the
+bound was chosen so that this decision stays exact. If the IR's normal form does
+not cover that class, that is a blocking finding about the corpus scope, not
+something for this task to paper over locally.
+
+### Bounded arena
+
+Treat the arena as an IR-provided capability rather than something this layer
+implements. What the tensor core is responsible for is behaving correctly when
+the cap is hit: return a clean resource-limit status, leave no tensor partially
+written, and release everything it acquired. Sizing and instrumentation are in
+the next section.
+
+### Sequencing
+
+If the IR commit is not yet available to cherry-pick, the correct move is to
+implement and test the parts of this task that do not touch expressions —
+chart and tensor construction, valence and rank bookkeeping, index arithmetic,
+symmetry fill and validation on placeholder components, and the resource-limit
+unwind path — and to land the expression-dependent operations once it is. Do not
+unblock yourself by inventing a stand-in expression type; that is precisely the
+competing ownership model this section exists to prevent.
 
 ## Storage
 
@@ -97,18 +130,24 @@ is the intermediate peak: the Riemann recurrence forms `2 + 2n` product terms pe
 component before anything is collected, so transient swell of one to two orders
 of magnitude over steady state is expected and has not been measured.
 
-Required posture:
+Required posture. Expression storage and its cap belong to the IR; the first two
+items are the budget this task supplies as input to that sizing, and the rest are
+this task's own obligations:
 
-- allocate from a bounded arena, sized 512 KB for the MVP and adjustable by a
-  single constant;
-- enforce a hard cap on total live expression nodes;
-- on exceeding either, return a clean resource-limit status and unwind, never
-  abort and never partially mutate a tensor. `docs/SCIENTIFIC_SCOPE.md` requires
-  explicit error values for resource limits; this is where that starts.
-- no `malloc` in the component loops.
+- report ~30 KB steady state and an unmeasured peak as the dimension-4 sizing
+  input, and take the arena and live-node cap from the IR rather than declaring
+  a private one;
+- the tensor core's own allocations — the dense component tables, about 1.5 KB
+  per curvature pass — are bounded at construction from the chart's dimension
+  and rank, with no allocation in the component loops;
+- when the IR reports the cap exceeded, return a clean resource-limit status and
+  unwind: no tensor left partially written, every handle acquired in the failed
+  operation released. `docs/SCIENTIFIC_SCOPE.md` requires explicit error values
+  for resource limits, and this is where that starts.
 
 Instrument the peak and record it. Replacing the estimate above with a measured
-number is part of the deliverable.
+number is part of the deliverable, and it is the number the IR's cap should
+ultimately be set from.
 
 ## Complexity
 
@@ -122,8 +161,8 @@ count is not the bottleneck.
 | componentwise derivative, rank `r` | `n^r` | 256 |
 
 The cost is dominated by expression simplification, which is superlinear in tree
-size, not by these counts. Optimize the number of `phy_expr_simplify` calls and
-where they sit, not the loops.
+size, not by these counts. Optimize how many times the IR's simplify capability
+is invoked and where those calls sit, not the loops.
 
 ## Deterministic tests
 
@@ -165,6 +204,9 @@ All tests must be exact and reproducible; no floating point, no tolerances.
 
 ## Dependencies
 
-Depends on nothing that does not yet exist — that is the point of the expression
-seam. `docs/agent-tasks/GR_CURVATURE.md` depends on this task and should not
-start before tests 1, 2 and 5 pass.
+Depends on the handle-based typed IR. Cherry-pick that commit and bind to
+`include/phy/ir.h` as described above; if it is not yet available, follow the
+sequencing note in that section rather than substituting a stand-in.
+
+`docs/agent-tasks/GR_CURVATURE.md` depends on this task and should not start
+before tests 1, 2 and 5 pass.
