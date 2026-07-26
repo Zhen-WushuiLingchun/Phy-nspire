@@ -13,6 +13,7 @@
 #include "phy/gfx.h"
 #include "phy/platform.h"
 #include "phy/platform_host.h"
+#include "phy/storage.h"
 #include "phy_test.h"
 
 #ifndef PHY_FIXTURE_DIR
@@ -118,7 +119,7 @@ static void test_bogus_pointer_is_ignored(void)
 static void test_other_keys_do_not_quit(void)
 {
     PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
-    PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_MENU));
+    PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_OTHER));
     PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_UP, PHY_KEY_ESC));
     PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_ESC));
 
@@ -127,6 +128,73 @@ static void test_other_keys_do_not_quit(void)
     PHY_CHECK(result.quit_requested);
     PHY_CHECK_EQ_INT(result.events_handled, 3);
 
+    phy_platform_shutdown();
+}
+
+static void test_editing_event_flow(void)
+{
+    phy_host_storage_clear();
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    /* Create a Math cell, type exact source, run it, discard, then exit. */
+    PHY_CHECK(phy_host_push_pointer(PHY_EVENT_POINTER_DOWN, 50, 225));
+    PHY_CHECK(phy_host_push_text('1'));
+    PHY_CHECK(phy_host_push_text('/'));
+    PHY_CHECK(phy_host_push_text('2'));
+    PHY_CHECK(phy_host_push_text('+'));
+    PHY_CHECK(phy_host_push_text('x'));
+    PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_ENTER));
+    PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_ESC));
+    PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_DOWN));
+    PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_ENTER));
+
+    phy_app_result result;
+    PHY_CHECK_EQ_INT(phy_app_run(NULL, &result), PHY_OK);
+    PHY_CHECK(result.quit_requested);
+    PHY_CHECK_EQ_INT(result.events_handled, 10);
+    PHY_CHECK(result.frames_presented >= 2u);
+    phy_platform_shutdown();
+}
+
+static void test_escape_leaves_edit_before_quitting(void)
+{
+    phy_host_storage_clear();
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    /* First ESC leaves a new cell editor; the next asks before discarding. */
+    PHY_CHECK(phy_host_push_pointer(PHY_EVENT_POINTER_DOWN, 50, 225));
+    PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_ESC));
+    PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_ESC));
+    PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_DOWN));
+    PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_ENTER));
+
+    phy_app_result result;
+    PHY_CHECK_EQ_INT(phy_app_run(NULL, &result), PHY_OK);
+    PHY_CHECK(result.quit_requested);
+    PHY_CHECK_EQ_INT(result.events_handled, 5);
+    phy_platform_shutdown();
+}
+
+static void test_first_save_as_from_file_menu(void)
+{
+    phy_host_storage_clear();
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    /* New Math cell, leave editor, FILE -> Save -> accept suggested name. */
+    PHY_CHECK(phy_host_push_pointer(PHY_EVENT_POINTER_DOWN, 50, 225));
+    PHY_CHECK(phy_host_push_text('x'));
+    PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_ESC));
+    PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_MENU));
+    PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_DOWN));
+    PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_ENTER));
+    PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_ENTER));
+    PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_ESC));
+
+    phy_app_result result;
+    PHY_CHECK_EQ_INT(phy_app_run(NULL, &result), PHY_OK);
+    PHY_CHECK(result.quit_requested);
+
+    phy_storage_catalog catalog;
+    PHY_CHECK_EQ_INT(phy_storage_list_notebooks(&catalog), PHY_OK);
+    PHY_CHECK_EQ_INT(catalog.count, 1);
+    PHY_CHECK(strcmp(catalog.entries[0].name, "Notebook-001.tns") == 0);
     phy_platform_shutdown();
 }
 
@@ -196,6 +264,9 @@ int main(void)
     PHY_TEST_CASE(test_quit_event_stops_run);
     PHY_TEST_CASE(test_bogus_pointer_is_ignored);
     PHY_TEST_CASE(test_other_keys_do_not_quit);
+    PHY_TEST_CASE(test_editing_event_flow);
+    PHY_TEST_CASE(test_escape_leaves_edit_before_quitting);
+    PHY_TEST_CASE(test_first_save_as_from_file_menu);
     PHY_TEST_CASE(test_baseline_is_deterministic);
     PHY_TEST_CASE(test_baseline_matches_fixture);
     return PHY_TEST_REPORT("test_smoke");

@@ -9,11 +9,17 @@ There are two builds and they are deliberately separate.
 
 The host build never produces a calculator binary, and the device build never
 compiles the host backend. Exactly one platform backend is linked into any
-given binary; see `include/phy/platform.h`.
+given binary; see `include/phy/platform.h`. Both builds require the pinned
+nMarkdown submodule:
+
+```sh
+git submodule update --init --recursive
+```
 
 ## Host build
 
-Needs a C11 compiler and CMake 3.16 or newer. Nothing else.
+Needs C11 and C++17 compilers and CMake 3.16 or newer. FreeType and HarfBuzz
+are built from the pinned submodule; no system font libraries are required.
 
 ```sh
 cmake -S . -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo
@@ -35,9 +41,10 @@ Useful binaries:
 
 ### Framebuffer fixture
 
-`tests/fixtures/baseline_frame.digest` pins the baseline frame. `test_smoke`
-fails if the rendered frame drifts, and writes
-`build/baseline_frame_actual.ppm` so the difference can be inspected.
+`tests/fixtures/baseline_frame.digest` pins the preserved hardware diagnostic.
+`tests/fixtures/notebook_frame.digest` separately pins the production notebook
+viewport. `test_smoke` and `test_notebook` write an actual PPM beside the host
+build when either rendering drifts, so the difference can be inspected.
 
 After an intentional change to the baseline frame, regenerate it:
 
@@ -98,8 +105,8 @@ make clean
 make DEBUG=TRUE     # -O0 -g instead of -Os
 ```
 
-`make` fails with a clear message if `nspire-gcc` is not on `PATH`, which
-means the `eval` line above was skipped.
+`make` fails with a clear message if `nspire-gcc`/`nspire-g++` is not on
+`PATH`, or if the nMarkdown submodule has not been initialized.
 
 ### Reports
 
@@ -116,30 +123,46 @@ can be attributed rather than argued about.
 Requires a TI-Nspire CX II CAS running OS 6.4.0.74 with Ndless r2022 already
 installed.
 
-1. Create a top-level `phy-nspire` folder in Documents if it does not already
-   exist. Keep production applications, smoke tests, and later notebook assets
-   there instead of scattering them across the Documents root.
-2. Copy `dist/phy-nspire.tns` into that folder with TI-Nspire Computer Link or
-   `n-link`.
+1. Create this tree in Documents:
+
+   ```text
+   phy-nspire/
+   ├── phy-nspire.tns
+   ├── notebooks/
+   ├── assets/
+   └── examples/
+   ```
+
+2. Copy `dist/phy-nspire.tns` to `phy-nspire/phy-nspire.tns` with TI-Nspire
+   Computer Link, `n-link`, or another libnspire client.
 3. Open it from the Documents browser.
-4. Confirm the baseline frame: a title bar reading `Phy-nspire 0.1.0` on the
-   left and `ndless` on the right, a panel of framebuffer facts, and a
-   red/green/blue strip.
-5. Confirm the strip really is red, then green, then blue, left to right. Any
-   other order means the panel is wired BGR and `PHY_RGB565` needs to change.
-6. Move the pointer with the touchpad and confirm the crosshair tracks it.
-7. Press `ESC`.
+4. Confirm startup shows an empty `Untitled` notebook.
+5. Use `+MD`, put `LaTeX` in the heading, press `TAB`, and enter
+   `$$R=g^{\mu\nu}R_{\mu\nu}$$`. Press `ESC` and confirm a centered,
+   two-dimensional equation with Greek indices and raised/lowered scripts.
+6. Move a finger, lift it, then touch a different part of the touchpad. The
+   pointer must continue from its last screen position; a new contact must not
+   jump to an absolute mapped position.
+7. Touch an input body and edit it with letters, digits, arithmetic keys,
+   parentheses, arrows, and `DEL`. `RUN`/`ENTER` must execute the visible
+   source, and a parse failure must preserve it.
+8. Use the footer `+MD` and `+Math` buttons. Confirm the new cell is selected
+   and enters edit mode; insert enough cells to make selection scroll.
+9. Open `FILE`, save a notebook, create a new blank notebook, then open the
+   saved document. Confirm the source, cell kinds, outputs, and selection
+   round-trip.
+10. Press `ESC` once to leave edit mode and again to return to Documents.
 
 The exit is the part that matters most. After `ESC` the Documents browser must
-come back rendering normally. Leftover garbage or a wrong-looking display
-means `phy_platform_shutdown` did not restore the panel mode, which is the
-defect Phase 0 exists to rule out.
+come back rendering normally. The separate Phase 0 RGB/pointer diagnostic is
+still available through the preserved `phy_app_draw_baseline` host fixture;
+record its physical channel-order acceptance before changing `PHY_RGB565`.
 
 ### Native symbolic CAS acceptance test
 
-The production shell does not call the CAS yet, so launching
-`dist/phy-nspire.tns` cannot validate symbolic algebra. Build and copy the
-separate `dist/phy-cas-smoke.tns` instead:
+The production shell now calls the CAS. The separate
+`dist/phy-cas-smoke.tns` remains a denser regression screen for all seven
+physical-device acceptance cases:
 
 ```sh
 make cas-link-check

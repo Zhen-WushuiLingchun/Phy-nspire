@@ -1,16 +1,13 @@
-/*
- * Phase 0 application shell.
- *
- * Draws one deterministic baseline frame and pumps input until the user quits
- * or the frame budget runs out. The drawing code is shared verbatim between
- * the device and host builds so that the golden fixture actually constrains
- * what appears on the calculator.
- */
+/* Native application lifecycle and notebook event loop. */
 #include "phy/app.h"
 
 #include <string.h>
 
+#include "phy/formula.h"
+#include "phy/notebook.h"
 #include "phy/platform.h"
+#include "phy/storage.h"
+#include "phy/workspace.h"
 
 #define COLOR_BACKGROUND PHY_RGB565(16, 18, 24)
 #define COLOR_PANEL PHY_RGB565(28, 32, 44)
@@ -19,6 +16,469 @@
 #define COLOR_TEXT_DIM PHY_RGB565(150, 160, 180)
 #define COLOR_BORDER PHY_RGB565(90, 100, 120)
 #define COLOR_POINTER PHY_RGB565(255, 208, 64)
+#define COLOR_MODAL PHY_RGB565(24, 29, 40)
+#define COLOR_MODAL_SELECTED PHY_RGB565(35, 48, 67)
+#define COLOR_ACCENT PHY_RGB565(75, 166, 255)
+#define COLOR_ERROR PHY_RGB565(247, 103, 116)
+
+typedef enum {
+    APP_VIEW_NOTEBOOK = 0,
+    APP_VIEW_FILE_MENU,
+    APP_VIEW_SAVE_AS,
+    APP_VIEW_OPEN,
+    APP_VIEW_DIRTY_CONFIRM
+} app_view;
+
+typedef enum {
+    APP_PENDING_NONE = 0,
+    APP_PENDING_NEW,
+    APP_PENDING_OPEN,
+    APP_PENDING_QUIT
+} app_pending;
+
+typedef struct {
+    app_view view;
+    app_pending pending;
+    size_t selected;
+    phy_storage_catalog catalog;
+    char edit_name[PHY_STORAGE_NAME_CAPACITY];
+    size_t edit_cursor;
+    phy_status status;
+    bool status_visible;
+} app_ui;
+
+#define FILE_BUTTON_X 282
+#define FILE_BUTTON_Y 2
+#define FILE_BUTTON_WIDTH 36
+#define FILE_BUTTON_HEIGHT 13
+#define MODAL_X 50
+#define MODAL_WIDTH 220
+
+static void app_ui_clear_status(app_ui *ui)
+{
+    ui->status = PHY_OK;
+    ui->status_visible = false;
+}
+
+static void app_ui_set_status(app_ui *ui, phy_status status)
+{
+    ui->status = status;
+    ui->status_visible = status != PHY_OK;
+}
+
+static void copy_visible(char *destination, size_t capacity,
+                         const char *source, size_t max_characters)
+{
+    if (capacity == 0u) {
+        return;
+    }
+    size_t count = 0u;
+    while (source[count] != '\0' && count < max_characters &&
+           count + 1u < capacity) {
+        destination[count] = source[count];
+        count++;
+    }
+    if (source[count] != '\0' && count >= 3u) {
+        destination[count - 2u] = '.';
+        destination[count - 1u] = '.';
+    }
+    destination[count] = '\0';
+}
+
+static void app_draw_pointer(const phy_surface *surface, int x, int y)
+{
+    phy_gfx_hline(surface, x - 3, y, 7, COLOR_POINTER);
+    phy_gfx_vline(surface, x, y - 3, 7, COLOR_POINTER);
+    phy_gfx_put_pixel(surface, x + 2, y + 2, COLOR_POINTER);
+}
+
+static void draw_modal_panel(const phy_surface *surface, int y, int height,
+                             const char *title)
+{
+    phy_gfx_fill_rect(surface, MODAL_X, y, MODAL_WIDTH, height, COLOR_MODAL);
+    phy_gfx_draw_rect(surface, MODAL_X, y, MODAL_WIDTH, height, COLOR_ACCENT);
+    phy_gfx_fill_rect(surface, MODAL_X + 1, y + 1, MODAL_WIDTH - 2, 18,
+                      COLOR_TITLE_BAR);
+    (void)phy_gfx_draw_text(surface, MODAL_X + 8, y + 6, title, COLOR_TEXT);
+}
+
+static void draw_modal_row(const phy_surface *surface, int y,
+                           const char *label, bool selected)
+{
+    if (selected) {
+        phy_gfx_fill_rect(surface, MODAL_X + 8, y - 4, MODAL_WIDTH - 16, 17,
+                          COLOR_MODAL_SELECTED);
+        phy_gfx_draw_rect(surface, MODAL_X + 8, y - 4, MODAL_WIDTH - 16, 17,
+                          COLOR_ACCENT);
+    }
+    (void)phy_gfx_draw_text(surface, MODAL_X + 15, y, label,
+                            selected ? COLOR_TEXT : COLOR_TEXT_DIM);
+}
+
+static void draw_status(const phy_surface *surface, const app_ui *ui,
+                        int y)
+{
+    if (!ui->status_visible) {
+        return;
+    }
+    (void)phy_gfx_draw_text(surface, MODAL_X + 12, y, "Error:",
+                            COLOR_ERROR);
+    (void)phy_gfx_draw_text(surface, MODAL_X + 56, y,
+                            phy_status_name(ui->status), COLOR_ERROR);
+}
+
+static void draw_file_menu(const phy_surface *surface, const app_ui *ui)
+{
+    draw_modal_panel(surface, 42, 132, "Notebook files");
+    static const char *const items[] = {"New blank notebook", "Save",
+                                        "Open..."};
+    for (size_t i = 0u; i < sizeof items / sizeof items[0]; ++i) {
+        draw_modal_row(surface, 72 + (int)i * 28, items[i],
+                       ui->selected == i);
+    }
+    draw_status(surface, ui, 160);
+}
+
+static void draw_save_as(const phy_surface *surface, const app_ui *ui)
+{
+    draw_modal_panel(surface, 51, 120, "Save notebook as");
+    phy_gfx_fill_rect(surface, MODAL_X + 10, 82, MODAL_WIDTH - 20, 23,
+                      COLOR_BACKGROUND);
+    phy_gfx_draw_rect(surface, MODAL_X + 10, 82, MODAL_WIDTH - 20, 23,
+                      COLOR_ACCENT);
+    char visible[34];
+    size_t start = 0u;
+    if (ui->edit_cursor >= 31u) {
+        start = ui->edit_cursor - 30u;
+    }
+    copy_visible(visible, sizeof visible, ui->edit_name + start, 31u);
+    (void)phy_gfx_draw_text(surface, MODAL_X + 16, 90, visible, COLOR_TEXT);
+    const size_t local_cursor =
+        ui->edit_cursor >= start ? ui->edit_cursor - start : 0u;
+    phy_gfx_vline(surface,
+                  MODAL_X + 16 + (int)local_cursor * PHY_GLYPH_ADVANCE, 88,
+                  11, COLOR_POINTER);
+    (void)phy_gfx_draw_text(surface, MODAL_X + 12, 116,
+                            "ENTER save   ESC cancel", COLOR_TEXT_DIM);
+    (void)phy_gfx_draw_text(surface, MODAL_X + 12, 130,
+                            "Stored in phy-nspire/notebooks/", COLOR_TEXT_DIM);
+    draw_status(surface, ui, 149);
+}
+
+static size_t open_first_visible(const app_ui *ui)
+{
+    const size_t visible = 8u;
+    if (ui->selected < visible) {
+        return 0u;
+    }
+    return ui->selected - visible + 1u;
+}
+
+static void draw_open_list(const phy_surface *surface, const app_ui *ui)
+{
+    draw_modal_panel(surface, 22, 196, "Open notebook");
+    if (ui->catalog.count == 0u) {
+        (void)phy_gfx_draw_text(surface, MODAL_X + 15, 63,
+                                "No saved notebooks yet.", COLOR_TEXT_DIM);
+    } else {
+        const size_t first = open_first_visible(ui);
+        const size_t limit =
+            first + 8u < ui->catalog.count ? first + 8u : ui->catalog.count;
+        for (size_t i = first; i < limit; ++i) {
+            char visible[31];
+            copy_visible(visible, sizeof visible,
+                         ui->catalog.entries[i].name, 29u);
+            draw_modal_row(surface, 50 + (int)(i - first) * 18, visible,
+                           ui->selected == i);
+        }
+    }
+    (void)phy_gfx_draw_text(surface, MODAL_X + 12, 197,
+                            "ENTER open   ESC cancel", COLOR_TEXT_DIM);
+    draw_status(surface, ui, 184);
+}
+
+static void draw_dirty_confirm(const phy_surface *surface, const app_ui *ui)
+{
+    draw_modal_panel(surface, 52, 132, "Unsaved changes");
+    (void)phy_gfx_draw_text(surface, MODAL_X + 14, 79,
+                            "Save this notebook first?", COLOR_TEXT);
+    static const char *const items[] = {"Save", "Discard", "Cancel"};
+    for (size_t i = 0u; i < sizeof items / sizeof items[0]; ++i) {
+        draw_modal_row(surface, 105 + (int)i * 21, items[i],
+                       ui->selected == i);
+    }
+    draw_status(surface, ui, 169);
+}
+
+static void draw_app_view(const phy_surface *surface,
+                          const phy_workspace *workspace, const app_ui *ui,
+                          int pointer_x, int pointer_y)
+{
+    const phy_notebook *notebook =
+        phy_workspace_notebook_const(workspace);
+    phy_notebook_draw_document(
+        surface, notebook, phy_workspace_filename(workspace),
+        phy_notebook_is_dirty(notebook),
+        ui->view == APP_VIEW_NOTEBOOK ? pointer_x : -1,
+        ui->view == APP_VIEW_NOTEBOOK ? pointer_y : -1);
+    switch (ui->view) {
+    case APP_VIEW_FILE_MENU:
+        draw_file_menu(surface, ui);
+        break;
+    case APP_VIEW_SAVE_AS:
+        draw_save_as(surface, ui);
+        break;
+    case APP_VIEW_OPEN:
+        draw_open_list(surface, ui);
+        break;
+    case APP_VIEW_DIRTY_CONFIRM:
+        draw_dirty_confirm(surface, ui);
+        break;
+    case APP_VIEW_NOTEBOOK:
+    default:
+        break;
+    }
+    if (ui->view != APP_VIEW_NOTEBOOK && pointer_x >= 0 && pointer_y >= 0) {
+        app_draw_pointer(surface, pointer_x, pointer_y);
+    }
+}
+
+static void begin_file_menu(app_ui *ui)
+{
+    ui->view = APP_VIEW_FILE_MENU;
+    ui->pending = APP_PENDING_NONE;
+    ui->selected = 0u;
+    app_ui_clear_status(ui);
+}
+
+static phy_status begin_save_as(app_ui *ui,
+                                const phy_workspace *workspace)
+{
+    const phy_status status =
+        phy_workspace_suggest_name(workspace, ui->edit_name);
+    if (status != PHY_OK) {
+        app_ui_set_status(ui, status);
+        return status;
+    }
+    ui->edit_cursor = strlen(ui->edit_name);
+    ui->view = APP_VIEW_SAVE_AS;
+    app_ui_clear_status(ui);
+    return PHY_OK;
+}
+
+static phy_status begin_open(app_ui *ui, const phy_workspace *workspace)
+{
+    const phy_status status =
+        phy_workspace_catalog(workspace, &ui->catalog);
+    if (status != PHY_OK) {
+        app_ui_set_status(ui, status);
+        return status;
+    }
+    ui->selected = 0u;
+    ui->view = APP_VIEW_OPEN;
+    app_ui_clear_status(ui);
+    return PHY_OK;
+}
+
+static void request_pending(app_ui *ui, phy_workspace *workspace,
+                            app_pending pending, bool *running)
+{
+    if (phy_notebook_is_dirty(phy_workspace_notebook(workspace))) {
+        ui->pending = pending;
+        ui->selected = 0u;
+        ui->view = APP_VIEW_DIRTY_CONFIRM;
+        app_ui_clear_status(ui);
+        return;
+    }
+    if (pending == APP_PENDING_NEW) {
+        app_ui_set_status(ui, phy_workspace_new(workspace));
+        ui->view = APP_VIEW_NOTEBOOK;
+    } else if (pending == APP_PENDING_OPEN) {
+        (void)begin_open(ui, workspace);
+    } else if (pending == APP_PENDING_QUIT) {
+        *running = false;
+    }
+}
+
+static void complete_pending(app_ui *ui, phy_workspace *workspace,
+                             bool *running)
+{
+    const app_pending pending = ui->pending;
+    ui->pending = APP_PENDING_NONE;
+    if (pending == APP_PENDING_NONE) {
+        ui->view = APP_VIEW_NOTEBOOK;
+    } else if (pending == APP_PENDING_NEW) {
+        app_ui_set_status(ui, phy_workspace_new(workspace));
+        ui->view = APP_VIEW_NOTEBOOK;
+    } else if (pending == APP_PENDING_OPEN) {
+        (void)begin_open(ui, workspace);
+    } else if (pending == APP_PENDING_QUIT) {
+        *running = false;
+    }
+}
+
+static void activate_file_menu(app_ui *ui, phy_workspace *workspace,
+                               bool *running)
+{
+    if (ui->selected == 0u) {
+        request_pending(ui, workspace, APP_PENDING_NEW, running);
+    } else if (ui->selected == 1u) {
+        phy_status status = PHY_OK;
+        if (phy_workspace_has_filename(workspace)) {
+            status = phy_workspace_save(workspace, NULL);
+            app_ui_set_status(ui, status);
+            if (status == PHY_OK) {
+                ui->view = APP_VIEW_NOTEBOOK;
+            }
+        } else {
+            (void)begin_save_as(ui, workspace);
+        }
+    } else {
+        request_pending(ui, workspace, APP_PENDING_OPEN, running);
+    }
+}
+
+static void activate_dirty(app_ui *ui, phy_workspace *workspace,
+                           bool *running)
+{
+    if (ui->selected == 0u) {
+        if (phy_workspace_has_filename(workspace)) {
+            const phy_status status = phy_workspace_save(workspace, NULL);
+            app_ui_set_status(ui, status);
+            if (status == PHY_OK) {
+                complete_pending(ui, workspace, running);
+            }
+        } else {
+            (void)begin_save_as(ui, workspace);
+        }
+    } else if (ui->selected == 1u) {
+        complete_pending(ui, workspace, running);
+    } else {
+        ui->pending = APP_PENDING_NONE;
+        ui->view = APP_VIEW_NOTEBOOK;
+        app_ui_clear_status(ui);
+    }
+}
+
+static void activate_save_as(app_ui *ui, phy_workspace *workspace,
+                             bool *running)
+{
+    const phy_status status =
+        phy_workspace_save(workspace, ui->edit_name);
+    app_ui_set_status(ui, status);
+    if (status == PHY_OK) {
+        complete_pending(ui, workspace, running);
+    }
+}
+
+static void activate_open(app_ui *ui, phy_workspace *workspace)
+{
+    if (ui->catalog.count == 0u || ui->selected >= ui->catalog.count) {
+        return;
+    }
+    const phy_status status = phy_workspace_open(
+        workspace, ui->catalog.entries[ui->selected].name);
+    app_ui_set_status(ui, status);
+    if (status == PHY_OK) {
+        ui->view = APP_VIEW_NOTEBOOK;
+    }
+}
+
+static bool pointer_in_rect(const phy_event *event, int x, int y, int width,
+                            int height)
+{
+    return event->x >= x && event->x < x + width && event->y >= y &&
+           event->y < y + height;
+}
+
+static void handle_modal_pointer(app_ui *ui, phy_workspace *workspace,
+                                 const phy_event *event, bool *running)
+{
+    if (ui->view == APP_VIEW_FILE_MENU) {
+        for (size_t i = 0u; i < 3u; ++i) {
+            if (pointer_in_rect(event, MODAL_X + 8,
+                                68 + (int)i * 28, MODAL_WIDTH - 16, 21)) {
+                ui->selected = i;
+                activate_file_menu(ui, workspace, running);
+                return;
+            }
+        }
+    } else if (ui->view == APP_VIEW_OPEN) {
+        const size_t first = open_first_visible(ui);
+        const size_t limit =
+            first + 8u < ui->catalog.count ? first + 8u : ui->catalog.count;
+        for (size_t i = first; i < limit; ++i) {
+            if (pointer_in_rect(event, MODAL_X + 8,
+                                46 + (int)(i - first) * 18,
+                                MODAL_WIDTH - 16, 17)) {
+                ui->selected = i;
+                activate_open(ui, workspace);
+                return;
+            }
+        }
+    } else if (ui->view == APP_VIEW_DIRTY_CONFIRM) {
+        for (size_t i = 0u; i < 3u; ++i) {
+            if (pointer_in_rect(event, MODAL_X + 8,
+                                101 + (int)i * 21, MODAL_WIDTH - 16, 17)) {
+                ui->selected = i;
+                activate_dirty(ui, workspace, running);
+                return;
+            }
+        }
+    }
+}
+
+static void move_modal_selection(app_ui *ui, int direction)
+{
+    size_t count = 0u;
+    if (ui->view == APP_VIEW_FILE_MENU ||
+        ui->view == APP_VIEW_DIRTY_CONFIRM) {
+        count = 3u;
+    } else if (ui->view == APP_VIEW_OPEN) {
+        count = ui->catalog.count;
+    }
+    if (count == 0u || direction == 0) {
+        return;
+    }
+    if (direction > 0) {
+        ui->selected = (ui->selected + 1u) % count;
+    } else {
+        ui->selected = ui->selected == 0u ? count - 1u : ui->selected - 1u;
+    }
+}
+
+static void handle_save_name_text(app_ui *ui, char character)
+{
+    if ((unsigned char)character < (unsigned char)' ' ||
+        (unsigned char)character > (unsigned char)'~') {
+        return;
+    }
+    const size_t length = strlen(ui->edit_name);
+    if (length + 1u >= sizeof ui->edit_name || ui->edit_cursor > length) {
+        return;
+    }
+    memmove(ui->edit_name + ui->edit_cursor + 1u,
+            ui->edit_name + ui->edit_cursor,
+            length - ui->edit_cursor + 1u);
+    ui->edit_name[ui->edit_cursor++] = character;
+    app_ui_clear_status(ui);
+}
+
+static void handle_save_name_backspace(app_ui *ui)
+{
+    if (ui->edit_cursor == 0u) {
+        return;
+    }
+    const size_t length = strlen(ui->edit_name);
+    if (ui->edit_cursor > length) {
+        ui->edit_cursor = length;
+    }
+    memmove(ui->edit_name + ui->edit_cursor - 1u,
+            ui->edit_name + ui->edit_cursor,
+            length - ui->edit_cursor + 1u);
+    ui->edit_cursor--;
+    app_ui_clear_status(ui);
+}
 
 /*
  * Bounded text assembly.
@@ -202,6 +662,21 @@ phy_status phy_app_run(const phy_app_options *options, phy_app_result *out_resul
     }
     const phy_surface surface = {pixels, PHY_SCREEN_WIDTH, PHY_SCREEN_HEIGHT};
 
+    const phy_status formula_status = phy_formula_initialize();
+    if (formula_status != PHY_OK) {
+        return formula_status;
+    }
+
+    phy_workspace *workspace = phy_workspace_create();
+    if (workspace == NULL) {
+        phy_formula_shutdown();
+        return PHY_ERR_OUT_OF_MEMORY;
+    }
+    phy_notebook *notebook = phy_workspace_notebook(workspace);
+    app_ui ui;
+    memset(&ui, 0, sizeof ui);
+    ui.view = APP_VIEW_NOTEBOOK;
+
     phy_app_result result;
     memset(&result, 0, sizeof result);
     result.pointer_x = PHY_SCREEN_WIDTH / 2;
@@ -212,13 +687,15 @@ phy_status phy_app_run(const phy_app_options *options, phy_app_result *out_resul
 
     while (running) {
         if (needs_redraw) {
-            phy_app_draw_baseline(&surface, (int)result.pointer_x,
-                                  (int)result.pointer_y);
+            draw_app_view(&surface, workspace, &ui, (int)result.pointer_x,
+                          (int)result.pointer_y);
             const phy_status status = phy_display_present();
             if (status != PHY_OK) {
                 if (out_result != NULL) {
                     *out_result = result;
                 }
+                phy_workspace_destroy(workspace);
+                phy_formula_shutdown();
                 return status;
             }
             result.frames_presented++;
@@ -240,13 +717,104 @@ phy_status phy_app_run(const phy_app_options *options, phy_app_result *out_resul
 
         switch (event.kind) {
         case PHY_EVENT_QUIT:
-            result.quit_requested = true;
-            running = false;
-            break;
-        case PHY_EVENT_KEY_DOWN:
-            if (event.key == PHY_KEY_ESC) {
+            if (ui.view == APP_VIEW_NOTEBOOK &&
+                phy_notebook_is_dirty(notebook)) {
+                request_pending(&ui, workspace, APP_PENDING_QUIT, &running);
+                needs_redraw = true;
+            } else {
                 result.quit_requested = true;
                 running = false;
+            }
+            break;
+        case PHY_EVENT_KEY_DOWN:
+            if (ui.view != APP_VIEW_NOTEBOOK) {
+                if (event.key == PHY_KEY_ESC) {
+                    if (ui.view == APP_VIEW_DIRTY_CONFIRM) {
+                        ui.pending = APP_PENDING_NONE;
+                    }
+                    ui.view = APP_VIEW_NOTEBOOK;
+                    app_ui_clear_status(&ui);
+                } else if (event.key == PHY_KEY_UP) {
+                    move_modal_selection(&ui, -1);
+                } else if (event.key == PHY_KEY_DOWN ||
+                           event.key == PHY_KEY_TAB) {
+                    move_modal_selection(&ui, 1);
+                } else if (ui.view == APP_VIEW_SAVE_AS &&
+                           event.key == PHY_KEY_LEFT &&
+                           ui.edit_cursor > 0u) {
+                    ui.edit_cursor--;
+                } else if (ui.view == APP_VIEW_SAVE_AS &&
+                           event.key == PHY_KEY_RIGHT &&
+                           ui.edit_cursor < strlen(ui.edit_name)) {
+                    ui.edit_cursor++;
+                } else if (ui.view == APP_VIEW_SAVE_AS &&
+                           event.key == PHY_KEY_BACKSPACE) {
+                    handle_save_name_backspace(&ui);
+                } else if (event.key == PHY_KEY_ENTER) {
+                    if (ui.view == APP_VIEW_FILE_MENU) {
+                        activate_file_menu(&ui, workspace, &running);
+                    } else if (ui.view == APP_VIEW_SAVE_AS) {
+                        activate_save_as(&ui, workspace, &running);
+                    } else if (ui.view == APP_VIEW_OPEN) {
+                        activate_open(&ui, workspace);
+                    } else if (ui.view == APP_VIEW_DIRTY_CONFIRM) {
+                        activate_dirty(&ui, workspace, &running);
+                    }
+                }
+                notebook = phy_workspace_notebook(workspace);
+                needs_redraw = true;
+            } else if (event.key == PHY_KEY_ESC) {
+                if (phy_notebook_is_editing(notebook)) {
+                    phy_notebook_end_edit(notebook);
+                    needs_redraw = true;
+                } else {
+                    request_pending(&ui, workspace, APP_PENDING_QUIT,
+                                    &running);
+                    if (!running) {
+                        result.quit_requested = true;
+                    }
+                    needs_redraw = true;
+                }
+            } else if (event.key == PHY_KEY_MENU &&
+                       !phy_notebook_is_editing(notebook)) {
+                begin_file_menu(&ui);
+                needs_redraw = true;
+            } else if (event.key == PHY_KEY_BACKSPACE &&
+                       phy_notebook_is_editing(notebook)) {
+                needs_redraw =
+                    phy_notebook_edit_backspace(notebook) || needs_redraw;
+            } else if (event.key == PHY_KEY_UP ||
+                       event.key == PHY_KEY_LEFT) {
+                if (phy_notebook_is_editing(notebook) &&
+                    event.key == PHY_KEY_LEFT) {
+                    needs_redraw =
+                        phy_notebook_edit_move(notebook, -1) || needs_redraw;
+                } else {
+                    needs_redraw =
+                        phy_notebook_select_next(notebook, -1) || needs_redraw;
+                }
+            } else if (event.key == PHY_KEY_DOWN ||
+                       event.key == PHY_KEY_RIGHT ||
+                       event.key == PHY_KEY_TAB) {
+                if (phy_notebook_is_editing(notebook) &&
+                    event.key == PHY_KEY_RIGHT) {
+                    needs_redraw =
+                        phy_notebook_edit_move(notebook, 1) || needs_redraw;
+                } else if (phy_notebook_is_editing(notebook) &&
+                           event.key == PHY_KEY_TAB) {
+                    needs_redraw =
+                        phy_notebook_edit_switch_field(notebook) ||
+                        needs_redraw;
+                } else {
+                    needs_redraw =
+                        phy_notebook_select_next(notebook, 1) || needs_redraw;
+                }
+            } else if (event.key == PHY_KEY_ENTER) {
+                if (phy_notebook_activate_selected(notebook) ==
+                    PHY_ERR_UNSUPPORTED) {
+                    (void)phy_notebook_begin_edit_selected(notebook);
+                }
+                needs_redraw = true;
             }
             break;
         case PHY_EVENT_POINTER_MOVE:
@@ -257,6 +825,43 @@ phy_status phy_app_run(const phy_app_options *options, phy_app_result *out_resul
                 result.pointer_x = (uint32_t)event.x;
                 result.pointer_y = (uint32_t)event.y;
                 needs_redraw = true;
+                if (event.kind == PHY_EVENT_POINTER_DOWN) {
+                    if (ui.view != APP_VIEW_NOTEBOOK) {
+                        handle_modal_pointer(&ui, workspace, &event, &running);
+                        notebook = phy_workspace_notebook(workspace);
+                    } else if (pointer_in_rect(
+                                   &event, FILE_BUTTON_X, FILE_BUTTON_Y,
+                                   FILE_BUTTON_WIDTH, FILE_BUTTON_HEIGHT)) {
+                        if (!phy_notebook_is_editing(notebook)) {
+                            begin_file_menu(&ui);
+                        }
+                    } else {
+                        phy_status action_status = PHY_OK;
+                        if (!phy_notebook_insert_at(notebook, event.x, event.y,
+                                                    &action_status) &&
+                            !phy_notebook_run_at(notebook, event.x, event.y,
+                                                 &action_status) &&
+                            !phy_notebook_begin_edit_at(notebook, event.x,
+                                                        event.y)) {
+                            (void)phy_notebook_select_at(notebook, event.x,
+                                                         event.y);
+                        }
+                        (void)action_status;
+                    }
+                }
+            }
+            break;
+        case PHY_EVENT_TEXT_INPUT:
+            if (ui.view == APP_VIEW_SAVE_AS) {
+                handle_save_name_text(&ui, event.text);
+                needs_redraw = true;
+            } else if (ui.view == APP_VIEW_NOTEBOOK) {
+                if (!phy_notebook_is_editing(notebook)) {
+                    (void)phy_notebook_begin_edit_selected(notebook);
+                }
+                needs_redraw =
+                    phy_notebook_edit_insert(notebook, event.text) ||
+                    needs_redraw;
             }
             break;
         case PHY_EVENT_KEY_UP:
@@ -264,10 +869,15 @@ phy_status phy_app_run(const phy_app_options *options, phy_app_result *out_resul
         default:
             break;
         }
+        if (!running) {
+            result.quit_requested = true;
+        }
     }
 
     if (out_result != NULL) {
         *out_result = result;
     }
+    phy_workspace_destroy(workspace);
+    phy_formula_shutdown();
     return PHY_OK;
 }

@@ -348,9 +348,9 @@ phy_ir_context *phy_ir_context_create(const phy_ir_limits *limits)
 
     /* Element 0 is a reserved sentinel in each handle-bearing pool so that a
        zero handle is always invalid. */
-    static const phy_ir_node kNullNode;
-    static const phy_ir_symbol_record kNullSymbol;
-    static const phy_ir_symmetry_record kNullSymmetry;
+    static const phy_ir_node kNullNode = {0};
+    static const phy_ir_symbol_record kNullSymbol = {0};
+    static const phy_ir_symmetry_record kNullSymmetry = {0};
 
     const bool ok =
         pool_push(ctx, &ctx->nodes, sizeof(phy_ir_node), &kNullNode) == 0u &&

@@ -72,7 +72,8 @@ static void test_event_queue_order_and_capacity(void)
 
     PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_MENU));
     PHY_CHECK(phy_host_push_pointer(PHY_EVENT_POINTER_MOVE, 11, 22));
-    PHY_CHECK_EQ_INT(phy_host_pending_event_count(), 2);
+    PHY_CHECK(phy_host_push_text('x'));
+    PHY_CHECK_EQ_INT(phy_host_pending_event_count(), 3);
 
     phy_event event;
     PHY_CHECK(phy_input_poll(&event));
@@ -83,6 +84,10 @@ static void test_event_queue_order_and_capacity(void)
     PHY_CHECK_EQ_INT(event.kind, PHY_EVENT_POINTER_MOVE);
     PHY_CHECK_EQ_INT(event.x, 11);
     PHY_CHECK_EQ_INT(event.y, 22);
+
+    PHY_CHECK(phy_input_poll(&event));
+    PHY_CHECK_EQ_INT(event.kind, PHY_EVENT_TEXT_INPUT);
+    PHY_CHECK_EQ_INT(event.text, 'x');
 
     PHY_CHECK(!phy_input_poll(&event));
     PHY_CHECK(!phy_input_poll(NULL));

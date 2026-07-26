@@ -19,27 +19,50 @@ Output:
 
 Verification:
 
-- host smoke test — done, `ctest` runs nine tests covering the platform
-  contract, drawing, IR, tensor storage, CAS, QFT oracle, and full lifecycle;
-- generated `.tns` size report — done, 13,440 bytes against a 6 MB ceiling;
+- host smoke test — done, `ctest` runs seventeen tests covering the platform,
+  relative pointer, source language, drawing, notebook, IR, tensor storage,
+  CAS, QFT oracle, and full lifecycle;
+- generated `.tns` size report — done, 1,048,076 bytes against a 6 MiB
+  ceiling after the nMarkdown math integration;
 - launch of a Phy-nspire artifact on the real CX II — done on 2026-07-26 with
   the observable CAS smoke screen;
 - clean exit without display corruption — done; `ESC` returned normally to
   Documents;
-- the separate RGB channel-order and pointer checks — **not yet recorded**.
-  `docs/BUILD.md` records the procedure.
+- RGB channel order is **not yet recorded**. The first pointer behavior was
+  rejected on hardware; acceptance of the corrected relative navigation/click
+  filtering is pending a fresh device run. `docs/BUILD.md` records the
+  procedure.
 
 ## Phase 1 — notebook and CAS boundary
 
-Status: the typed expression IR and the scalar CAS over it are implemented and
-the CAS has passed its first physical-device smoke test; the graphical
-notebook shell is not started. The smoke screen is not the notebook UI.
+Status: the typed expression IR, scalar CAS, persistence shell, and first
+nMarkdown-backed LaTeX rendering pass are implemented and ARM-built. The CAS
+and earlier input shell passed physical smoke tests; the persistence +
+typesetter build still needs calculator acceptance.
 
 Output:
 
-- Markdown and two-dimensional math cells;
-- touchpad selection and palette shell;
-- editable source cells;
+- Markdown heading/body cells — bounded form done, including inline `$...$` /
+  `\(...\)` and display `$$...$$` / `\[...\]` mathematics through the pinned
+  nMarkdown OpenType MATH stack;
+- two-dimensional math output — exact fractions, powers, functions,
+  multiplication, addition, equations, tensors/operators, derivatives, and
+  indices are laid out directly from typed IR;
+- relative touchpad and directional-key selection — done; each new touch
+  continues from the cursor's previous screen position rather than mapping
+  absolute finger coordinates;
+- independent upper-right `RUN` badge per executable cell — done with a
+  separately tested hit region;
+- character-level source/Markdown editing, stale-result marking,
+  selection-following scrolling, and functional `+MD`/`+Math` insertion —
+  done for the bounded first shell;
+- empty-notebook startup, atomic Save/Open, sorted file picker, dirty-state
+  confirmation, and default `/documents/phy-nspire/notebooks` path — done;
+- extensible Mathematica-style source front end — done for exact
+  integers/decimals, implicit and explicit arithmetic, equations, lists,
+  scalar/full-form heads, multiple derivatives, and the command registry in
+  [`docs/SOURCE_LANGUAGE.md`](SOURCE_LANGUAGE.md);
+- richer object palettes — not yet done;
 - backend-neutral typed expression IR — done, `include/phy/ir.h`, `src/ir`,
   documented in [`docs/IR.md`](IR.md);
 - native scalar algebra and rewriting — done, `include/phy/cas.h`, `src/cas`,
@@ -52,8 +75,9 @@ Output:
 
 Verification:
 
-- deterministic framebuffer fixtures;
-- parse/evaluate/render/save/reopen workflow;
+- deterministic framebuffer fixtures — done for the baseline and notebook;
+- parse/evaluate/render workflow — done for the two seeded native CAS cells;
+- save/reopen workflow — host tests done, physical-device acceptance pending;
 - cancellation and expression-limit tests — done for the CAS, `tests/test_cas.c`:
   the step budget, the cancellation hook, and the IR's term limit each surface as
   a typed status and leave both layers validating;
@@ -63,6 +87,16 @@ Verification:
   form, exact arithmetic and its overflow statuses, differentiation, and the
   zero decision, including the four `sphere_2d` corpus entries whose stated
   trigonometric form differs from the computed one.
+- notebook tests — done, `tests/test_notebook.c`, 126 checks covering bounded
+  cell storage, exact seeded results, editing, insertion, source/IR agreement,
+  stale outputs, Markdown selection, independent run-badge hit testing, 2D
+  metrics, nMarkdown LaTeX integration, memory return, and the framebuffer
+  fixture;
+- formula bridge tests — done, `tests/test_formula.c`, 20 checks covering
+  initialization, matrices, metrics, RGB565 rendering, and local error
+  recovery;
+- source and pointer tests — done: 90 source-language checks and 29 relative
+  touchpad checks, including no-jump contact, fractional motion, and edges.
 
 The IR carries no simplification, evaluation, or arithmetic: it is the
 substrate those work on. Dummy-index canonicalization and anything that

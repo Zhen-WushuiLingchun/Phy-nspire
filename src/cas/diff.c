@@ -219,7 +219,8 @@ static phy_status diff_product(phy_cas *cas, phy_ir_ref expr, phy_ir_ref var,
     const size_t count = phy_ir_child_count(ir, expr);
     const size_t mark = phy_cas_scratch_mark(cas);
 
-    size_t terms, factors;
+    size_t terms = 0u;
+    size_t factors = 0u;
     phy_status status = phy_cas_scratch_alloc(cas, count, &terms);
     if (status == PHY_OK) {
         status = phy_cas_scratch_alloc(cas, count, &factors);
@@ -328,7 +329,8 @@ static phy_status diff_power(phy_cas *cas, phy_ir_ref expr, phy_ir_ref var,
         }
     }
     if (status == PHY_OK && base_varies) {
-        phy_ir_ref derivative, inverse;
+        phy_ir_ref derivative = PHY_IR_NULL;
+        phy_ir_ref inverse = PHY_IR_NULL;
         status = phy_cas_diff_node(cas, base, var, &derivative);
         if (status == PHY_OK) {
             status = phy_cas_pow_node(cas, base, cas->minus_one, &inverse);
@@ -438,7 +440,8 @@ phy_status phy_cas_diff_node(phy_cas *cas, phy_ir_ref expr, phy_ir_ref var,
             }
             /* Chain rule. */
             const phy_ir_ref argument = phy_ir_child(ir, expr, 0u);
-            phy_ir_ref outer, inner;
+            phy_ir_ref outer = PHY_IR_NULL;
+            phy_ir_ref inner = PHY_IR_NULL;
             status = outer_derivative(cas, head, argument, &outer);
             if (status == PHY_OK) {
                 status = phy_cas_diff_node(cas, argument, var, &inner);

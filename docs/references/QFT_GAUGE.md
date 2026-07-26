@@ -634,11 +634,11 @@ be well-defined.
 ## 10. Licence obligations
 
 This section is engineering guidance for scoping work, **not legal advice**.
-Phy-nspire's own licence is not yet settled — `README.md` records that "the
-final project license and retained notices will be fixed before any upstream
-code is copied or linked". Any actual incorporation of upstream code needs
-project licensing and legal review before it happens, not a judgement call by
-an implementing agent.
+Phy-nspire is GPL-3.0, and its current nMarkdown incorporation retains pinned
+corresponding source and transitive notices. Reusing further upstream QFT code
+still requires a per-dependency compatibility and notice review; GPL-3.0 at
+the top level does not make every dependency or data asset automatically safe
+to copy.
 
 | Upstream | Licence | Use relied on in this document |
 | --- | --- | --- |

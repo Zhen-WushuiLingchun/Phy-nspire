@@ -2,6 +2,7 @@
 #include <stdlib.h>
 
 #include "phy/gfx.h"
+#include "phy/math_layout.h"
 #include "phy/platform.h"
 #include "phy_test.h"
 
@@ -103,6 +104,19 @@ static void test_text_metrics(void)
     const int pen = phy_gfx_draw_text(&g_surface, 1, 1, "AB", kInk);
     PHY_CHECK_EQ_INT(pen, 1 + 2 * PHY_GLYPH_ADVANCE);
     PHY_CHECK(count_ink() > 0);
+
+    PHY_CHECK_EQ_INT(phy_gfx_text_width_scaled("AB", 2u),
+                     2 * (PHY_GLYPH_ADVANCE + PHY_GLYPH_WIDTH));
+    PHY_CHECK_EQ_INT(phy_gfx_text_width_scaled("AB", 0u), 0);
+    PHY_CHECK_EQ_INT(
+        phy_gfx_draw_text_scaled(&g_surface, 3, 3, "A", 0u, kInk), 3);
+    const int scaled_pen =
+        phy_gfx_draw_text_scaled(&g_surface, 3, 3, "A", 2u, kInk);
+    PHY_CHECK_EQ_INT(scaled_pen, 3 + 2 * PHY_GLYPH_ADVANCE);
+    PHY_CHECK_EQ_INT(phy_gfx_get_pixel(&g_surface, 3, 3),
+                     phy_gfx_get_pixel(&g_surface, 4, 3));
+    PHY_CHECK_EQ_INT(phy_gfx_get_pixel(&g_surface, 3, 3),
+                     phy_gfx_get_pixel(&g_surface, 3, 4));
 }
 
 /* A space must be blank; an unmapped byte must be visibly filled, not blank. */
@@ -158,6 +172,38 @@ static void test_null_surface_is_safe(void)
     PHY_CHECK(!phy_gfx_write_ppm(&null_surface, "should-not-exist.ppm"));
 }
 
+static void test_math_layout_preserves_operator_grouping(void)
+{
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    phy_ir_context *ir = phy_ir_context_create(NULL);
+    PHY_CHECK(ir != NULL);
+
+    phy_ir_ref sum = PHY_IR_NULL;
+    phy_ir_ref power = PHY_IR_NULL;
+    phy_ir_ref product = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(phy_ir_read(ir, "(+ m x)", &sum, NULL), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_ir_read(ir, "(^ (+ m x) 3)", &power, NULL), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_ir_read(ir, "(* y (+ m x))", &product, NULL), PHY_OK);
+
+    phy_math_box sum_box;
+    phy_math_box power_box;
+    phy_math_box product_box;
+    PHY_CHECK(phy_math_measure(ir, sum, &sum_box));
+    PHY_CHECK(phy_math_measure(ir, power, &power_box));
+    PHY_CHECK(phy_math_measure(ir, product, &product_box));
+
+    const int parens =
+        phy_gfx_text_width("(") + phy_gfx_text_width(")");
+    PHY_CHECK_EQ_INT(power_box.width,
+                     sum_box.width + parens + phy_gfx_text_width("3"));
+    PHY_CHECK_EQ_INT(product_box.width,
+                     sum_box.width + parens + phy_gfx_text_width(" ") +
+                         phy_gfx_text_width("y"));
+
+    phy_ir_context_destroy(ir);
+    phy_platform_shutdown();
+}
+
 int main(void)
 {
     PHY_TEST_CASE(test_rgb565_packing);
@@ -170,5 +216,6 @@ int main(void)
     PHY_TEST_CASE(test_text_clipping);
     PHY_TEST_CASE(test_digest_is_content_addressed);
     PHY_TEST_CASE(test_null_surface_is_safe);
+    PHY_TEST_CASE(test_math_layout_preserves_operator_grouping);
     return PHY_TEST_REPORT("test_gfx");
 }

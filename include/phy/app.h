@@ -1,11 +1,4 @@
-/*
- * Phy-nspire — Phase 0 application shell.
- *
- * The Phase 0 application proves the full lifecycle end to end: bring up the
- * framebuffer, draw a deterministic baseline frame, pump input, and leave the
- * device in a clean state. It is intentionally not the notebook; the cell
- * model, expression IR, and CAS boundary land in Phase 1.
- */
+/* Phy-nspire native application shell. */
 #ifndef PHY_APP_H
 #define PHY_APP_H
 
@@ -48,8 +41,10 @@ void phy_app_options_defaults(phy_app_options *out_options);
 phy_status phy_app_run(const phy_app_options *options, phy_app_result *out_result);
 
 /*
- * Draws the baseline frame into an arbitrary surface. Exposed separately from
- * phy_app_run so fixtures can render without an initialized platform.
+ * Draws the preserved Phase 0 hardware baseline into an arbitrary surface.
+ * Exposed separately from phy_app_run so the original framebuffer fixture and
+ * channel-order diagnostic remain available after the product opens into the
+ * Phase 1 notebook.
  *
  * The device and host builds share this code exactly, so the golden fixture
  * pins the layout and the drawing primitives for both. The rendered frame is

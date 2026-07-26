@@ -1,0 +1,3 @@
+[submodule "nmarkdown"]
+	path = third_party/nmarkdown
+	url = https://github.com/KaraRyougi/nMarkdown.git

@@ -69,6 +69,15 @@ int phy_gfx_draw_text(const phy_surface *surface, int x, int y,
 int phy_gfx_text_width(const char *text);
 
 /*
+ * Integer-scaled variant used for notebook headings. Scale 1 is bit-identical
+ * to phy_gfx_draw_text; scale 0 is rejected and leaves the pen unchanged.
+ */
+int phy_gfx_draw_text_scaled(const phy_surface *surface, int x, int y,
+                             const char *text, unsigned scale,
+                             uint16_t color);
+int phy_gfx_text_width_scaled(const char *text, unsigned scale);
+
+/*
  * FNV-1a over the whole pixel buffer. Used by the deterministic framebuffer
  * fixtures; stable across platforms because the buffer is little-endian
  * uint16_t and hashed byte-wise in a fixed order.

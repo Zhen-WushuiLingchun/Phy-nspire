@@ -161,13 +161,25 @@ bool phy_host_push_event(const phy_event *event)
 
 bool phy_host_push_key(phy_event_kind kind, phy_key key)
 {
-    const phy_event event = {kind, key, 0, 0};
+    const phy_event event = {kind, key, 0, 0, '\0'};
     return phy_host_push_event(&event);
 }
 
 bool phy_host_push_pointer(phy_event_kind kind, int16_t x, int16_t y)
 {
-    const phy_event event = {kind, PHY_KEY_NONE, x, y};
+    const phy_event event = {kind, PHY_KEY_NONE, x, y, '\0'};
+    return phy_host_push_event(&event);
+}
+
+bool phy_host_push_text(char text)
+{
+    const phy_event event = {
+        PHY_EVENT_TEXT_INPUT,
+        PHY_KEY_NONE,
+        0,
+        0,
+        text,
+    };
     return phy_host_push_event(&event);
 }
 

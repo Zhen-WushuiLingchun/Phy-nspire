@@ -321,12 +321,12 @@ pinned toolchain. Measured with `-Os -marm`:
 | `src/ir/text.o`   | 5,442      |
 | total             | **14,892** |
 
-**None of it is in `dist/phy-nspire.tns` yet.** The shipped binary grew from
-12,676 to 13,440 bytes, and that 764 bytes is the enlarged `phy_status` name
-table, not the IR: `--gc-sections` discards every IR symbol because nothing in
-the current application calls one. `arm-none-eabi-nm` on the shipped ELF finds
-zero `phy_ir_*` symbols. The 14,892 bytes above is what the notebook shell
-will pay when it starts using the IR in Phase 1.
+At the original IR landing, none of it was in `dist/phy-nspire.tns`: the
+13,440-byte Phase 0 shell referenced no IR symbol and `--gc-sections` removed
+it. That historical link-risk is why the probe below exists. The current
+notebook does call the IR, CAS, reader-facing parser, and 2D layout; the full
+product is now 1,048,076 bytes after persistence and the nMarkdown math slice
+were added.
 
 Because link-time garbage collection hides the IR, the device build alone does
 not prove it *links*. A reference to a libc function Ndless newlib lacks would

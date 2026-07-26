@@ -34,6 +34,7 @@ typedef enum {
     PHY_EVENT_POINTER_MOVE,
     PHY_EVENT_POINTER_DOWN,
     PHY_EVENT_POINTER_UP,
+    PHY_EVENT_TEXT_INPUT,
     PHY_EVENT_QUIT
 } phy_event_kind;
 
@@ -51,6 +52,7 @@ typedef enum {
     PHY_KEY_DOWN,
     PHY_KEY_LEFT,
     PHY_KEY_RIGHT,
+    PHY_KEY_BACKSPACE,
     PHY_KEY_OTHER
 } phy_key;
 
@@ -59,6 +61,7 @@ typedef struct {
     phy_key key;
     int16_t x; /* pointer position, screen coordinates; 0 for key events */
     int16_t y;
+    char text; /* printable ASCII for PHY_EVENT_TEXT_INPUT; otherwise NUL */
 } phy_event;
 
 typedef struct {

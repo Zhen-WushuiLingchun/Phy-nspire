@@ -25,18 +25,26 @@ workflows.
 
 ## Current status
 
-Phase 0, the reproducible native baseline, is implemented. The repository
+Phase 0, the reproducible native baseline, is implemented. The first Phase 1
+notebook shell is now wired into the production application. The repository
 builds two artifacts from one portable core:
 
-- a host binary and test suite that run anywhere with a C11 compiler;
+- a host binary and test suite using a C11 core and C++17 formula bridge;
 - `dist/phy-nspire.tns`, a native ARM program that brings up the CX II
   framebuffer, samples the keypad and touchpad, and exits cleanly.
 
-The Phase 0 application is not the notebook. It renders one baseline frame and
-proves the platform boundary.
+The preserved Phase 0 diagnostic still renders one baseline frame for
+framebuffer fixtures, but the production entry point now opens a native
+notebook: editable Markdown and symbolic input cells, `+MD`/`+Math` insertion,
+independent upper-right `RUN` badges, relative touchpad navigation with
+persistent cursor position, atomic Save/Open under
+`Documents/phy-nspire/notebooks/`, and direct two-dimensional IR layout for
+exact fractions and powers. Markdown bodies now typeset inline `$...$` /
+`\(...\)` and display `$$...$$` / `\[...\]` mathematics through the pinned
+nMarkdown OpenType MATH engine.
 
-Three native foundations are in place behind it, none wired to the UI yet: the
-typed expression IR; a symbolic scalar computer algebra layer over it with
+Three native foundations are now connected through that shell: the typed
+expression IR; a symbolic scalar computer algebra layer over it with
 exact rational arithmetic, a normal form, expansion, substitution,
 differentiation, and an exact zero decision; and the component-independent
 tensor core with charts, dense storage, valence, and signed slot symmetries.
@@ -44,15 +52,20 @@ The CAS answers "unknown" rather than guessing outside its decidable class, so
 the scalar operations needed by the tensor and GR phases no longer depend on
 integrating Giac.
 
-Measured on the pinned toolchain: the `.tns` is 13,440 bytes, 0.2% of the 6 MB
-ceiling.
+Measured on the pinned toolchain after the math-engine integration:
+`dist/phy-nspire.tns` is 1,048,076 bytes, 16.7% of the 6 MiB ceiling. The
+strict host suite passes 17/17, including 61,541 explicit checks. The prior
+and current trees pass under AddressSanitizer, UndefinedBehaviorSanitizer, and
+leak detection; the current run includes the C++ rendering slice.
 
-The native CAS smoke artifact has now run on the target CX II and shown all
-seven exact symbolic checks passing. That acceptance screen is deliberately
-not the notebook UI: Markdown cells, two-dimensional formula layout, editing,
-and pointer interaction are still the next Phase 1 deliverable. Returning from
-the smoke artifact restored Documents normally; the separate baseline
-channel-order and pointer checks remain tracked in [docs/BUILD.md](docs/BUILD.md).
+The native CAS smoke artifact has run on the target CX II and shown all seven
+exact symbolic checks passing. Returning from it restored Documents normally.
+The earlier notebook shell also passed its input and touchpad acceptance. The
+new 1.0 MiB build containing persistence and nMarkdown LaTeX rendering is
+ARM-built but has not yet been transferred and accepted on the calculator.
+Full Markdown blocks, palettes, and direct typed-IR-to-nMarkdown layout remain
+open Phase 1 work. The separate baseline channel-order check remains tracked
+in [docs/BUILD.md](docs/BUILD.md).
 
 Start here:
 
@@ -62,6 +75,8 @@ Start here:
 - [Typed expression IR](docs/IR.md)
 - [Component tensor core](docs/TENSOR.md)
 - [Scalar computer algebra](docs/CAS.md)
+- [Notebook shell and 2D layout](docs/NOTEBOOK.md)
+- [Reader-facing symbolic source language](docs/SOURCE_LANGUAGE.md)
 - [Roadmap](docs/ROADMAP.md)
 - [ADR-0001: native Ndless architecture](docs/adr/0001-native-ndless-architecture.md)
 - [Initial feasibility evidence](research/feasibility-2026-07-26.md)
@@ -77,19 +92,24 @@ src/ir/           typed expression IR: interning, ordering, serialization
 src/cas/          scalar algebra: normal form, calculus, the zero decision
 src/tensor/       component tensors: charts, storage, slot symmetries
 src/gfx/          RGB565 primitives and the built-in debug font
-src/app/          Phase 0 application and the two entry points
+src/render/       typed-IR layout and the narrow nMarkdown C++ bridge
+src/input/        relative pointer tracking
+src/notebook/     source parser, bounded cells, CAS dispatch, native renderer
+src/app/          native notebook event loop and the two entry points
 src/platform/     one subdirectory per backend: ndless (device), host (tests)
 src/tools/        developer utilities
 tests/            host test suite and framebuffer fixtures
 tests/oracle/     host-only numeric oracle certifying the QFT golden cases
 tools/            SDK bootstrap, size and symbol reports
+third_party/      pinned nMarkdown submodule and retained license notices
 docs/references/  source-backed capability references
 docs/agent-tasks/ executable contracts derived from those references
 ```
 
 ## Licensing
 
-The selected upstream references include GPL-3 software. The final project
-license and retained notices will be fixed before any upstream code is copied
-or linked. Until then, this repository contains planning and original research
-only.
+Phy-nspire is licensed under
+[GNU GPL version 3](LICENSE). The pinned nMarkdown mathematical typesetter is
+GPL-3.0 and is linked into the product. Its transitive FreeType, HarfBuzz,
+KaTeX-derived data, fonts, and Unicode notices are retained in
+[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md) and in the submodule.

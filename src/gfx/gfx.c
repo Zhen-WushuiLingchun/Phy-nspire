@@ -133,6 +133,32 @@ static void draw_glyph(const phy_surface *surface, int x, int y,
     }
 }
 
+static void draw_glyph_scaled(const phy_surface *surface, int x, int y,
+                              unsigned char code, unsigned scale,
+                              uint16_t color)
+{
+    if (scale == 1u) {
+        draw_glyph(surface, x, y, code, color);
+        return;
+    }
+    if (code < PHY_FONT_FIRST_CHAR || code > PHY_FONT_LAST_CHAR) {
+        phy_gfx_fill_rect(surface, x, y, PHY_GLYPH_WIDTH * (int)scale,
+                          PHY_GLYPH_HEIGHT * (int)scale, color);
+        return;
+    }
+    const uint8_t *glyph = kPhyFont5x7[code - PHY_FONT_FIRST_CHAR];
+    for (int col = 0; col < PHY_GLYPH_WIDTH; ++col) {
+        const uint8_t bits = glyph[col];
+        for (int row = 0; row < PHY_GLYPH_HEIGHT; ++row) {
+            if (bits & (uint8_t)(1u << row)) {
+                phy_gfx_fill_rect(surface, x + col * (int)scale,
+                                  y + row * (int)scale, (int)scale,
+                                  (int)scale, color);
+            }
+        }
+    }
+}
+
 int phy_gfx_draw_text(const phy_surface *surface, int x, int y,
                       const char *text, uint16_t color)
 {
@@ -159,6 +185,34 @@ int phy_gfx_text_width(const char *text)
     }
     /* Trailing spacing column is not part of the inked width. */
     return (int)length * PHY_GLYPH_ADVANCE - (PHY_GLYPH_ADVANCE - PHY_GLYPH_WIDTH);
+}
+
+int phy_gfx_draw_text_scaled(const phy_surface *surface, int x, int y,
+                             const char *text, unsigned scale, uint16_t color)
+{
+    if (text == NULL || scale == 0u) {
+        return x;
+    }
+    int pen = x;
+    for (const unsigned char *cursor = (const unsigned char *)text; *cursor;
+         ++cursor) {
+        draw_glyph_scaled(surface, pen, y, *cursor, scale, color);
+        pen += PHY_GLYPH_ADVANCE * (int)scale;
+    }
+    return pen;
+}
+
+int phy_gfx_text_width_scaled(const char *text, unsigned scale)
+{
+    if (text == NULL || scale == 0u) {
+        return 0;
+    }
+    const size_t length = strlen(text);
+    if (length == 0u) {
+        return 0;
+    }
+    return (int)length * PHY_GLYPH_ADVANCE * (int)scale -
+           (PHY_GLYPH_ADVANCE - PHY_GLYPH_WIDTH) * (int)scale;
 }
 
 uint64_t phy_gfx_digest(const phy_surface *surface)

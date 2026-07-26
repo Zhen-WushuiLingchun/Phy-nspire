@@ -336,9 +336,9 @@ after each.
 
 Both layers are validated on the way out of every case, so an operation that
 leaked scratch or corrupted the cache fails the suite wherever it happened.
-The full strict host suite passes 8/8; AddressSanitizer, trapping
-UndefinedBehaviorSanitizer, and leak detection also pass 8/8. GCC's static
-analyzer reports all five CAS translation units clean.
+The current full strict host suite passes 17/17, including under
+AddressSanitizer, trapping UndefinedBehaviorSanitizer, and leak detection.
+GCC's static analyzer reports all five CAS translation units clean.
 
 ## Device build
 
@@ -354,8 +354,10 @@ Built with the pinned Ndless r2022 SDK and ARM GNU 14.3 toolchain using
 | `src/cas/normal.o`     | 5,704 |
 | total                  | **21,107** |
 
-`dist/phy-nspire.tns` remains 13,440 bytes because the application does not
-call the CAS yet and `--gc-sections` discards it, exactly as it does the IR.
+The application now calls the CAS through editable notebook cells. The current
+product, including persistence and nMarkdown's math typesetter, is 1,048,076
+bytes; `--gc-sections` still discards unreferenced tensor and future-physics
+modules.
 
 `make cas-link-check` closes the gap that leaves. It is the same guard as
 `make ir-link-check`, and `tools/link-check.sh` now serves both layers from one

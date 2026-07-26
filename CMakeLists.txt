@@ -6,11 +6,14 @@
 # the top-level Makefile through the Ndless SDK.
 
 cmake_minimum_required(VERSION 3.16)
-project(phy-nspire C)
+project(phy-nspire C CXX)
 
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 set(CMAKE_C_EXTENSIONS OFF)
+set(CMAKE_CXX_STANDARD 17)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+set(CMAKE_CXX_EXTENSIONS OFF)
 
 if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
     set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "" FORCE)
@@ -20,23 +23,113 @@ option(PHY_WERROR "Treat warnings as errors" ON)
 
 add_library(phy_warnings INTERFACE)
 if(MSVC)
-    target_compile_options(phy_warnings INTERFACE /W4)
+    target_compile_options(phy_warnings INTERFACE /W4 /utf-8)
     if(PHY_WERROR)
         target_compile_options(phy_warnings INTERFACE /WX)
     endif()
 else()
     target_compile_options(phy_warnings INTERFACE
-        -Wall -Wextra -Wshadow -Wconversion -Wsign-conversion
-        -Wstrict-prototypes -Wmissing-prototypes -Wpointer-arith -Wcast-qual)
+        -Wall -Wextra -Wshadow -Wconversion -Wsign-conversion -Wpointer-arith
+        -Wcast-qual
+        $<$<COMPILE_LANGUAGE:C>:-Wstrict-prototypes>
+        $<$<COMPILE_LANGUAGE:C>:-Wmissing-prototypes>)
     if(PHY_WERROR)
         target_compile_options(phy_warnings INTERFACE -Werror)
     endif()
 endif()
 
+set(NMARKDOWN_ROOT "${CMAKE_CURRENT_SOURCE_DIR}/third_party/nmarkdown")
+if(NOT EXISTS "${NMARKDOWN_ROOT}/include/nmarkdown/math/math_system.h")
+    message(FATAL_ERROR
+        "nMarkdown submodule is missing. Run: git submodule update --init --recursive")
+endif()
+
+# The notebook reuses only nMarkdown's mathematical typesetter and the
+# transitive font/rendering closure. Reader, browser, search, MD4C, and
+# platform adapters are deliberately excluded.
+add_library(nmarkdown_freetype STATIC
+    ${NMARKDOWN_ROOT}/third_party/freetype/src/base/ftsystem.c
+    ${NMARKDOWN_ROOT}/third_party/freetype/src/base/ftdebug.c
+    ${NMARKDOWN_ROOT}/third_party/freetype/src/base/ftinit.c
+    ${NMARKDOWN_ROOT}/third_party/freetype/src/base/ftbase.c
+    ${NMARKDOWN_ROOT}/third_party/freetype/src/base/ftbitmap.c
+    ${NMARKDOWN_ROOT}/third_party/freetype/src/base/ftmm.c
+    ${NMARKDOWN_ROOT}/third_party/freetype/src/sfnt/sfnt.c
+    ${NMARKDOWN_ROOT}/third_party/freetype/src/truetype/truetype.c
+    ${NMARKDOWN_ROOT}/third_party/freetype/src/cff/cff.c
+    ${NMARKDOWN_ROOT}/third_party/freetype/src/psaux/psaux.c
+    ${NMARKDOWN_ROOT}/third_party/freetype/src/pshinter/pshinter.c
+    ${NMARKDOWN_ROOT}/third_party/freetype/src/psnames/psnames.c
+    ${NMARKDOWN_ROOT}/third_party/freetype/src/smooth/smooth.c
+    ${NMARKDOWN_ROOT}/third_party/freetype/src/autofit/autofit.c)
+target_include_directories(nmarkdown_freetype PUBLIC
+    ${NMARKDOWN_ROOT}/third_party/freetype/nmarkdown
+    ${NMARKDOWN_ROOT}/third_party/freetype/include)
+target_compile_definitions(nmarkdown_freetype PRIVATE FT2_BUILD_LIBRARY)
+if(MSVC)
+    target_compile_options(nmarkdown_freetype PRIVATE /utf-8)
+else()
+    target_compile_options(nmarkdown_freetype PRIVATE -Os)
+endif()
+
+add_library(nmarkdown_harfbuzz STATIC
+    ${NMARKDOWN_ROOT}/third_party/harfbuzz/src/harfbuzz.cc)
+target_include_directories(nmarkdown_harfbuzz PUBLIC
+    ${NMARKDOWN_ROOT}/third_party/harfbuzz/src)
+target_compile_definitions(nmarkdown_harfbuzz PRIVATE
+    HB_TINY=1 NMARKDOWN_HARFBUZZ_MATH=1)
+if(MSVC)
+    target_compile_options(nmarkdown_harfbuzz PRIVATE /utf-8)
+else()
+    target_compile_options(nmarkdown_harfbuzz PRIVATE -Os)
+endif()
+
+add_library(nmarkdown_math STATIC
+    ${NMARKDOWN_ROOT}/src/document/unicode.cpp
+    ${NMARKDOWN_ROOT}/src/document/utf8.cpp
+    ${NMARKDOWN_ROOT}/src/generated/core_font_pack.cpp
+    ${NMARKDOWN_ROOT}/src/generated/core_math_font.cpp
+    ${NMARKDOWN_ROOT}/src/generated/unicode_tables.cpp
+    ${NMARKDOWN_ROOT}/src/math/math_atoms.cpp
+    ${NMARKDOWN_ROOT}/src/math/math_lexer.cpp
+    ${NMARKDOWN_ROOT}/src/math/math_layout.cpp
+    ${NMARKDOWN_ROOT}/src/math/math_macros.cpp
+    ${NMARKDOWN_ROOT}/src/math/math_parser.cpp
+    ${NMARKDOWN_ROOT}/src/math/math_system.cpp
+    ${NMARKDOWN_ROOT}/src/render/primitives.cpp
+    ${NMARKDOWN_ROOT}/src/render/surface565.cpp
+    ${NMARKDOWN_ROOT}/src/text/compositor.cpp
+    ${NMARKDOWN_ROOT}/src/text/font.cpp
+    ${NMARKDOWN_ROOT}/src/text/font_pack.cpp
+    ${NMARKDOWN_ROOT}/src/text/glyph_cache.cpp
+    ${NMARKDOWN_ROOT}/src/text/harfbuzz_shaper.cpp
+    ${NMARKDOWN_ROOT}/src/text/text_renderer.cpp
+    ${NMARKDOWN_ROOT}/src/text/text_system.cpp)
+target_include_directories(nmarkdown_math PUBLIC ${NMARKDOWN_ROOT}/include)
+target_link_libraries(nmarkdown_math PUBLIC
+    nmarkdown_freetype nmarkdown_harfbuzz)
+target_compile_definitions(nmarkdown_math PRIVATE
+    HB_TINY=1 NMARKDOWN_HARFBUZZ_MATH=1)
+if(MSVC)
+    target_compile_options(nmarkdown_math PRIVATE /utf-8 /EHsc /GR-)
+else()
+    target_compile_options(nmarkdown_math PRIVATE
+        -Os -Wall -Wextra -Wpedantic -fexceptions -fno-rtti)
+endif()
+
 # Portable core: no platform backend, no entry point.
 add_library(phy_core STATIC
     src/core/status.c
+    src/input/modifier.c
+    src/input/pointer.c
     src/gfx/gfx.c
+    src/render/formula_bridge.cpp
+    src/render/math_layout.c
+    src/notebook/document.c
+    src/notebook/source.c
+    src/notebook/notebook.c
+    src/notebook/workspace.c
+    src/storage/storage.c
     src/app/app.c
     src/ir/ir.c
     src/ir/order.c
@@ -52,11 +145,21 @@ add_library(phy_core STATIC
 )
 target_include_directories(phy_core PUBLIC include PRIVATE
     src/gfx src/ir src/tensor src/cas)
-target_link_libraries(phy_core PRIVATE phy_warnings)
+target_link_libraries(phy_core PRIVATE phy_warnings nmarkdown_math)
+if(MSVC)
+    target_compile_options(phy_core PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/EHsc>
+                                            $<$<COMPILE_LANGUAGE:CXX>:/GR->)
+else()
+    target_compile_options(phy_core PRIVATE
+        $<$<COMPILE_LANGUAGE:CXX>:-fexceptions>
+        $<$<COMPILE_LANGUAGE:CXX>:-fno-rtti>)
+endif()
 
 # Host platform backend: offscreen framebuffer, scripted input, virtual clock.
-add_library(phy_platform_host STATIC src/platform/host/platform_host.c)
-target_include_directories(phy_platform_host PUBLIC include)
+add_library(phy_platform_host STATIC
+    src/platform/host/platform_host.c
+    src/platform/host/storage_host.c)
+target_include_directories(phy_platform_host PUBLIC include PRIVATE src/storage)
 target_link_libraries(phy_platform_host PRIVATE phy_warnings)
 
 add_executable(phy-host src/app/main_host.c)
@@ -68,14 +171,26 @@ target_link_libraries(phy-dump-font PRIVATE phy_core phy_platform_host phy_warni
 include(CTest)
 if(BUILD_TESTING)
     set(PHY_FIXTURE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
+    configure_file("${PHY_FIXTURE_DIR}/baseline_frame.digest"
+                   "${CMAKE_CURRENT_BINARY_DIR}/baseline_frame.digest"
+                   COPYONLY)
+    configure_file("${PHY_FIXTURE_DIR}/notebook_frame.digest"
+                   "${CMAKE_CURRENT_BINARY_DIR}/notebook_frame.digest"
+                   COPYONLY)
 
-    foreach(suite test_gfx test_platform test_smoke test_ir test_tensor test_cas)
+    foreach(suite test_gfx test_formula test_modifier test_pointer test_source test_platform
+                  test_smoke test_document test_storage test_workspace
+                  test_notebook test_ir test_tensor test_cas)
         add_executable(${suite} tests/${suite}.c)
         target_link_libraries(${suite} PRIVATE phy_core phy_platform_host phy_warnings)
         target_include_directories(${suite} PRIVATE tests)
         target_compile_definitions(${suite} PRIVATE
-            PHY_FIXTURE_DIR="${PHY_FIXTURE_DIR}"
-            PHY_ARTIFACT_DIR="${CMAKE_CURRENT_BINARY_DIR}")
+            # Keep runtime paths ASCII-only. MSVC's narrow fopen cannot open
+            # the absolute UTF-8 source path when the checkout contains
+            # Chinese characters, while CTest has already established the
+            # correct build working directory for these relative names.
+            PHY_FIXTURE_DIR="."
+            PHY_ARTIFACT_DIR=".")
         add_test(NAME ${suite} COMMAND ${suite})
     endforeach()
 
@@ -86,7 +201,10 @@ if(BUILD_TESTING)
     # symbols than the requested count. The test stubs nm, so it needs no
     # cross-compiler and runs wherever bash does.
     find_program(PHY_BASH bash)
-    if(PHY_BASH)
+    # Windows' System32/bash.exe is the WSL launcher, not a shell that can
+    # consume CMake's native F:/... paths. The same script is covered by the
+    # Linux/WSL suite; do not register a guaranteed-broken Windows test.
+    if(PHY_BASH AND NOT WIN32)
         add_test(NAME symbol_report
             COMMAND ${PHY_BASH}
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_symbol_report.sh"

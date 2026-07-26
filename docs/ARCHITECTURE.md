@@ -28,8 +28,9 @@ flowchart TD
 ### Platform layer
 
 The platform boundary owns the CX II framebuffer, touchpad sampling, keypad,
-clock, filesystem, allocation telemetry, and clean shutdown. The initial source
-reference is nMarkdown's already-tested Ndless platform adapter.
+clock, filesystem, allocation telemetry, and clean shutdown. nMarkdown is a
+pinned dependency only for mathematical typesetting; Phy-nspire keeps its own
+Ndless display, input, storage, and lifecycle adapters.
 
 ### Notebook shell
 
@@ -46,15 +47,35 @@ Pointer hit-testing, focus, menus, palettes, selection, and scrolling are
 native. A computation never blocks input indefinitely: long operations expose
 progress and a cancellation path.
 
+The reader-facing source is parsed by an extensible precedence parser and
+command registry. It produces typed IR before evaluation; the renderer never
+computes from the visible string. A successful input cell stores both its
+source and stable IR serialization, so save/reopen can verify their agreement.
+See [`SOURCE_LANGUAGE.md`](SOURCE_LANGUAGE.md).
+
 ### Rendering
 
-The renderer starts from the reusable portions of nMarkdown:
+Rendering has two deliberately separate inputs. The original allocation-free
+walker renders trusted typed-IR CAS results directly, while a narrow C++17
+bridge renders raw LaTeX embedded in Markdown cells through nMarkdown. The
+current combined renderer covers:
 
-- RGB565 primitives;
-- FreeType/HarfBuzz text;
-- bounded Markdown parsing;
-- bounded mathematical LaTeX layout;
-- touchpad and semantic input adapters.
+- RGB565 primitives and integer-scaled headings;
+- semantic Markdown heading/body cards;
+- inline `$...$` / `\(...\)` and display `$$...$$` / `\[...\]` formula
+  delimiters;
+- nMarkdown's bounded LaTeX parser, OpenType MATH layout, Latin Modern Math,
+  FreeType/HarfBuzz shaping, and local malformed-formula recovery;
+- shared-baseline rows for scalar and physics IR;
+- vertical exact fractions;
+- raised powers/upper indices and lowered indices;
+- functions, products, sums, equations, tensors, operators, and derivatives.
+
+The math dependency is pinned at commit
+`936b04854fc0838de9986b4bfee66a4da9db6166` and the combined product is
+GPL-3.0. Reader, browser, search, MD4C, pagination, and platform adapters are
+not compiled. The next unification step constructs nMarkdown `MathTree`
+objects directly from typed IR instead of serializing CAS output to LaTeX.
 
 Reader-only features are kept only if they serve notebook cells. Full CJK fonts
 remain optional external assets until the installed-size accounting rule is
@@ -118,7 +139,9 @@ incrementally.
 4. The result is normalized, bounded, and stored as a result cell.
 5. The display tree converts the result to two-dimensional layout and optional
    LaTeX.
-6. The notebook saves source, declarations, and compact results atomically.
+6. The target save path writes source, declarations, and compact results
+   atomically under `/documents/phy-nspire/notebooks`; loading validates the
+   complete versioned, checksummed document before replacing the workspace.
 
 ## Performance policy
 

@@ -9,6 +9,7 @@
 #define PHY_PLATFORM_HOST_H
 
 #include <stdbool.h>
+#include <stddef.h>
 #include <stdint.h>
 
 #include "phy/platform.h"
@@ -26,6 +27,7 @@ extern "C" {
 bool phy_host_push_event(const phy_event *event);
 bool phy_host_push_key(phy_event_kind kind, phy_key key);
 bool phy_host_push_pointer(phy_event_kind kind, int16_t x, int16_t y);
+bool phy_host_push_text(char text);
 
 void phy_host_clear_events(void);
 unsigned phy_host_pending_event_count(void);
@@ -42,6 +44,11 @@ bool phy_host_display_was_restored(void);
 
 /* Virtual clock control, so timing-dependent tests stay deterministic. */
 void phy_host_advance_clock_ms(uint32_t milliseconds);
+
+/* Deterministic in-memory notebook directory used by app/storage tests. */
+void phy_host_storage_clear(void);
+bool phy_host_storage_put(const char *name, const uint8_t *buffer, size_t size);
+void phy_host_storage_fail_next_write(void);
 
 /*
  * Allocation-failure injection.
