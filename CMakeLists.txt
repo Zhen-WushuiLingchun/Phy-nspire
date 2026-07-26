@@ -72,6 +72,17 @@ if(BUILD_TESTING)
 
     # End-to-end: the shipped entry point must run and exit 0 unattended.
     add_test(NAME host_app_runs COMMAND phy-host --frames 2)
+
+    # tools/symbol-report.sh used to exit 141 on any binary with more sized
+    # symbols than the requested count. The test stubs nm, so it needs no
+    # cross-compiler and runs wherever bash does.
+    find_program(PHY_BASH bash)
+    if(PHY_BASH)
+        add_test(NAME symbol_report
+            COMMAND ${PHY_BASH}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_symbol_report.sh"
+                "${CMAKE_CURRENT_SOURCE_DIR}")
+    endif()
 endif()
 
 # Host size report. The device budget is enforced by tools/size-report.sh

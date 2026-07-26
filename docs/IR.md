@@ -29,6 +29,31 @@ crash or a silent truncation.
 **Backend-neutral serialization.** An expression round-trips through text
 into a different context as the same structure.
 
+## Refs are context-local
+
+**A `phy_ir_ref` means nothing outside the context that issued it.** It is a
+pool index assigned in creation order. Two contexts holding the same
+expression will generally give it different refs, and the same number will
+generally name unrelated nodes in each. The same applies to `phy_ir_symbol`.
+
+So comparing refs across contexts is not a weak test, it is a meaningless one
+— and it can silently pass, because small integers collide readily. `x` in one
+context and `y` in another are both quite likely to be ref 1.
+
+Within one context, interning makes ref equality exact structural equality;
+that is what `phy_ir_equal` is for. Across contexts, use one of:
+
+| route            | strength                                        |
+| ---------------- | ----------------------------------------------- |
+| `phy_ir_hash`    | equal structure ⇒ equal hash, in any context. 32-bit, so equality is strong evidence, not proof. |
+| `phy_ir_write`   | compare the serialized text. Exact.              |
+| `phy_ir_read`    | rebuild into the target context, then compare refs there. Exact, and gives you a usable node. |
+
+`tests/test_ir.c` pins the hazard directly: it builds two contexts where equal
+structure lands on *different* refs and different structure lands on the
+*same* ref, then shows the three supported routes agreeing with the structure
+rather than the numbers.
+
 ## Representation
 
 A `phy_ir_ref` is an index into context-owned pools, not a pointer. Pools are
@@ -150,6 +175,54 @@ producing a node with a hole in it.
 `PHY_IR_ERROR` additionally carries a status *as a value*, which is how a
 failed cell survives a save and reopen without invalidating the document.
 
+### Construction unwinds; parsing does not
+
+These are two different guarantees and it is worth being precise about which
+is which.
+
+**A failed construction unwinds.** Building a node appends its payload — a
+name, a rational, a run of child slots — to a pool *before* pushing the entry
+that owns it. If that push is the allocation that hits the ceiling, the
+payload is rolled back. Only the counts are rewound; capacity keeps its peak,
+which is correct, since that memory is already charged and reusable.
+
+`phy_ir_validate` is how this is checked rather than asserted. It verifies
+that every byte, child slot, and rational the pools hold is claimed by exactly
+one live symbol or node, and that everything published is reachable from its
+intern table — no orphans, nothing lost. The tests sweep an injected
+allocation failure across every allocation a workload makes and validate after
+each, which is the only way to reach these paths: pool growth is geometric, so
+squeezing a real budget always breaks at the same first allocation and never
+part-way through a construction.
+
+**A failed parse does not unwind.** Reading builds as it goes, so a parse that
+fails part-way leaves everything it already interned — symbols, and the nodes
+of any complete subexpression — in the context. The same is true of a
+declaration stream whose fifth entry is malformed: the first four are applied
+and stay applied, and assumptions cannot be un-declared.
+
+Those entries are well-formed and reachable; nothing is corrupted and
+`phy_ir_validate` still passes. But nothing references them, and the IR has no
+reference counting or collection, so they persist until the context is
+destroyed. **This is a memory concern, not a correctness one:** a caller that
+retries a malformed document repeatedly against one long-lived context
+accumulates dead nodes and can eventually reach `PHY_ERR_MEMORY_LIMIT`.
+
+The safe pattern for loading a document is therefore:
+
+1. create a fresh context for the load;
+2. read declarations and cells into it;
+3. on success, publish that context and retire the previous one;
+4. on failure, destroy it — which reclaims the partial parse in full.
+
+The test suite pins both halves: that the prefix really does survive, and that
+destroying a disposable context returns every byte to `phy_telemetry`.
+
+Making a failed read self-cleaning would need either a transaction mark across
+every pool and both intern tables, or collection. Both are real designs;
+neither is in this layer, and choosing between them is not a decision to make
+as a side effect of a bug fix.
+
 ## Text format
 
 A small S-expression grammar. It carries structure only; symbol declarations
@@ -256,15 +329,39 @@ zero `phy_ir_*` symbols. The 14,172 bytes above is what the notebook shell
 will pay when it starts using the IR in Phase 1.
 
 Because link-time garbage collection hides the IR, the device build alone does
-not prove it *links*. That was verified separately with a probe that
-references every public entry point: it links against Ndless newlib, retains
-59 `phy_ir_*` symbols, and packages to a valid `.tns`. Worth re-checking once
-the shell genuinely calls the IR, at which point the ordinary build covers it.
+not prove it *links*. A reference to a libc function Ndless newlib lacks would
+go unnoticed until Phase 1 wired the notebook up.
 
-The probe also confirms the reason reals are serialized as bit patterns:
-`_dtoa`, `_strtod`, and `_printf_float` are all absent from the linked image.
-Formatting one double the readable way would pull in the 12.7 KB Phase 0
-removed.
+`make ir-link-check` closes that gap:
+
+```
+$ make ir-link-check
+== IR device link check ==
+
+  compiling 6 sources + probe
+  linking
+  ok    50/50 public entry points retained
+  ok    no _dtoa / _strtod / _printf_float in the image
+  ok    packaged to a .tns
+```
+
+It links `tests/device/ir_link_probe.c`, which touches every public entry
+point, with the production flags — `--gc-sections` included, since the point
+is that these symbols survive collection because they are genuinely
+referenced, not because collection was disabled. It then checks that every
+function declared in `include/phy/ir.h` is present, that no float formatter
+was dragged in, and that the result packages to a real `.tns`.
+
+The expected symbol set is **derived from the header**, not listed in the
+script, so adding a public function without extending the probe fails the
+check instead of quietly going unlinked. Both guards are mutation-verified:
+dropping three leaf entry points from the probe reports exactly those three,
+and a single `snprintf("%f")` anywhere in the probe surfaces `_dtoa_r` and
+fails.
+
+The target is not a dependency of `all`, and the probe is not in the
+Makefile's `SOURCES`. It builds into `build/arm-linkcheck/` and never touches
+`dist/`, so it cannot inflate the shipped `.tns`.
 
 ## Not in this layer
 

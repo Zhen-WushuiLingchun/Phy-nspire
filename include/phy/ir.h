@@ -42,11 +42,33 @@ extern "C" {
  *
  * PHY_IR_NULL is the only invalid value and is what every builder returns on
  * failure; the reason is then available from phy_ir_last_error().
+ *
+ * A ref IS ONLY MEANINGFUL INSIDE THE CONTEXT THAT ISSUED IT. It is an index
+ * into that context's pools, assigned in creation order. Two contexts that
+ * hold the same expression will generally give it different refs, and the
+ * same ref number in two contexts will generally name unrelated nodes.
+ *
+ * So comparing refs -- or symbol ids -- across contexts is not a weak test,
+ * it is a meaningless one, and it can silently succeed. To relate structure
+ * between contexts, use one of:
+ *
+ *   phy_ir_hash()   equal structure gives an equal hash in any context;
+ *                   a 32-bit hash, so equality is strong evidence, not proof;
+ *   phy_ir_write()  compare the serialized text, which is exact;
+ *   phy_ir_read()   rebuild into the target context, then compare refs there.
+ *
+ * Within one context, interning makes ref equality exact structural equality.
+ * See phy_ir_equal().
  */
 typedef uint32_t phy_ir_ref;
 #define PHY_IR_NULL ((phy_ir_ref)0)
 
-/* An interned symbol name. PHY_IR_NO_SYMBOL is the invalid value. */
+/*
+ * An interned symbol name. PHY_IR_NO_SYMBOL is the invalid value.
+ *
+ * Context-local for the same reason as phy_ir_ref: ids are assigned in
+ * interning order. Compare phy_ir_symbol_name() across contexts, not ids.
+ */
 typedef uint32_t phy_ir_symbol;
 #define PHY_IR_NO_SYMBOL ((phy_ir_symbol)0)
 
@@ -315,8 +337,14 @@ uint32_t phy_ir_hash(const phy_ir_context *ctx, phy_ir_ref ref);
 uint32_t phy_ir_depth(const phy_ir_context *ctx, phy_ir_ref ref);
 
 /*
- * Structural equality. Interning makes this exact ref comparison; it exists
- * so call sites read as intent rather than as a pointer trick.
+ * Structural equality WITHIN ONE CONTEXT. Interning makes this exact ref
+ * comparison; it exists so call sites read as intent rather than as a
+ * pointer trick.
+ *
+ * Passing refs from two different contexts is a bug this cannot detect --
+ * it takes no context to check against, and the numbers may collide. Relate
+ * cross-context structure with phy_ir_hash, phy_ir_write, or a rebuild; see
+ * the note on phy_ir_ref.
  */
 static inline bool phy_ir_equal(phy_ir_ref a, phy_ir_ref b)
 {
@@ -354,6 +382,29 @@ phy_status phy_ir_write(const phy_ir_context *ctx, phy_ir_ref ref, char *buffer,
  *
  * `out_error_offset` may be NULL; otherwise it receives the byte offset the
  * parse stopped at, which is what a cell-level diagnostic needs.
+ *
+ * FAILURE IS NOT A ROLLBACK. Reading builds nodes as it goes, and a parse
+ * that fails part-way leaves everything it had already interned -- symbols,
+ * and the nodes of any complete subexpression -- in the context. Those
+ * entries are well-formed and reachable; nothing is corrupted, and
+ * phy_ir_validate() still passes. But they are unreferenced by any result,
+ * and the IR has no reference counting or collection, so they persist until
+ * the context is destroyed.
+ *
+ * The consequence is a memory concern, not a correctness one: a caller that
+ * retries a malformed document repeatedly against one long-lived context
+ * accumulates dead nodes and can reach PHY_ERR_MEMORY_LIMIT.
+ *
+ * The safe pattern for loading a document is therefore:
+ *
+ *   1. create a fresh context for the load;
+ *   2. read declarations and cells into it;
+ *   3. on success, publish that context and retire the previous one;
+ *   4. on failure, destroy it -- which reclaims the partial parse entirely.
+ *
+ * Making a failed read self-cleaning would need either a transaction mark
+ * across every pool and both intern tables, or collection; both are real
+ * designs and neither is in this layer yet.
  */
 phy_status phy_ir_read(phy_ir_context *ctx, const char *text,
                        phy_ir_ref *out_ref, size_t *out_error_offset);
@@ -367,8 +418,40 @@ phy_status phy_ir_read(phy_ir_context *ctx, const char *text,
  */
 phy_status phy_ir_write_declarations(const phy_ir_context *ctx, char *buffer,
                                      size_t capacity, size_t *out_length);
+
+/*
+ * Reads a stream of declarations, applying each as it is parsed.
+ *
+ * Partial application on failure, for the same reason as phy_ir_read: a
+ * stream whose fifth declaration is malformed has already applied the first
+ * four, and they stay applied. Assumptions and symmetries are cumulative and
+ * cannot be un-declared, so this is not undoable in place.
+ *
+ * Load into a disposable context and publish it only on success.
+ */
 phy_status phy_ir_read_declarations(phy_ir_context *ctx, const char *text,
                                     size_t *out_error_offset);
+
+/* --------------------------------------------------------------- integrity */
+
+/*
+ * Checks the context's internal invariants and returns PHY_OK, or
+ * PHY_ERR_CORRUPT_DOCUMENT on the first violation.
+ *
+ * What it proves is that every byte, child slot, and rational the pools hold
+ * is owned by exactly one live symbol or node, and that every symbol and node
+ * is reachable from its intern table. In other words: no orphaned entries and
+ * no lost ones.
+ *
+ * That matters because construction appends to several pools before
+ * publishing the entry that owns them, so an allocation failure part-way
+ * through has to unwind. The builders do unwind, and this is how the tests
+ * demonstrate it under a forced memory limit rather than asserting it.
+ *
+ * O(nodes + symbols). Intended for tests, for debug assertions, and as a
+ * gate after loading an untrusted document -- not for the hot path.
+ */
+phy_status phy_ir_validate(const phy_ir_context *ctx);
 
 #ifdef __cplusplus
 }

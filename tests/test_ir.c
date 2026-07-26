@@ -10,6 +10,7 @@
 
 #include "phy/ir.h"
 #include "phy/platform.h"
+#include "phy/platform_host.h"
 #include "phy_test.h"
 
 /* ------------------------------------------------------------- utilities */
@@ -25,6 +26,10 @@ static phy_ir_ref sym(phy_ir_context *ctx, const char *name)
 {
     return phy_ir_symbol_ref(ctx, phy_ir_intern(ctx, name));
 }
+
+/* Defined with the serialization cases; used before them. */
+static phy_ir_ref round_trip(const phy_ir_context *from, phy_ir_ref ref,
+                             phy_ir_context *into, char *text, size_t capacity);
 
 /* Serializes into a caller-visible buffer, checking the status on the way. */
 static const char *render(const phy_ir_context *ctx, phy_ir_ref ref,
@@ -662,6 +667,317 @@ static void test_memory_limit_is_enforced(void)
     phy_ir_context_destroy(ctx);
 }
 
+/*
+ * Construction appends a name, a rational, or a run of child slots to its
+ * pool before pushing the symbol or node that owns it. If that push is the
+ * allocation that hits the ceiling, the payload has to be unwound.
+ *
+ * The failure point cannot be aimed at directly -- it depends on where the
+ * geometric pool growth happens to land -- so the budget is swept instead.
+ * Somewhere in the sweep each pool is the one that fails, and every stop must
+ * leave the context internally consistent.
+ */
+static void exercise_all_pools(phy_ir_context *ctx)
+{
+    char name[24];
+    for (int i = 0; i < 400; i++) {
+        /* Varying name lengths so the string pool fills at its own rate. */
+        int at = 0;
+        name[at++] = 's';
+        for (int pad = 0; pad < (i % 11); pad++) {
+            name[at++] = (char)('a' + pad);
+        }
+        name[at++] = (char)('0' + (i / 100) % 10);
+        name[at++] = (char)('0' + (i / 10) % 10);
+        name[at++] = (char)('0' + i % 10);
+        name[at] = '\0';
+
+        const phy_ir_symbol id = phy_ir_intern(ctx, name);
+        if (id == PHY_IR_NO_SYMBOL) {
+            return;
+        }
+        (void)phy_ir_assume(ctx, id, PHY_IR_ASSUME_REAL);
+        (void)phy_ir_declare_symmetry(ctx, id, 0u, 1u,
+                                      PHY_IR_SYMMETRY_SYMMETRIC);
+
+        const phy_ir_ref symbol = phy_ir_symbol_ref(ctx, id);
+        const phy_ir_ref rational = phy_ir_rational(ctx, i * 2 + 1, 4);
+        if (symbol == PHY_IR_NULL || rational == PHY_IR_NULL) {
+            return;
+        }
+        const phy_ir_ref pair[2] = {symbol, rational};
+        const phy_ir_ref sum = phy_ir_add(ctx, pair, 2u);
+        if (sum == PHY_IR_NULL) {
+            return;
+        }
+        const phy_ir_ref nested[2] = {sum, phy_ir_integer(ctx, i)};
+        if (phy_ir_mul(ctx, nested, 2u) == PHY_IR_NULL) {
+            return;
+        }
+    }
+}
+
+static void test_allocation_failure_leaves_no_orphans(void)
+{
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+
+    /*
+     * Walk an injected failure across every allocation the workload makes.
+     * A budget sweep cannot do this: geometric pool growth means the first
+     * allocation to exceed a budget is almost always the same one, so the
+     * failures that matter -- a pool_push that fails *after* its payload was
+     * appended -- are never reached. Failing the nth allocation, for every n,
+     * reaches all of them.
+     */
+    /*
+     * Calibrated, not guessed. Pool growth is geometric, so a whole workload
+     * makes far fewer allocations than it does operations; sweeping a fixed
+     * range mostly injects failures past the end and proves nothing.
+     */
+    const uint32_t attempts_before = phy_host_alloc_attempts();
+    phy_ir_context *calibration = phy_ir_context_create(NULL);
+    PHY_CHECK(calibration != NULL);
+    exercise_all_pools(calibration);
+    PHY_CHECK_EQ_INT(phy_ir_last_error(calibration), PHY_OK);
+    const uint32_t allocations = phy_host_alloc_attempts() - attempts_before;
+    phy_ir_context_destroy(calibration);
+    PHY_CHECK(allocations > 8u);
+
+    unsigned reached_limit = 0u;
+    for (unsigned nth = 1u; nth <= allocations; nth++) {
+        phy_host_fail_alloc_after(nth);
+
+        phy_ir_context *ctx = phy_ir_context_create(NULL);
+        if (ctx == NULL) {
+            /* The injected failure landed inside context creation. */
+            phy_host_fail_alloc_after(0u);
+            continue;
+        }
+
+        exercise_all_pools(ctx);
+        phy_host_fail_alloc_after(0u); /* disarm before validating */
+
+        if (phy_ir_last_error(ctx) != PHY_OK) {
+            reached_limit++;
+        }
+
+        /* Whatever failed and wherever: no pool holds a payload no live entry
+           claims, and nothing published is unreachable from its intern
+           table. */
+        const phy_status integrity = phy_ir_validate(ctx);
+        if (integrity != PHY_OK) {
+            fprintf(stderr, "  alloc #%u: %s after %s\n", nth,
+                    phy_status_name(integrity),
+                    phy_status_name(phy_ir_last_error(ctx)));
+        }
+        PHY_CHECK_EQ_INT(integrity, PHY_OK);
+
+        /* The context must stay usable after refusing to grow, not just
+           consistent: a rolled-back name has to re-intern cleanly. */
+        phy_ir_clear_error(ctx);
+        const phy_ir_symbol recovered = phy_ir_intern(ctx, "recovered");
+        PHY_CHECK(recovered != PHY_IR_NO_SYMBOL);
+        PHY_CHECK_EQ_STR(phy_ir_symbol_name(ctx, recovered), "recovered");
+        PHY_CHECK_EQ_INT(phy_ir_validate(ctx), PHY_OK);
+
+        phy_ir_context_destroy(ctx);
+    }
+
+    /*
+     * The sweep is only meaningful if most injections actually landed inside
+     * the workload. This test is mutation-verified: deleting either rollback
+     * in intern_node or phy_ir_intern_n makes phy_ir_validate fail here.
+     */
+    PHY_CHECK(reached_limit > allocations / 2u);
+
+    /* Nothing leaked across the whole sweep. */
+    phy_telemetry telemetry;
+    phy_telemetry_get(&telemetry);
+    PHY_CHECK_EQ_INT(telemetry.bytes_live, 0);
+
+    phy_host_fail_alloc_after(0u);
+    phy_platform_shutdown();
+}
+
+static void test_failed_intern_does_not_accumulate(void)
+{
+    /*
+     * Retrying the same failing work must not grow the context. Before the
+     * rollback, each attempt left another copy of the name in the string pool
+     * and another run of child slots behind, so a caller looping on a
+     * too-small budget leaked once per attempt.
+     */
+    phy_ir_limits limits;
+    memset(&limits, 0, sizeof limits);
+    limits.max_bytes = 80u * 1024u;
+
+    phy_ir_context *ctx = phy_ir_context_create(&limits);
+    PHY_CHECK(ctx != NULL);
+
+    exercise_all_pools(ctx);
+    PHY_CHECK_EQ_INT(phy_ir_last_error(ctx), PHY_ERR_MEMORY_LIMIT);
+    PHY_CHECK_EQ_INT(phy_ir_validate(ctx), PHY_OK);
+
+    const size_t settled_bytes = phy_ir_bytes_used(ctx);
+    const size_t settled_nodes = phy_ir_node_count(ctx);
+    const size_t settled_symbols = phy_ir_symbol_count(ctx);
+
+    for (int attempt = 0; attempt < 50; attempt++) {
+        phy_ir_clear_error(ctx);
+        exercise_all_pools(ctx);
+        PHY_CHECK_EQ_INT(phy_ir_validate(ctx), PHY_OK);
+    }
+
+    /* Retrying may legitimately complete a little more work than the first
+       pass -- capacity that was already charged gets reused -- but it must
+       converge rather than climb. */
+    PHY_CHECK_EQ_INT(phy_ir_bytes_used(ctx), settled_bytes);
+    PHY_CHECK(phy_ir_node_count(ctx) >= settled_nodes);
+    PHY_CHECK(phy_ir_symbol_count(ctx) >= settled_symbols);
+
+    const size_t after_nodes = phy_ir_node_count(ctx);
+    const size_t after_symbols = phy_ir_symbol_count(ctx);
+    for (int attempt = 0; attempt < 50; attempt++) {
+        phy_ir_clear_error(ctx);
+        exercise_all_pools(ctx);
+    }
+    /* Steady state: further identical attempts add nothing at all. */
+    PHY_CHECK_EQ_INT(phy_ir_node_count(ctx), after_nodes);
+    PHY_CHECK_EQ_INT(phy_ir_symbol_count(ctx), after_symbols);
+    PHY_CHECK_EQ_INT(phy_ir_bytes_used(ctx), settled_bytes);
+    PHY_CHECK_EQ_INT(phy_ir_validate(ctx), PHY_OK);
+
+    phy_ir_context_destroy(ctx);
+}
+
+static void test_validate_accepts_healthy_contexts(void)
+{
+    phy_ir_context *ctx = fresh();
+    PHY_CHECK_EQ_INT(phy_ir_validate(ctx), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_ir_validate(NULL), PHY_ERR_INVALID_ARGUMENT);
+
+    /* Enough work to force both intern tables to rehash at least once. */
+    exercise_all_pools(ctx);
+    PHY_CHECK_EQ_INT(phy_ir_last_error(ctx), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_ir_validate(ctx), PHY_OK);
+    PHY_CHECK(phy_ir_node_count(ctx) > 256u);
+
+    phy_ir_ref parsed = PHY_IR_NULL;
+    size_t offset = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_ir_read(ctx, "(+ 1 (* 2 x) (tensor g (idx mu dn)))", &parsed,
+                    &offset),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(phy_ir_validate(ctx), PHY_OK);
+
+    phy_ir_context_destroy(ctx);
+}
+
+static void test_failed_parse_retains_prefix_but_stays_valid(void)
+{
+    /*
+     * Documented behaviour, pinned so it cannot change silently: a failed
+     * parse keeps whatever it interned before the error. That is a memory
+     * concern, not a corruption one, and the header prescribes loading into a
+     * disposable context precisely because of it.
+     */
+    phy_ir_context *ctx = fresh();
+
+    const size_t before_symbols = phy_ir_symbol_count(ctx);
+    phy_ir_ref ref = PHY_IR_NULL;
+    size_t offset = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_ir_read(ctx, "(+ alpha beta (nosuchform))", &ref, &offset),
+        PHY_ERR_PARSE);
+    PHY_CHECK_EQ_INT(ref, PHY_IR_NULL);
+
+    /* The prefix survived: this is the limitation, stated as a test. */
+    PHY_CHECK(phy_ir_symbol_count(ctx) > before_symbols);
+    PHY_CHECK(phy_ir_intern(ctx, "alpha") != PHY_IR_NO_SYMBOL);
+
+    /* But nothing is corrupt, and it never becomes corrupt on retry. */
+    PHY_CHECK_EQ_INT(phy_ir_validate(ctx), PHY_OK);
+    for (int attempt = 0; attempt < 20; attempt++) {
+        phy_ir_clear_error(ctx);
+        PHY_CHECK_EQ_INT(
+            phy_ir_read(ctx, "(+ alpha beta (nosuchform))", &ref, &offset),
+            PHY_ERR_PARSE);
+    }
+    PHY_CHECK_EQ_INT(phy_ir_validate(ctx), PHY_OK);
+
+    /* Declarations behave the same way: the good ones before the bad one are
+       applied and stay applied. */
+    phy_ir_clear_error(ctx);
+    PHY_CHECK_EQ_INT(
+        phy_ir_read_declarations(
+            ctx, "(declare p real)\n(declare q bogusassumption)", &offset),
+        PHY_ERR_PARSE);
+    PHY_CHECK((phy_ir_assumptions(ctx, phy_ir_intern(ctx, "p")) &
+               (uint32_t)PHY_IR_ASSUME_REAL) != 0u);
+    PHY_CHECK_EQ_INT(phy_ir_validate(ctx), PHY_OK);
+
+    /* The prescribed pattern: parse into a disposable context, and destroying
+       it reclaims the partial parse in full. */
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    phy_telemetry before;
+    phy_telemetry_get(&before);
+    phy_ir_context *scratch = fresh();
+    PHY_CHECK_EQ_INT(
+        phy_ir_read(scratch, "(+ alpha beta (nosuchform))", &ref, &offset),
+        PHY_ERR_PARSE);
+    phy_ir_context_destroy(scratch);
+    phy_telemetry after;
+    phy_telemetry_get(&after);
+    PHY_CHECK_EQ_INT(after.bytes_live, before.bytes_live);
+    phy_platform_shutdown();
+
+    phy_ir_context_destroy(ctx);
+}
+
+static void test_refs_are_context_local(void)
+{
+    /*
+     * Pins the documented hazard: refs are pool indices, so the same number
+     * names unrelated nodes in two contexts. Cross-context comparison must go
+     * through the hash, the text, or a rebuild.
+     */
+    phy_ir_context *first = fresh();
+    phy_ir_context *second = fresh();
+
+    const phy_ir_ref a = sym(first, "alpha");
+    /* Built in a different order, so equal structure lands on different refs
+       and different structure lands on the same ref. */
+    (void)sym(second, "filler");
+    const phy_ir_ref b_same_structure = sym(second, "alpha");
+    const phy_ir_ref b_same_number = sym(second, "filler");
+
+    PHY_CHECK(a != b_same_structure);
+    PHY_CHECK_EQ_INT(a, b_same_number);
+    /* Numerically equal refs, entirely different symbols: the trap. */
+    PHY_CHECK_EQ_STR(phy_ir_symbol_name(first, phy_ir_head(first, a)), "alpha");
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(second, phy_ir_head(second, b_same_number)),
+        "filler");
+
+    /* The supported routes agree with the structure, not with the numbers. */
+    PHY_CHECK_EQ_INT(phy_ir_hash(first, a),
+                     phy_ir_hash(second, b_same_structure));
+    PHY_CHECK(phy_ir_hash(first, a) != phy_ir_hash(second, b_same_number));
+
+    char left[64];
+    char right[64];
+    PHY_CHECK_EQ_STR(render(first, a, left, sizeof left),
+                     render(second, b_same_structure, right, sizeof right));
+
+    /* Rebuild-then-compare, the exact route the header prescribes. */
+    char text[64];
+    const phy_ir_ref rebuilt = round_trip(first, a, second, text, sizeof text);
+    PHY_CHECK(phy_ir_equal(rebuilt, b_same_structure));
+
+    phy_ir_context_destroy(first);
+    phy_ir_context_destroy(second);
+}
+
 /* ------------------------------------------------- assumptions, symmetries */
 
 static void test_assumptions(void)
@@ -1097,6 +1413,11 @@ int main(void)
     PHY_TEST_CASE(test_null_operands_propagate);
     PHY_TEST_CASE(test_term_and_node_limits);
     PHY_TEST_CASE(test_memory_limit_is_enforced);
+    PHY_TEST_CASE(test_allocation_failure_leaves_no_orphans);
+    PHY_TEST_CASE(test_failed_intern_does_not_accumulate);
+    PHY_TEST_CASE(test_validate_accepts_healthy_contexts);
+    PHY_TEST_CASE(test_failed_parse_retains_prefix_but_stays_valid);
+    PHY_TEST_CASE(test_refs_are_context_local);
     PHY_TEST_CASE(test_assumptions);
     PHY_TEST_CASE(test_declared_symmetries);
     PHY_TEST_CASE(test_serialization_round_trip);

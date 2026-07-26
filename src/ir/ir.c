@@ -490,6 +490,16 @@ phy_ir_symbol phy_ir_intern_n(phy_ir_context *ctx, const char *name,
     const size_t index =
         pool_push(ctx, &ctx->symbols, sizeof record, &record);
     if (index == (size_t)-1) {
+        /*
+         * The name is already in the string pool but the symbol that owns it
+         * will not exist. Unwind the append: leaving it would be bytes no
+         * symbol references and nothing can ever reach, and a caller retrying
+         * under a tight budget would stack up one copy per attempt.
+         *
+         * Only the count is rewound. Capacity keeps its peak, which is
+         * correct -- the memory is already charged and reusable.
+         */
+        ctx->strings.count = name_offset;
         return PHY_IR_NO_SYMBOL;
     }
     ((phy_ir_symbol *)ctx->symbol_buckets.data)[slot] = (phy_ir_symbol)index;
@@ -704,12 +714,23 @@ static phy_ir_ref intern_node(phy_ir_context *ctx, const phy_ir_node *proto,
         return PHY_IR_NULL;
     }
 
+    /*
+     * A node's payload is appended to its pool before the node that owns it
+     * exists, so both marks are taken now and restored if publishing fails.
+     * Without this, a rational or a run of child slots would remain with no
+     * node pointing at them: not corruption, but entries nothing can reach
+     * and nothing will reuse.
+     */
+    const size_t rationals_mark = ctx->rationals.count;
+    const size_t children_mark = ctx->children.count;
+
     phy_ir_node node = *proto;
 
     if (rat != NULL) {
         const size_t index =
             pool_push(ctx, &ctx->rationals, sizeof *rat, rat);
         if (index == (size_t)-1) {
+            ctx->rationals.count = rationals_mark;
             return PHY_IR_NULL;
         }
         node.u.rational_index = (uint32_t)index;
@@ -728,6 +749,9 @@ static phy_ir_ref intern_node(phy_ir_context *ctx, const phy_ir_node *proto,
     node.intern_next = refs_of(&ctx->node_buckets)[slot];
     const size_t index = pool_push(ctx, &ctx->nodes, sizeof node, &node);
     if (index == (size_t)-1) {
+        /* Counts only; capacity keeps its peak, already charged and reusable. */
+        ctx->rationals.count = rationals_mark;
+        ctx->children.count = children_mark;
         return PHY_IR_NULL;
     }
     refs_of(&ctx->node_buckets)[slot] = (phy_ir_ref)index;
@@ -1294,4 +1318,137 @@ uint32_t phy_ir_depth(const phy_ir_context *ctx, phy_ir_ref ref)
 {
     const phy_ir_node *node = phy_ir_node_at(ctx, ref);
     return (node != NULL) ? (uint32_t)node->depth : 0u;
+}
+
+/* --------------------------------------------------------------- integrity */
+
+/*
+ * Two properties, checked by counting rather than by walking:
+ *
+ *   nothing orphaned -- the bytes, child slots, and rationals the pools hold
+ *   are exactly what the live symbols and nodes claim, so a failed
+ *   construction cannot have left a payload behind;
+ *
+ *   nothing lost -- every symbol and node is reachable from its intern
+ *   bucket, so a failed construction cannot have left an entry that the next
+ *   identical request will fail to find and duplicate.
+ */
+phy_status phy_ir_validate(const phy_ir_context *ctx)
+{
+    if (ctx == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+
+    /* Symbols own their name bytes, one NUL-terminated run each. */
+    const phy_ir_symbol_record *symbols = symbols_of(ctx);
+    size_t claimed_string_bytes = 0u;
+    for (size_t i = 1u; i < ctx->symbols.count; i++) {
+        const phy_ir_symbol_record *record = &symbols[i];
+        if ((size_t)record->name_offset + record->name_length + 1u >
+            ctx->strings.count) {
+            return PHY_ERR_CORRUPT_DOCUMENT;
+        }
+        claimed_string_bytes += (size_t)record->name_length + 1u;
+    }
+    if (claimed_string_bytes != ctx->strings.count) {
+        return PHY_ERR_CORRUPT_DOCUMENT;
+    }
+
+    /* Nodes own their child slots and, for rationals, one pool entry each. */
+    const phy_ir_node *nodes = nodes_of(ctx);
+    size_t claimed_children = 0u;
+    size_t claimed_rationals = 0u;
+    for (size_t i = 1u; i < ctx->nodes.count; i++) {
+        const phy_ir_node *node = &nodes[i];
+
+        if (node->kind == (uint8_t)PHY_IR_RATIONAL) {
+            if ((size_t)node->u.rational_index >= ctx->rationals.count) {
+                return PHY_ERR_CORRUPT_DOCUMENT;
+            }
+            claimed_rationals++;
+        }
+
+        if (node->child_count == 0u) {
+            continue;
+        }
+        if ((size_t)node->u.child_offset + node->child_count >
+            ctx->children.count) {
+            return PHY_ERR_CORRUPT_DOCUMENT;
+        }
+        const phy_ir_ref *children = phy_ir_children_of(ctx, node);
+        for (uint16_t c = 0; c < node->child_count; c++) {
+            /* A child must be a real node, and one built before its parent. */
+            if (children[c] == PHY_IR_NULL || (size_t)children[c] >= i) {
+                return PHY_ERR_CORRUPT_DOCUMENT;
+            }
+        }
+        claimed_children += node->child_count;
+    }
+    if (claimed_children != ctx->children.count ||
+        claimed_rationals != ctx->rationals.count) {
+        return PHY_ERR_CORRUPT_DOCUMENT;
+    }
+
+    /* Every node reachable from exactly one bucket chain. */
+    size_t reachable = 0u;
+    for (size_t bucket = 0u; bucket < ctx->node_buckets.count; bucket++) {
+        size_t guard = 0u;
+        for (phy_ir_ref ref = refs_of(&ctx->node_buckets)[bucket];
+             ref != PHY_IR_NULL; ref = nodes[ref].intern_next) {
+            if ((size_t)ref >= ctx->nodes.count ||
+                ++guard > ctx->nodes.count) {
+                return PHY_ERR_CORRUPT_DOCUMENT; /* dangling or looped chain */
+            }
+            if ((nodes[ref].hash & (ctx->node_buckets.count - 1u)) != bucket) {
+                return PHY_ERR_CORRUPT_DOCUMENT; /* filed under the wrong key */
+            }
+            reachable++;
+        }
+    }
+    if (reachable != ctx->nodes.count - 1u) {
+        return PHY_ERR_CORRUPT_DOCUMENT;
+    }
+
+    /* And every symbol. */
+    reachable = 0u;
+    for (size_t bucket = 0u; bucket < ctx->symbol_buckets.count; bucket++) {
+        size_t guard = 0u;
+        for (phy_ir_symbol sym =
+                 ((const phy_ir_symbol *)ctx->symbol_buckets.data)[bucket];
+             sym != PHY_IR_NO_SYMBOL; sym = symbols[sym].intern_next) {
+            if ((size_t)sym >= ctx->symbols.count ||
+                ++guard > ctx->symbols.count) {
+                return PHY_ERR_CORRUPT_DOCUMENT;
+            }
+            if ((symbols[sym].name_hash & (ctx->symbol_buckets.count - 1u)) !=
+                bucket) {
+                return PHY_ERR_CORRUPT_DOCUMENT;
+            }
+            reachable++;
+        }
+    }
+    if (reachable != ctx->symbols.count - 1u) {
+        return PHY_ERR_CORRUPT_DOCUMENT;
+    }
+
+    /* Symmetry records are owned by exactly one symbol's list. */
+    const phy_ir_symmetry_record *symmetries =
+        (const phy_ir_symmetry_record *)ctx->symmetries.data;
+    size_t owned = 0u;
+    for (size_t i = 1u; i < ctx->symbols.count; i++) {
+        size_t guard = 0u;
+        for (uint32_t at = symbols[i].symmetry_head; at != 0u;
+             at = symmetries[at].next) {
+            if ((size_t)at >= ctx->symmetries.count ||
+                ++guard > ctx->symmetries.count) {
+                return PHY_ERR_CORRUPT_DOCUMENT;
+            }
+            owned++;
+        }
+    }
+    if (owned != ctx->symmetries.count - 1u) {
+        return PHY_ERR_CORRUPT_DOCUMENT;
+    }
+
+    return PHY_OK;
 }

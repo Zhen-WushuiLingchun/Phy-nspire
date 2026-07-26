@@ -43,6 +43,24 @@ bool phy_host_display_was_restored(void);
 /* Virtual clock control, so timing-dependent tests stay deterministic. */
 void phy_host_advance_clock_ms(uint32_t milliseconds);
 
+/*
+ * Allocation-failure injection.
+ *
+ * After this call the next `countdown`-th phy_alloc returns NULL, once, and
+ * the hook then disarms itself. `countdown` of 0 disables it.
+ *
+ * Out-of-memory paths are otherwise close to untestable. Squeezing a real
+ * budget until it breaks only ever reaches whichever allocation happens to be
+ * first, so the interesting failures -- the ones part-way through a
+ * multi-pool construction, after a payload is appended but before the entry
+ * that owns it exists -- are never reached. Sweeping this countdown walks the
+ * failure across every allocation in a workload, one at a time.
+ */
+void phy_host_fail_alloc_after(unsigned countdown);
+
+/* Allocations attempted since phy_platform_init, successful or not. */
+uint32_t phy_host_alloc_attempts(void);
+
 #ifdef __cplusplus
 }
 #endif

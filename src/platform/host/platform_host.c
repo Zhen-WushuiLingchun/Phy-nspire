@@ -23,6 +23,8 @@ typedef struct {
 
     uint32_t clock_ms;
     uint32_t present_count;
+    uint32_t alloc_countdown; /* 0 disables; see phy_host_fail_alloc_after */
+    uint32_t alloc_attempts;
     phy_telemetry telemetry;
 } host_state;
 
@@ -103,6 +105,12 @@ void phy_sleep_ms(uint32_t milliseconds)
 void *phy_alloc(size_t bytes)
 {
     if (bytes == 0) {
+        return NULL;
+    }
+    g_host.alloc_attempts++;
+    /* Injected failure, armed by phy_host_fail_alloc_after. Disarms itself so
+       one armed shot cannot cascade into every later allocation. */
+    if (g_host.alloc_countdown != 0u && --g_host.alloc_countdown == 0u) {
         return NULL;
     }
     void *pointer = malloc(bytes);
@@ -187,4 +195,14 @@ bool phy_host_display_was_restored(void)
 void phy_host_advance_clock_ms(uint32_t milliseconds)
 {
     g_host.clock_ms += milliseconds;
+}
+
+void phy_host_fail_alloc_after(unsigned countdown)
+{
+    g_host.alloc_countdown = (uint32_t)countdown;
+}
+
+uint32_t phy_host_alloc_attempts(void)
+{
+    return g_host.alloc_attempts;
 }

@@ -26,15 +26,22 @@ printf '  %10s  %-6s %s\n' "BYTES" "TYPE" "SYMBOL"
 
 # -S prints sizes, -C demangles. Symbols with no size are skipped: they carry
 # no allocation and would only pad the list.
+#
+# awk reads the stream to the end and stops printing rather than exiting at
+# the count. Exiting early closes the pipe, nm dies of SIGPIPE, and with
+# pipefail set the whole script exits 141 -- which it did for any binary with
+# more than COUNT sized symbols, so the target broke precisely when the report
+# became worth reading. Draining costs one pass over a symbol table.
 "$NM" -S -C --size-sort --reverse-sort "$ELF" 2>/dev/null |
     awk -v count="$COUNT" '
         NF >= 4 {
             size = strtonum("0x" $2)
             if (size == 0) next
+            if (shown >= count) next
             name = $4
             for (i = 5; i <= NF; i++) name = name " " $i
             printf "  %10d  %-6s %s\n", size, $3, name
-            if (++shown >= count) exit
+            shown++
         }'
 
 printf '\n  totals by section:\n'

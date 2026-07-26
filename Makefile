@@ -11,6 +11,7 @@
 #   all            build dist/phy-nspire.tns
 #   size-report    installed size against the 5-6 MB budget
 #   symbol-report  largest symbols in the ELF
+#   ir-link-check  prove the expression IR links on device
 #   clean
 
 DEBUG ?= FALSE
@@ -55,7 +56,7 @@ OBJECTS := $(patsubst %.c,$(BUILDDIR)/%.o,$(SOURCES))
 ELF := $(DISTDIR)/$(EXE).elf
 TNS := $(DISTDIR)/$(EXE).tns
 
-.PHONY: all clean size-report symbol-report check-sdk
+.PHONY: all clean size-report symbol-report ir-link-check check-sdk
 
 all: $(TNS)
 
@@ -87,5 +88,10 @@ size-report: $(TNS)
 symbol-report: $(ELF)
 	@tools/symbol-report.sh $(ELF)
 
+# Deliberately not a dependency of `all`. The probe must never be linked into
+# the product, or the size report would measure the probe instead.
+ir-link-check: check-sdk
+	@tools/ir-link-check.sh
+
 clean:
-	rm -rf $(BUILDDIR) $(DISTDIR)
+	rm -rf $(BUILDDIR) $(DISTDIR) build/arm-linkcheck
