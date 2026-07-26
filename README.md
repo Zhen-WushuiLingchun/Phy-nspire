@@ -42,3 +42,12 @@ The selected upstream references include GPL-3 software. The final project
 license and retained notices will be fixed before any upstream code is copied
 or linked. Until then, this repository contains planning and original research
 only.
+
+## Independent review and physics reference
+
+- [Reference-corpus audit](research/AUDIT-2026-07-26-reference-corpus.md) —
+  independent re-derivation of the measured evidence base, with corrections.
+- [Physics reference and golden values](research/PHYSICS_REFERENCE.md) —
+  declared conventions and closed-form regression targets for the tensor, GR,
+  quantum, and QFT phases.
+- [Audit scripts](research/audit/) — re-runnable verification tooling.
