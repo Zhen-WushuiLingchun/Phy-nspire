@@ -294,7 +294,7 @@ builders do not recurse.
 
 ## Testing
 
-`tests/test_ir.c`, 2,259 checks. The suite leans throughout on interning:
+`tests/test_ir.c`, 2,577 checks. The suite leans throughout on interning:
 building the same expression by two different routes and comparing refs tests
 canonicalization, not just construction.
 
@@ -316,16 +316,16 @@ pinned toolchain. Measured with `-Os -marm`:
 
 | object            | text bytes |
 | ----------------- | ---------- |
-| `src/ir/ir.o`     | 7,352      |
-| `src/ir/order.o`  | 1,378      |
+| `src/ir/ir.o`     | 8,008      |
+| `src/ir/order.o`  | 1,442      |
 | `src/ir/text.o`   | 5,442      |
-| total             | **14,172** |
+| total             | **14,892** |
 
 **None of it is in `dist/phy-nspire.tns` yet.** The shipped binary grew from
 12,676 to 13,440 bytes, and that 764 bytes is the enlarged `phy_status` name
 table, not the IR: `--gc-sections` discards every IR symbol because nothing in
 the current application calls one. `arm-none-eabi-nm` on the shipped ELF finds
-zero `phy_ir_*` symbols. The 14,172 bytes above is what the notebook shell
+zero `phy_ir_*` symbols. The 14,892 bytes above is what the notebook shell
 will pay when it starts using the IR in Phase 1.
 
 Because link-time garbage collection hides the IR, the device build alone does
@@ -365,7 +365,11 @@ Makefile's `SOURCES`. It builds into `build/arm-linkcheck/` and never touches
 
 ## Not in this layer
 
-Simplification, evaluation, and arithmetic. Dummy-index canonicalization and
-contraction. Anything that consumes declared symmetries. Arbitrary-precision
-numbers. The CAS backend boundary. These are later phases; the IR is the
-substrate they operate on.
+Simplification, evaluation, and arithmetic — these are the scalar CAS, which
+landed on top of this one and is documented in [`docs/CAS.md`](CAS.md). Nothing
+in the IR changed to accommodate it: it reaches everything it needs through the
+public header, which is the check that the substrate was the right shape.
+
+Dummy-index canonicalization and contraction. Anything that consumes declared
+symmetries. Arbitrary-precision numbers. The Giac backend boundary. These are
+later phases; the IR is the substrate they operate on.

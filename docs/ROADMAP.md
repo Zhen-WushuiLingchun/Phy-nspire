@@ -18,16 +18,17 @@ Output:
 
 Verification:
 
-- host smoke test — done, `ctest` runs four suites covering the platform
-  contract, drawing, and the full lifecycle;
-- generated `.tns` size report — done, 12,676 bytes against a 6 MB ceiling;
-- launch/exit on the real CX II without display corruption — **not done**, no
-  hardware has been used. `docs/BUILD.md` records the procedure, including the
-  RGB channel-order check and the exit check that Phase 0 exists to protect.
+- host smoke test — done, `ctest` runs nine tests covering the platform
+  contract, drawing, IR, tensor storage, CAS, QFT oracle, and full lifecycle;
+- generated `.tns` size report — done, 13,440 bytes against a 6 MB ceiling;
+- launch/exit of a Phy-nspire artifact on the real CX II without display
+  corruption — **not done**. `docs/BUILD.md` records the procedure, including
+  the RGB channel-order check and the exit check that Phase 0 exists to protect.
 
 ## Phase 1 — notebook and CAS boundary
 
-Status: the typed expression IR is implemented; the rest is not started.
+Status: the typed expression IR and the scalar CAS over it are implemented; the
+notebook shell is not started.
 
 Output:
 
@@ -35,22 +36,44 @@ Output:
 - touchpad selection and palette shell;
 - editable source cells;
 - backend-neutral typed expression IR — done, `include/phy/ir.h`, `src/ir`,
-  documented in `docs/IR.md`;
-- native Giac adapter for a small scalar command set.
+  documented in [`docs/IR.md`](IR.md);
+- native scalar algebra and rewriting — done, `include/phy/cas.h`, `src/cas`,
+  documented in [`docs/CAS.md`](CAS.md): exact rational arithmetic, a normal
+  form, expansion, substitution, differentiation, and an exact zero decision;
+- native Giac adapter for a small scalar command set — **not needed for the
+  scalar operations the tensor and curvature phases require**, which the layer
+  above now supplies natively. The backend boundary in
+  `docs/ARCHITECTURE.md` stands, but nothing downstream is blocked on it.
 
 Verification:
 
 - deterministic framebuffer fixtures;
 - parse/evaluate/render/save/reopen workflow;
-- cancellation and expression-limit tests;
-- IR unit tests — done, `tests/test_ir.c`, 2,259 checks covering interning,
-  canonical ordering, the construction ceilings, and text round-trips.
+- cancellation and expression-limit tests — done for the CAS, `tests/test_cas.c`:
+  the step budget, the cancellation hook, and the IR's term limit each surface as
+  a typed status and leave both layers validating;
+- IR unit tests — done, `tests/test_ir.c`, 2,577 checks covering interning,
+  canonical ordering, the construction ceilings, and text round-trips;
+- CAS unit tests — done, `tests/test_cas.c`, 742 checks covering the normal
+  form, exact arithmetic and its overflow statuses, differentiation, and the
+  zero decision, including the four `sphere_2d` corpus entries whose stated
+  trigonometric form differs from the computed one.
 
 The IR carries no simplification, evaluation, or arithmetic: it is the
 substrate those work on. Dummy-index canonicalization and anything that
 consumes declared symmetries stay in Phase 2.
 
+The real Ndless r2022/ARM GNU toolchain link check is done: 24/24 CAS APIs
+survive garbage collection and the probe packages to a 37,720-byte `.tns`
+without float formatting, libm, or ARM soft-float dependencies. Running that
+probe on the physical CX II remains a hardware acceptance step.
+
 ## Phase 2 — tensor and manifold CAS
+
+Status: component-independent tensor storage and slot symmetries are complete;
+scalar-dependent contraction, raise/lower, metric inversion, and component
+derivatives are next. The scalar substrate is in place, including the exact
+zero decision that `docs/agent-tasks/TENSOR_CORE.md` calls load-bearing.
 
 Output:
 

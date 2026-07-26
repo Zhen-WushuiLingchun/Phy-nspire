@@ -33,10 +33,18 @@ builds two artifacts from one portable core:
   framebuffer, samples the keypad and touchpad, and exits cleanly.
 
 The Phase 0 application is not the notebook. It renders one baseline frame and
-proves the platform boundary; cells, the expression IR, and the CAS backend
-begin in Phase 1.
+proves the platform boundary.
 
-Measured on the pinned toolchain: the `.tns` is 12,676 bytes, 0.2% of the 6 MB
+Three native foundations are in place behind it, none wired to the UI yet: the
+typed expression IR; a symbolic scalar computer algebra layer over it with
+exact rational arithmetic, a normal form, expansion, substitution,
+differentiation, and an exact zero decision; and the component-independent
+tensor core with charts, dense storage, valence, and signed slot symmetries.
+The CAS answers "unknown" rather than guessing outside its decidable class, so
+the scalar operations needed by the tensor and GR phases no longer depend on
+integrating Giac.
+
+Measured on the pinned toolchain: the `.tns` is 13,440 bytes, 0.2% of the 6 MB
 ceiling.
 
 Not yet done: the roadmap's on-device check. Nothing here has been run on real
@@ -50,6 +58,7 @@ Start here:
 - [Native architecture](docs/ARCHITECTURE.md)
 - [Typed expression IR](docs/IR.md)
 - [Component tensor core](docs/TENSOR.md)
+- [Scalar computer algebra](docs/CAS.md)
 - [Roadmap](docs/ROADMAP.md)
 - [ADR-0001: native Ndless architecture](docs/adr/0001-native-ndless-architecture.md)
 - [Initial feasibility evidence](research/feasibility-2026-07-26.md)
@@ -61,6 +70,9 @@ Start here:
 ```
 include/phy/      public headers: platform boundary, drawing, app shell
 src/core/         portable, backend-neutral core
+src/ir/           typed expression IR: interning, ordering, serialization
+src/cas/          scalar algebra: normal form, calculus, the zero decision
+src/tensor/       component tensors: charts, storage, slot symmetries
 src/gfx/          RGB565 primitives and the built-in debug font
 src/app/          Phase 0 application and the two entry points
 src/platform/     one subdirectory per backend: ndless (device), host (tests)
