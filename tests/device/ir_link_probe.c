@@ -98,6 +98,7 @@ static void probe_builders(phy_ir_context *ctx)
     sink(phy_ir_rational_value(ctx, half, &numerator, &denominator) ? 1u : 0u);
     sink(phy_ir_real_value(ctx, real, &value) ? 1u : 0u);
     sink(phy_ir_index_variance(ctx, index, &variance) ? 1u : 0u);
+    sink((unsigned)phy_ir_index_space(ctx, index));
     sink(phy_ir_error_status(ctx, failure, &status) ? 1u : 0u);
 }
 
