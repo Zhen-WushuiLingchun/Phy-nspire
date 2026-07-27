@@ -696,6 +696,25 @@ bool phy_notebook_is_editing(const phy_notebook *notebook)
     return notebook != NULL && notebook->editing;
 }
 
+phy_notebook_edit_target
+phy_notebook_edit_target_kind(const phy_notebook *notebook)
+{
+    if (notebook == NULL || !notebook->editing ||
+        notebook->edit_index >= notebook->count) {
+        return PHY_NOTEBOOK_EDIT_NONE;
+    }
+    const notebook_cell *cell = &notebook->cells[notebook->edit_index];
+    if (cell->kind == PHY_NOTEBOOK_CELL_INPUT) {
+        return PHY_NOTEBOOK_EDIT_MATH;
+    }
+    if (cell->kind == PHY_NOTEBOOK_CELL_MARKDOWN) {
+        return notebook->edit_secondary
+                   ? PHY_NOTEBOOK_EDIT_MARKDOWN_BODY
+                   : PHY_NOTEBOOK_EDIT_MARKDOWN_HEADING;
+    }
+    return PHY_NOTEBOOK_EDIT_NONE;
+}
+
 bool phy_notebook_is_dirty(const phy_notebook *notebook)
 {
     return notebook != NULL && notebook->dirty;
@@ -745,18 +764,41 @@ bool phy_notebook_edit_insert(phy_notebook *notebook, char character)
         (unsigned char)character > (unsigned char)'~') {
         return false;
     }
+    const char text[2] = {character, '\0'};
+    return phy_notebook_edit_insert_text(notebook, text, 1u);
+}
+
+bool phy_notebook_edit_insert_text(phy_notebook *notebook, const char *text,
+                                   size_t cursor_offset)
+{
+    if (text == NULL) {
+        return false;
+    }
+    const size_t text_length = strlen(text);
+    if (text_length == 0u || cursor_offset > text_length) {
+        return false;
+    }
+    for (size_t i = 0u; i < text_length; ++i) {
+        if ((unsigned char)text[i] < (unsigned char)' ' ||
+            (unsigned char)text[i] > (unsigned char)'~') {
+            return false;
+        }
+    }
     size_t capacity = 0u;
     char *buffer = edit_buffer(notebook, &capacity);
     if (buffer == NULL) {
         return false;
     }
     const size_t length = strlen(buffer);
-    if (length + 1u >= capacity || notebook->cursor > length) {
+    if (text_length >= capacity || length > capacity - text_length - 1u ||
+        notebook->cursor > length) {
         return false;
     }
-    memmove(buffer + notebook->cursor + 1u, buffer + notebook->cursor,
+    const size_t insertion = notebook->cursor;
+    memmove(buffer + insertion + text_length, buffer + insertion,
             length - notebook->cursor + 1u);
-    buffer[notebook->cursor++] = character;
+    memcpy(buffer + insertion, text, text_length);
+    notebook->cursor = insertion + cursor_offset;
     mark_source_stale(notebook);
     notebook->dirty = true;
     return true;
@@ -1175,8 +1217,11 @@ void phy_notebook_draw_document(const phy_surface *surface,
     draw_button(surface, NOTEBOOK_MD_BUTTON_X, NOTEBOOK_MD_BUTTON_WIDTH, "+MD");
     draw_button(surface, NOTEBOOK_MATH_BUTTON_X, NOTEBOOK_MATH_BUTTON_WIDTH,
                 "+Math");
-    (void)phy_gfx_draw_text(surface, 89, NOTEBOOK_BUTTON_Y + 3,
-                            "MENU files  ENTER/run  ESC done", COLOR_DIM);
+    (void)phy_gfx_draw_text(
+        surface, 89, NOTEBOOK_BUTTON_Y + 3,
+        notebook->editing ? "MENU insert  ENTER/run  ESC done"
+                          : "MENU files  ENTER/run  ESC done",
+        COLOR_DIM);
 
     if (pointer_x >= 0 && pointer_y >= 0) {
         draw_pointer(surface, pointer_x, pointer_y);

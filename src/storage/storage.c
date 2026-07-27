@@ -17,6 +17,8 @@ static bool ends_with_tns(const char *name, size_t length)
            ascii_lower(name[length - 1u]) == 's';
 }
 
+static bool name_equal_folded(const char *left, const char *right);
+
 bool phy_storage_name_valid(const char *name)
 {
     if (name == NULL) {
@@ -26,6 +28,10 @@ bool phy_storage_name_valid(const char *name)
     if (length < 5u || length >= PHY_STORAGE_NAME_CAPACITY ||
         name[0] == '.' || name[0] == ' ' || name[length - 1u] == ' ' ||
         !ends_with_tns(name, length)) {
+        return false;
+    }
+    if (name_equal_folded(name, PHY_STORAGE_TEMPORARY_NAME) ||
+        name_equal_folded(name, PHY_STORAGE_BACKUP_NAME)) {
         return false;
     }
     for (size_t i = 0u; i < length; ++i) {

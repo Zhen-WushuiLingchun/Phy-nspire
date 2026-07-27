@@ -5,6 +5,7 @@
 
 #include "phy/formula.h"
 #include "phy/notebook.h"
+#include "phy/palette.h"
 #include "phy/platform.h"
 #include "phy/storage.h"
 #include "phy/workspace.h"
@@ -26,7 +27,8 @@ typedef enum {
     APP_VIEW_FILE_MENU,
     APP_VIEW_SAVE_AS,
     APP_VIEW_OPEN,
-    APP_VIEW_DIRTY_CONFIRM
+    APP_VIEW_DIRTY_CONFIRM,
+    APP_VIEW_PALETTE
 } app_view;
 
 typedef enum {
@@ -43,6 +45,8 @@ typedef struct {
     phy_storage_catalog catalog;
     char edit_name[PHY_STORAGE_NAME_CAPACITY];
     size_t edit_cursor;
+    phy_palette_kind palette_kind;
+    size_t palette_category;
     phy_status status;
     bool status_visible;
 } app_ui;
@@ -210,6 +214,41 @@ static void draw_dirty_confirm(const phy_surface *surface, const app_ui *ui)
     draw_status(surface, ui, 169);
 }
 
+static void draw_palette(const phy_surface *surface, const app_ui *ui)
+{
+    const char *title = ui->palette_kind == PHY_PALETTE_CAS
+                            ? "CAS command palette"
+                            : "LaTeX command palette";
+    draw_modal_panel(surface, 20, 200, title);
+    (void)phy_gfx_draw_text(surface, MODAL_X + 10, 48, "<", COLOR_ACCENT);
+    const char *category = phy_palette_category_name(
+        ui->palette_kind, ui->palette_category);
+    if (category != NULL) {
+        (void)phy_gfx_draw_text(surface, MODAL_X + 25, 48, category,
+                                COLOR_TEXT);
+    }
+    (void)phy_gfx_draw_text(surface, MODAL_X + MODAL_WIDTH - 17, 48, ">",
+                            COLOR_ACCENT);
+
+    const size_t count = phy_palette_entry_count(
+        ui->palette_kind, ui->palette_category);
+    for (size_t i = 0u; i < count; ++i) {
+        phy_palette_entry entry;
+        if (phy_palette_get(ui->palette_kind, ui->palette_category, i,
+                            &entry)) {
+            char visible[33];
+            copy_visible(visible, sizeof visible, entry.label, 31u);
+            draw_modal_row(surface, 70 + (int)i * 18, visible,
+                           ui->selected == i);
+        }
+    }
+    (void)phy_gfx_draw_text(surface, MODAL_X + 12, 201,
+                            "LEFT/RIGHT category", COLOR_TEXT_DIM);
+    (void)phy_gfx_draw_text(surface, MODAL_X + 12, 212,
+                            "ENTER insert  ESC cancel", COLOR_TEXT_DIM);
+    draw_status(surface, ui, 190);
+}
+
 static void draw_app_view(const phy_surface *surface,
                           const phy_workspace *workspace, const app_ui *ui,
                           int pointer_x, int pointer_y)
@@ -234,6 +273,9 @@ static void draw_app_view(const phy_surface *surface,
     case APP_VIEW_DIRTY_CONFIRM:
         draw_dirty_confirm(surface, ui);
         break;
+    case APP_VIEW_PALETTE:
+        draw_palette(surface, ui);
+        break;
     case APP_VIEW_NOTEBOOK:
     default:
         break;
@@ -249,6 +291,30 @@ static void begin_file_menu(app_ui *ui)
     ui->pending = APP_PENDING_NONE;
     ui->selected = 0u;
     app_ui_clear_status(ui);
+}
+
+static bool begin_palette(app_ui *ui, phy_notebook *notebook)
+{
+    phy_notebook_edit_target target =
+        phy_notebook_edit_target_kind(notebook);
+    if (target == PHY_NOTEBOOK_EDIT_MARKDOWN_HEADING) {
+        if (!phy_notebook_edit_switch_field(notebook)) {
+            return false;
+        }
+        target = PHY_NOTEBOOK_EDIT_MARKDOWN_BODY;
+    }
+    if (target != PHY_NOTEBOOK_EDIT_MATH &&
+        target != PHY_NOTEBOOK_EDIT_MARKDOWN_BODY) {
+        return false;
+    }
+    ui->palette_kind = target == PHY_NOTEBOOK_EDIT_MATH
+                           ? PHY_PALETTE_CAS
+                           : PHY_PALETTE_LATEX;
+    ui->palette_category = 0u;
+    ui->selected = 0u;
+    ui->view = APP_VIEW_PALETTE;
+    app_ui_clear_status(ui);
+    return true;
 }
 
 static phy_status begin_save_as(app_ui *ui,
@@ -384,6 +450,39 @@ static void activate_open(app_ui *ui, phy_workspace *workspace)
     }
 }
 
+static void activate_palette(app_ui *ui, phy_notebook *notebook)
+{
+    phy_palette_entry entry;
+    if (!phy_palette_get(ui->palette_kind, ui->palette_category,
+                         ui->selected, &entry)) {
+        return;
+    }
+    if (!phy_notebook_edit_insert_text(notebook, entry.snippet,
+                                       entry.cursor_offset)) {
+        app_ui_set_status(ui, PHY_ERR_TERM_LIMIT);
+        return;
+    }
+    ui->view = APP_VIEW_NOTEBOOK;
+    app_ui_clear_status(ui);
+}
+
+static void move_palette_category(app_ui *ui, int direction)
+{
+    const size_t count = phy_palette_category_count(ui->palette_kind);
+    if (count == 0u || direction == 0) {
+        return;
+    }
+    if (direction > 0) {
+        ui->palette_category = (ui->palette_category + 1u) % count;
+    } else {
+        ui->palette_category =
+            ui->palette_category == 0u ? count - 1u
+                                       : ui->palette_category - 1u;
+    }
+    ui->selected = 0u;
+    app_ui_clear_status(ui);
+}
+
 static bool pointer_in_rect(const phy_event *event, int x, int y, int width,
                             int height)
 {
@@ -425,6 +524,26 @@ static void handle_modal_pointer(app_ui *ui, phy_workspace *workspace,
                 return;
             }
         }
+    } else if (ui->view == APP_VIEW_PALETTE) {
+        if (pointer_in_rect(event, MODAL_X + 4, 42, 18, 20)) {
+            move_palette_category(ui, -1);
+            return;
+        }
+        if (pointer_in_rect(event, MODAL_X + MODAL_WIDTH - 22, 42, 18,
+                            20)) {
+            move_palette_category(ui, 1);
+            return;
+        }
+        const size_t count = phy_palette_entry_count(
+            ui->palette_kind, ui->palette_category);
+        for (size_t i = 0u; i < count; ++i) {
+            if (pointer_in_rect(event, MODAL_X + 8,
+                                66 + (int)i * 18, MODAL_WIDTH - 16, 17)) {
+                ui->selected = i;
+                activate_palette(ui, phy_workspace_notebook(workspace));
+                return;
+            }
+        }
     }
 }
 
@@ -436,6 +555,9 @@ static void move_modal_selection(app_ui *ui, int direction)
         count = 3u;
     } else if (ui->view == APP_VIEW_OPEN) {
         count = ui->catalog.count;
+    } else if (ui->view == APP_VIEW_PALETTE) {
+        count = phy_palette_entry_count(ui->palette_kind,
+                                        ui->palette_category);
     }
     if (count == 0u || direction == 0) {
         return;
@@ -739,6 +861,12 @@ phy_status phy_app_run(const phy_app_options *options, phy_app_result *out_resul
                 } else if (event.key == PHY_KEY_DOWN ||
                            event.key == PHY_KEY_TAB) {
                     move_modal_selection(&ui, 1);
+                } else if (ui.view == APP_VIEW_PALETTE &&
+                           event.key == PHY_KEY_LEFT) {
+                    move_palette_category(&ui, -1);
+                } else if (ui.view == APP_VIEW_PALETTE &&
+                           event.key == PHY_KEY_RIGHT) {
+                    move_palette_category(&ui, 1);
                 } else if (ui.view == APP_VIEW_SAVE_AS &&
                            event.key == PHY_KEY_LEFT &&
                            ui.edit_cursor > 0u) {
@@ -759,6 +887,8 @@ phy_status phy_app_run(const phy_app_options *options, phy_app_result *out_resul
                         activate_open(&ui, workspace);
                     } else if (ui.view == APP_VIEW_DIRTY_CONFIRM) {
                         activate_dirty(&ui, workspace, &running);
+                    } else if (ui.view == APP_VIEW_PALETTE) {
+                        activate_palette(&ui, notebook);
                     }
                 }
                 notebook = phy_workspace_notebook(workspace);
@@ -775,9 +905,12 @@ phy_status phy_app_run(const phy_app_options *options, phy_app_result *out_resul
                     }
                     needs_redraw = true;
                 }
-            } else if (event.key == PHY_KEY_MENU &&
-                       !phy_notebook_is_editing(notebook)) {
-                begin_file_menu(&ui);
+            } else if (event.key == PHY_KEY_MENU) {
+                if (phy_notebook_is_editing(notebook)) {
+                    (void)begin_palette(&ui, notebook);
+                } else {
+                    begin_file_menu(&ui);
+                }
                 needs_redraw = true;
             } else if (event.key == PHY_KEY_BACKSPACE &&
                        phy_notebook_is_editing(notebook)) {

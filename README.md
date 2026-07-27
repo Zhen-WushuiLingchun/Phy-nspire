@@ -53,8 +53,8 @@ the scalar operations needed by the tensor and GR phases no longer depend on
 integrating Giac.
 
 Measured on the pinned toolchain after the math-engine integration:
-`dist/phy-nspire.tns` is 1,048,076 bytes, 16.7% of the 6 MiB ceiling. The
-strict host suite passes 17/17, including 61,541 explicit checks. The prior
+`dist/phy-nspire.tns` is 1,050,677 bytes, 16.7% of the 6 MiB ceiling. The
+strict host suite passes 18/18, including 61,849 explicit checks. The prior
 and current trees pass under AddressSanitizer, UndefinedBehaviorSanitizer, and
 leak detection; the current run includes the C++ rendering slice.
 
@@ -64,7 +64,8 @@ The earlier notebook shell also passed its input and touchpad acceptance. The
 new 1.0 MiB build containing persistence and nMarkdown LaTeX rendering has
 been transferred through the repository-owned CLI and verified byte-for-byte
 on the calculator; its physical UI acceptance run is still pending.
-Full Markdown blocks, palettes, and direct typed-IR-to-nMarkdown layout remain
+Full Markdown blocks, tensor/physics palettes, and direct
+typed-IR-to-nMarkdown layout remain
 open Phase 1 work. The separate baseline channel-order check remains tracked
 in [docs/BUILD.md](docs/BUILD.md).
 

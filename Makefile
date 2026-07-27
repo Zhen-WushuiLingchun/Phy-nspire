@@ -75,6 +75,7 @@ SOURCES := \
     src/gfx/gfx.c \
     src/render/math_layout.c \
     src/notebook/document.c \
+    src/notebook/palette.c \
     src/notebook/source.c \
     src/notebook/notebook.c \
     src/notebook/workspace.c \

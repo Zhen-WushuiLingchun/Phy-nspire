@@ -198,6 +198,53 @@ static void test_first_save_as_from_file_menu(void)
     phy_platform_shutdown();
 }
 
+static void test_editing_menu_inserts_cas_template(void)
+{
+    phy_host_storage_clear();
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    /* +Math -> MENU palette -> Simplify[...] -> type argument -> run. */
+    PHY_CHECK(phy_host_push_pointer(PHY_EVENT_POINTER_DOWN, 50, 225));
+    PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_MENU));
+    PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_ENTER));
+    PHY_CHECK(phy_host_push_text('x'));
+    PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_ENTER));
+    PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_ESC));
+    PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_DOWN));
+    PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_ENTER));
+
+    phy_app_result result;
+    PHY_CHECK_EQ_INT(phy_app_run(NULL, &result), PHY_OK);
+    PHY_CHECK(result.quit_requested);
+    PHY_CHECK_EQ_INT(result.events_handled, 8);
+    PHY_CHECK(result.frames_presented >= 5u);
+    phy_platform_shutdown();
+}
+
+static void test_palette_frame_can_render(void)
+{
+    phy_host_storage_clear();
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    PHY_CHECK(phy_host_push_pointer(PHY_EVENT_POINTER_DOWN, 50, 225));
+    PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_MENU));
+
+    phy_app_options options;
+    phy_app_options_defaults(&options);
+    options.max_frames = 3u;
+    phy_app_result result;
+    PHY_CHECK_EQ_INT(phy_app_run(&options, &result), PHY_OK);
+    PHY_CHECK_EQ_INT(result.frames_presented, 3);
+
+    const phy_surface surface = {
+        phy_display_pixels(),
+        PHY_SCREEN_WIDTH,
+        PHY_SCREEN_HEIGHT,
+    };
+    PHY_CHECK(surface.pixels != NULL);
+    PHY_CHECK(phy_gfx_write_ppm(
+        &surface, PHY_ARTIFACT_DIR "/command_palette.ppm"));
+    phy_platform_shutdown();
+}
+
 static void test_baseline_is_deterministic(void)
 {
     const phy_surface surface = {g_scratch, PHY_SCREEN_WIDTH, PHY_SCREEN_HEIGHT};
@@ -267,6 +314,8 @@ int main(void)
     PHY_TEST_CASE(test_editing_event_flow);
     PHY_TEST_CASE(test_escape_leaves_edit_before_quitting);
     PHY_TEST_CASE(test_first_save_as_from_file_menu);
+    PHY_TEST_CASE(test_editing_menu_inserts_cas_template);
+    PHY_TEST_CASE(test_palette_frame_can_render);
     PHY_TEST_CASE(test_baseline_is_deterministic);
     PHY_TEST_CASE(test_baseline_matches_fixture);
     return PHY_TEST_REPORT("test_smoke");

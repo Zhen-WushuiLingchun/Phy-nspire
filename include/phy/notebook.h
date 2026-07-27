@@ -33,6 +33,13 @@ typedef enum {
     PHY_NOTEBOOK_CELL_ERROR
 } phy_notebook_cell_kind;
 
+typedef enum {
+    PHY_NOTEBOOK_EDIT_NONE = 0,
+    PHY_NOTEBOOK_EDIT_MATH,
+    PHY_NOTEBOOK_EDIT_MARKDOWN_HEADING,
+    PHY_NOTEBOOK_EDIT_MARKDOWN_BODY
+} phy_notebook_edit_target;
+
 /*
  * Read-only snapshot. Text pointers remain valid until the notebook is
  * modified; callers should not retain them across add/evaluate calls.
@@ -86,10 +93,18 @@ bool phy_notebook_insert_at(phy_notebook *notebook, int x, int y,
 bool phy_notebook_begin_edit_at(phy_notebook *notebook, int x, int y);
 bool phy_notebook_begin_edit_selected(phy_notebook *notebook);
 bool phy_notebook_is_editing(const phy_notebook *notebook);
+phy_notebook_edit_target
+phy_notebook_edit_target_kind(const phy_notebook *notebook);
 bool phy_notebook_is_dirty(const phy_notebook *notebook);
 void phy_notebook_mark_clean(phy_notebook *notebook);
 void phy_notebook_end_edit(phy_notebook *notebook);
 bool phy_notebook_edit_insert(phy_notebook *notebook, char character);
+/*
+ * Insert one ASCII template transactionally and leave the cursor at
+ * cursor_offset bytes from the template start.
+ */
+bool phy_notebook_edit_insert_text(phy_notebook *notebook, const char *text,
+                                   size_t cursor_offset);
 bool phy_notebook_edit_backspace(phy_notebook *notebook);
 bool phy_notebook_edit_move(phy_notebook *notebook, int direction);
 bool phy_notebook_edit_switch_field(phy_notebook *notebook);

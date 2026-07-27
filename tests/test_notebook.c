@@ -214,6 +214,52 @@ static void test_compound_power_is_not_algebraically_corrupted(void)
     phy_platform_shutdown();
 }
 
+static void test_template_insertion_and_edit_context(void)
+{
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    phy_notebook *notebook = phy_notebook_create();
+    PHY_CHECK(notebook != NULL);
+
+    size_t math = 0u;
+    PHY_CHECK_EQ_INT(phy_notebook_add_input(notebook, "", &math), PHY_OK);
+    (void)phy_notebook_select(notebook, math);
+    PHY_CHECK(phy_notebook_begin_edit_selected(notebook));
+    PHY_CHECK_EQ_INT(phy_notebook_edit_target_kind(notebook),
+                     PHY_NOTEBOOK_EDIT_MATH);
+    PHY_CHECK(phy_notebook_edit_insert_text(notebook, "Simplify[]", 9u));
+    PHY_CHECK(phy_notebook_edit_insert(notebook, 'x'));
+    phy_notebook_end_edit(notebook);
+
+    phy_notebook_cell_view cell;
+    PHY_CHECK(phy_notebook_cell(notebook, math, &cell));
+    PHY_CHECK_EQ_STR(cell.primary, "Simplify[x]");
+
+    size_t markdown = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_notebook_add_markdown(notebook, "Formula", "", &markdown),
+        PHY_OK);
+    PHY_CHECK(phy_notebook_select(notebook, markdown));
+    PHY_CHECK(phy_notebook_begin_edit_selected(notebook));
+    PHY_CHECK_EQ_INT(phy_notebook_edit_target_kind(notebook),
+                     PHY_NOTEBOOK_EDIT_MARKDOWN_HEADING);
+    PHY_CHECK(phy_notebook_edit_switch_field(notebook));
+    PHY_CHECK_EQ_INT(phy_notebook_edit_target_kind(notebook),
+                     PHY_NOTEBOOK_EDIT_MARKDOWN_BODY);
+    PHY_CHECK(phy_notebook_edit_insert_text(notebook, "\\frac{}{}", 6u));
+    PHY_CHECK(phy_notebook_edit_insert(notebook, 'x'));
+    phy_notebook_end_edit(notebook);
+    PHY_CHECK_EQ_INT(phy_notebook_edit_target_kind(notebook),
+                     PHY_NOTEBOOK_EDIT_NONE);
+    PHY_CHECK(phy_notebook_cell(notebook, markdown, &cell));
+    PHY_CHECK_EQ_STR(cell.secondary, "\\frac{x}{}");
+
+    PHY_CHECK(!phy_notebook_edit_insert_text(notebook, "Sin[]", 4u));
+    PHY_CHECK(!phy_notebook_edit_insert_text(notebook, NULL, 0u));
+
+    phy_notebook_destroy(notebook);
+    phy_platform_shutdown();
+}
+
 static void test_markdown_latex_uses_native_typesetter(void)
 {
     PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
@@ -302,6 +348,7 @@ int main(void)
     PHY_TEST_CASE(test_bounded_sources);
     PHY_TEST_CASE(test_edit_and_insert_use_reader_source);
     PHY_TEST_CASE(test_compound_power_is_not_algebraically_corrupted);
+    PHY_TEST_CASE(test_template_insertion_and_edit_context);
     PHY_TEST_CASE(test_markdown_latex_uses_native_typesetter);
     PHY_TEST_CASE(test_notebook_frame_fixture);
     return PHY_TEST_REPORT("test_notebook");

@@ -28,6 +28,8 @@ static void test_name_validation_and_suggestion(void)
     PHY_CHECK(!phy_storage_name_valid("bad\\name.tns"));
     PHY_CHECK(!phy_storage_name_valid("bad:name.tns"));
     PHY_CHECK(!phy_storage_name_valid("notebook.md"));
+    PHY_CHECK(!phy_storage_name_valid("phy-save-new.tns"));
+    PHY_CHECK(!phy_storage_name_valid("PHY-SAVE-BACKUP.TNS"));
 
     phy_storage_catalog catalog = {0};
     memcpy(catalog.entries[0].name, "Notebook-001.tns",

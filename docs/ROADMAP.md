@@ -22,7 +22,7 @@ Verification:
 - host smoke test — done, `ctest` runs seventeen tests covering the platform,
   relative pointer, source language, drawing, notebook, IR, tensor storage,
   CAS, QFT oracle, and full lifecycle;
-- generated `.tns` size report — done, 1,048,076 bytes against a 6 MiB
+- generated `.tns` size report — done, 1,050,677 bytes against a 6 MiB
   ceiling after the nMarkdown math integration;
 - launch of a Phy-nspire artifact on the real CX II — done on 2026-07-26 with
   the observable CAS smoke screen;
@@ -62,7 +62,8 @@ Output:
   integers/decimals, implicit and explicit arithmetic, equations, lists,
   scalar/full-form heads, multiple derivatives, and the command registry in
   [`docs/SOURCE_LANGUAGE.md`](SOURCE_LANGUAGE.md);
-- richer object palettes — not yet done;
+- CAS/LaTeX insertion palette — done; richer tensor/physics object palettes
+  are not yet done;
 - backend-neutral typed expression IR — done, `include/phy/ir.h`, `src/ir`,
   documented in [`docs/IR.md`](IR.md);
 - native scalar algebra and rewriting — done, `include/phy/cas.h`, `src/cas`,
@@ -87,7 +88,7 @@ Verification:
   form, exact arithmetic and its overflow statuses, differentiation, and the
   zero decision, including the four `sphere_2d` corpus entries whose stated
   trigonometric form differs from the computed one.
-- notebook tests — done, `tests/test_notebook.c`, 126 checks covering bounded
+- notebook tests — done, `tests/test_notebook.c`, 148 checks covering bounded
   cell storage, exact seeded results, editing, insertion, source/IR agreement,
   stale outputs, Markdown selection, independent run-badge hit testing, 2D
   metrics, nMarkdown LaTeX integration, memory return, and the framebuffer

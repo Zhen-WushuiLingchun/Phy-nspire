@@ -36,6 +36,15 @@ backspaces; `TAB` switches between Markdown heading and body. The first `ESC`
 leaves edit mode, and a second `ESC` exits through the normal display-restore
 path.
 
+Inside edit mode, `MENU` opens a context-sensitive insertion palette. Math
+cells expose only reader commands and functions already accepted by the
+current evaluator, grouped as Algebra, Functions, and Calculus/Syntax.
+Markdown bodies expose nMarkdown-backed LaTeX templates for layout, calculus,
+Greek letters, accents/styles, and matrices. Left/right changes category,
+up/down selects, and Enter or a touch on a row inserts the template with the
+cursor in its first argument slot. Outside edit mode, `MENU` remains the file
+menu.
+
 The touchpad is relative. A new finger contact establishes a motion origin and
 does not teleport the cursor; movement continues from the last screen
 position, retains fractional pixel deltas, and clears overshoot at screen
@@ -81,9 +90,11 @@ braces. Both held modifiers and tap-then-key modifiers are accepted.
 
 ## Verification
 
-- `test_notebook`: 126 checks over exact results, editing, insertion, stale
+- `test_notebook`: 148 checks over exact results, editing, insertion, stale
   results, source/IR agreement, bounds, memory return, selection, `RUN` hit
   testing, Markdown LaTeX integration, 2D metrics, and deterministic pixels;
+- `test_palette`: 264 checks over every category, entry, snippet, and cursor
+  bound;
 - `test_formula`: 20 checks over lifecycle, metrics, matrices, RGB565 drawing,
   and malformed-formula recovery;
 - `test_source`: 90 checks over the permanent reader-facing grammar and command
@@ -91,9 +102,9 @@ braces. Both held modifiers and tap-then-key modifiers are accepted.
 - `test_pointer`: 29 checks over relative contact/motion behavior;
 - `test_modifier`: 8 checks over tapped and held Shift/Ctrl behavior;
 - `tests/fixtures/notebook_frame.digest`: bit-exact 320 × 240 host fixture;
-- strict host suite: 17/17 and 61,541 explicit checks;
-- ASan + UBSan + leak detection: 17/17, including the C++ formula slice;
-- Ndless r2022 ARM build: 1,048,076-byte `.tns`, 16.7% of the 6 MiB ceiling.
+- strict host suite: 18/18 and 61,849 explicit checks;
+- ASan + UBSan + leak detection: 18/18, including the C++ formula slice;
+- Ndless r2022 ARM build: 1,050,677-byte `.tns`, 16.7% of the 6 MiB ceiling.
 
 Directional keys on the CX II touchpad are filtered at the platform boundary:
 while one is down, the overlapping touch contact/click report is suppressed.
@@ -114,7 +125,7 @@ already-complete seven-case CAS smoke.
 - two-dimensional visual formula editing and direct typed-IR-to-nMarkdown
   layout;
 - LaTeX export and a larger optional CJK asset stack;
-- cell deletion/reordering and object palettes;
+- cell deletion/reordering and tensor/physics object palettes;
 - tables, matrices, plots, and diagram cells.
 
 These remain Phase 1 work. The current artifact establishes their cell,

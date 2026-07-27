@@ -126,6 +126,7 @@ add_library(phy_core STATIC
     src/render/formula_bridge.cpp
     src/render/math_layout.c
     src/notebook/document.c
+    src/notebook/palette.c
     src/notebook/source.c
     src/notebook/notebook.c
     src/notebook/workspace.c
@@ -178,7 +179,7 @@ if(BUILD_TESTING)
                    "${CMAKE_CURRENT_BINARY_DIR}/notebook_frame.digest"
                    COPYONLY)
 
-    foreach(suite test_gfx test_formula test_modifier test_pointer test_source test_platform
+    foreach(suite test_gfx test_formula test_modifier test_pointer test_source test_palette test_platform
                   test_smoke test_document test_storage test_workspace
                   test_notebook test_ir test_tensor test_cas)
         add_executable(${suite} tests/${suite}.c)
