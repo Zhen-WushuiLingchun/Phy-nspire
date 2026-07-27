@@ -367,6 +367,10 @@ phy_status phy_tensor_component_expression(
     phy_cas *cas, const phy_tensor *tensor, const unsigned *indices,
     phy_ir_ref *out_expression);
 
+/* Exact determinant of the component matrix of a rank-2 tensor. */
+phy_status phy_tensor_determinant(phy_cas *cas, const phy_tensor *matrix,
+                                  phy_ir_ref *out_determinant);
+
 /*
  * Deterministic cofactor/adjugate inverse of a symmetric lower metric.
  * A determinant proved zero is PHY_ERR_DOMAIN. An undecidable symbolic

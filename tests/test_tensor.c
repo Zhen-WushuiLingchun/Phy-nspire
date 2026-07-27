@@ -1243,6 +1243,11 @@ static void test_metric_inverse_and_raise_lower_roundtrip(void)
         }
     }
 
+    phy_ir_ref determinant = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_determinant(cas, metric, &determinant), PHY_OK);
+    expect_equivalent(cas, determinant, phy_ir_integer(ir, 3));
+
     phy_tensor *inverse = NULL;
     PHY_CHECK_EQ_INT(
         phy_tensor_inverse_metric(cas, metric, "ginv", &inverse), PHY_OK);

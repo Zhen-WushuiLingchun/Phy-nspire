@@ -55,8 +55,9 @@ static phy_status component_at(phy_cas *cas, const phy_tensor *tensor,
     return phy_tensor_component_expression(cas, tensor, indices, out);
 }
 
-static phy_status determinant(phy_cas *cas, const phy_ir_ref *matrix,
-                              unsigned dimension, phy_ir_ref *out)
+static phy_status determinant_recursive(phy_cas *cas,
+                                        const phy_ir_ref *matrix,
+                                        unsigned dimension, phy_ir_ref *out)
 {
     if (dimension == 1u) {
         *out = matrix[0];
@@ -80,7 +81,8 @@ static phy_status determinant(phy_cas *cas, const phy_ir_ref *matrix,
         }
         phy_ir_ref minor_det = PHY_IR_NULL;
         phy_ir_ref term = PHY_IR_NULL;
-        status = determinant(cas, minor, dimension - 1u, &minor_det);
+        status = determinant_recursive(
+            cas, minor, dimension - 1u, &minor_det);
         if (status == PHY_OK) {
             const phy_ir_ref factors[2] = {matrix[column], minor_det};
             status = phy_cas_mul(cas, factors, 2u, &term);
@@ -97,6 +99,32 @@ static phy_status determinant(phy_cas *cas, const phy_ir_ref *matrix,
         *out = sum;
     }
     return status;
+}
+
+phy_status phy_tensor_determinant(phy_cas *cas, const phy_tensor *matrix,
+                                  phy_ir_ref *out_determinant)
+{
+    if (cas == NULL || matrix == NULL || out_determinant == NULL ||
+        phy_cas_ir(cas) != matrix->chart->ir) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    if (matrix->rank != 2u) {
+        return PHY_ERR_TYPE;
+    }
+    phy_ir_ref entries[PHY_TENSOR_MAX_DIM * PHY_TENSOR_MAX_DIM];
+    for (unsigned row = 0u; row < matrix->dimension; ++row) {
+        for (unsigned column = 0u; column < matrix->dimension; ++column) {
+            const unsigned indices[2] = {row, column};
+            const phy_status status = component_at(
+                cas, matrix, indices,
+                &entries[row * matrix->dimension + column]);
+            if (status != PHY_OK) {
+                return status;
+            }
+        }
+    }
+    return determinant_recursive(
+        cas, entries, matrix->dimension, out_determinant);
 }
 
 static void build_minor(const phy_ir_ref *matrix, unsigned dimension,
@@ -159,7 +187,8 @@ phy_status phy_tensor_inverse_metric(phy_cas *cas, const phy_tensor *metric,
     }
 
     phy_ir_ref det = PHY_IR_NULL;
-    phy_status status = determinant(cas, matrix, dimension, &det);
+    phy_status status =
+        determinant_recursive(cas, matrix, dimension, &det);
     if (status != PHY_OK) {
         return status;
     }
@@ -190,8 +219,8 @@ phy_status phy_tensor_inverse_metric(phy_cas *cas, const phy_tensor *metric,
                 phy_ir_ref minor[PHY_TENSOR_MAX_DIM * PHY_TENSOR_MAX_DIM];
                 /* adj(g)[row,column] = cofactor[column,row]. */
                 build_minor(matrix, dimension, column, row, minor);
-                status =
-                    determinant(cas, minor, dimension - 1u, &cofactor);
+                status = determinant_recursive(
+                    cas, minor, dimension - 1u, &cofactor);
                 if (status == PHY_OK && ((row + column) & 1u) != 0u) {
                     status = phy_cas_neg(cas, cofactor, &cofactor);
                 }
