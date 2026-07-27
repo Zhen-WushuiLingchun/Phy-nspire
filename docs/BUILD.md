@@ -107,6 +107,7 @@ make                # dist/phy-nspire.tns, then a size report
 make size-report
 make symbol-report
 make cas-smoke      # dist/phy-cas-smoke.tns, visible CAS acceptance test
+make qft-bench      # dist/phy-qft-bench.tns, CX II Q-7 timing/heap screen
 make clean
 make DEBUG=TRUE     # -O0 -g instead of -Os
 ```
@@ -241,3 +242,19 @@ identity, and an inexact-real boundary check. The last case must report
 `Unknown`, demonstrating that an inexact real atom was not guessed about
 numerically. Accept the run only when all seven rows are green and the footer
 reads `7/7 PASS`. Press `ESC` or `ENTER` to restore the Documents browser.
+
+### QFT Q-7 physical benchmark
+
+`make qft-bench` builds a separate 42,948-byte diagnostic. Copy
+`dist/phy-qft-bench.tns` to `Documents/phy-nspire/examples/` and open it. It
+times exact 4-, 8-, and contracted 12-gamma traces plus a deliberate
+term-limit failure. Accept the run only when all rows are green and the
+footer reads `4/4 PASS`; photograph the screen before leaving with `ESC`.
+
+Timing uses the CX II's 32 kHz SP804 counter and prints both raw ticks and
+rounded milliseconds. The memory column is the high-water increase of
+allocations routed through `phy_alloc`; it is labelled tracked heap and is not
+an OS RSS claim. Record the photographed values in
+[`research/qft-q7-cx2-measurement.md`](../research/qft-q7-cx2-measurement.md).
+The ordinary notebook must then still be opened and saved once before Q-7's
+persistence condition can be closed.

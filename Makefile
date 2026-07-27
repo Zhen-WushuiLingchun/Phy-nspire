@@ -20,6 +20,7 @@
 #   eval-link-check    prove the stateful evaluator and its whole backend
 #                      stack link on device
 #   cas-smoke      build an observable on-device symbolic CAS acceptance test
+#   qft-bench      build the real-CX-II Q-7 timing/allocation acceptance tool
 #   clean
 
 DEBUG ?= FALSE
@@ -34,6 +35,8 @@ DISTDIR := dist
 BUILDDIR := build/arm
 CAS_SMOKE_EXE := phy-cas-smoke
 CAS_SMOKE_BUILDDIR := build/arm-cas-smoke
+QFT_BENCH_EXE := phy-qft-bench
+QFT_BENCH_BUILDDIR := build/arm-qft-bench
 NMARKDOWN_ROOT := third_party/nmarkdown
 
 # The nMarkdown formula slice is compiled with the same reduced FreeType and
@@ -189,10 +192,34 @@ CAS_SMOKE_OBJECTS := \
 CAS_SMOKE_ELF := $(DISTDIR)/$(CAS_SMOKE_EXE).elf
 CAS_SMOKE_TNS := $(DISTDIR)/$(CAS_SMOKE_EXE).tns
 
+QFT_BENCH_SOURCES := \
+    src/core/status.c \
+    src/input/modifier.c \
+    src/input/pointer.c \
+    src/gfx/gfx.c \
+    src/ir/ir.c \
+    src/ir/order.c \
+    src/ir/text.c \
+    src/cas/num.c \
+    src/cas/engine.c \
+    src/cas/simplify.c \
+    src/cas/diff.c \
+    src/cas/integrate.c \
+    src/cas/normal.c \
+    src/qft/lorentz.c \
+    src/qft/dirac.c \
+    tests/device/qft_bench.c \
+    src/platform/ndless/platform_ndless.c \
+    src/platform/ndless/crt_compat.c
+QFT_BENCH_OBJECTS := \
+    $(patsubst %.c,$(QFT_BENCH_BUILDDIR)/%.o,$(QFT_BENCH_SOURCES))
+QFT_BENCH_ELF := $(DISTDIR)/$(QFT_BENCH_EXE).elf
+QFT_BENCH_TNS := $(DISTDIR)/$(QFT_BENCH_EXE).tns
+
 .PHONY: all clean size-report symbol-report ir-link-check tensor-link-check \
         cas-link-check geom-link-check ym-link-check color-link-check \
         eval-link-check \
-        cas-smoke check-sdk
+        cas-smoke qft-bench check-sdk
 
 all: $(TNS)
 
@@ -278,8 +305,29 @@ $(CAS_SMOKE_TNS): $(CAS_SMOKE_ELF)
 	@rm -f $@.zehn
 	@tools/size-report.sh $@ $(CAS_SMOKE_ELF)
 
+$(QFT_BENCH_BUILDDIR)/%.o: %.c | check-sdk
+	@mkdir -p $(dir $@)
+	$(GCC) $(GCCFLAGS) -c $< -o $@
+
+$(QFT_BENCH_ELF): $(QFT_BENCH_OBJECTS)
+	@mkdir -p $(DISTDIR)
+	$(LD) $^ -o $@ $(LDFLAGS)
+
+$(QFT_BENCH_TNS): $(QFT_BENCH_ELF)
+	$(GENZEHN) --input $< --output $@.zehn \
+	    --name "Phy QFT Bench" --author "Phy-nspire contributors" \
+	    --version 1 --ndless-min 31 --ndless-rev-min 2022 \
+	    --clickpad-support true --color-support true \
+	    --uses-lcd-blit true --240x320-support false --compress
+	make-prg $@.zehn $@
+	@rm -f $@.zehn
+	@tools/size-report.sh $@ $(QFT_BENCH_ELF)
+
+qft-bench: $(QFT_BENCH_TNS)
+
 cas-smoke: $(CAS_SMOKE_TNS)
 
 clean:
-	rm -rf $(BUILDDIR) $(CAS_SMOKE_BUILDDIR) $(DISTDIR) build/arm-linkcheck \
+	rm -rf $(BUILDDIR) $(CAS_SMOKE_BUILDDIR) $(QFT_BENCH_BUILDDIR) \
+	    $(DISTDIR) build/arm-linkcheck \
 	    build/arm-tensor-linkcheck

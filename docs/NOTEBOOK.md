@@ -126,7 +126,7 @@ braces. Both held modifiers and tap-then-key modifiers are accepted.
 - `test_pointer`: 29 checks over relative contact/motion behavior;
 - `test_modifier`: 8 checks over tapped and held Shift/Ctrl behavior;
 - `tests/fixtures/notebook_frame.digest`: bit-exact 320 × 240 host fixture;
-- strict Windows suite: 29/29; WSL ASan/UBSan/leak suite: 31/31; 89,952
+- strict Windows suite: 29/29; WSL ASan/UBSan/leak suite: 31/31; 90,046
   explicit checks;
 - Ndless r2022 ARM build: 1,099,509 bytes. The evaluator probe retains 15/15
   public APIs behind the complete physics stack and imports no forbidden

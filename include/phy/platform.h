@@ -112,6 +112,15 @@ void phy_free(void *pointer, size_t bytes);
 
 void phy_telemetry_get(phy_telemetry *out_telemetry);
 
+/*
+ * Begin a new peak-allocation measurement window without disturbing the
+ * allocation/free counters or the currently-live byte count.  The next
+ * bytes_peak value is therefore directly comparable with bytes_live sampled
+ * immediately before a bounded operation.  This is instrumentation, not an
+ * operating-system RSS reading.
+ */
+void phy_telemetry_reset_peak(void);
+
 #ifdef __cplusplus
 }
 #endif

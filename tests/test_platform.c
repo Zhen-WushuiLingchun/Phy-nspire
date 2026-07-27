@@ -129,6 +129,33 @@ static void test_clock_is_monotonic(void)
     phy_platform_shutdown();
 }
 
+static void test_peak_telemetry_can_be_rebased(void)
+{
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+
+    void *first = phy_alloc(31u);
+    PHY_CHECK(first != NULL);
+    phy_telemetry telemetry;
+    phy_telemetry_get(&telemetry);
+    PHY_CHECK_EQ_INT(telemetry.bytes_live, 31u);
+    PHY_CHECK_EQ_INT(telemetry.bytes_peak, 31u);
+
+    phy_telemetry_reset_peak();
+    phy_telemetry_get(&telemetry);
+    PHY_CHECK_EQ_INT(telemetry.bytes_live, 31u);
+    PHY_CHECK_EQ_INT(telemetry.bytes_peak, 31u);
+
+    void *second = phy_alloc(17u);
+    PHY_CHECK(second != NULL);
+    phy_telemetry_get(&telemetry);
+    PHY_CHECK_EQ_INT(telemetry.bytes_live, 48u);
+    PHY_CHECK_EQ_INT(telemetry.bytes_peak, 48u);
+
+    phy_free(second, 17u);
+    phy_free(first, 31u);
+    phy_platform_shutdown();
+}
+
 static void test_allocation_telemetry(void)
 {
     PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
@@ -172,6 +199,7 @@ int main(void)
     PHY_TEST_CASE(test_event_queue_order_and_capacity);
     PHY_TEST_CASE(test_event_queue_wraps);
     PHY_TEST_CASE(test_clock_is_monotonic);
+    PHY_TEST_CASE(test_peak_telemetry_can_be_rebased);
     PHY_TEST_CASE(test_allocation_telemetry);
     return PHY_TEST_REPORT("test_platform");
 }

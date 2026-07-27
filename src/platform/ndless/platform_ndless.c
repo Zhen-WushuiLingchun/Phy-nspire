@@ -379,3 +379,8 @@ void phy_telemetry_get(phy_telemetry *out_telemetry)
     }
     *out_telemetry = g_ndless.telemetry;
 }
+
+void phy_telemetry_reset_peak(void)
+{
+    g_ndless.telemetry.bytes_peak = g_ndless.telemetry.bytes_live;
+}

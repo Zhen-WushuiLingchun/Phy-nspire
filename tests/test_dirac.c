@@ -669,6 +669,42 @@ static void test_trace_contracts_before_expansion(void)
     fixture_close(&f);
 }
 
+static void test_q7_benchmark_workloads_are_exact(void)
+{
+    fixture f = fixture_open();
+    static const char *const names[12] = {
+        "q0", "q1", "q2", "q3", "q4", "q5",
+        "q6", "q7", "q8", "q9", "q10", "q11"};
+    phy_ir_ref distinct[8];
+    for (size_t slot = 0u; slot < 8u; ++slot) {
+        distinct[slot] =
+            index_of(&f, names[slot], PHY_IR_INDEX_UPPER);
+    }
+
+    phy_dirac_expr *eight = chain_of(&f, 1u, distinct, 8u);
+    phy_ir_ref output = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(phy_dirac_trace_scalar(eight, 1u, &output), PHY_OK);
+    PHY_CHECK(output != PHY_IR_NULL);
+    PHY_CHECK_EQ_INT(phy_dirac_generated_terms(f.dirac), 105);
+    phy_dirac_expr_destroy(eight);
+
+    phy_ir_ref paired[12];
+    for (size_t slot = 0u; slot < 12u; ++slot) {
+        paired[slot] =
+            index_of(&f, names[slot / 2u],
+                     (slot & 1u) == 0u ? PHY_IR_INDEX_UPPER
+                                      : PHY_IR_INDEX_LOWER);
+    }
+    phy_dirac_expr *twelve = chain_of(&f, 1u, paired, 12u);
+    output = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(phy_dirac_trace_scalar(twelve, 1u, &output), PHY_OK);
+    PHY_CHECK_EQ_INT(output, integer_of(&f, 16384));
+    PHY_CHECK(phy_dirac_generated_terms(f.dirac) > 0u);
+    phy_dirac_expr_destroy(twelve);
+
+    fixture_close(&f);
+}
+
 /* ------------------------------------------------------------- resources */
 
 static void test_resource_limits_fail_transactionally(void)
@@ -712,6 +748,7 @@ int main(void)
     PHY_TEST_CASE(test_symbolic_trace_matches_oracle_exhaustively);
     PHY_TEST_CASE(test_four_slash_trace);
     PHY_TEST_CASE(test_trace_contracts_before_expansion);
+    PHY_TEST_CASE(test_q7_benchmark_workloads_are_exact);
     PHY_TEST_CASE(test_resource_limits_fail_transactionally);
     return PHY_TEST_REPORT("test_dirac");
 }

@@ -22,7 +22,7 @@ Verification:
 - host smoke test — done; the suite covers the platform, relative pointer,
   source language, drawing, notebook, the stateful evaluator, IR, tensor
   storage, differential forms, GR, Lie/QFT foundations, CAS, QFT oracle, and
-  full lifecycle: Windows 29/29, WSL ASan/UBSan/leak 31/31, and 89,952
+  full lifecycle: Windows 29/29, WSL ASan/UBSan/leak 31/31, and 90,046
   explicit checks;
 - generated `.tns` size report — 1,099,509 bytes, 17.5% of the 6 MiB ceiling,
   with the current evaluator and physics stack linked;
@@ -300,9 +300,11 @@ Verification:
   density; the ARM probe retains 22/22 Yang--Mills APIs with 4,524 bytes of
   layer text and no float/libm/soft-float dependency;
 - Dirac resource-limit behavior is host-tested and the whole evaluator stack
-  passes the ARM link/no-soft-float check. The proposed throughput ceilings
-  remain **UNVERIFIED on CX II**; device performance is unmeasured. Contract
-  Q-7's hardware timing and interruption checks remain open.
+  passes the ARM link/no-soft-float check. The dedicated 42,948-byte Q-7
+  benchmark has been built, transferred to the CX II, and read back
+  byte-identically. The proposed throughput ceilings remain **UNVERIFIED on
+  CX II** until that artifact is actually run and its four displayed rows plus
+  a subsequent notebook-save check are recorded.
 - SU(N) colour contract Q-6 is done: 216 direct exact tests, the independent
   C-1...C-7 generalized Gell-Mann oracle, reader-facing evaluator coverage,
   and the 23/23-API ARM link check. The Fierz identity remains explicitly

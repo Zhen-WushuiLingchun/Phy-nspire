@@ -320,10 +320,14 @@ as the rest of the notebook. The Fierz prohibition above remains in force.
 4. No `phy_host_*` symbol appears in the device binary.
 
 **Note.** The core has now passed a real Ndless ARM link/package check, and
-earlier notebook/CAS artifacts ran on the target calculator. The current
-Dirac/QFT evaluator has not yet been timed or stress-tested on the CX II.
+earlier notebook/CAS artifacts ran on the target calculator. A dedicated
+42,948-byte `phy-qft-bench.tns` now exercises the required 4-, 8-, contracted
+12-gamma, and over-limit workloads with the CX II's 32 kHz SP804 counter and
+tracked-heap telemetry. Its instrument definition and pending result table are
+in `research/qft-q7-cx2-measurement.md`. The current Dirac/QFT evaluator has
+not yet been timed or stress-tested by running that artifact on the CX II.
 Everything in reference §8 therefore remains a provisional resource policy
-until this contract's hardware measurements are recorded.
+until the physical rows and the notebook-save check are recorded.
 
 ---
 
@@ -338,7 +342,7 @@ until this contract's hardware measurements are recorded.
 | Q-4 | Dirac traces without `γ⁵` | Q-3 | **done** |
 | Q-5 | Mandelstam variables | Q-1 | **done** |
 | Q-6 | SU(N) colour algebra | Q-1 | **done** |
-| Q-7 | Device build and measurement | Q-4, Q-6 | **ARM link done; CX II timing pending** |
+| Q-7 | Device build and measurement | Q-4, Q-6 | **instrument built; CX II run pending** |
 
 Deferred, with the blocking dependency named, not to be picked up as part of
 this pack: `γ⁵` and chiral projectors; Levi-Civita contraction; Fierz

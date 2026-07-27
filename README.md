@@ -82,7 +82,7 @@ by contract preserves an operator and simplifies only its operands: the head
 survived a round trip and nothing computed.
 
 The strict Windows host suite passes 29/29. The WSL ASan/UBSan/leak suite
-passes 31/31, and the assertion-bearing executables contain 89,952 explicit
+passes 31/31, and the assertion-bearing executables contain 90,046 explicit
 checks.
 
 The current native build is measured at 1,099,509 bytes, 17.5% of the 6 MiB
@@ -120,6 +120,7 @@ Start here:
 - [Roadmap](docs/ROADMAP.md)
 - [ADR-0001: native Ndless architecture](docs/adr/0001-native-ndless-architecture.md)
 - [Initial feasibility evidence](research/feasibility-2026-07-26.md)
+- [QFT Q-7 CX II measurement record](research/qft-q7-cx2-measurement.md)
 - [QFT and gauge theory: MVP source reference](docs/references/QFT_GAUGE.md)
 - [Differential geometry, Lie theory, and scalar/gauge QFT reference pack](docs/references/DIFF_GEOM_LIE_QFT.md)
 - [Agent task pack: Dirac algebra and SU(N)](docs/agent-tasks/QFT_DIRAC.md)

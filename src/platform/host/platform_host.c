@@ -145,6 +145,11 @@ void phy_telemetry_get(phy_telemetry *out_telemetry)
     *out_telemetry = g_host.telemetry;
 }
 
+void phy_telemetry_reset_peak(void)
+{
+    g_host.telemetry.bytes_peak = g_host.telemetry.bytes_live;
+}
+
 /* ---- host-only test hooks ---- */
 
 bool phy_host_push_event(const phy_event *event)
