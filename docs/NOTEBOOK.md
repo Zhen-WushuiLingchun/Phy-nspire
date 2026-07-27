@@ -114,10 +114,10 @@ braces. Both held modifiers and tap-then-key modifiers are accepted.
 - `test_notebook`: 162 checks over exact results, editing, insertion, stale
   results, source/IR agreement, bounds, memory return, selection, `RUN` hit
   testing, Markdown LaTeX integration, 2D metrics, and deterministic pixels;
-- `test_eval`: 847 checks over the stateful evaluator, including the notebook
+- `test_eval`: 918 checks over the stateful evaluator, including the notebook
   integration — state flowing between cells, descriptor outputs, forward
   staleness, and a save/reopen that restores descriptors but not objects;
-- `test_palette`: 512 checks over every category, entry, snippet, and cursor
+- `test_palette`: 561 checks over every category, entry, snippet, and cursor
   bound, and over every CAS snippet actually parsing;
 - `test_formula`: 33 checks over lifecycle, metrics, matrices, RGB565 drawing,
   and malformed-formula recovery;
@@ -126,14 +126,11 @@ braces. Both held modifiers and tap-then-key modifiers are accepted.
 - `test_pointer`: 29 checks over relative contact/motion behavior;
 - `test_modifier`: 8 checks over tapped and held Shift/Ctrl behavior;
 - `tests/fixtures/notebook_frame.digest`: bit-exact 320 × 240 host fixture;
-- strict host suite: 24/24 and 70,824 explicit checks;
-- Ndless r2022 ARM build: **not rebuilt for this phase**. The last measured
-  `.tns` was 1,050,677 bytes, and that figure predates the evaluator. Wiring the
-  geometry, Lie and Yang--Mills layers into the application means
-  `--gc-sections` no longer drops them, so the artifact will grow by
-  approximately the layer text those link checks report; the new total is
-  unmeasured because the Ndless SDK is not installed on the machine this phase
-  was developed on.
+- strict Windows suite: 28/28; WSL ASan/UBSan/leak suite: 30/30; 89,504
+  explicit checks;
+- Ndless r2022 ARM build: 1,095,275 bytes. The evaluator probe retains 15/15
+  public APIs behind the complete physics stack and imports no forbidden
+  float/libm/soft-float helper.
 
 Directional keys on the CX II touchpad are filtered at the platform boundary:
 while one is down, the overlapping touch contact/click report is suppressed.

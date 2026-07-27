@@ -100,6 +100,9 @@ SOURCES := \
     src/gr/gr.c \
     src/lie/lie.c \
     src/qft/scalar.c \
+    src/qft/lorentz.c \
+    src/qft/dirac.c \
+    src/qft/mandelstam.c \
     src/cas/num.c \
     src/cas/engine.c \
     src/cas/simplify.c \

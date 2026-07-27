@@ -67,6 +67,10 @@ PHYSICS_SOURCES=(
     src/tensor/ops.c
     src/gr/gr.c
     src/lie/lie.c
+    src/qft/scalar.c
+    src/qft/lorentz.c
+    src/qft/dirac.c
+    src/qft/mandelstam.c
     src/geom/manifold.c
     src/geom/form.c
     src/geom/exterior.c
@@ -339,8 +343,8 @@ probe_tns=$(wc -c <"$TNS")
 
 printf '\n  %s text as compiled        %8d bytes\n' "$LABEL" "$layer_text"
 printf '  probe .tns (layer + deps)  %8d bytes\n' "$probe_tns"
-printf '\n  Note: dist/phy-nspire.tns still contains none of this. The\n'
-printf '        application does not call the %s yet, so --gc-sections drops\n' \
+printf '\n  Note: this probe is isolated from dist/phy-nspire.tns. The figures\n'
+printf '        above measure the retained %s API and its probe dependencies;\n' \
     "$LABEL"
-printf '        it; the figure above is what wiring it up will pay.\n\n'
+printf '        they are not an incremental product-size measurement.\n\n'
 printf '  OK\n'

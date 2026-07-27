@@ -78,7 +78,10 @@ The evaluated object heads are:
 - gauge — `LieForm`, `GaugeConnection`, `CovariantD`, `FieldStrength`,
   `GaugeVariation`, `Bianchi`, `YangMillsLagrangian`, `ColorComponent`;
 - relativity — `Curvature`, `InverseMetric`, `Christoffel`, `Riemann`,
-  `RiemannMixed`, `Ricci`, `RicciScalar`, `Einstein`;
+  `RiemannMixed`, `Ricci`, `RicciScalar`, `Einstein`, `Kretschmann`,
+  `CovariantDerivative`;
+- QFT — `DiracTrace`, `MandelstamReduce`, `Phi4Lagrangian`, `Phi4EOM`,
+  `Phi4Diagrams`;
 - queries — `Component`, `Degree`, `Dimension`, `Rank`, `ZeroQ`, `EquivalentQ`.
 
 Each of them dispatches onto the corresponding native backend and returns a
@@ -86,12 +89,11 @@ typed value; the argument shapes are in [`EVALUATOR.md`](EVALUATOR.md). None of
 them is preserved as an inert operator: a head the evaluator owns and cannot
 evaluate returns a typed error.
 
-`ScalarField`, `Propagator`, `Vertex`, `TadpoleIntegral` and `BubbleIntegral`
-are the exception. They are reserved and construct typed IR for display and
-persistence, and the bounded `phi^4` layer behind them is **not** wired to the
-evaluator yet. Unknown non-reserved heads remain typed function applications;
-that is the extension point for `DiracTrace`, and it does not grant it evaluator
-semantics prematurely.
+`ScalarField`, `Propagator`, `Vertex`, `TadpoleIntegral`, `BubbleIntegral`,
+`LorentzDot`, and `DiracGamma` are output constructors rather than standalone
+commands. The evaluated QFT heads above create and reduce them. Unknown
+non-reserved heads remain typed function applications and acquire no evaluator
+semantics implicitly.
 
 ## Command registry
 

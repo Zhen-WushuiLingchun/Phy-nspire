@@ -97,10 +97,10 @@ This is the classical connection/curvature foundation, not a full QCD or
 perturbative gauge package. Gauge fixing, Faddeev--Popov ghosts, BRST,
 three-/four-gauge-boson Feynman rules, polarization sums, Ward identities,
 general graph generation, loop reduction, and renormalization are still
-future layers. The notebook parser and command palette preserve typed
+future layers. The notebook parser, command palette, and stateful evaluator
+materialize and compute typed
 `GaugeConnection`, `FieldStrength`, `CovariantD`, `GaugeVariation`, and
-`YangMillsLagrangian` objects, but the stateful notebook evaluator does not yet
-materialize manifold/algebra/form environments from those heads.
+`YangMillsLagrangian` objects over named manifold/algebra/form environments.
 
 ## Comparison oracles
 

@@ -22,12 +22,10 @@ Verification:
 - host smoke test — done; the suite covers the platform, relative pointer,
   source language, drawing, notebook, the stateful evaluator, IR, tensor
   storage, differential forms, GR, Lie/QFT foundations, CAS, QFT oracle, and
-  full lifecycle: 24/24 suites and 70,824 explicit checks;
-- generated `.tns` size report — 1,055,745 bytes against a 6 MiB ceiling was
-  measured after the nMarkdown math integration and is **stale as of the
-  evaluator phase**, which pulls the geometry, Lie and Yang--Mills layers into
-  the linked image for the first time. Not remeasured: no Ndless SDK on the
-  development machine;
+  full lifecycle: Windows 28/28, WSL ASan/UBSan/leak 30/30, and 89,504
+  explicit checks;
+- generated `.tns` size report — 1,095,275 bytes, 17.4% of the 6 MiB ceiling,
+  with the current evaluator and physics stack linked;
 - launch of a Phy-nspire artifact on the real CX II — done on 2026-07-26 with
   the observable CAS smoke screen;
 - clean exit without display corruption — done; `ESC` returned normally to
@@ -42,9 +40,9 @@ Verification:
 Status: the typed expression IR, scalar CAS, persistence shell, first
 nMarkdown-backed LaTeX rendering pass, and the stateful evaluator are
 implemented. The CAS and earlier input shell passed physical smoke tests; the
-persistence + typesetter build still needs calculator acceptance, and the
-evaluator has not been ARM-built at all — see the note at the end of this
-section.
+persistence + typesetter build still needs calculator acceptance. The current
+evaluator is ARM-built and link-checked, but its QFT/GR paths still need
+physical-device timing and acceptance.
 
 Output:
 
@@ -69,7 +67,8 @@ Output:
   scalar/full-form heads, multiple derivatives, and the command registry in
   [`docs/SOURCE_LANGUAGE.md`](SOURCE_LANGUAGE.md);
 - CAS/LaTeX insertion palette — done; richer tensor/physics object palettes
-  are not yet done;
+  now include geometry, GR, Lie/Yang--Mills, Dirac/Mandelstam, and phi4
+  insertion entries; graphical particle/diagram palettes are not yet done;
 - backend-neutral typed expression IR — done, `include/phy/ir.h`, `src/ir`,
   documented in [`docs/IR.md`](IR.md);
 - native scalar algebra and rewriting — done, `include/phy/cas.h`, `src/cas`,
@@ -82,8 +81,8 @@ Output:
 - stateful notebook evaluator — done, `include/phy/eval.h`, `src/eval`,
   documented in [`EVALUATOR.md`](EVALUATOR.md): a per-notebook environment of
   named typed values, `name = value` assignment, and dispatch of every reserved
-  physics head onto the differential-geometry, Lie-algebra, Yang--Mills, tensor
-  and general-relativity backends. This is what made those layers reachable from
+  physics head onto the differential-geometry, Lie-algebra, Yang--Mills, tensor,
+  general-relativity, and bounded QFT backends. This is what made those layers reachable from
   the product: before it they were fully implemented, fully tested, and called
   by nothing, because the notebook handed their heads to the scalar CAS, which
   preserved them.
@@ -96,9 +95,9 @@ Verification:
 - cancellation and expression-limit tests — done for the CAS, `tests/test_cas.c`:
   the step budget, the cancellation hook, and the IR's term limit each surface as
   a typed status and leave both layers validating;
-- IR unit tests — done, `tests/test_ir.c`, 2,577 checks covering interning,
+- IR unit tests — done, `tests/test_ir.c`, 2,586 checks covering interning,
   canonical ordering, the construction ceilings, and text round-trips;
-- CAS unit tests — done, `tests/test_cas.c`, 742 checks covering the normal
+- CAS unit tests — done, `tests/test_cas.c`, 830 checks covering the normal
   form, exact arithmetic and its overflow statuses, differentiation, and the
   zero decision, including the four `sphere_2d` corpus entries whose stated
   trigonometric form differs from the computed one.
@@ -107,20 +106,21 @@ Verification:
   stale outputs, Markdown selection, independent run-badge hit testing, 2D
   metrics, nMarkdown LaTeX integration, memory return, and the framebuffer
   fixture;
-- evaluator tests — done, `tests/test_eval.c`, 847 checks. The physics cases
+- evaluator tests — done, `tests/test_eval.c`, 918 checks. The physics cases
   reproduce, through reader-facing source, results the backend suites already
   certify directly: the U(1) and SU(2) curvature components and vanishing
   Bianchi residuals of `tests/test_yang_mills.c`, the round two-sphere
   curvature of `tests/test_gr.c`, the wedge/`d^2 = 0`/Leibniz/interior-product
   identities of `tests/test_geom.c`, `[T1,T2] = T3` and `K_ab = -2 delta_ab`
-  from `tests/test_lie.c`. The remaining cases cover state flow between cells,
+  from `tests/test_lie.c`, plus Kretschmann/covariant-derivative and bounded
+  Dirac/Mandelstam/phi4 cell paths. The remaining cases cover state flow between cells,
   every typed-error path, the ownership sweep under rebinding and failure, the
   binding ceiling, and save/reopen;
 - formula bridge tests — done, `tests/test_formula.c`, 33 checks covering
   initialization, matrices, metrics, RGB565 rendering, and local error
   recovery;
 - source, palette and pointer tests — done: 217 source-language checks
-  including assignment and reserved-head canonicalization, 512 palette checks
+  including assignment and reserved-head canonicalization, 561 palette checks
   including every CAS snippet parsing, and 29 relative touchpad checks.
 
 The IR carries no simplification, evaluation, or arithmetic: it is the
@@ -133,18 +133,11 @@ CAS APIs survive garbage collection and the probe packages to a 37,720-byte
 observable `phy-cas-smoke.tns` then ran seven symbolic cases on the physical
 CX II on 2026-07-26, displayed 7/7 PASS, and returned cleanly to Documents.
 
-**The evaluator has no device figures.** `make eval-link-check` and
-`tests/device/eval_link_probe.c` exist and hold the layer to the same
-no-float/no-libm/no-soft-float standard, but the Ndless SDK is not installed on
-the machine this phase was developed on, so neither that check nor an ARM build
-has been run. The probe compiles clean under the project warning set with a host
-GCC, and that is the only claim made for it. The same applies to the `.tns` size:
-wiring the geometry, Lie and Yang--Mills layers into the application means
-`--gc-sections` no longer discards them, so the artifact will grow, and by how
-much is unmeasured. `tools/link-check.sh` also gained `src/cas/integrate.c`,
-which `include/phy/cas.h` declares an entry point for and which the script's CAS
-source list had omitted since integration landed — `cas-link-check` could not
-have linked without it.
+The evaluator's real Ndless check now compiles 32 portable sources, retains
+15/15 public evaluator entry points, packages a 110,340-byte isolated probe,
+and contains no float formatter, libm call, or ARM soft-float helper. The
+product is 1,095,275 bytes. These establish ARM link/package and size, not
+physical-device runtime or performance.
 
 ## Phase 2 — tensor and manifold CAS
 
@@ -167,8 +160,9 @@ Output:
 
 - manifolds, charts, metrics, indices, symmetries, contraction, canonical dummy
   indices, covariant derivatives, and differential forms — forms, contraction,
-  raise/lower, and coordinate-metric GR are done; canonical dummy indices and
-  higher-level covariant form syntax remain outstanding;
+  raise/lower, coordinate-metric GR, and component tensor covariant
+  derivatives are done; abstract canonical dummy indices and transition-map
+  syntax remain outstanding;
 - optional xPerm C integration after independent tests pass.
 
 Deferred with a named blocking dependency:
@@ -196,16 +190,18 @@ Verification:
 ## Phase 3 — general relativity and black holes
 
 Status: the first coordinate-metric curvature pipeline is implemented. It
-computes the inverse metric, Christoffel symbols, mixed and covariant Riemann
-tensors, Ricci tensor, scalar curvature, and Einstein tensor through the
-native exact CAS. Host acceptance currently covers Cartesian Minkowski space
-and the round 2-sphere. Geodesics, invariants, the full metric corpus, ARM link
-retention, and physical-device timing remain open.
+computes the inverse metric, Christoffel symbols, mixed/covariant/fully
+contravariant Riemann tensors, Ricci tensor, scalar curvature, Einstein tensor,
+Kretschmann invariant, and component tensor covariant derivatives through the
+native exact CAS. The committed corpus covers Cartesian Minkowski space, the
+round 2-sphere, Schwarzschild, Reissner--Nordstrom, and de Sitter. Geodesics,
+Weyl invariants, Kerr-specific reduction, and physical-device timing remain
+open.
 
 UI commands are done: `Curvature[g]` and the `InverseMetric`, `Christoffel`,
-`Riemann`, `RiemannMixed`, `Ricci`, `RicciScalar` and `Einstein` accessors run
-the pipeline from a notebook cell, and `tests/test_eval.c` reproduces the
-two-sphere result through them.
+`Riemann`, `RiemannMixed`, `Ricci`, `RicciScalar`, `Einstein`,
+`Kretschmann`, and `CovariantDerivative` run from notebook cells, and
+`tests/test_eval.c` reproduces the two-sphere invariants through them.
 
 Output:
 
@@ -244,9 +240,12 @@ integrals. The differential-form/Lie foundation now also supports
 Lie-algebra-valued forms, `D_A`, non-Abelian
 `F=dA+(g/2)[A,A]`, infinitesimal gauge variations, explicit Bianchi residuals,
 and `-1/2 h_ab F^a wedge star_g(F^b)` with a general coordinate metric.
-Lorentz/Dirac/SU(N) reducers, dimensional regularization, general graph
-generation, gauge fixing/ghosts, Ward identities, and renormalization remain
-scoped rather than implemented.
+The four-dimensional Lorentz/Dirac layer now implements typed metric/index
+spaces, momenta and scalar products, Clifford normalisation, contraction,
+multi-spin-line ordering, traces without gamma-five, and explicit Peskin or
+all-incoming Mandelstam routing. Native general `SU(N)` colour reduction,
+dimensional regularization, general graph generation, gauge fixing/ghosts,
+Ward identities, and renormalization remain scoped rather than implemented.
 The MVP boundary, the pinned
 conventions, the algorithm specification and the verified identity set are in
 [`docs/references/QFT_GAUGE.md`](references/QFT_GAUGE.md); the contracts that
@@ -271,15 +270,14 @@ connection/curvature slice are implemented and documented in
 [`docs/QFT_SCALAR.md`](QFT_SCALAR.md), and
 [`docs/YANG_MILLS.md`](YANG_MILLS.md).
 
-The Lie and Yang--Mills halves are reachable from the notebook: `LieGroup`,
+The Lie, Yang--Mills, Dirac/Mandelstam and bounded phi4 slices are reachable
+from the notebook: `LieGroup`,
 `LieAlgebra`, `Generator`, `LieElement`, `LieBracket`, `StructureConstant`,
 `Killing`, `LieForm`, `GaugeConnection`, `CovariantD`, `FieldStrength`,
-`GaugeVariation`, `Bianchi`, `YangMillsLagrangian` and `ColorComponent`
-dispatch onto them. The bounded `phi^4` heads — `ScalarField`, `Propagator`,
-`Vertex`, `TadpoleIntegral`, `BubbleIntegral` — are the one group that still
-only constructs typed IR; wiring them is the next evaluator increment and
-[`docs/EVALUATOR.md`](EVALUATOR.md) records the boundary rather than letting it
-look computed.
+`GaugeVariation`, `Bianchi`, `YangMillsLagrangian`, `ColorComponent`,
+`DiracTrace`, `MandelstamReduce`, `Phi4Lagrangian`, `Phi4EOM`, and
+`Phi4Diagrams` dispatch onto native backends. Typed master-integral and
+gamma/momentum heads remain output vocabulary, not no-op commands.
 
 Verification:
 
@@ -292,11 +290,10 @@ Verification:
   infinitesimal variation, Bianchi residual, and a general-metric quadratic
   density; the ARM probe retains 22/22 Yang--Mills APIs with 4,524 bytes of
   layer text and no float/libm/soft-float dependency;
-- resource-limit behavior on intentionally explosive expressions — **not
-  done**, and the proposed ceilings are **UNVERIFIED**. They are combinatorial
-  arithmetic plus figures quoted from FORM's manual, measured on unspecified
-  workstation hardware. No CX II has been used at any point, so device
-  performance is unmeasured. Contract Q-7 settles this.
+- Dirac resource-limit behavior is host-tested and the whole evaluator stack
+  passes the ARM link/no-soft-float check. The proposed throughput ceilings
+  remain **UNVERIFIED on CX II**; device performance is unmeasured. Contract
+  Q-7's hardware timing and interruption checks remain open.
 
 ## Phase 6 — diagram notebook cells
 

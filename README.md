@@ -43,7 +43,7 @@ exact fractions and powers. Markdown bodies now typeset inline `$...$` /
 `\(...\)` and display `$$...$$` / `\[...\]` mathematics through the pinned
 nMarkdown OpenType MATH engine.
 
-Five native foundations are now in place behind that shell: the typed
+The native foundations now in place behind that shell include the typed
 expression IR; a symbolic scalar computer algebra layer over it with
 exact rational arithmetic, a normal form, expansion, substitution,
 differentiation, bounded exact antiderivatives, and an exact zero decision;
@@ -51,15 +51,18 @@ the component tensor core with charts, dense storage, valence, signed slot
 symmetries, contraction, metric inversion, index raising/lowering, and
 component derivatives; and the differential-geometry layer with oriented
 manifolds, canonical antisymmetric forms, exact wedge, exterior derivative,
-interior product, and both orthonormal/general-metric Hodge duals. A first native GR layer now computes Christoffel,
-Riemann, Ricci, scalar-curvature, and Einstein tensors from a coordinate
-metric; it is host-tested but not yet exposed as notebook commands or timed on
-the calculator.
+interior product, and both orthonormal/general-metric Hodge duals. The native
+GR layer computes Christoffel, Riemann, Ricci, scalar-curvature and Einstein
+tensors, the Kretschmann invariant, and tensor covariant derivatives from a
+coordinate metric. These operations are exposed as notebook commands and
+checked against a committed curvature corpus.
 Finite exact Lie algebras/groups, a bounded scalar `phi^4` model, and a
 classical Yang--Mills layer add structure constants/Jacobi/Killing operations,
-propagator and one-loop master objects, gauge curvature, covariant
-derivatives, gauge variations, Bianchi residuals, and exact
-`F wedge star_g(F)` densities.
+an exact field equation, tree and one-loop graph combinatorics, gauge
+curvature, covariant derivatives, gauge variations, Bianchi residuals, and
+exact `F wedge star_g(F)` densities. A four-dimensional Lorentz/Dirac layer
+adds typed momenta and index spaces, Clifford normalisation and contraction,
+traces without gamma-five, and routed Mandelstam reduction.
 The CAS answers "unknown" rather than guessing outside its decidable class, so
 the scalar operations needed by the tensor, geometry, and GR phases no longer depend on
 integrating Giac.
@@ -70,31 +73,31 @@ named typed values — manifolds, forms, metrics, Lie groups and algebras,
 algebra-valued forms, curvature bundles — and dispatches each reserved physics
 head onto the corresponding native backend. `ExteriorD[alpha]` calls the
 exterior derivative; `FieldStrength[A,g]` calls the Yang--Mills curvature;
-`ZeroQ[Bianchi[A,g]]` proves the identity rather than asserting it. Before this
+`ZeroQ[Bianchi[A,g]]` proves the identity rather than asserting it;
+`DiracTrace[...]`, `MandelstamReduce[...]`, `Phi4Lagrangian[...]`,
+`Phi4EOM[...]`, and `Phi4Diagrams[...]` reach their native QFT backends. Before this
 layer those heads were parsed into typed IR and handed to the scalar CAS, which
 by contract preserves an operator and simplifies only its operands: the head
-survived a round trip and nothing computed. The bounded `phi^4` heads
-(`ScalarField`, `Propagator`, `Vertex`, and the two master integrals) are the
-one group still awaiting an evaluator, and that boundary is documented rather
-than hidden.
+survived a round trip and nothing computed.
 
-The strict Windows host suite passes 24/24 and its assertion-bearing
-executables contain 70,824 explicit checks.
+The strict Windows host suite passes 28/28. The WSL ASan/UBSan/leak suite
+passes 30/30, and the assertion-bearing executables contain 89,504 explicit
+checks.
 
-Device figures are older than the evaluator. `dist/phy-nspire.tns` was last
-measured at 1,055,745 bytes, 16.8% of the 6 MiB ceiling, before the physics
-layers were linked into the application; wiring them means `--gc-sections` no
-longer discards them, and the new size is unmeasured because the machine this
-phase was developed on has no Ndless SDK.
+The current native build is measured at 1,095,275 bytes, 17.4% of the 6 MiB
+ceiling. Its evaluator ARM probe links the complete current physics stack,
+retains 15/15 public evaluator entry points, packages to a `.tns`, and imports
+no libm, floating-point formatter, or ARM soft-float helper.
 
 The native CAS smoke artifact has run on the target CX II and shown all seven
 exact symbolic checks passing. Returning from it restored Documents normally.
 The earlier notebook shell also passed its input and touchpad acceptance. The
 previous 1.0 MiB build containing persistence and nMarkdown LaTeX rendering has
 been transferred through the repository-owned CLI and verified byte-for-byte
-on the calculator. Neither the geometry/Yang--Mills build nor the evaluator
-build has replaced that device file. The separate baseline channel-order check
-remains tracked in [docs/BUILD.md](docs/BUILD.md).
+on the calculator. The current evaluator build still requires an explicit
+calculator acceptance run after transfer; an ARM link and byte-identical upload
+do not establish on-device runtime or performance. The separate baseline
+channel-order check remains tracked in [docs/BUILD.md](docs/BUILD.md).
 
 Start here:
 
@@ -130,7 +133,7 @@ src/tensor/       component tensors: charts, storage, slot symmetries
 src/gr/           coordinate-metric GR curvature pipeline
 src/geom/         manifolds and differential forms: wedge, d, iota, Hodge
 src/lie/          exact finite Lie algebras and built-in group metadata
-src/qft/          scalar phi4 objects and classical Yang--Mills operations
+src/qft/          phi4, Lorentz/Dirac/Mandelstam, and Yang--Mills operations
 src/gfx/          RGB565 primitives and the built-in debug font
 src/render/       typed-IR layout and the narrow nMarkdown C++ bridge
 src/input/        relative pointer tracking

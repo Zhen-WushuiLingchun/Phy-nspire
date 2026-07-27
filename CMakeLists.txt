@@ -219,6 +219,14 @@ if(BUILD_TESTING)
             # correct build working directory for these relative names.
             PHY_FIXTURE_DIR="."
             PHY_ARTIFACT_DIR=".")
+        if(MSVC)
+            # The portable tests intentionally exercise ISO C fopen paths.
+            # MSVC's C4996 is a vendor deprecation, not a safety diagnostic;
+            # keep all other warnings fatal without rewriting the tests around
+            # the non-portable fopen_s signature.
+            target_compile_definitions(
+                ${suite} PRIVATE _CRT_SECURE_NO_WARNINGS)
+        endif()
         add_test(NAME ${suite} COMMAND ${suite})
     endforeach()
 

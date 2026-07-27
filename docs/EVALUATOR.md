@@ -146,7 +146,29 @@ representation trace form explicitly.
 
 `Curvature[g]` runs the whole coordinate-metric pipeline; `InverseMetric`,
 `Christoffel`, `Riemann`, `RiemannMixed`, `Ricci`, `RicciScalar` and `Einstein`
-read parts of the result.
+read parts of the result. `Kretschmann[c]` performs and caches the more
+expensive four-index contraction on demand. `CovariantDerivative[T,c]`
+constructs the full component tensor `nabla T`, with the lower derivative slot
+prepended.
+
+### Bounded QFT
+
+| Spelling | Backend |
+| --- | --- |
+| `DiracTrace[{mu,nu,...}]` | four-dimensional `phy_dirac_trace_scalar`, with bare names interpreted as upper Lorentz indices |
+| `DiracTrace[{Up[mu,Lorentz],Down[nu,Lorentz],...}]` | the same, with explicit variance |
+| `MandelstamReduce[expr,{p1,p2,p3,p4},{m1,m2,m3,m4},Peskin]` | routed `2 -> 2` kinematics |
+| the same with `AllIncoming` | FORM/FeynCalc all-incoming routing |
+| `Phi4Lagrangian[phi,m,lambda,D]` | exact real-scalar model density |
+| `Phi4EOM[phi,m,lambda,D]` | exact equation-of-motion left-hand side |
+| `Phi4Diagrams[phi,m,lambda,D,s,t,u]` | tree amplitude and four bounded one-loop expressions |
+
+`DiracTrace` is deliberately four-dimensional and excludes gamma-five.
+`MandelstamReduce` requires the routing keyword because the sign of the
+third/fourth external momenta is not inferable from the symbols. The loop
+entries returned by `Phi4Diagrams` are exact combinatorial coefficients times
+typed `TadpoleIntegral`/`BubbleIntegral` masters; they are not numerical
+integrals or dimensional-regularization results.
 
 ### Queries
 
@@ -170,14 +192,12 @@ and `a/2` as `a * 2^-1`. Sums are homogeneous, and a product admits at most one
 object factor, because the product of two forms is the wedge and has its own
 spelling.
 
-## Not evaluated yet
+## Output constructors
 
-`ScalarField`, `Propagator`, `Vertex`, `TadpoleIntegral` and `BubbleIntegral`
-are reserved, parse to typed IR, and have **no evaluator**. The bounded real
-`phi^4` layer of [`QFT_SCALAR.md`](QFT_SCALAR.md) is implemented and is the next
-increment; until it is wired, those heads are display and persistence only, and
-`tests/test_eval.c` pins that so changing it is a deliberate act rather than a
-side effect.
+`ScalarField`, `Propagator`, `Vertex`, `TadpoleIntegral`, `BubbleIntegral`,
+`LorentzDot`, and `DiracGamma` are typed output vocabulary. They remain visible
+IR rather than pretending to be independent commands. The reader-facing
+commands above construct and reduce them through the native backends.
 
 ## Ownership
 
@@ -242,7 +262,7 @@ expression still fails as a typed `PHY_ERR_NODE_LIMIT`.
 
 ## Verification
 
-`tests/test_eval.c`, 847 checks. The physics cases deliberately reproduce,
+`tests/test_eval.c`, 918 checks. The physics cases deliberately reproduce,
 through reader-facing source, results the backend suites already certify
 directly:
 
@@ -253,7 +273,10 @@ directly:
 - `delta F = g[F, alpha]` and `delta A = D_A alpha` agreeing with the branch the
   evaluator selects from the operand degree;
 - the round two-sphere of `tests/test_gr.c`: `R = 2/a^2`, the two Christoffel
-  symbols, `R_{theta phi theta phi}`, and a vanishing Einstein tensor;
+  symbols, `R_{theta phi theta phi}`, a vanishing Einstein tensor,
+  `K = 4/a^4`, and a vanishing covariant derivative of Ricci;
+- four-dimensional Dirac traces, both routed Mandelstam conventions, and the
+  exact phi4 Lagrangian/EOM/tree-plus-loop set;
 - graded commutativity of the wedge, `d^2 = 0`, the graded Leibniz rule, and
   `iota_v iota_v = 0` from `tests/test_geom.c`;
 - `[T1,T2] = T3`, structure-constant antisymmetry, and `K_ab = -2 delta_ab` from
@@ -274,13 +297,13 @@ palette that inserts something the evaluator rejects is worse than no palette.
 The ARM link check is `make eval-link-check` and
 `tests/device/eval_link_probe.c`: 15 declared entry points, the whole physics
 stack behind one dispatcher, and the same no-float/no-libm/no-soft-float
-standard the CAS and geometry layers are held to. **It has not been run**: the
-Ndless SDK is not installed on the machine this phase was developed on. The
-probe compiles clean under the same warning set with a host GCC; the device
-figures are unmeasured and are not quoted anywhere.
+standard the CAS and geometry layers are held to. It now links 32 portable
+sources, retains 15/15 public evaluator entry points, contains no forbidden
+float/libm/soft-float dependency, and packages as a 110,340-byte isolated
+probe. That probe size includes its dependencies and is not an incremental
+product-size measurement.
 
 One consequence of this phase that the earlier link-check reports called out as
-future work has now happened: the application genuinely calls the geometry, Lie
-and Yang--Mills layers, so `--gc-sections` no longer drops them and
-`dist/phy-nspire.tns` will contain them. The size effect is likewise unmeasured
-here.
+future work has now happened: the application genuinely calls the geometry,
+Lie, Yang--Mills, and QFT layers, so `--gc-sections` no longer drops them.
+`dist/phy-nspire.tns` is currently 1,095,275 bytes.

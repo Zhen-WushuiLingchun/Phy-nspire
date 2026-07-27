@@ -309,10 +309,11 @@ which exists yet.
    notebook remains saveable afterwards.
 4. No `phy_host_*` symbol appears in the device binary.
 
-**Note.** No hardware has been used in any work so far. Everything in reference
-§8 is either combinatorial arithmetic or a figure quoted from FORM's manual.
-This contract is where that changes, and until it is done the resource policy
-is a proposal.
+**Note.** The core has now passed a real Ndless ARM link/package check, and
+earlier notebook/CAS artifacts ran on the target calculator. The current
+Dirac/QFT evaluator has not yet been timed or stress-tested on the CX II.
+Everything in reference §8 therefore remains a provisional resource policy
+until this contract's hardware measurements are recorded.
 
 ---
 
@@ -321,13 +322,13 @@ is a proposal.
 | ID | Contract | Depends on | Status |
 | --- | --- | --- | --- |
 | Q-0 | Numeric oracle and golden cases | — | **done** |
-| Q-1 | Lorentz index and scalar-product objects | `include/phy/ir.h`, `docs/IR.md` — **merged on `main`** | **ready** |
-| Q-2 | Gamma objects, Clifford normalisation | Q-1 | pending |
-| Q-3 | Lorentz contraction | Q-2 | pending |
-| Q-4 | Dirac traces without `γ⁵` | Q-3 | pending |
-| Q-5 | Mandelstam variables | Q-1 | pending |
+| Q-1 | Lorentz index and scalar-product objects | `include/phy/ir.h`, `docs/IR.md` | **done** |
+| Q-2 | Gamma objects, Clifford normalisation | Q-1 | **done** |
+| Q-3 | Lorentz contraction | Q-2 | **done** |
+| Q-4 | Dirac traces without `γ⁵` | Q-3 | **done** |
+| Q-5 | Mandelstam variables | Q-1 | **done** |
 | Q-6 | SU(N) colour algebra | Q-1 | pending |
-| Q-7 | Device build and measurement | Q-4, Q-6 | pending |
+| Q-7 | Device build and measurement | Q-4, Q-6 | **ARM link done; CX II timing pending** |
 
 Deferred, with the blocking dependency named, not to be picked up as part of
 this pack: `γ⁵` and chiral projectors; Levi-Civita contraction; Fierz

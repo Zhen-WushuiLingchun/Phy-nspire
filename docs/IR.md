@@ -295,7 +295,7 @@ builders do not recurse.
 
 ## Testing
 
-`tests/test_ir.c`, 2,577 checks. The suite leans throughout on interning:
+`tests/test_ir.c`, 2,586 checks. The suite leans throughout on interning:
 building the same expression by two different routes and comparing refs tests
 canonicalization, not just construction.
 

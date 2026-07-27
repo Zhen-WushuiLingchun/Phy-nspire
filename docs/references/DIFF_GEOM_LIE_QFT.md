@@ -39,8 +39,9 @@ As of 2026-07-27, the native backend implements:
 Lie derivative/pullback/transition maps, automatic matrix-generator
 recognition, roots/weights, perturbative Yang--Mills vertices, ghosts/BRST,
 Ward identities, general diagram generation, and loop reduction remain
-deferred. Typed notebook heads and palettes exist, but the stateful notebook
-environment is not yet wired to these backend objects.
+deferred. Typed notebook heads and palettes now reach the differential-form,
+Lie/Yang--Mills, bounded phi4, Dirac-trace, and Mandelstam backends through the
+stateful evaluator.
 
 ## Primary software oracles
 

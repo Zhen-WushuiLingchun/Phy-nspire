@@ -170,11 +170,14 @@ typedef enum {
  * pointer lives in the environment's object table, which is what destroys it;
  * a value is for reading and for identity.
  *
- * Charts and manifolds are the exception and stay mutable. Not by preference:
+ * Charts, manifolds, and curvature bundles are the exceptions and stay
+ * mutable. Not by preference:
  * phy_tensor_create takes a mutable chart and phy_form_create a mutable
  * manifold, because creating an object *on* one of them registers with it. A
  * const view of a manifold cannot carry a form, so this layer would only be
- * casting the qualifier away at every construction site.
+ * casting the qualifier away at every construction site. A curvature bundle
+ * lazily caches its explicitly requested Kretschmann tensor/invariant, so
+ * pretending it is const would likewise force an unsafe cast in the evaluator.
  */
 typedef struct {
     phy_value_kind kind;
@@ -188,7 +191,7 @@ typedef struct {
         const phy_lie_algebra *algebra;
         const phy_lie_element *element;
         const phy_lie_form *lie_form;
-        const phy_gr_result *curvature;
+        phy_gr_result *curvature;
     } as;
 } phy_value;
 

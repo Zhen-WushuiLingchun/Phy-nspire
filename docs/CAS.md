@@ -310,7 +310,7 @@ boundary.
 
 ## Testing
 
-`tests/test_cas.c`, 742 checks. Expressions are written in the IR's text format
+`tests/test_cas.c`, 830 checks. Expressions are written in the IR's text format
 and parsed, so a case reads as the mathematics it is about; results are checked
 both against a serialized normal form, which pins the exact shape, and through
 the zero decision, which pins the value.

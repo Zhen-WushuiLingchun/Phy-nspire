@@ -270,7 +270,7 @@ static phy_status publish(phy_env *env, phy_value_kind kind, void *object,
         value.as.lie_form = (const phy_lie_form *)object;
         break;
     case PHY_VALUE_CURVATURE:
-        value.as.curvature = (const phy_gr_result *)object;
+        value.as.curvature = (phy_gr_result *)object;
         break;
     default:
         return PHY_ERR_INVALID_ARGUMENT;
@@ -1205,7 +1205,7 @@ static phy_status eval_kretschmann(phy_env *env, phy_ir_ref expr,
     }
     phy_ir_ref scalar = PHY_IR_NULL;
     status = phy_gr_kretschmann(
-        env->cas, (phy_gr_result *)bundle.as.curvature, &scalar);
+        env->cas, bundle.as.curvature, &scalar);
     if (status == PHY_OK) {
         *out_value = scalar_value(scalar);
     }
