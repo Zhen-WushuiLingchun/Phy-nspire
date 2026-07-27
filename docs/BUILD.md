@@ -146,14 +146,20 @@ installed.
    ```sh
    cd tools/nlinkctl
    cargo build --release
-   target/release/phy-nlinkctl deploy ../../dist/phy-nspire.tns
+   target/release/phy-nlinkctl sync \
+     --upload ../../dist/phy-nspire.tns /phy-nspire/phy-nspire.tns \
+     --upload ../../examples/phy-nspire-cas-tour.tns \
+              /phy-nspire/notebooks/phy-nspire-cas-tour.tns
    ```
 
    Under `usbipd`/WSL, run the binary through `wsl.exe -u root` so libusb can
    open the forwarded device node. The default 1280-byte CX II packets, bounded
-   ACK retransmission, SHA-256 readback, and rollback rename avoid the
+   ACK retransmission, complete-file retries, memory-mapped inputs, SHA-256
+   readback, NNSE plus CSP receive acknowledgements, deferred out-of-order
+   responses, 250 ms inter-service settling, and rollback rename avoid the
    multi-minute hang and in-place corruption possible with the upstream
-   libnspire defaults. See [`tools/nlinkctl/README.md`](../tools/nlinkctl/README.md).
+   libnspire defaults. `sync` keeps one handshake across any number of project
+   files. See [`tools/nlinkctl/README.md`](../tools/nlinkctl/README.md).
 3. Open it from the Documents browser.
 4. Confirm startup shows an empty `Untitled` notebook.
 5. Use `+MD`, put `LaTeX` in the heading, press `TAB`, and enter

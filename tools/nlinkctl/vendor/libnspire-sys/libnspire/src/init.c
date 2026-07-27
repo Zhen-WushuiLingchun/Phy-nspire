@@ -45,6 +45,10 @@ int nspire_init(nspire_handle_t **ptr, libusb_device_handle *dev, bool is_cx2) {
 	h->connected = 0;
 	h->seq = 1;
 	h->cx2_handshake_complete = false;
+	h->cx2_rx_pending_size = 0;
+	h->cx2_deferred_packet_size = 0;
+	h->cx2_last_stream_seqno = 0;
+	h->cx2_last_stream_seqno_valid = false;
 
 	if (!h->is_cx2) {
 		// Wait for an address request

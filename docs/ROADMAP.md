@@ -40,9 +40,10 @@ Verification:
 Status: the typed expression IR, scalar CAS, persistence shell, first
 nMarkdown-backed LaTeX rendering pass, and the stateful evaluator are
 implemented. The CAS and earlier input shell passed physical smoke tests; the
-persistence + typesetter build still needs calculator acceptance. The current
-evaluator is ARM-built and link-checked, but its QFT/GR paths still need
-physical-device timing and acceptance.
+persistence + typesetter + evaluator build and exhaustive tour notebook are
+now byte-identical on the calculator, but still need an interactive calculator
+acceptance run. The current evaluator is ARM-built and link-checked, but its
+QFT/GR paths still need physical-device timing and acceptance.
 
 Output:
 

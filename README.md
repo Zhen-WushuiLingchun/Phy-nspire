@@ -109,12 +109,13 @@ no libm, floating-point formatter, or ARM soft-float helper.
 The native CAS smoke artifact has run on the target CX II and shown all seven
 exact symbolic checks passing. Returning from it restored Documents normally.
 The earlier notebook shell also passed its input and touchpad acceptance. The
-previous 1.0 MiB build containing persistence and nMarkdown LaTeX rendering has
-been transferred through the repository-owned CLI and verified byte-for-byte
-on the calculator. The current evaluator build still requires an explicit
-calculator acceptance run after transfer; an ARM link and byte-identical upload
-do not establish on-device runtime or performance. The separate baseline
-channel-order check remains tracked in [docs/BUILD.md](docs/BUILD.md).
+current 1,105,773-byte evaluator build and the 13,588-byte exhaustive CAS tour
+notebook were transferred through the repository-owned CLI on 2026-07-27 and
+verified byte-for-byte by calculator readback. The evaluator build still
+requires an explicit calculator acceptance run after transfer; an ARM link and
+byte-identical upload do not establish on-device runtime or performance. The
+separate baseline channel-order check remains tracked in
+[docs/BUILD.md](docs/BUILD.md).
 
 Start here:
 

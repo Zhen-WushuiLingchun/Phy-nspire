@@ -16,6 +16,8 @@
 */
 
 #include <string.h>
+#include <stdio.h>
+#include <stdlib.h>
 
 #include "handle.h"
 #include "error.h"
@@ -79,6 +81,7 @@ end:
 int nspire_file_read(nspire_handle_t *handle, const char *path,
 		void* data, size_t size, size_t *total_bytes, nspire_callback cb, void *cb_data) {
 	int ret;
+	const char *stage = "service-connect";
 	size_t len;
 	uint8_t buffer[1440], *ptr = data;
 	uint16_t result;
@@ -87,16 +90,20 @@ int nspire_file_read(nspire_handle_t *handle, const char *path,
 	if ( (ret = service_connect(handle, 0x4060)) )
 		return ret;
 
+	stage = "build-request";
 	if ( (ret = data_build("hs", buffer, packet_max_datasize(handle), &len,
 			0x0701, path)) )
 		goto end;
 
+	stage = "send-request";
 	if ( (ret = data_write(handle, buffer, len)) )
 		goto end;
 
+	stage = "read-metadata";
 	if ( (ret = data_read(handle, buffer, packet_max_datasize(handle), NULL)) )
 		goto end;
 
+	stage = "parse-metadata";
 	if ( (ret = data_scan("h000000000w", buffer, packet_max_datasize(handle),
 			&result, &data_len)) )
 		goto end;
@@ -106,6 +113,7 @@ int nspire_file_read(nspire_handle_t *handle, const char *path,
 		goto end;
 	}
 
+	stage = "start-stream";
 	if ( (ret = data_write8(handle, 0x04)) )
 		goto end;
 
@@ -113,6 +121,7 @@ int nspire_file_read(nspire_handle_t *handle, const char *path,
 
 	size_t maxsize = packet_max_datasize(handle) - 1;
 
+	stage = "read-stream";
 	while (data_len) {
 		len = (maxsize < data_len) ? maxsize : data_len;
 
@@ -133,11 +142,14 @@ int nspire_file_read(nspire_handle_t *handle, const char *path,
 		cb(size, cb_data);
 	}
 
+	stage = "finish-stream";
 	if ( (ret = data_write16(handle, 0xFF00)) )
 		goto end;
 
 	ret = NSPIRE_ERR_SUCCESS;
 end:
+	if (ret && getenv("NSPIRE_TRACE_SERVICES"))
+		fprintf(stderr, "nspire_file_read stage=%s ret=%d\n", stage, ret);
 	service_disconnect(handle);
 	return ret;
 }

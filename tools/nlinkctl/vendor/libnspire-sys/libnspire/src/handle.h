@@ -20,9 +20,13 @@
 
 #include <stdbool.h>
 #include <inttypes.h>
+#include <stddef.h>
 
 #include "api/handle.h"
 #include "usb.h"
+
+#define NSP_CX2_RX_BUFFER_SIZE 4096
+#define NSP_CX2_DEFERRED_PACKET_SIZE 1536
 
 struct nspire_handle {
 	usb_device_t device;
@@ -33,6 +37,12 @@ struct nspire_handle {
 
 	bool is_cx2;
 	bool cx2_handshake_complete;
+	uint8_t cx2_rx_pending[NSP_CX2_RX_BUFFER_SIZE];
+	size_t cx2_rx_pending_size;
+	uint8_t cx2_deferred_packet[NSP_CX2_DEFERRED_PACKET_SIZE];
+	size_t cx2_deferred_packet_size;
+	uint16_t cx2_last_stream_seqno;
+	bool cx2_last_stream_seqno_valid;
 };
 
 #endif

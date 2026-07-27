@@ -102,10 +102,13 @@ int data_read(nspire_handle_t *handle, void *ptr, size_t maxlen, size_t *actual)
 			return ret;
 
 		if (p.dst_sid == handle->host_sid) {
-			// Acks are handled a level lower only, in packet_recv
-			if(handle->is_cx2)
-				break;
-
+			/*
+			 * CX II's NNSE ACK confirms delivery of the outer USB frame. The
+			 * inner NavNet/CSP packet still needs its own ACK; without it a
+			 * physical calculator sends one receive window and then stalls.
+			 * packet_send_cx2 now defers any next data response that races this
+			 * ACK, so the normal CSP acknowledgement is safe on CX II too.
+			 */
 			if ( (ret = packet_ack(handle, p)) )
 				return ret;
 			break;

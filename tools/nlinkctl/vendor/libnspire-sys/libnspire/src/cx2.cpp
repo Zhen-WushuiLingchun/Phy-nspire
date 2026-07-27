@@ -184,36 +184,67 @@ static uint16_t compute_checksum(const uint8_t *data, uint32_t size)
 	return acc;
 }
 
-static bool readPacket(libusb_device_handle *handle, NNSEMessage *message, int maxlen, int timeoutMs)
+static bool readPacket(struct nspire_handle *nsp_handle, NNSEMessage *message, int maxlen, int timeoutMs)
 {
-	if(maxlen < sizeof(NNSEMessage))
+	if(maxlen < (int)sizeof(NNSEMessage))
 		return false;
 
-	int transferred = 0;
-	memset(message, 0, sizeof(NNSEMessage));
-	int r = libusb_bulk_transfer(handle, 0x81, reinterpret_cast<unsigned char*>(message), maxlen, &transferred, timeoutMs);
-
-	if(r < 0
-		|| transferred < sizeof(NNSEMessage))
-		return false;
-
-	const auto completeLength = ntohs(message->length);
-
-	if(completeLength < sizeof(NNSEMessage)
-		|| completeLength > maxlen)
-		return false;
-
-	uint8_t *data = reinterpret_cast<uint8_t*>(message) + transferred;
-	auto remainingLength = completeLength - transferred;
-	while(remainingLength > 0)
+	auto *handle = nsp_handle->device.dev;
+	while(nsp_handle->cx2_rx_pending_size < sizeof(NNSEMessage))
 	{
-		r = libusb_bulk_transfer(handle, 0x81, data, remainingLength, &transferred, timeoutMs);
-		if(r < 0)
+		int transferred = 0;
+		const int capacity = (int)(NSP_CX2_RX_BUFFER_SIZE - nsp_handle->cx2_rx_pending_size);
+		if(capacity <= 0)
 			return false;
-
-		data += transferred;
-		remainingLength -= transferred;
+		const int r = libusb_bulk_transfer(
+			handle,
+			0x81,
+			nsp_handle->cx2_rx_pending + nsp_handle->cx2_rx_pending_size,
+			capacity,
+			&transferred,
+			timeoutMs);
+		if(r < 0 || transferred <= 0)
+			return false;
+		nsp_handle->cx2_rx_pending_size += (size_t)transferred;
 	}
+
+	NNSEMessage pendingHeader = {};
+	memcpy(&pendingHeader, nsp_handle->cx2_rx_pending, sizeof(pendingHeader));
+	const int completeLength = ntohs(pendingHeader.length);
+	if(completeLength < (int)sizeof(NNSEMessage)
+		|| completeLength > maxlen
+		|| completeLength > (int)NSP_CX2_RX_BUFFER_SIZE)
+	{
+		nsp_handle->cx2_rx_pending_size = 0;
+		return false;
+	}
+
+	while(nsp_handle->cx2_rx_pending_size < (size_t)completeLength)
+	{
+		int transferred = 0;
+		const int capacity = (int)(NSP_CX2_RX_BUFFER_SIZE - nsp_handle->cx2_rx_pending_size);
+		if(capacity <= 0)
+			return false;
+		const int r = libusb_bulk_transfer(
+			handle,
+			0x81,
+			nsp_handle->cx2_rx_pending + nsp_handle->cx2_rx_pending_size,
+			capacity,
+			&transferred,
+			timeoutMs);
+		if(r < 0 || transferred <= 0)
+			return false;
+		nsp_handle->cx2_rx_pending_size += (size_t)transferred;
+	}
+
+	memcpy(message, nsp_handle->cx2_rx_pending, (size_t)completeLength);
+	const size_t remaining = nsp_handle->cx2_rx_pending_size - (size_t)completeLength;
+	if(remaining)
+		memmove(
+			nsp_handle->cx2_rx_pending,
+			nsp_handle->cx2_rx_pending + completeLength,
+			remaining);
+	nsp_handle->cx2_rx_pending_size = remaining;
 
 #ifdef DEBUG
 	printf("Got packet:\n");
@@ -277,6 +308,22 @@ template <typename T> T* messageCast(NNSEMessage *message)
 static void handlePacket(struct nspire_handle *nsp_handle, NNSEMessage *message, uint8_t **streamdata = nullptr, int *streamsize = nullptr)
 {
 	auto *handle = nsp_handle->device.dev;
+	if(getenv("NSPIRE_TRACE_SERVICES"))
+	{
+		uint32_t payloadHash = 2166136261u;
+		const int payloadLength = ntohs(message->length) - (int)sizeof(NNSEMessage);
+		for(int i = 0; i < payloadLength; ++i)
+			payloadHash = (payloadHash ^ getPacketData(message)[i]) * 16777619u;
+		fprintf(
+			stderr,
+			"nnse service=%02x reqAck=%02x seq=%04x length=%u payload=%08x capture=%d\n",
+			message->service,
+			message->reqAck,
+			ntohs(message->seqno),
+			(unsigned)ntohs(message->length),
+			payloadHash,
+			streamdata ? 1 : 0);
+	}
 
 	if(message->dest != AddrMe && message->dest != AddrAll)
 	{
@@ -309,6 +356,17 @@ static void handlePacket(struct nspire_handle *nsp_handle, NNSEMessage *message,
 		if(!writePacket(handle, &ack))
 			printf("Failed to ack\n");
 	}
+
+	/*
+	 * Bit 0x08 appears both on retries and on later packets in a physical CX II
+	 * receive window. Suppress only an already delivered stream sequence.
+	 * Dropping every flagged packet loses legitimate file data.
+	 */
+	if((message->service & ~AckFlag) == StreamService
+		&& (message->reqAck & 8)
+		&& nsp_handle->cx2_last_stream_seqno_valid
+		&& nsp_handle->cx2_last_stream_seqno == message->seqno)
+		return;
 
 	switch(message->service & ~AckFlag)
 	{
@@ -392,7 +450,11 @@ static void handlePacket(struct nspire_handle *nsp_handle, NNSEMessage *message,
 		case StreamService:
 		{
 			if(streamdata)
+			{
 				*streamdata = getPacketData(message);
+				nsp_handle->cx2_last_stream_seqno = message->seqno;
+				nsp_handle->cx2_last_stream_seqno_valid = true;
+			}
 			if(streamsize)
 				*streamsize = ntohs(message->length) - sizeof(NNSEMessage);
 
@@ -408,18 +470,45 @@ static void handlePacket(struct nspire_handle *nsp_handle, NNSEMessage *message,
 	printf("Ignoring packet.\n");
 }
 
+static bool deferStreamPacket(struct nspire_handle *nsp_handle, const NNSEMessage *message)
+{
+	const size_t length = ntohs(message->length);
+	if((message->service & ~AckFlag) != StreamService
+		|| (message->service & AckFlag) != 0
+		|| message->dest != AddrMe
+		|| length < sizeof(NNSEMessage)
+		|| length > NSP_CX2_DEFERRED_PACKET_SIZE)
+		return false;
+
+	/*
+	 * The calculator can send the service response before the NNSE ACK for
+	 * the request that triggered it (notably the 0x04 "start file read"
+	 * command). packet_send_cx2 must ACK that response, but the CSP payload
+	 * belongs to the following packet_recv_cx2 call. Preserve one response
+	 * instead of consuming it while waiting for the transport ACK.
+	 */
+	if(nsp_handle->cx2_deferred_packet_size == 0)
+	{
+		memcpy(nsp_handle->cx2_deferred_packet, message, length);
+		nsp_handle->cx2_deferred_packet_size = length;
+		return true;
+	}
+
+	NNSEMessage queuedHeader = {};
+	memcpy(&queuedHeader, nsp_handle->cx2_deferred_packet, sizeof(queuedHeader));
+	return queuedHeader.seqno == message->seqno;
+}
+
 static bool assureReady(struct nspire_handle *nsp_handle)
 {
 	if(nsp_handle->cx2_handshake_complete)
 		return true;
 
-	auto *handle = nsp_handle->device.dev;
-
 	const int maxlen = sizeof(NNSEMessage) + 1472;
 	NNSEMessage * const message = reinterpret_cast<NNSEMessage*>(malloc(maxlen));
 	for(int i = 10; i-- && !nsp_handle->cx2_handshake_complete;)
 	{
-		if(!readPacket(handle, message, maxlen, handshakeTimeoutMs()))
+		if(!readPacket(nsp_handle, message, maxlen, handshakeTimeoutMs()))
 			continue;
 
 		handlePacket(nsp_handle, message);
@@ -472,14 +561,16 @@ int packet_send_cx2(struct nspire_handle *nsp_handle, char *data, int size)
 		 */
 		for(int reads = 4; reads-- && !acked;)
 		{
-			if(!readPacket(handle, message, maxlen, ackTimeoutMs()))
+			if(!readPacket(nsp_handle, message, maxlen, ackTimeoutMs()))
 				break;
 
+			const bool matchingAck = message->dest == AddrMe
+				&& message->service == (StreamService | AckFlag)
+				&& message->seqno == msg->seqno;
+			const bool responseQueued = deferStreamPacket(nsp_handle, message);
 			handlePacket(nsp_handle, message);
 
-			if(message->dest == AddrMe
-				&& message->service == (StreamService | AckFlag)
-				&& message->seqno == msg->seqno)
+			if(matchingAck || responseQueued)
 				acked = true;
 		}
 	}
@@ -498,16 +589,23 @@ int packet_recv_cx2(struct nspire_handle *nsp_handle, char *data, int size)
 	if(!assureReady(nsp_handle))
 		return -NSPIRE_ERR_BUSY;
 
-	auto *handle = nsp_handle->device.dev;
-
 	const int maxlen = sizeof(NNSEMessage) + 1472;
 	NNSEMessage * const message = reinterpret_cast<NNSEMessage*>(malloc(maxlen));
 
 	uint8_t *streamdata = nullptr;
 	int streamsize = 0;
+	if(nsp_handle->cx2_deferred_packet_size)
+	{
+		memcpy(message, nsp_handle->cx2_deferred_packet, nsp_handle->cx2_deferred_packet_size);
+		nsp_handle->cx2_deferred_packet_size = 0;
+		streamdata = getPacketData(message);
+		streamsize = ntohs(message->length) - sizeof(NNSEMessage);
+		nsp_handle->cx2_last_stream_seqno = message->seqno;
+		nsp_handle->cx2_last_stream_seqno_valid = true;
+	}
 	for(int i = 10; i-- && !streamdata;)
 	{
-		if(!readPacket(handle, message, maxlen, handshakeTimeoutMs()))
+		if(!readPacket(nsp_handle, message, maxlen, handshakeTimeoutMs()))
 			continue;
 
 		handlePacket(nsp_handle, message, &streamdata, &streamsize);

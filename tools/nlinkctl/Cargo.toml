@@ -9,6 +9,7 @@ publish = false
 [dependencies]
 clap = { version = "4.5", features = ["derive"] }
 libnspire = { version = "=0.2.3", default-features = false }
+memmap2 = "0.9"
 rusb = "=0.6.5"
 sha2 = "0.10"
 

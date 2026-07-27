@@ -8,15 +8,21 @@
 use std::env;
 use std::error::Error;
 use std::ffi::OsString;
-use std::fs;
+use std::fs::{self, File};
 use std::path::PathBuf;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::thread;
+use std::time::Duration;
 
 use clap::{Args, Parser, Subcommand, ValueEnum};
 use libnspire::{dir::EntryType, Handle, PID, PID_CX2, VID};
+use memmap2::{Mmap, MmapOptions};
 use rusb::GlobalContext;
 use sha2::{Digest, Sha256};
 
 type Result<T> = std::result::Result<T, Box<dyn Error>>;
+
+static SERVICE_SETTLE_MS: AtomicU64 = AtomicU64::new(250);
 
 #[derive(Debug, Parser)]
 #[command(
@@ -46,6 +52,15 @@ struct Cli {
     /// Number of times to transmit a packet when its ACK is lost.
     #[arg(long, default_value_t = 4, global = true)]
     ack_retries: u32,
+
+    /// Number of complete file-service attempts before giving up.
+    #[arg(long, default_value_t = 3, global = true)]
+    file_attempts: u32,
+
+    /// Quiet interval after every calculator service completes. usbipd and
+    /// some CX II firmware revisions need this before opening the next service.
+    #[arg(long, default_value_t = 250, global = true)]
+    service_settle_ms: u64,
 
     #[command(subcommand)]
     command: Command,
@@ -77,6 +92,9 @@ enum Command {
     },
     /// Safely deploy through a verified temporary file and rollback backup.
     Deploy(DeployArgs),
+    /// Atomically deploy multiple files and then clean selected directories.
+    /// Every operation shares one calculator connection.
+    Sync(SyncArgs),
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, ValueEnum)]
@@ -107,6 +125,31 @@ struct DeployArgs {
     reuse_temporary: bool,
 }
 
+#[derive(Debug, Args)]
+struct SyncArgs {
+    /// Local and remote path pair. Repeat for every file.
+    #[arg(
+        long = "upload",
+        num_args = 2,
+        value_names = ["LOCAL", "REMOTE"],
+        required = true
+    )]
+    uploads: Vec<String>,
+
+    /// Remove every file and subdirectory inside this remote directory after
+    /// all uploads have been verified. Repeat as needed.
+    #[arg(long = "clean-dir")]
+    clean_dirs: Vec<String>,
+
+    /// Verification performed before replacing each destination.
+    #[arg(long, value_enum, default_value_t = VerifyMode::Sha256)]
+    verify: VerifyMode,
+
+    /// Delete rollback copies after every successful replacement.
+    #[arg(long)]
+    remove_backups: bool,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 struct TransportConfig {
     packet_size: u32,
@@ -114,6 +157,8 @@ struct TransportConfig {
     ack_timeout_ms: u32,
     handshake_timeout_ms: u32,
     ack_retries: u32,
+    file_attempts: u32,
+    service_settle_ms: u64,
 }
 
 impl TransportConfig {
@@ -124,6 +169,8 @@ impl TransportConfig {
             ack_timeout_ms: cli.ack_timeout_ms,
             handshake_timeout_ms: cli.handshake_timeout_ms,
             ack_retries: cli.ack_retries,
+            file_attempts: cli.file_attempts,
+            service_settle_ms: cli.service_settle_ms,
         };
         config.validate()?;
         Ok(config)
@@ -163,6 +210,20 @@ impl TransportConfig {
                 format!("--ack-retries must be in 1..=20, got {}", self.ack_retries).into(),
             );
         }
+        if !(1..=10).contains(&self.file_attempts) {
+            return Err(format!(
+                "--file-attempts must be in 1..=10, got {}",
+                self.file_attempts
+            )
+            .into());
+        }
+        if self.service_settle_ms > 5_000 {
+            return Err(format!(
+                "--service-settle-ms must be in 0..=5000, got {}",
+                self.service_settle_ms
+            )
+            .into());
+        }
         Ok(())
     }
 
@@ -180,7 +241,19 @@ impl TransportConfig {
             self.handshake_timeout_ms.to_string(),
         );
         env::set_var("NSPIRE_CX2_ACK_RETRIES", self.ack_retries.to_string());
+        SERVICE_SETTLE_MS.store(self.service_settle_ms, Ordering::Relaxed);
     }
+}
+
+fn finish_service<T, E>(result: std::result::Result<T, E>) -> Result<T>
+where
+    E: Error + 'static,
+{
+    let settle_ms = SERVICE_SETTLE_MS.load(Ordering::Relaxed);
+    if settle_ms != 0 {
+        thread::sleep(Duration::from_millis(settle_ms));
+    }
+    result.map_err(|error| Box::new(error) as Box<dyn Error>)
 }
 
 struct PacketSizeOverride {
@@ -245,6 +318,47 @@ impl Progress {
     }
 }
 
+enum MappedInput {
+    Empty,
+    Mapped(Mmap),
+}
+
+impl MappedInput {
+    fn open(path: &PathBuf) -> Result<Self> {
+        let file = File::open(path)?;
+        let size = file.metadata()?.len();
+        validate_transfer_size(size)?;
+        if size == 0 {
+            return Ok(Self::Empty);
+        }
+        /*
+         * The mapping is read-only and the file remains unchanged for the
+         * transfer. Mapping avoids a second file-sized heap allocation, so the
+         * CLI's memory use is independent of project growth.
+         */
+        let mapping = unsafe { MmapOptions::new().map(&file)? };
+        Ok(Self::Mapped(mapping))
+    }
+
+    fn as_slice(&self) -> &[u8] {
+        match self {
+            Self::Empty => &[],
+            Self::Mapped(mapping) => mapping,
+        }
+    }
+}
+
+fn validate_transfer_size(size: u64) -> Result<()> {
+    if size > u32::MAX as u64 {
+        return Err(format!(
+            "calculator file service uses a 32-bit length; {size} bytes exceeds {}",
+            u32::MAX
+        )
+        .into());
+    }
+    Ok(())
+}
+
 fn open_device() -> Result<Handle<GlobalContext>> {
     for device in rusb::devices()?.iter() {
         let descriptor = device.device_descriptor()?;
@@ -286,30 +400,48 @@ fn sibling_path(path: &str, suffix: &str) -> Result<String> {
 
 fn entry_exists(handle: &Handle<GlobalContext>, path: &str, entry_type: EntryType) -> Result<bool> {
     let (parent, name) = remote_parts(path)?;
-    Ok(handle
-        .list_dir(&parent)?
+    Ok(finish_service(handle.list_dir(&parent))?
         .iter()
         .any(|entry| entry.entry_type() == entry_type && entry.name().to_string_lossy() == name))
 }
 
-fn upload_bytes(handle: &Handle<GlobalContext>, remote: &str, data: &[u8]) -> Result<()> {
-    let mut progress = Progress::new("upload", data.len());
-    handle.write_file(remote, data, &mut |remaining| progress.update(remaining))?;
-    progress.finish();
-    Ok(())
+fn upload_bytes(
+    handle: &Handle<GlobalContext>,
+    remote: &str,
+    data: &[u8],
+    attempts: u32,
+) -> Result<()> {
+    for attempt in 1..=attempts {
+        let mut progress = Progress::new("upload", data.len());
+        match finish_service(
+            handle.write_file(remote, data, &mut |remaining| progress.update(remaining)),
+        ) {
+            Ok(()) => {
+                progress.finish();
+                return Ok(());
+            }
+            Err(error) if attempt < attempts => {
+                eprintln!(
+                    "upload attempt {attempt}/{attempts} failed for {remote}: {error}; restarting the file service"
+                );
+            }
+            Err(error) => return Err(error),
+        }
+    }
+    Err("unreachable upload retry state".into())
 }
 
 fn download_bytes(handle: &Handle<GlobalContext>, remote: &str) -> Result<Vec<u8>> {
-    let attr = handle.file_attr(remote)?;
+    let attr = finish_service(handle.file_attr(remote))?;
     let mut data = vec![0u8; attr.size() as usize];
     let mut progress = Progress::new("download", data.len());
     // The calculator's file-read service emits its native 1440-byte CSP
     // frames. Asking data_read for the 512-byte upload-safe size truncates
     // each inbound frame and eventually waits for bytes that were discarded.
     let _packet_size = PacketSizeOverride::for_read();
-    let bytes = handle.read_file(remote, &mut data, &mut |remaining| {
+    let bytes = finish_service(handle.read_file(remote, &mut data, &mut |remaining| {
         progress.update(remaining)
-    })?;
+    }))?;
     progress.finish();
     if bytes != data.len() {
         return Err(format!(
@@ -331,7 +463,7 @@ fn verify_remote(
     local: &[u8],
     mode: VerifyMode,
 ) -> Result<()> {
-    let attr = handle.file_attr(remote)?;
+    let attr = finish_service(handle.file_attr(remote))?;
     if attr.size() as usize != local.len() {
         return Err(format!(
             "remote size mismatch for {remote}: expected {}, got {}",
@@ -364,18 +496,19 @@ fn rollback(
     backup: &str,
 ) -> Result<()> {
     if entry_exists(handle, remote, EntryType::File)? {
-        handle.move_file(remote, temporary)?;
+        finish_service(handle.move_file(remote, temporary))?;
     }
     if entry_exists(handle, backup, EntryType::File)? {
-        handle.move_file(backup, remote)?;
+        finish_service(handle.move_file(backup, remote))?;
         eprintln!("rollback restored {remote}");
         return Ok(());
     }
     Err(format!("rollback copy is missing: {backup}").into())
 }
 
-fn deploy(handle: &Handle<GlobalContext>, args: &DeployArgs) -> Result<()> {
-    let local = fs::read(&args.local_file)?;
+fn deploy(handle: &Handle<GlobalContext>, args: &DeployArgs, file_attempts: u32) -> Result<()> {
+    let local_mapping = MappedInput::open(&args.local_file)?;
+    let local = local_mapping.as_slice();
     let temporary = sibling_path(&args.remote, ".upload")?;
     let backup = sibling_path(&args.remote, ".previous")?;
 
@@ -388,6 +521,7 @@ fn deploy(handle: &Handle<GlobalContext>, args: &DeployArgs) -> Result<()> {
     println!("target\t{}", args.remote);
     println!("backup\t{backup}");
 
+    let mut temporary_verified = false;
     if args.reuse_temporary {
         if !entry_exists(handle, &temporary, EntryType::File)? {
             return Err(format!(
@@ -396,32 +530,44 @@ fn deploy(handle: &Handle<GlobalContext>, args: &DeployArgs) -> Result<()> {
             .into());
         }
         println!("reused-temporary\t{temporary}");
-    } else {
+        match verify_remote(handle, &temporary, local, args.verify) {
+            Ok(()) => temporary_verified = true,
+            Err(error) => {
+                eprintln!("discarding unverified temporary {temporary}: {error}; uploading again");
+                finish_service(handle.delete_file(&temporary))?;
+            }
+        }
+    }
+    if !temporary_verified {
         if entry_exists(handle, &temporary, EntryType::File)? {
-            handle.delete_file(&temporary)?;
+            finish_service(handle.delete_file(&temporary))?;
             println!("removed-stale-temporary\t{temporary}");
         }
-        upload_bytes(handle, &temporary, &local)?;
+        upload_bytes(handle, &temporary, local, file_attempts)?;
     }
 
-    if let Err(error) = verify_remote(handle, &temporary, &local, args.verify) {
-        return Err(format!(
-            "temporary upload verification failed; current application was not touched: {error}"
-        )
-        .into());
+    if !temporary_verified {
+        if let Err(error) = verify_remote(handle, &temporary, local, args.verify) {
+            return Err(format!(
+                "temporary upload verification failed; current application was not touched: {error}"
+            )
+            .into());
+        }
+    } else {
+        println!("temporary-already-verified\t{temporary}");
     }
 
     let target_existed = entry_exists(handle, &args.remote, EntryType::File)?;
     if entry_exists(handle, &backup, EntryType::File)? {
-        handle.delete_file(&backup)?;
+        finish_service(handle.delete_file(&backup))?;
         println!("removed-stale-backup\t{backup}");
     }
     if target_existed {
-        handle.move_file(&args.remote, &backup)?;
+        finish_service(handle.move_file(&args.remote, &backup))?;
         println!("backed-up\t{} -> {backup}", args.remote);
     }
 
-    if let Err(error) = handle.move_file(&temporary, &args.remote) {
+    if let Err(error) = finish_service(handle.move_file(&temporary, &args.remote)) {
         if target_existed {
             let rollback_result = rollback(handle, &args.remote, &temporary, &backup);
             return Err(format!(
@@ -432,7 +578,7 @@ fn deploy(handle: &Handle<GlobalContext>, args: &DeployArgs) -> Result<()> {
         return Err(format!("replacement failed: {error}").into());
     }
 
-    if let Err(error) = verify_remote(handle, &args.remote, &local, VerifyMode::Size) {
+    if let Err(error) = verify_remote(handle, &args.remote, local, VerifyMode::Size) {
         if target_existed {
             let rollback_result = rollback(handle, &args.remote, &temporary, &backup);
             return Err(format!(
@@ -444,7 +590,7 @@ fn deploy(handle: &Handle<GlobalContext>, args: &DeployArgs) -> Result<()> {
     }
 
     if args.remove_backup && target_existed {
-        handle.delete_file(&backup)?;
+        finish_service(handle.delete_file(&backup))?;
         println!("removed-backup\t{backup}");
     } else if target_existed {
         println!("kept-rollback\t{backup}");
@@ -453,23 +599,160 @@ fn deploy(handle: &Handle<GlobalContext>, args: &DeployArgs) -> Result<()> {
     Ok(())
 }
 
+fn remote_join(directory: &str, name: &str) -> Result<String> {
+    if !directory.starts_with('/')
+        || (directory != "/" && directory.ends_with('/'))
+        || name.is_empty()
+        || name.contains('/')
+        || name == "."
+        || name == ".."
+    {
+        return Err(format!(
+            "invalid remote directory entry: directory={directory:?}, name={name:?}"
+        )
+        .into());
+    }
+    Ok(if directory == "/" {
+        format!("/{name}")
+    } else {
+        format!("{directory}/{name}")
+    })
+}
+
+fn ensure_remote_directory(handle: &Handle<GlobalContext>, directory: &str) -> Result<()> {
+    if !directory.starts_with('/') || (directory != "/" && directory.ends_with('/')) {
+        return Err(format!("expected an absolute remote directory, got {directory:?}").into());
+    }
+    if directory == "/" {
+        return Ok(());
+    }
+    let mut current = String::new();
+    for part in directory.split('/').filter(|part| !part.is_empty()) {
+        let parent = if current.is_empty() {
+            "/".to_string()
+        } else {
+            current.clone()
+        };
+        current.push('/');
+        current.push_str(part);
+        if entry_exists(handle, &current, EntryType::Directory)? {
+            continue;
+        }
+        if entry_exists(handle, &current, EntryType::File)? {
+            return Err(format!("remote path is a file, not a directory: {current}").into());
+        }
+        finish_service(handle.create_dir(&current))?;
+        println!("created\t{current}\t(parent {parent})");
+    }
+    Ok(())
+}
+
+fn clean_remote_directory(handle: &Handle<GlobalContext>, directory: &str) -> Result<usize> {
+    if directory == "/" {
+        return Err("refusing to clean the calculator root directory".into());
+    }
+    if !directory.starts_with('/') || directory.ends_with('/') {
+        return Err(format!("expected an absolute remote directory, got {directory:?}").into());
+    }
+    let entries = finish_service(handle.list_dir(directory))?;
+    let mut removed = 0usize;
+    for entry in entries.iter() {
+        let name = entry.name().to_string_lossy();
+        let path = remote_join(directory, &name)?;
+        match entry.entry_type() {
+            EntryType::File => {
+                finish_service(handle.delete_file(&path))?;
+                println!("deleted\t{path}");
+                removed += 1;
+            }
+            EntryType::Directory => {
+                removed += clean_remote_directory(handle, &path)?;
+                finish_service(handle.delete_dir(&path))?;
+                println!("removed\t{path}/");
+                removed += 1;
+            }
+        }
+    }
+    Ok(removed)
+}
+
+fn sync(handle: &Handle<GlobalContext>, args: &SyncArgs, file_attempts: u32) -> Result<()> {
+    if !args.uploads.len().is_multiple_of(2) {
+        return Err("each --upload requires LOCAL and REMOTE".into());
+    }
+    let mut deployed = Vec::new();
+    for pair in args.uploads.chunks_exact(2) {
+        let local_file = PathBuf::from(&pair[0]);
+        let remote = pair[1].clone();
+        let local_size = fs::metadata(&local_file)?.len();
+        validate_transfer_size(local_size)?;
+        let (parent, _) = remote_parts(&remote)?;
+        ensure_remote_directory(handle, &parent)?;
+        let temporary = sibling_path(&remote, ".upload")?;
+        let reuse_temporary = entry_exists(handle, &temporary, EntryType::File)?;
+        deploy(
+            handle,
+            &DeployArgs {
+                local_file,
+                remote: remote.clone(),
+                verify: args.verify,
+                remove_backup: args.remove_backups,
+                reuse_temporary,
+            },
+            file_attempts,
+        )?;
+        deployed.push((remote, local_size));
+    }
+    for directory in &args.clean_dirs {
+        let removed = clean_remote_directory(handle, directory)?;
+        println!("cleaned\t{directory}\t{removed} entries");
+        let remaining = finish_service(handle.list_dir(directory))?;
+        if !remaining.is_empty() {
+            return Err(format!(
+                "post-clean verification failed for {directory}: {} entries remain",
+                remaining.len()
+            )
+            .into());
+        }
+        println!("sync-final-clean\t{directory}\t0 entries");
+    }
+    for (remote, local_size) in deployed {
+        let attr = finish_service(handle.file_attr(&remote))?;
+        if attr.size() != local_size {
+            return Err(format!(
+                "final remote size mismatch for {remote}: expected {local_size}, got {}",
+                attr.size()
+            )
+            .into());
+        }
+        let temporary = sibling_path(&remote, ".upload")?;
+        if entry_exists(handle, &temporary, EntryType::File)? {
+            return Err(format!("stale temporary remains after sync: {temporary}").into());
+        }
+        println!("sync-final-file\t{remote}\t{local_size} bytes");
+    }
+    Ok(())
+}
+
 fn run() -> Result<()> {
     let cli = Cli::parse();
     let transport = TransportConfig::from_cli(&cli)?;
     transport.apply();
     eprintln!(
-        "CX II transport: write packet={} bytes, read packet={} bytes, ACK timeout={} ms, handshake timeout={} ms, attempts={}",
+        "CX II transport: write packet={} bytes, read packet={} bytes, ACK timeout={} ms, handshake timeout={} ms, ACK attempts={}, file attempts={}, service settle={} ms",
         transport.packet_size,
         transport.read_packet_size,
         transport.ack_timeout_ms,
         transport.handshake_timeout_ms,
-        transport.ack_retries
+        transport.ack_retries,
+        transport.file_attempts,
+        transport.service_settle_ms
     );
 
     let handle = open_device()?;
     match &cli.command {
         Command::Ls { remote_dir } => {
-            for entry in handle.list_dir(remote_dir)?.iter() {
+            for entry in finish_service(handle.list_dir(remote_dir))?.iter() {
                 let suffix = if entry.entry_type() == EntryType::Directory {
                     "/"
                 } else {
@@ -484,35 +767,40 @@ fn run() -> Result<()> {
             }
         }
         Command::Stat { remote_file } => {
-            let attr = handle.file_attr(remote_file)?;
+            let attr = finish_service(handle.file_attr(remote_file))?;
             println!("{remote_file}\t{}", attr.size());
         }
         Command::Mkdir { remote_dir } => {
-            handle.create_dir(remote_dir)?;
+            finish_service(handle.create_dir(remote_dir))?;
             println!("created\t{remote_dir}");
         }
         Command::Mv {
             source,
             destination,
         } => {
-            handle.move_file(source, destination)?;
+            finish_service(handle.move_file(source, destination))?;
             println!("moved\t{source}\t{destination}");
         }
         Command::Rm { remote_file } => {
-            handle.delete_file(remote_file)?;
+            finish_service(handle.delete_file(remote_file))?;
             println!("deleted\t{remote_file}");
         }
         Command::Rmdir { remote_dir } => {
-            handle.delete_dir(remote_dir)?;
+            finish_service(handle.delete_dir(remote_dir))?;
             println!("removed\t{remote_dir}");
         }
         Command::Upload {
             local_file,
             remote_file,
         } => {
-            let data = fs::read(local_file)?;
-            upload_bytes(&handle, remote_file, &data)?;
-            verify_remote(&handle, remote_file, &data, VerifyMode::Size)?;
+            let data = MappedInput::open(local_file)?;
+            upload_bytes(
+                &handle,
+                remote_file,
+                data.as_slice(),
+                transport.file_attempts,
+            )?;
+            verify_remote(&handle, remote_file, data.as_slice(), VerifyMode::Size)?;
         }
         Command::Download {
             remote_file,
@@ -525,7 +813,8 @@ fn run() -> Result<()> {
             fs::write(local_file, &data)?;
             println!("downloaded\t{remote_file}\t{}", local_file.display());
         }
-        Command::Deploy(args) => deploy(&handle, args)?,
+        Command::Deploy(args) => deploy(&handle, args, transport.file_attempts)?,
+        Command::Sync(args) => sync(&handle, args, transport.file_attempts)?,
     }
     Ok(())
 }
@@ -571,57 +860,55 @@ mod tests {
 
     #[test]
     fn validates_transport_bounds() {
-        assert!(TransportConfig {
+        let valid = TransportConfig {
             packet_size: 512,
             read_packet_size: 1440,
             ack_timeout_ms: 1500,
             handshake_timeout_ms: 5000,
             ack_retries: 4,
-        }
-        .validate()
-        .is_ok());
+            file_attempts: 3,
+            service_settle_ms: 250,
+        };
+        assert!(valid.validate().is_ok());
         assert!(TransportConfig {
             packet_size: 63,
-            read_packet_size: 1440,
-            ack_timeout_ms: 1500,
-            handshake_timeout_ms: 5000,
-            ack_retries: 4,
+            ..valid
         }
         .validate()
         .is_err());
         assert!(TransportConfig {
-            packet_size: 512,
             read_packet_size: 1441,
-            ack_timeout_ms: 1500,
-            handshake_timeout_ms: 5000,
-            ack_retries: 4,
+            ..valid
         }
         .validate()
         .is_err());
         assert!(TransportConfig {
-            packet_size: 512,
-            read_packet_size: 1440,
             ack_timeout_ms: 49,
-            handshake_timeout_ms: 5000,
-            ack_retries: 4,
+            ..valid
         }
         .validate()
         .is_err());
         assert!(TransportConfig {
-            packet_size: 512,
-            read_packet_size: 1440,
-            ack_timeout_ms: 1500,
             handshake_timeout_ms: 49,
-            ack_retries: 4,
+            ..valid
         }
         .validate()
         .is_err());
         assert!(TransportConfig {
-            packet_size: 512,
-            read_packet_size: 1440,
-            ack_timeout_ms: 1500,
-            handshake_timeout_ms: 5000,
             ack_retries: 21,
+            ..valid
+        }
+        .validate()
+        .is_err());
+        assert!(TransportConfig {
+            file_attempts: 11,
+            ..valid
+        }
+        .validate()
+        .is_err());
+        assert!(TransportConfig {
+            service_settle_ms: 5_001,
+            ..valid
         }
         .validate()
         .is_err());
@@ -633,5 +920,45 @@ mod tests {
             sha256(b"abc"),
             "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
         );
+    }
+
+    #[test]
+    fn accepts_every_calculator_representable_file_size() {
+        assert!(validate_transfer_size(0).is_ok());
+        assert!(validate_transfer_size(u32::MAX as u64).is_ok());
+        assert!(validate_transfer_size(u32::MAX as u64 + 1).is_err());
+    }
+
+    #[test]
+    fn joins_safe_remote_entries() {
+        assert_eq!(
+            remote_join("/phy-nspire/examples", "probe.tns").unwrap(),
+            "/phy-nspire/examples/probe.tns"
+        );
+        assert!(remote_join("/", "probe.tns").is_ok());
+        assert!(remote_join("/phy-nspire", "../probe.tns").is_err());
+        assert!(remote_join("/phy-nspire/", "probe.tns").is_err());
+    }
+
+    #[test]
+    fn parses_multi_file_single_session_sync() {
+        let cli = Cli::try_parse_from([
+            "phy-nlinkctl",
+            "sync",
+            "--upload",
+            "program.tns",
+            "/phy-nspire/phy-nspire.tns",
+            "--upload",
+            "tour.tns",
+            "/phy-nspire/notebooks/tour.tns",
+            "--clean-dir",
+            "/phy-nspire/examples",
+        ])
+        .unwrap();
+        let Command::Sync(args) = cli.command else {
+            panic!("sync command was not parsed");
+        };
+        assert_eq!(args.uploads.len(), 4);
+        assert_eq!(args.clean_dirs, ["/phy-nspire/examples"]);
     }
 }

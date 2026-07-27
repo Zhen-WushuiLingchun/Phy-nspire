@@ -18,6 +18,8 @@
 #include "error.h"
 #include "data.h"
 #include "packet.h"
+#include <stdio.h>
+#include <stdlib.h>
 
 int service_connect(nspire_handle_t *handle, uint16_t sid) {
 	if (handle->connected)
@@ -35,7 +37,6 @@ static void mod_src(struct packet *p) {
 
 int service_disconnect(nspire_handle_t *handle) {
 	int ret;
-	struct packet p;
 	uint8_t data[] = {
 		(handle->host_sid>>8) & 0xFF,
 		(handle->host_sid>>0) & 0xFF };
@@ -43,13 +44,20 @@ int service_disconnect(nspire_handle_t *handle) {
 	if (!handle->connected)
 		return NSPIRE_ERR_SUCCESS;
 
-	p = packet_new(handle);
-	if ( (ret = data_write_special(handle, &data, 2, mod_src)) ) {
-		return ret;
-	}
-
+	/*
+	 * A lost disconnect ACK must not poison the host handle. The service
+	 * helpers historically ignored this function's return value, so returning
+	 * early left connected=1 and every later operation failed with BUSY even
+	 * though the preceding upload or stat had succeeded. Advance the local
+	 * service epoch unconditionally; optional service tracing still records the
+	 * transport error for diagnosis.
+	 */
+	ret = data_write_special(handle, &data, 2, mod_src);
+	if (ret && getenv("NSPIRE_TRACE_SERVICES"))
+		fprintf(stderr, "service_disconnect host_sid=%04x ret=%d\n",
+			handle->host_sid, ret);
 	handle->connected = 0;
 	handle->host_sid++;
 
-	return NSPIRE_ERR_SUCCESS;
+	return ret;
 }
