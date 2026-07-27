@@ -167,8 +167,12 @@ Verification:
 Status: the finite-dimensional Lie-algebra foundation is implemented with
 exact structure constants, Jacobi validation, brackets, adjoint/Killing
 operations, and built-in `U(1)`, `SU(2)`, `SO(3)`, `SU(3)`, and `SO(1,3)`
-metadata. Lorentz/Dirac/SU(N) expression reducers, field theory, and diagrams
-remain scoped rather than implemented. The MVP boundary, the pinned
+metadata. A bounded real `phi^4` layer now emits the exact Lagrangian,
+propagator/vertex objects, and the one-loop tadpole plus `s/t/u` bubble
+topologies with exact symmetry/coupling weights and unevaluated master
+integrals. Lorentz/Dirac/SU(N) reducers, dimensional regularization, general
+graph generation, and renormalization remain scoped rather than implemented.
+The MVP boundary, the pinned
 conventions, the algorithm specification and the verified identity set are in
 [`docs/references/QFT_GAUGE.md`](references/QFT_GAUGE.md); the contracts that
 implement them are in

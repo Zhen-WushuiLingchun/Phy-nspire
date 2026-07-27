@@ -82,6 +82,7 @@ Start here:
 - [Component tensor core](docs/TENSOR.md)
 - [Native coordinate-metric GR](docs/GR.md)
 - [Finite Lie algebra and group metadata](docs/LIE.md)
+- [Bounded scalar phi4 QFT layer](docs/QFT_SCALAR.md)
 - [Scalar computer algebra](docs/CAS.md)
 - [Notebook shell and 2D layout](docs/NOTEBOOK.md)
 - [Reader-facing symbolic source language](docs/SOURCE_LANGUAGE.md)

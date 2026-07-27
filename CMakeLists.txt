@@ -142,6 +142,7 @@ add_library(phy_core STATIC
     src/tensor/ops.c
     src/gr/gr.c
     src/lie/lie.c
+    src/qft/scalar.c
     src/cas/num.c
     src/cas/engine.c
     src/cas/simplify.c
@@ -186,7 +187,8 @@ if(BUILD_TESTING)
 
     foreach(suite test_gfx test_formula test_modifier test_pointer test_source test_palette test_platform
                   test_smoke test_document test_storage test_workspace
-                  test_notebook test_ir test_tensor test_gr test_lie test_cas)
+                  test_notebook test_ir test_tensor test_gr test_lie
+                  test_qft_scalar test_cas)
         add_executable(${suite} tests/${suite}.c)
         target_link_libraries(${suite} PRIVATE phy_core phy_platform_host phy_warnings)
         target_include_directories(${suite} PRIVATE tests)
