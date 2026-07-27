@@ -13,6 +13,7 @@
 #include <stdint.h>
 
 #include "phy/gfx.h"
+#include "phy/ir.h"
 #include "phy/phy.h"
 
 #ifdef __cplusplus
@@ -62,6 +63,28 @@ phy_status phy_formula_draw_latex(const phy_surface *surface,
                                   int clip_x, int clip_y, int clip_width,
                                   int clip_height,
                                   phy_formula_metrics *out_metrics);
+
+/*
+ * Typed CAS output enters the same MathTree/layout/draw pipeline directly.
+ * No LaTeX serialization or reparsing occurs, so exact fractions, operator
+ * order, and tensor-index variance remain structural all the way to pixels.
+ */
+phy_status phy_formula_measure_ir(const phy_ir_context *context,
+                                  phy_ir_ref expression,
+                                  phy_formula_style style, int pixel_size,
+                                  int maximum_width,
+                                  phy_formula_metrics *out_metrics);
+
+phy_status phy_formula_draw_ir(const phy_surface *surface,
+                               const phy_ir_context *context,
+                               phy_ir_ref expression,
+                               phy_formula_style style, int pixel_size,
+                               int maximum_width, int origin_x,
+                               int baseline_y, int pan_x,
+                               uint16_t foreground, uint16_t background,
+                               int clip_x, int clip_y, int clip_width,
+                               int clip_height,
+                               phy_formula_metrics *out_metrics);
 
 #ifdef __cplusplus
 }

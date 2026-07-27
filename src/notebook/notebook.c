@@ -4,7 +4,6 @@
 
 #include "phy/cas.h"
 #include "phy/formula.h"
-#include "phy/math_layout.h"
 #include "phy/platform.h"
 #include "phy/source.h"
 #include "notebook_internal.h"
@@ -1182,11 +1181,26 @@ void phy_notebook_draw_document(const phy_surface *surface,
                 cell->stale ? COLOR_DIM : COLOR_RESULT;
             draw_execution_label(surface, 10, y + 16, "Out[",
                                  cell->execution, result_color);
-            phy_math_box box;
-            if (phy_math_measure(notebook->ir, cell->expression, &box)) {
-                const int math_y = y + (height - box.height) / 2;
-                (void)phy_math_draw(surface, 61, math_y, notebook->ir,
-                                    cell->expression, result_color);
+            phy_formula_metrics metrics;
+            const int maximum_width =
+                NOTEBOOK_CELL_X + NOTEBOOK_CELL_WIDTH - 63;
+            const phy_status measure_status =
+                phy_formula_measure_ir(
+                    notebook->ir, cell->expression,
+                    PHY_FORMULA_STYLE_TEXT, 15, maximum_width, &metrics);
+            if (measure_status == PHY_OK) {
+                const int formula_height = metrics.ascent + metrics.descent;
+                const int baseline =
+                    y + (height - formula_height) / 2 + metrics.ascent;
+                (void)phy_formula_draw_ir(
+                    surface, notebook->ir, cell->expression,
+                    PHY_FORMULA_STYLE_TEXT, 15, maximum_width, 61, baseline, 0,
+                    result_color, fill, 61, y + 1, maximum_width,
+                    height - 2, NULL);
+            } else {
+                (void)phy_gfx_draw_text(surface, 61, y + 16,
+                                        phy_status_name(measure_status),
+                                        COLOR_ERROR);
             }
             if (cell->stale) {
                 (void)phy_gfx_draw_text(surface, PHY_SCREEN_WIDTH - 39,

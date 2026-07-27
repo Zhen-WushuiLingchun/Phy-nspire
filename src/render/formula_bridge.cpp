@@ -5,7 +5,10 @@
 #include <string>
 #include <string_view>
 
+#include "ir_math_tree.h"
+#include "nmarkdown/generated/core_math_font.h"
 #include "nmarkdown/layout/fixed.h"
+#include "nmarkdown/math/math_layout.h"
 #include "nmarkdown/math/math_system.h"
 #include "nmarkdown/render/surface565.h"
 #include "nmarkdown/text/text_system.h"
@@ -65,6 +68,67 @@ phy_status layout_formula(
         return PHY_ERR_BACKEND;
     }
     return PHY_OK;
+}
+
+phy_status validate_ir_request(const phy_ir_context *context,
+                               phy_ir_ref expression, int pixel_size)
+{
+    if (context == nullptr || expression == PHY_IR_NULL ||
+        phy_ir_kind_of(context, expression) == PHY_IR_KIND_INVALID ||
+        pixel_size <= 0) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    if (g_text == nullptr || g_math == nullptr || !g_text->ready()) {
+        return PHY_ERR_NOT_INITIALIZED;
+    }
+    return PHY_OK;
+}
+
+phy_status layout_ir_formula(
+    const phy_ir_context *context, phy_ir_ref expression,
+    phy_formula_style style, int pixel_size, int maximum_width,
+    std::shared_ptr<const nmarkdown::MathLayoutResult>& out_layout)
+{
+    const phy_status validation =
+        validate_ir_request(context, expression, pixel_size);
+    if (validation != PHY_OK) {
+        return validation;
+    }
+
+    nmarkdown::MathTree tree;
+    std::string diagnostic;
+    if (!phy_build_ir_math_tree(context, expression, tree, diagnostic)) {
+        return PHY_ERR_BACKEND;
+    }
+
+    std::shared_ptr<nmarkdown::MathLayoutResult> layout =
+        std::make_shared<nmarkdown::MathLayoutResult>();
+    const nmarkdown::Fx width =
+        maximum_width > 0 ? nmarkdown::fx_from_int(maximum_width) : 0;
+    if (!nmarkdown::layout_math_tree(
+            tree, *g_text, convert_style(style),
+            nmarkdown::fx_from_int(pixel_size), width,
+            nmarkdown::kCoreMathFontConstants, *layout)) {
+        return PHY_ERR_BACKEND;
+    }
+    out_layout = std::move(layout);
+    return PHY_OK;
+}
+
+phy_status draw_layout(const phy_surface *surface,
+                       const nmarkdown::MathLayoutResult& layout,
+                       int origin_x, int baseline_y, int pan_x,
+                       uint16_t foreground, uint16_t background,
+                       int clip_x, int clip_y, int clip_width,
+                       int clip_height)
+{
+    nmarkdown::Surface565 target(surface->pixels, surface->width,
+                                 surface->height, surface->width);
+    const nmarkdown::Rect clip{clip_x, clip_y, clip_width, clip_height};
+    return g_math->draw(target, layout, origin_x, baseline_y, pan_x,
+                        foreground, background, true, clip)
+               ? PHY_OK
+               : PHY_ERR_BACKEND;
 }
 
 }  // namespace
@@ -156,13 +220,77 @@ extern "C" phy_status phy_formula_draw_latex(
         if (status != PHY_OK) {
             return status;
         }
-        nmarkdown::Surface565 target(surface->pixels, surface->width,
-                                     surface->height, surface->width);
-        const nmarkdown::Rect clip{
-            clip_x, clip_y, clip_width, clip_height};
-        if (!g_math->draw(target, *layout, origin_x, baseline_y, pan_x,
-                          foreground, background, true, clip)) {
-            return PHY_ERR_BACKEND;
+        const phy_status draw_status =
+            draw_layout(surface, *layout, origin_x, baseline_y, pan_x,
+                        foreground, background, clip_x, clip_y, clip_width,
+                        clip_height);
+        if (draw_status != PHY_OK) {
+            return draw_status;
+        }
+        export_metrics(*layout, out_metrics);
+        return PHY_OK;
+    } catch (const std::bad_alloc&) {
+        return PHY_ERR_OUT_OF_MEMORY;
+    } catch (...) {
+        return PHY_ERR_BACKEND;
+    }
+}
+
+extern "C" phy_status phy_formula_measure_ir(
+    const phy_ir_context *context, phy_ir_ref expression,
+    phy_formula_style style, int pixel_size, int maximum_width,
+    phy_formula_metrics *out_metrics)
+{
+    if (out_metrics == nullptr) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    *out_metrics = {};
+    try {
+        std::shared_ptr<const nmarkdown::MathLayoutResult> layout;
+        const phy_status status =
+            layout_ir_formula(context, expression, style, pixel_size,
+                              maximum_width, layout);
+        if (status != PHY_OK) {
+            return status;
+        }
+        export_metrics(*layout, out_metrics);
+        return PHY_OK;
+    } catch (const std::bad_alloc&) {
+        return PHY_ERR_OUT_OF_MEMORY;
+    } catch (...) {
+        return PHY_ERR_BACKEND;
+    }
+}
+
+extern "C" phy_status phy_formula_draw_ir(
+    const phy_surface *surface, const phy_ir_context *context,
+    phy_ir_ref expression, phy_formula_style style, int pixel_size,
+    int maximum_width, int origin_x, int baseline_y, int pan_x,
+    uint16_t foreground, uint16_t background, int clip_x, int clip_y,
+    int clip_width, int clip_height, phy_formula_metrics *out_metrics)
+{
+    if (surface == nullptr || surface->pixels == nullptr ||
+        surface->width <= 0 || surface->height <= 0 || clip_width <= 0 ||
+        clip_height <= 0 || pan_x < 0) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    if (out_metrics != nullptr) {
+        *out_metrics = {};
+    }
+    try {
+        std::shared_ptr<const nmarkdown::MathLayoutResult> layout;
+        const phy_status status =
+            layout_ir_formula(context, expression, style, pixel_size,
+                              maximum_width, layout);
+        if (status != PHY_OK) {
+            return status;
+        }
+        const phy_status draw_status =
+            draw_layout(surface, *layout, origin_x, baseline_y, pan_x,
+                        foreground, background, clip_x, clip_y, clip_width,
+                        clip_height);
+        if (draw_status != PHY_OK) {
+            return draw_status;
         }
         export_metrics(*layout, out_metrics);
         return PHY_OK;

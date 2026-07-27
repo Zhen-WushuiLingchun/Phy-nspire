@@ -135,7 +135,8 @@ NMARKDOWN_CXX_SOURCES := \
     $(NMARKDOWN_ROOT)/src/text/text_renderer.cpp \
     $(NMARKDOWN_ROOT)/src/text/text_system.cpp
 
-CXX_SOURCES := src/render/formula_bridge.cpp $(NMARKDOWN_CXX_SOURCES)
+CXX_SOURCES := src/render/formula_bridge.cpp src/render/ir_math_tree.cpp \
+    $(NMARKDOWN_CXX_SOURCES)
 CXX_CC_SOURCES := $(NMARKDOWN_ROOT)/third_party/harfbuzz/src/harfbuzz.cc
 C_OBJECTS := $(patsubst %.c,$(BUILDDIR)/%.o,$(SOURCES) $(NMARKDOWN_C_SOURCES))
 CXX_OBJECTS := $(patsubst %.cpp,$(BUILDDIR)/%.o,$(CXX_SOURCES)) \

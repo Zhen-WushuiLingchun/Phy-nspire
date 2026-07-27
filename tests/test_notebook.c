@@ -4,7 +4,6 @@
 
 #include "phy/formula.h"
 #include "phy/gfx.h"
-#include "phy/math_layout.h"
 #include "phy/notebook.h"
 #include "phy/platform.h"
 #include "phy_test.h"
@@ -63,14 +62,20 @@ static void test_seeded_cell_model_and_exact_results(void)
     expect_expression(notebook, 2u, "(* 2 (fn cos x) (fn sin x))");
     expect_expression(notebook, 4u, "(+ (rat 1 2) (^ x 2))");
 
-    phy_math_box fraction_power;
+    PHY_CHECK_EQ_INT(phy_formula_initialize(), PHY_OK);
+    phy_formula_metrics fraction_power;
     phy_notebook_cell_view result;
     PHY_CHECK(phy_notebook_cell(notebook, 4u, &result));
-    PHY_CHECK(phy_math_measure(phy_notebook_ir(notebook), result.expression,
-                               &fraction_power));
-    PHY_CHECK(fraction_power.height > PHY_GLYPH_HEIGHT);
+    PHY_CHECK_EQ_INT(
+        phy_formula_measure_ir(
+            phy_notebook_ir(notebook), result.expression,
+            PHY_FORMULA_STYLE_TEXT, 15, 280, &fraction_power),
+        PHY_OK);
+    PHY_CHECK(fraction_power.ascent + fraction_power.descent >
+              PHY_GLYPH_HEIGHT);
     PHY_CHECK(fraction_power.width > 0);
 
+    phy_formula_shutdown();
     phy_notebook_destroy(notebook);
     phy_telemetry after;
     phy_telemetry_get(&after);
@@ -311,6 +316,7 @@ static void test_notebook_frame_fixture(void)
         PHY_SCREEN_WIDTH,
         PHY_SCREEN_HEIGHT,
     };
+    PHY_CHECK_EQ_INT(phy_formula_initialize(), PHY_OK);
     phy_notebook_draw(&surface, notebook, -1, -1);
     const unsigned long long actual =
         (unsigned long long)phy_gfx_digest(&surface);
@@ -337,6 +343,7 @@ static void test_notebook_frame_fixture(void)
     phy_notebook_draw(&surface, notebook, -1, -1);
     PHY_CHECK((unsigned long long)phy_gfx_digest(&surface) == actual);
 
+    phy_formula_shutdown();
     phy_notebook_destroy(notebook);
     phy_platform_shutdown();
 }

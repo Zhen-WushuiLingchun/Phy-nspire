@@ -124,6 +124,7 @@ add_library(phy_core STATIC
     src/input/pointer.c
     src/gfx/gfx.c
     src/render/formula_bridge.cpp
+    src/render/ir_math_tree.cpp
     src/render/math_layout.c
     src/notebook/document.c
     src/notebook/palette.c
