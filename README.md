@@ -80,6 +80,8 @@ Start here:
 - [Native architecture](docs/ARCHITECTURE.md)
 - [Typed expression IR](docs/IR.md)
 - [Component tensor core](docs/TENSOR.md)
+- [Native coordinate-metric GR](docs/GR.md)
+- [Finite Lie algebra and group metadata](docs/LIE.md)
 - [Scalar computer algebra](docs/CAS.md)
 - [Notebook shell and 2D layout](docs/NOTEBOOK.md)
 - [Reader-facing symbolic source language](docs/SOURCE_LANGUAGE.md)
@@ -87,6 +89,7 @@ Start here:
 - [ADR-0001: native Ndless architecture](docs/adr/0001-native-ndless-architecture.md)
 - [Initial feasibility evidence](research/feasibility-2026-07-26.md)
 - [QFT and gauge theory: MVP source reference](docs/references/QFT_GAUGE.md)
+- [Differential geometry, Lie theory, and scalar/gauge QFT reference pack](docs/references/DIFF_GEOM_LIE_QFT.md)
 - [Agent task pack: Dirac algebra and SU(N)](docs/agent-tasks/QFT_DIRAC.md)
 
 ## Layout

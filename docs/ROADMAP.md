@@ -164,7 +164,11 @@ Verification:
 
 ## Phase 5 — QFT and gauge theory
 
-Status: scoped and sourced, not implemented. The MVP boundary, the pinned
+Status: the finite-dimensional Lie-algebra foundation is implemented with
+exact structure constants, Jacobi validation, brackets, adjoint/Killing
+operations, and built-in `U(1)`, `SU(2)`, `SO(3)`, `SU(3)`, and `SO(1,3)`
+metadata. Lorentz/Dirac/SU(N) expression reducers, field theory, and diagrams
+remain scoped rather than implemented. The MVP boundary, the pinned
 conventions, the algorithm specification and the verified identity set are in
 [`docs/references/QFT_GAUGE.md`](references/QFT_GAUGE.md); the contracts that
 implement them are in
