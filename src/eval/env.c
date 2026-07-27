@@ -31,6 +31,7 @@ static const char *const kEvalHeadNames[EVAL_HEAD_COUNT] = {
     "Kretschmann",  "CovariantDerivative",
 
     "Phi4Lagrangian", "Phi4EOM",         "Phi4Diagrams",
+    "Phi4Renormalization", "Phi4Counterterm",
     "MandelstamReduce", "DiracTrace",
 
     "SUNDelta",      "SUNF",             "SUND",

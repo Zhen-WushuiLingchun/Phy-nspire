@@ -162,13 +162,18 @@ prepended.
 | `Phi4Lagrangian[phi,m,lambda,D]` | exact real-scalar model density |
 | `Phi4EOM[phi,m,lambda,D]` | exact equation-of-motion left-hand side |
 | `Phi4Diagrams[phi,m,lambda,D,s,t,u]` | tree amplitude and four bounded one-loop expressions |
+| `Phi4Renormalization[phi,m,lambda,4,epsilon,MS]` | labelled one-loop `DeltaZPhi`, `DeltaZm`, `DeltaZLambda` for `D=4-2 epsilon` |
+| the same with `MSBar` | explicit `1/epsilon-EulerGamma+Log[4 Pi]` replacement |
+| `Phi4Counterterm[phi,m,lambda,4,epsilon,scheme]` | corresponding exact local counterterm density |
 
 `DiracTrace` is deliberately four-dimensional and excludes gamma-five.
 `MandelstamReduce` requires the routing keyword because the sign of the
 third/fourth external momenta is not inferable from the symbols. The loop
 entries returned by `Phi4Diagrams` are exact combinatorial coefficients times
 typed `TadpoleIntegral`/`BubbleIntegral` masters; they are not numerical
-integrals or dimensional-regularization results.
+integrals. The renormalization commands do not pretend to evaluate those
+opaque masters: they expose the separately normalized one-loop UV result,
+with the epsilon convention fixed in the command contract.
 
 ### SU(N) colour
 
@@ -327,11 +332,11 @@ The ARM link check is `make eval-link-check` and
 stack behind one dispatcher, and the same no-float/no-libm/no-soft-float
 standard the CAS and geometry layers are held to. It now links 33 portable
 sources, retains 15/15 public evaluator entry points, contains no forbidden
-float/libm/soft-float dependency, and packages as a 117,936-byte isolated
+float/libm/soft-float dependency, and packages as a 120,472-byte isolated
 probe. That probe size includes its dependencies and is not an incremental
 product-size measurement.
 
 One consequence of this phase that the earlier link-check reports called out as
 future work has now happened: the application genuinely calls the geometry,
 Lie, Yang--Mills, and QFT layers, so `--gc-sections` no longer drops them.
-`dist/phy-nspire.tns` is currently 1,099,509 bytes.
+`dist/phy-nspire.tns` is currently 1,100,648 bytes.

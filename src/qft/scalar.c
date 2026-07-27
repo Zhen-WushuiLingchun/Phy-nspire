@@ -569,3 +569,216 @@ phy_status phy_phi4_one_loop_diagrams(const phy_phi4_model *model,
     }
     return status;
 }
+
+static phy_status one_loop_pole_factor(
+    const phy_phi4_model *model, phy_ir_ref epsilon,
+    phy_phi4_renorm_scheme scheme, phy_ir_ref *out_factor)
+{
+    if (model == NULL || epsilon == PHY_IR_NULL || out_factor == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    if (model->dimension != 4u) {
+        return PHY_ERR_UNSUPPORTED;
+    }
+    if (scheme != PHY_PHI4_RENORM_MS &&
+        scheme != PHY_PHI4_RENORM_MSBAR) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+
+    phy_ir_context *ir = phy_cas_ir(model->cas);
+    phy_ir_ref one = PHY_IR_NULL;
+    phy_ir_ref inverse_epsilon = PHY_IR_NULL;
+    phy_status status = phy_cas_number(model->cas, 1, 1, &one);
+    if (status == PHY_OK) {
+        status =
+            phy_cas_div(model->cas, one, epsilon, &inverse_epsilon);
+    }
+    if (status != PHY_OK || scheme == PHY_PHI4_RENORM_MS) {
+        if (status == PHY_OK) {
+            *out_factor = inverse_epsilon;
+        }
+        return status;
+    }
+
+    const phy_ir_symbol euler_symbol = phy_ir_intern(ir, "EulerGamma");
+    const phy_ir_symbol pi_symbol = phy_ir_intern(ir, "Pi");
+    const phy_ir_symbol log_symbol = phy_ir_intern(ir, "log");
+    const phy_ir_ref euler = phy_ir_symbol_ref(ir, euler_symbol);
+    const phy_ir_ref pi = phy_ir_symbol_ref(ir, pi_symbol);
+    phy_ir_ref four = PHY_IR_NULL;
+    if (euler == PHY_IR_NULL || pi == PHY_IR_NULL ||
+        log_symbol == PHY_IR_NO_SYMBOL) {
+        return ir_failure(ir);
+    }
+    status = phy_cas_number(model->cas, 4, 1, &four);
+    phy_ir_ref four_pi = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        const phy_ir_ref factors[2] = {four, pi};
+        status = phy_cas_mul(model->cas, factors, 2u, &four_pi);
+    }
+    phy_ir_ref logarithm = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        logarithm = phy_ir_function(ir, log_symbol, &four_pi, 1u);
+        if (logarithm == PHY_IR_NULL) {
+            status = ir_failure(ir);
+        }
+    }
+    phy_ir_ref without_euler = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = phy_cas_sub(
+            model->cas, inverse_epsilon, euler, &without_euler);
+    }
+    if (status == PHY_OK) {
+        const phy_ir_ref terms[2] = {without_euler, logarithm};
+        status = phy_cas_add(model->cas, terms, 2u, out_factor);
+    }
+    return status;
+}
+
+phy_status phy_phi4_one_loop_renormalization(
+    const phy_phi4_model *model, phy_ir_ref epsilon,
+    phy_phi4_renorm_scheme scheme,
+    phy_phi4_renorm_constants *out_constants)
+{
+    if (model == NULL || epsilon == PHY_IR_NULL ||
+        out_constants == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+
+    phy_ir_ref pole = PHY_IR_NULL;
+    phy_status status =
+        one_loop_pole_factor(model, epsilon, scheme, &pole);
+    phy_ir_ref pi = PHY_IR_NULL;
+    phy_ir_ref two = PHY_IR_NULL;
+    phy_ir_ref thirty_two = PHY_IR_NULL;
+    phy_ir_ref pi_squared = PHY_IR_NULL;
+    phy_ir_ref denominator = PHY_IR_NULL;
+    phy_ir_ref normalized_pole = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        phy_ir_context *ir = phy_cas_ir(model->cas);
+        pi = phy_ir_symbol_ref(ir, phy_ir_intern(ir, "Pi"));
+        if (pi == PHY_IR_NULL) {
+            status = ir_failure(ir);
+        }
+    }
+    if (status == PHY_OK) {
+        status = phy_cas_number(model->cas, 2, 1, &two);
+    }
+    if (status == PHY_OK) {
+        status = phy_cas_number(model->cas, 32, 1, &thirty_two);
+    }
+    if (status == PHY_OK) {
+        status = phy_cas_pow(model->cas, pi, two, &pi_squared);
+    }
+    if (status == PHY_OK) {
+        const phy_ir_ref factors[2] = {thirty_two, pi_squared};
+        status =
+            phy_cas_mul(model->cas, factors, 2u, &denominator);
+    }
+    if (status == PHY_OK) {
+        status = phy_cas_div(
+            model->cas, pole, denominator, &normalized_pole);
+    }
+
+    phy_phi4_renorm_constants result = {
+        PHY_IR_NULL, PHY_IR_NULL, PHY_IR_NULL};
+    if (status == PHY_OK) {
+        status =
+            phy_cas_number(model->cas, 0, 1, &result.delta_z_field);
+    }
+    if (status == PHY_OK) {
+        const phy_ir_ref factors[2] = {
+            model->coupling, normalized_pole};
+        status = phy_cas_mul(
+            model->cas, factors, 2u, &result.delta_z_mass);
+    }
+    if (status == PHY_OK) {
+        phy_ir_ref three = PHY_IR_NULL;
+        status = phy_cas_number(model->cas, 3, 1, &three);
+        if (status == PHY_OK) {
+            const phy_ir_ref factors[3] = {
+                three, model->coupling, normalized_pole};
+            status = phy_cas_mul(
+                model->cas, factors, 3u, &result.delta_z_coupling);
+        }
+    }
+    if (status == PHY_OK) {
+        *out_constants = result;
+    }
+    return status;
+}
+
+phy_status phy_phi4_one_loop_counterterm_lagrangian(
+    const phy_phi4_model *model, phy_ir_ref epsilon,
+    phy_phi4_renorm_scheme scheme, phy_ir_ref *out_lagrangian)
+{
+    if (model == NULL || epsilon == PHY_IR_NULL ||
+        out_lagrangian == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    phy_phi4_renorm_constants constants = {
+        PHY_IR_NULL, PHY_IR_NULL, PHY_IR_NULL};
+    phy_status status = phy_phi4_one_loop_renormalization(
+        model, epsilon, scheme, &constants);
+    phy_ir_ref field = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = model_field(model, &field);
+    }
+
+    phy_ir_ref two = PHY_IR_NULL;
+    phy_ir_ref four = PHY_IR_NULL;
+    phy_ir_ref minus_half = PHY_IR_NULL;
+    phy_ir_ref minus_twenty_fourth = PHY_IR_NULL;
+    phy_ir_ref mass_squared = PHY_IR_NULL;
+    phy_ir_ref field_squared = PHY_IR_NULL;
+    phy_ir_ref field_fourth = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = phy_cas_number(model->cas, 2, 1, &two);
+    }
+    if (status == PHY_OK) {
+        status = phy_cas_number(model->cas, 4, 1, &four);
+    }
+    if (status == PHY_OK) {
+        status = phy_cas_number(model->cas, -1, 2, &minus_half);
+    }
+    if (status == PHY_OK) {
+        status = phy_cas_number(
+            model->cas, -1, 24, &minus_twenty_fourth);
+    }
+    if (status == PHY_OK) {
+        status =
+            phy_cas_pow(model->cas, model->mass, two, &mass_squared);
+    }
+    if (status == PHY_OK) {
+        status =
+            phy_cas_pow(model->cas, field, two, &field_squared);
+    }
+    if (status == PHY_OK) {
+        status =
+            phy_cas_pow(model->cas, field, four, &field_fourth);
+    }
+
+    phy_ir_ref mass_counterterm = PHY_IR_NULL;
+    phy_ir_ref coupling_counterterm = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        const phy_ir_ref factors[4] = {
+            minus_half, mass_squared, constants.delta_z_mass,
+            field_squared};
+        status = phy_cas_mul(
+            model->cas, factors, 4u, &mass_counterterm);
+    }
+    if (status == PHY_OK) {
+        const phy_ir_ref factors[4] = {
+            minus_twenty_fourth, model->coupling,
+            constants.delta_z_coupling, field_fourth};
+        status = phy_cas_mul(
+            model->cas, factors, 4u, &coupling_counterterm);
+    }
+    if (status == PHY_OK) {
+        const phy_ir_ref terms[2] = {
+            mass_counterterm, coupling_counterterm};
+        status =
+            phy_cas_add(model->cas, terms, 2u, out_lagrangian);
+    }
+    return status;
+}

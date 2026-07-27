@@ -81,7 +81,8 @@ The evaluated object heads are:
   `RiemannMixed`, `Ricci`, `RicciScalar`, `Einstein`, `Kretschmann`,
   `CovariantDerivative`;
 - QFT — `DiracTrace`, `MandelstamReduce`, `Phi4Lagrangian`, `Phi4EOM`,
-  `Phi4Diagrams`, `SUNDelta`, `SUNF`, `SUND`, `SUNT`, `SUNTrace`,
+  `Phi4Diagrams`, `Phi4Renormalization`, `Phi4Counterterm`, `SUNDelta`,
+  `SUNF`, `SUND`, `SUNT`, `SUNTrace`,
   `SUNCommutator`, `SUNDeltaContract`, `SUNCF`, `SUNCA`, `SUNFComponent`,
   `SUNExpandCasimirs`, `SUNFundamentalCasimir`, `SUNAdjointCasimir`;
 - queries — `Component`, `Degree`, `Dimension`, `Rank`, `ZeroQ`, `EquivalentQ`.

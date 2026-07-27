@@ -41,6 +41,24 @@ typedef struct {
 } phy_phi4_diagram;
 
 /*
+ * One-loop multiplicative renormalization convention.
+ *
+ * D = 4 - 2 epsilon throughout. In MSbar the pole symbol is expanded
+ * explicitly as 1/epsilon - EulerGamma + Log[4 Pi], so the result remains
+ * ordinary typed IR and can be inspected or further simplified.
+ */
+typedef enum {
+    PHY_PHI4_RENORM_MS = 0,
+    PHY_PHI4_RENORM_MSBAR
+} phy_phi4_renorm_scheme;
+
+typedef struct {
+    phy_ir_ref delta_z_field;    /* Z_phi - 1 */
+    phy_ir_ref delta_z_mass;     /* Z_m - 1 */
+    phy_ir_ref delta_z_coupling; /* Z_lambda - 1 */
+} phy_phi4_renorm_constants;
+
+/*
  * `mass` and `coupling` are exact scalar IR expressions in `cas`.
  * `spacetime_dimension` is 1..4 for the device-oriented first model.
  */
@@ -117,6 +135,38 @@ phy_status phy_phi4_diagram_validate(const phy_phi4_model *model,
 phy_status phy_phi4_diagram_expression(const phy_phi4_model *model,
                                        const phy_phi4_diagram *diagram,
                                        phy_ir_ref *out_expression);
+
+/*
+ * Exact one-loop MS/MSbar constants for real lambda phi^4 / 4! theory:
+ *
+ *   delta Z_phi    = 0
+ *   delta Z_m      = lambda P / (32 Pi^2)
+ *   delta Z_lambda = 3 lambda P / (32 Pi^2)
+ *
+ * where P = 1/epsilon in MS and
+ * P = 1/epsilon - EulerGamma + Log[4 Pi] in MSbar.
+ *
+ * These are relative multiplicative constants in the convention used by the
+ * pinned FeynCalc phi4 example, not additive delta(m^2) and delta(lambda).
+ * Only a four-dimensional model is accepted.
+ */
+phy_status phy_phi4_one_loop_renormalization(
+    const phy_phi4_model *model, phy_ir_ref epsilon,
+    phy_phi4_renorm_scheme scheme,
+    phy_phi4_renorm_constants *out_constants);
+
+/*
+ * One-loop counterterm density in the same convention:
+ *
+ *  -1/2 m^2 delta Z_m phi^2
+ *  -lambda/4! delta Z_lambda phi^4
+ *
+ * delta Z_phi vanishes at this order. No loop integral is evaluated
+ * numerically.
+ */
+phy_status phy_phi4_one_loop_counterterm_lagrangian(
+    const phy_phi4_model *model, phy_ir_ref epsilon,
+    phy_phi4_renorm_scheme scheme, phy_ir_ref *out_lagrangian);
 
 #ifdef __cplusplus
 }

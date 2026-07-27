@@ -1355,6 +1355,114 @@ static phy_status eval_phi4_diagrams(phy_env *env, phy_ir_ref expr,
     return PHY_OK;
 }
 
+static phy_status phi4_scheme_from_call(
+    phy_env *env, phy_ir_ref expr, size_t index,
+    phy_phi4_renorm_scheme *out_scheme)
+{
+    const char *name = arg_keyword(env, expr, index);
+    if (name == NULL) {
+        return PHY_ERR_TYPE;
+    }
+    if (keyword_is(name, "MS")) {
+        *out_scheme = PHY_PHI4_RENORM_MS;
+        return PHY_OK;
+    }
+    if (keyword_is(name, "MSBar")) {
+        *out_scheme = PHY_PHI4_RENORM_MSBAR;
+        return PHY_OK;
+    }
+    return PHY_ERR_DOMAIN;
+}
+
+static phy_status eval_phi4_renormalization(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 6u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_phi4_model *model = NULL;
+    phy_status status = phi4_model_from_call(env, expr, &model);
+    phy_ir_ref epsilon = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = arg_scalar(env, expr, 4u, &epsilon);
+    }
+    phy_phi4_renorm_scheme scheme = PHY_PHI4_RENORM_MS;
+    if (status == PHY_OK) {
+        status = phi4_scheme_from_call(env, expr, 5u, &scheme);
+    }
+    phy_phi4_renorm_constants constants = {
+        PHY_IR_NULL, PHY_IR_NULL, PHY_IR_NULL};
+    if (status == PHY_OK) {
+        status = phy_phi4_one_loop_renormalization(
+            model, epsilon, scheme, &constants);
+    }
+    phy_phi4_model_destroy(model);
+    if (status != PHY_OK) {
+        return status;
+    }
+
+    const phy_ir_symbol rule_head = phy_ir_intern(env->ir, "Rule");
+    static const char *const labels[3] = {
+        "DeltaZPhi", "DeltaZm", "DeltaZLambda"};
+    const phy_ir_ref values[3] = {
+        constants.delta_z_field,
+        constants.delta_z_mass,
+        constants.delta_z_coupling};
+    phy_ir_ref rules[3] = {
+        PHY_IR_NULL, PHY_IR_NULL, PHY_IR_NULL};
+    for (size_t i = 0u; i < 3u; ++i) {
+        const phy_ir_symbol label_symbol =
+            phy_ir_intern(env->ir, labels[i]);
+        const phy_ir_ref label =
+            phy_ir_symbol_ref(env->ir, label_symbol);
+        if (rule_head == PHY_IR_NO_SYMBOL ||
+            label == PHY_IR_NULL) {
+            return phy_ir_last_error(env->ir);
+        }
+        const phy_ir_ref arguments[2] = {label, values[i]};
+        rules[i] =
+            phy_ir_function(env->ir, rule_head, arguments, 2u);
+        if (rules[i] == PHY_IR_NULL) {
+            return phy_ir_last_error(env->ir);
+        }
+    }
+    const phy_ir_ref result =
+        phy_ir_function(env->ir, env->list_head, rules, 3u);
+    if (result == PHY_IR_NULL) {
+        return phy_ir_last_error(env->ir);
+    }
+    *out_value = scalar_value(result);
+    return PHY_OK;
+}
+
+static phy_status eval_phi4_counterterm(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 6u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_phi4_model *model = NULL;
+    phy_status status = phi4_model_from_call(env, expr, &model);
+    phy_ir_ref epsilon = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = arg_scalar(env, expr, 4u, &epsilon);
+    }
+    phy_phi4_renorm_scheme scheme = PHY_PHI4_RENORM_MS;
+    if (status == PHY_OK) {
+        status = phi4_scheme_from_call(env, expr, 5u, &scheme);
+    }
+    phy_ir_ref result = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = phy_phi4_one_loop_counterterm_lagrangian(
+            model, epsilon, scheme, &result);
+    }
+    phy_phi4_model_destroy(model);
+    if (status == PHY_OK) {
+        *out_value = scalar_value(result);
+    }
+    return status;
+}
+
 static phy_status eval_mandelstam_reduce(phy_env *env, phy_ir_ref expr,
                                          phy_value *out_value)
 {
@@ -2202,6 +2310,10 @@ static phy_status eval_operator(phy_env *env, phy_ir_ref expr,
         return eval_phi4_eom(env, expr, out_value);
     case EVAL_HEAD_PHI4_DIAGRAMS:
         return eval_phi4_diagrams(env, expr, out_value);
+    case EVAL_HEAD_PHI4_RENORMALIZATION:
+        return eval_phi4_renormalization(env, expr, out_value);
+    case EVAL_HEAD_PHI4_COUNTERTERM:
+        return eval_phi4_counterterm(env, expr, out_value);
     case EVAL_HEAD_MANDELSTAM_REDUCE:
         return eval_mandelstam_reduce(env, expr, out_value);
     case EVAL_HEAD_DIRAC_TRACE:

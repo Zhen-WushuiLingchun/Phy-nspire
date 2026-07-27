@@ -22,9 +22,9 @@ Verification:
 - host smoke test — done; the suite covers the platform, relative pointer,
   source language, drawing, notebook, the stateful evaluator, IR, tensor
   storage, differential forms, GR, Lie/QFT foundations, CAS, QFT oracle, and
-  full lifecycle: Windows 29/29, WSL ASan/UBSan/leak 31/31, and 90,046
+  full lifecycle: Windows 29/29, WSL ASan/UBSan/leak 31/31, and 90,123
   explicit checks;
-- generated `.tns` size report — 1,099,509 bytes, 17.5% of the 6 MiB ceiling,
+- generated `.tns` size report — 1,100,648 bytes, 17.5% of the 6 MiB ceiling,
   with the current evaluator and physics stack linked;
 - launch of a Phy-nspire artifact on the real CX II — done on 2026-07-26 with
   the observable CAS smoke screen;
@@ -135,9 +135,9 @@ observable `phy-cas-smoke.tns` then ran seven symbolic cases on the physical
 CX II on 2026-07-26, displayed 7/7 PASS, and returned cleanly to Documents.
 
 The evaluator's real Ndless check now compiles 33 portable sources, retains
-15/15 public evaluator entry points, packages a 117,936-byte isolated probe,
+15/15 public evaluator entry points, packages a 120,472-byte isolated probe,
 and contains no float formatter, libm call, or ARM soft-float helper. The
-product is 1,099,509 bytes. The independent SU(N) colour probe retains 23/23
+product is 1,100,648 bytes. The independent SU(N) colour probe retains 23/23
 public APIs, 4,924 bytes of layer text, and packages to 43,176 bytes under the
 same no-float rule. These establish ARM link/package and size, not
 physical-device runtime or performance.
@@ -239,7 +239,9 @@ operations, and built-in `U(1)`, `SU(2)`, `SO(3)`, `SU(3)`, and `SO(1,3)`
 metadata. A bounded real `phi^4` layer now emits the exact Lagrangian,
 propagator/vertex objects, and the one-loop tadpole plus `s/t/u` bubble
 topologies with exact symmetry/coupling weights and unevaluated master
-integrals. The differential-form/Lie foundation now also supports
+integrals. It also returns the exact one-loop MS/MSbar multiplicative
+renormalization constants and local counterterm density in the explicitly
+declared `D=4-2 epsilon` convention. The differential-form/Lie foundation now also supports
 Lie-algebra-valued forms, `D_A`, non-Abelian
 `F=dA+(g/2)[A,A]`, infinitesimal gauge variations, explicit Bianchi residuals,
 and `-1/2 h_ab F^a wedge star_g(F^b)` with a general coordinate metric.
@@ -250,8 +252,9 @@ all-incoming Mandelstam routing. Native symbolic `SU(N)` colour algebra now
 covers symbolic `N`, invariant tensors, generator commutators, traces
 through length three, held long traces, exact `C_F/C_A`, and textbook SU(2)/
 SU(3) components. General colour dummy canonicalization, Fierz/completeness,
-dimensional regularization, general graph generation, gauge fixing/ghosts,
-Ward identities, and renormalization remain scoped rather than implemented.
+finite dimensionally regulated master integrals, general graph generation,
+gauge fixing/ghosts, Ward identities, and renormalization beyond the bounded
+phi4 one-loop MS/MSbar result remain scoped rather than implemented.
 The MVP boundary, the pinned
 conventions, the algorithm specification and the verified identity set are in
 [`docs/references/QFT_GAUGE.md`](references/QFT_GAUGE.md); the contracts that
@@ -283,7 +286,8 @@ from the notebook: `LieGroup`,
 `Killing`, `LieForm`, `GaugeConnection`, `CovariantD`, `FieldStrength`,
 `GaugeVariation`, `Bianchi`, `YangMillsLagrangian`, `ColorComponent`,
 `DiracTrace`, `MandelstamReduce`, `Phi4Lagrangian`, `Phi4EOM`, and
-`Phi4Diagrams`, plus `SUNDelta`, `SUNF`, `SUND`, `SUNT`, `SUNTrace`,
+`Phi4Diagrams`, `Phi4Renormalization`, `Phi4Counterterm`, plus `SUNDelta`,
+`SUNF`, `SUND`, `SUNT`, `SUNTrace`,
 `SUNCommutator`, `SUNCF`, `SUNCA`, and the other bounded `SUN*` commands,
 dispatch onto native backends. Typed master-integral and
 gamma/momentum heads remain output vocabulary, not no-op commands.

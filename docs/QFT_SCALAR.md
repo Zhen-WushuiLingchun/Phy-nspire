@@ -27,7 +27,9 @@ the layer creates:
 - exact symmetry factors and coupling weights;
 - exact graph checks `4V = 2I + E`, `L = I - V + 1`, and superficial degree
   `omega = D L - 2 I`;
-- unevaluated typed `TadpoleIntegral` and `BubbleIntegral` masters.
+- unevaluated typed `TadpoleIntegral` and `BubbleIntegral` masters;
+- exact one-loop `MS` and `MSBar` multiplicative renormalization constants
+  and the corresponding local counterterm density in `D = 4 - 2 epsilon`.
 
 The loop corpus separates topology/combinatorics from convention-dependent
 amplitude phases:
@@ -40,9 +42,10 @@ amplitude phases:
 | `t` bubble | 2 | 2 | 4 | 1 | `1/2` | `lambda^2/2` |
 | `u` bubble | 2 | 2 | 4 | 1 | `1/2` | `lambda^2/2` |
 
-No integral is evaluated numerically and no UV pole is asserted yet. The
-typed masters are the stable boundary for a later dimensional-regularization
-table and FeynCalc golden comparison.
+No integral is evaluated numerically. The typed masters remain the stable
+boundary for a later finite-part table; the one-loop UV constants below use a
+separately declared normalization rather than silently assigning one to those
+opaque master heads.
 
 Notebook cells call the backend through
 `Phi4Lagrangian[phi,m,lambda,D]`, `Phi4EOM[...]`, and
@@ -52,11 +55,50 @@ these evaluator paths as well as the direct graph topology, exact weights,
 field equation, and typed rejection of inconsistent graphs and unsupported
 dimensions.
 
+The one-loop renormalization commands are:
+
+```text
+Phi4Renormalization[phi,m,lambda,4,epsilon,MS]
+Phi4Renormalization[phi,m,lambda,4,epsilon,MSBar]
+Phi4Counterterm[phi,m,lambda,4,epsilon,MSBar]
+```
+
+The first returns labelled `Rule` values in the order
+`DeltaZPhi`, `DeltaZm`, `DeltaZLambda`. With
+
+```text
+P_MS    = 1/epsilon
+P_MSBar = 1/epsilon - EulerGamma + Log[4 Pi]
+```
+
+the exact result is
+
+```text
+DeltaZPhi    = 0
+DeltaZm      = lambda P / (32 Pi^2)
+DeltaZLambda = 3 lambda P / (32 Pi^2)
+```
+
+These are the relative multiplicative constants `Z - 1`, not additive
+`delta(m^2)` and `delta(lambda)`. The counterterm density is
+
+```text
+-m^2 DeltaZm ScalarField[phi]^2 / 2
+-lambda DeltaZLambda ScalarField[phi]^4 / 4!
+```
+
+This convention and its factor of two are pinned to `D = 4 - 2 epsilon`.
+They match the FeynCalc phi4 one-loop example's published MS/MSbar comparison
+to Bailin and Love:
+<https://feyncalc.github.io/FeynCalcExamples/Phi4/OneLoop/Renormalization>.
+Keeping the convention in the public API avoids mixing that epsilon with a
+`D = 4 - epsilon` formula.
+
 Not yet implemented:
 
 - functional differentiation beyond the built-in model equation;
 - Wick-contraction and general graph generation;
-- counterterms, dimensional regularization, UV-pole extraction, or
-  renormalization-group functions;
+- finite parts of dimensionally regulated masters, automatic UV-pole
+  extraction from arbitrary integrands, or renormalization-group running;
 - multi-loop topology reduction or IBP;
 - a graphical diagram editor.

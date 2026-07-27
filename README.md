@@ -64,6 +64,9 @@ exact `F wedge star_g(F)` densities. A four-dimensional Lorentz/Dirac layer
 adds typed momenta and index spaces, Clifford normalisation and contraction,
 traces without gamma-five, routed Mandelstam reduction, and exact symbolic
 SU(N) colour tensors, traces, commutators, and Casimirs with symbolic `N`.
+The scalar sector also exposes convention-pinned one-loop MS/MSbar
+renormalization constants and the local phi4 counterterm density for
+`D = 4 - 2 epsilon`.
 The CAS answers "unknown" rather than guessing outside its decidable class, so
 the scalar operations needed by the tensor, geometry, and GR phases no longer depend on
 integrating Giac.
@@ -82,10 +85,10 @@ by contract preserves an operator and simplifies only its operands: the head
 survived a round trip and nothing computed.
 
 The strict Windows host suite passes 29/29. The WSL ASan/UBSan/leak suite
-passes 31/31, and the assertion-bearing executables contain 90,046 explicit
+passes 31/31, and the assertion-bearing executables contain 90,123 explicit
 checks.
 
-The current native build is measured at 1,099,509 bytes, 17.5% of the 6 MiB
+The current native build is measured at 1,100,648 bytes, 17.5% of the 6 MiB
 ceiling. Its evaluator ARM probe links the complete current physics stack,
 retains 15/15 public evaluator entry points, packages to a `.tns`, and imports
 no libm, floating-point formatter, or ARM soft-float helper.

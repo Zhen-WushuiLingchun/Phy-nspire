@@ -527,6 +527,36 @@ static void test_qft_heads_reach_native_backends(void)
     const char *diagram_text = expansion(&f, diagrams);
     PHY_CHECK(strstr(diagram_text, "TadpoleIntegral") != NULL);
     PHY_CHECK(strstr(diagram_text, "BubbleIntegral") != NULL);
+
+    (void)run(&f, "MSBar = 7");
+    const phy_value renormalization = run(
+        &f,
+        "Phi4Renormalization[phi,m,lambda,4,epsilon,MSBar]");
+    PHY_CHECK_EQ_INT(renormalization.kind, PHY_VALUE_SCALAR);
+    PHY_CHECK_EQ_INT(
+        phy_ir_kind_of(f.ir, renormalization.as.scalar), PHY_IR_FUNCTION);
+    PHY_CHECK_EQ_INT(
+        phy_ir_child_count(f.ir, renormalization.as.scalar), 3);
+    const char *renormalization_text = expansion(&f, renormalization);
+    PHY_CHECK(strstr(renormalization_text, "DeltaZPhi") != NULL);
+    PHY_CHECK(strstr(renormalization_text, "DeltaZm") != NULL);
+    PHY_CHECK(strstr(renormalization_text, "DeltaZLambda") != NULL);
+    PHY_CHECK(strstr(renormalization_text, "EulerGamma") != NULL);
+
+    const phy_value counterterm = run(
+        &f, "Phi4Counterterm[phi,m,lambda,4,epsilon,MS]");
+    PHY_CHECK_EQ_INT(counterterm.kind, PHY_VALUE_SCALAR);
+    const char *counterterm_text = expansion(&f, counterterm);
+    PHY_CHECK(strstr(counterterm_text, "ScalarField") != NULL);
+    PHY_CHECK(strstr(counterterm_text, "epsilon") != NULL);
+    PHY_CHECK(strstr(counterterm_text, "Pi") != NULL);
+
+    expect_status(
+        &f, "Phi4Renormalization[phi,m,lambda,4,epsilon,OnShell]",
+        PHY_ERR_DOMAIN);
+    expect_status(
+        &f, "Phi4Counterterm[phi,m,lambda,3,epsilon,MS]",
+        PHY_ERR_UNSUPPORTED);
     fixture_close(&f);
 }
 
@@ -675,7 +705,8 @@ static void test_every_evaluated_head_rejects_empty_arguments(void)
         "Riemann",      "RiemannMixed",        "Ricci",
         "RicciScalar",  "Einstein",            "Kretschmann",
         "CovariantDerivative",                 "Phi4Lagrangian",
-        "Phi4EOM",      "Phi4Diagrams",         "MandelstamReduce",
+        "Phi4EOM",      "Phi4Diagrams",         "Phi4Renormalization",
+        "Phi4Counterterm",                      "MandelstamReduce",
         "DiracTrace",   "SUNDelta",             "SUNF",
         "SUND",         "SUNT",                 "SUNTrace",
         "SUNCommutator", "SUNDeltaContract",    "SUNCF",

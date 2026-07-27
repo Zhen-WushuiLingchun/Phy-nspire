@@ -243,6 +243,124 @@ static void test_invalid_graphs_are_rejected(void)
     fixture_close(&f);
 }
 
+static void test_one_loop_ms_renormalization(void)
+{
+    fixture f = fixture_open();
+    const phy_ir_ref epsilon =
+        phy_ir_symbol_ref(f.ir, phy_ir_intern(f.ir, "epsilon"));
+    phy_phi4_renorm_constants constants;
+    PHY_CHECK_EQ_INT(
+        phy_phi4_one_loop_renormalization(
+            f.model, epsilon, PHY_PHI4_RENORM_MS, &constants),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(constants.delta_z_field, phy_ir_integer(f.ir, 0));
+
+    phy_ir_ref three = PHY_IR_NULL;
+    phy_ir_ref expected_coupling = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(phy_cas_number(f.cas, 3, 1, &three), PHY_OK);
+    {
+        const phy_ir_ref factors[2] = {
+            three, constants.delta_z_mass};
+        PHY_CHECK_EQ_INT(
+            phy_cas_mul(
+                f.cas, factors, 2u, &expected_coupling),
+            PHY_OK);
+    }
+    expect_equivalent(
+        f.cas, constants.delta_z_coupling, expected_coupling);
+
+    const phy_ir_ref pi =
+        phy_ir_symbol_ref(f.ir, phy_ir_intern(f.ir, "Pi"));
+    phy_ir_ref two = PHY_IR_NULL;
+    phy_ir_ref thirty_two = PHY_IR_NULL;
+    phy_ir_ref pi_squared = PHY_IR_NULL;
+    phy_ir_ref recovered_coupling = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(phy_cas_number(f.cas, 2, 1, &two), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_cas_number(f.cas, 32, 1, &thirty_two), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_cas_pow(f.cas, pi, two, &pi_squared), PHY_OK);
+    {
+        const phy_ir_ref factors[4] = {
+            thirty_two, pi_squared, epsilon,
+            constants.delta_z_mass};
+        PHY_CHECK_EQ_INT(
+            phy_cas_mul(
+                f.cas, factors, 4u, &recovered_coupling),
+            PHY_OK);
+    }
+    expect_equivalent(f.cas, recovered_coupling, f.coupling);
+
+    phy_ir_ref counterterm = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_phi4_one_loop_counterterm_lagrangian(
+            f.model, epsilon, PHY_PHI4_RENORM_MS, &counterterm),
+        PHY_OK);
+    char text[2048];
+    size_t required = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_ir_write(
+            f.ir, counterterm, text, sizeof text, &required),
+        PHY_OK);
+    PHY_CHECK(strstr(text, "ScalarField") != NULL);
+    PHY_CHECK(strstr(text, "Pi") != NULL);
+    PHY_CHECK(strstr(text, "epsilon") != NULL);
+    fixture_close(&f);
+}
+
+static void test_one_loop_msbar_and_typed_rejections(void)
+{
+    fixture f = fixture_open();
+    const phy_ir_ref epsilon =
+        phy_ir_symbol_ref(f.ir, phy_ir_intern(f.ir, "epsilon"));
+    phy_phi4_renorm_constants constants;
+    PHY_CHECK_EQ_INT(
+        phy_phi4_one_loop_renormalization(
+            f.model, epsilon, PHY_PHI4_RENORM_MSBAR, &constants),
+        PHY_OK);
+    char text[2048];
+    size_t required = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_ir_write(
+            f.ir, constants.delta_z_mass, text, sizeof text, &required),
+        PHY_OK);
+    PHY_CHECK(strstr(text, "EulerGamma") != NULL);
+    PHY_CHECK(strstr(text, "(fn log") != NULL);
+    PHY_CHECK(strstr(text, "Pi") != NULL);
+
+    const phy_ir_ref zero = phy_ir_integer(f.ir, 0);
+    PHY_CHECK_EQ_INT(
+        phy_phi4_one_loop_renormalization(
+            f.model, zero, PHY_PHI4_RENORM_MS, &constants),
+        PHY_ERR_DOMAIN);
+    PHY_CHECK_EQ_INT(
+        phy_phi4_one_loop_renormalization(
+            f.model, epsilon, (phy_phi4_renorm_scheme)99, &constants),
+        PHY_ERR_INVALID_ARGUMENT);
+    fixture_close(&f);
+
+    phy_ir_context *ir = phy_ir_context_create(NULL);
+    phy_cas *cas = phy_cas_create(ir, NULL);
+    const phy_ir_ref m =
+        phy_ir_symbol_ref(ir, phy_ir_intern(ir, "m"));
+    const phy_ir_ref coupling =
+        phy_ir_symbol_ref(ir, phy_ir_intern(ir, "lambda"));
+    const phy_ir_ref eps =
+        phy_ir_symbol_ref(ir, phy_ir_intern(ir, "epsilon"));
+    phy_phi4_model *three_dimensional = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_phi4_model_create(
+            cas, "phi", m, coupling, 3u, &three_dimensional),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_phi4_one_loop_renormalization(
+            three_dimensional, eps, PHY_PHI4_RENORM_MS, &constants),
+        PHY_ERR_UNSUPPORTED);
+    phy_phi4_model_destroy(three_dimensional);
+    phy_cas_destroy(cas);
+    phy_ir_context_destroy(ir);
+}
+
 static void test_rejections_are_typed(void)
 {
     phy_ir_context *ir = phy_ir_context_create(NULL);
@@ -276,6 +394,8 @@ int main(void)
     PHY_TEST_CASE(test_equation_of_motion_and_tree);
     PHY_TEST_CASE(test_one_loop_diagram_corpus);
     PHY_TEST_CASE(test_invalid_graphs_are_rejected);
+    PHY_TEST_CASE(test_one_loop_ms_renormalization);
+    PHY_TEST_CASE(test_one_loop_msbar_and_typed_rejections);
     PHY_TEST_CASE(test_rejections_are_typed);
     const int result = PHY_TEST_REPORT("test_qft_scalar");
     phy_platform_shutdown();
