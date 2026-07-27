@@ -81,7 +81,9 @@ The evaluated object heads are:
   `RiemannMixed`, `Ricci`, `RicciScalar`, `Einstein`, `Kretschmann`,
   `CovariantDerivative`;
 - QFT — `DiracTrace`, `MandelstamReduce`, `Phi4Lagrangian`, `Phi4EOM`,
-  `Phi4Diagrams`;
+  `Phi4Diagrams`, `SUNDelta`, `SUNF`, `SUND`, `SUNT`, `SUNTrace`,
+  `SUNCommutator`, `SUNDeltaContract`, `SUNCF`, `SUNCA`, `SUNFComponent`,
+  `SUNExpandCasimirs`, `SUNFundamentalCasimir`, `SUNAdjointCasimir`;
 - queries — `Component`, `Degree`, `Dimension`, `Rank`, `ZeroQ`, `EquivalentQ`.
 
 Each of them dispatches onto the corresponding native backend and returns a
@@ -90,8 +92,10 @@ them is preserved as an inert operator: a head the evaluator owns and cannot
 evaluate returns a typed error.
 
 `ScalarField`, `Propagator`, `Vertex`, `TadpoleIntegral`, `BubbleIntegral`,
-`LorentzDot`, and `DiracGamma` are output constructors rather than standalone
-commands. The evaluated QFT heads above create and reduce them. Unknown
+`LorentzDot`, `DiracGamma`, `SUNGenerator`, and the held
+`SUNTrace[N,a,b,c,d,...]` form are output vocabulary. The evaluated QFT heads
+above create and reduce them; the held long-trace form is intentionally
+idempotent when evaluated again. Unknown
 non-reserved heads remain typed function applications and acquire no evaluator
 semantics implicitly.
 

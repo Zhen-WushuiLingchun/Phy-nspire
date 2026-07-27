@@ -22,9 +22,9 @@ Verification:
 - host smoke test — done; the suite covers the platform, relative pointer,
   source language, drawing, notebook, the stateful evaluator, IR, tensor
   storage, differential forms, GR, Lie/QFT foundations, CAS, QFT oracle, and
-  full lifecycle: Windows 28/28, WSL ASan/UBSan/leak 30/30, and 89,504
+  full lifecycle: Windows 29/29, WSL ASan/UBSan/leak 31/31, and 89,952
   explicit checks;
-- generated `.tns` size report — 1,095,275 bytes, 17.4% of the 6 MiB ceiling,
+- generated `.tns` size report — 1,099,509 bytes, 17.5% of the 6 MiB ceiling,
   with the current evaluator and physics stack linked;
 - launch of a Phy-nspire artifact on the real CX II — done on 2026-07-26 with
   the observable CAS smoke screen;
@@ -67,7 +67,8 @@ Output:
   scalar/full-form heads, multiple derivatives, and the command registry in
   [`docs/SOURCE_LANGUAGE.md`](SOURCE_LANGUAGE.md);
 - CAS/LaTeX insertion palette — done; richer tensor/physics object palettes
-  now include geometry, GR, Lie/Yang--Mills, Dirac/Mandelstam, and phi4
+  now include geometry, GR, Lie/Yang--Mills, Dirac/Mandelstam, phi4, and
+  symbolic SU(N) colour
   insertion entries; graphical particle/diagram palettes are not yet done;
 - backend-neutral typed expression IR — done, `include/phy/ir.h`, `src/ir`,
   documented in [`docs/IR.md`](IR.md);
@@ -106,21 +107,21 @@ Verification:
   stale outputs, Markdown selection, independent run-badge hit testing, 2D
   metrics, nMarkdown LaTeX integration, memory return, and the framebuffer
   fixture;
-- evaluator tests — done, `tests/test_eval.c`, 918 checks. The physics cases
+- evaluator tests — done, `tests/test_eval.c`, 1,048 checks. The physics cases
   reproduce, through reader-facing source, results the backend suites already
   certify directly: the U(1) and SU(2) curvature components and vanishing
   Bianchi residuals of `tests/test_yang_mills.c`, the round two-sphere
   curvature of `tests/test_gr.c`, the wedge/`d^2 = 0`/Leibniz/interior-product
   identities of `tests/test_geom.c`, `[T1,T2] = T3` and `K_ab = -2 delta_ab`
   from `tests/test_lie.c`, plus Kretschmann/covariant-derivative and bounded
-  Dirac/Mandelstam/phi4 cell paths. The remaining cases cover state flow between cells,
+  Dirac/Mandelstam/phi4/SU(N)-colour cell paths. The remaining cases cover state flow between cells,
   every typed-error path, the ownership sweep under rebinding and failure, the
   binding ceiling, and save/reopen;
 - formula bridge tests — done, `tests/test_formula.c`, 33 checks covering
   initialization, matrices, metrics, RGB565 rendering, and local error
   recovery;
-- source, palette and pointer tests — done: 217 source-language checks
-  including assignment and reserved-head canonicalization, 561 palette checks
+- source, palette and pointer tests — done: 228 source-language checks
+  including assignment and reserved-head canonicalization, 652 palette checks
   including every CAS snippet parsing, and 29 relative touchpad checks.
 
 The IR carries no simplification, evaluation, or arithmetic: it is the
@@ -133,10 +134,12 @@ CAS APIs survive garbage collection and the probe packages to a 37,720-byte
 observable `phy-cas-smoke.tns` then ran seven symbolic cases on the physical
 CX II on 2026-07-26, displayed 7/7 PASS, and returned cleanly to Documents.
 
-The evaluator's real Ndless check now compiles 32 portable sources, retains
-15/15 public evaluator entry points, packages a 110,340-byte isolated probe,
+The evaluator's real Ndless check now compiles 33 portable sources, retains
+15/15 public evaluator entry points, packages a 117,936-byte isolated probe,
 and contains no float formatter, libm call, or ARM soft-float helper. The
-product is 1,095,275 bytes. These establish ARM link/package and size, not
+product is 1,099,509 bytes. The independent SU(N) colour probe retains 23/23
+public APIs, 4,924 bytes of layer text, and packages to 43,176 bytes under the
+same no-float rule. These establish ARM link/package and size, not
 physical-device runtime or performance.
 
 ## Phase 2 — tensor and manifold CAS
@@ -243,7 +246,10 @@ and `-1/2 h_ab F^a wedge star_g(F^b)` with a general coordinate metric.
 The four-dimensional Lorentz/Dirac layer now implements typed metric/index
 spaces, momenta and scalar products, Clifford normalisation, contraction,
 multi-spin-line ordering, traces without gamma-five, and explicit Peskin or
-all-incoming Mandelstam routing. Native general `SU(N)` colour reduction,
+all-incoming Mandelstam routing. Native symbolic `SU(N)` colour algebra now
+covers symbolic `N`, invariant tensors, generator commutators, traces
+through length three, held long traces, exact `C_F/C_A`, and textbook SU(2)/
+SU(3) components. General colour dummy canonicalization, Fierz/completeness,
 dimensional regularization, general graph generation, gauge fixing/ghosts,
 Ward identities, and renormalization remain scoped rather than implemented.
 The MVP boundary, the pinned
@@ -268,7 +274,8 @@ field/vertex/propagator workflow, and the classical Yang--Mills
 connection/curvature slice are implemented and documented in
 [`docs/GEOMETRY.md`](GEOMETRY.md),
 [`docs/QFT_SCALAR.md`](QFT_SCALAR.md), and
-[`docs/YANG_MILLS.md`](YANG_MILLS.md).
+[`docs/YANG_MILLS.md`](YANG_MILLS.md). The exact colour conventions and
+command boundary are documented in [`docs/COLOR.md`](COLOR.md).
 
 The Lie, Yang--Mills, Dirac/Mandelstam and bounded phi4 slices are reachable
 from the notebook: `LieGroup`,
@@ -276,7 +283,9 @@ from the notebook: `LieGroup`,
 `Killing`, `LieForm`, `GaugeConnection`, `CovariantD`, `FieldStrength`,
 `GaugeVariation`, `Bianchi`, `YangMillsLagrangian`, `ColorComponent`,
 `DiracTrace`, `MandelstamReduce`, `Phi4Lagrangian`, `Phi4EOM`, and
-`Phi4Diagrams` dispatch onto native backends. Typed master-integral and
+`Phi4Diagrams`, plus `SUNDelta`, `SUNF`, `SUND`, `SUNT`, `SUNTrace`,
+`SUNCommutator`, `SUNCF`, `SUNCA`, and the other bounded `SUN*` commands,
+dispatch onto native backends. Typed master-integral and
 gamma/momentum heads remain output vocabulary, not no-op commands.
 
 Verification:
@@ -294,6 +303,10 @@ Verification:
   passes the ARM link/no-soft-float check. The proposed throughput ceilings
   remain **UNVERIFIED on CX II**; device performance is unmeasured. Contract
   Q-7's hardware timing and interruption checks remain open.
+- SU(N) colour contract Q-6 is done: 216 direct exact tests, the independent
+  C-1...C-7 generalized Gell-Mann oracle, reader-facing evaluator coverage,
+  and the 23/23-API ARM link check. The Fierz identity remains explicitly
+  deferred.
 
 ## Phase 6 — diagram notebook cells
 

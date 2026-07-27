@@ -62,7 +62,8 @@ an exact field equation, tree and one-loop graph combinatorics, gauge
 curvature, covariant derivatives, gauge variations, Bianchi residuals, and
 exact `F wedge star_g(F)` densities. A four-dimensional Lorentz/Dirac layer
 adds typed momenta and index spaces, Clifford normalisation and contraction,
-traces without gamma-five, and routed Mandelstam reduction.
+traces without gamma-five, routed Mandelstam reduction, and exact symbolic
+SU(N) colour tensors, traces, commutators, and Casimirs with symbolic `N`.
 The CAS answers "unknown" rather than guessing outside its decidable class, so
 the scalar operations needed by the tensor, geometry, and GR phases no longer depend on
 integrating Giac.
@@ -75,16 +76,16 @@ head onto the corresponding native backend. `ExteriorD[alpha]` calls the
 exterior derivative; `FieldStrength[A,g]` calls the Yang--Mills curvature;
 `ZeroQ[Bianchi[A,g]]` proves the identity rather than asserting it;
 `DiracTrace[...]`, `MandelstamReduce[...]`, `Phi4Lagrangian[...]`,
-`Phi4EOM[...]`, and `Phi4Diagrams[...]` reach their native QFT backends. Before this
-layer those heads were parsed into typed IR and handed to the scalar CAS, which
+`Phi4EOM[...]`, `Phi4Diagrams[...]`, and the `SUN*` colour commands reach their
+native QFT backends. Before this layer those heads were parsed into typed IR and handed to the scalar CAS, which
 by contract preserves an operator and simplifies only its operands: the head
 survived a round trip and nothing computed.
 
-The strict Windows host suite passes 28/28. The WSL ASan/UBSan/leak suite
-passes 30/30, and the assertion-bearing executables contain 89,504 explicit
+The strict Windows host suite passes 29/29. The WSL ASan/UBSan/leak suite
+passes 31/31, and the assertion-bearing executables contain 89,952 explicit
 checks.
 
-The current native build is measured at 1,095,275 bytes, 17.4% of the 6 MiB
+The current native build is measured at 1,099,509 bytes, 17.5% of the 6 MiB
 ceiling. Its evaluator ARM probe links the complete current physics stack,
 retains 15/15 public evaluator entry points, packages to a `.tns`, and imports
 no libm, floating-point formatter, or ARM soft-float helper.
@@ -109,6 +110,7 @@ Start here:
 - [Native coordinate-metric GR](docs/GR.md)
 - [Finite Lie algebra and group metadata](docs/LIE.md)
 - [Bounded scalar phi4 QFT layer](docs/QFT_SCALAR.md)
+- [Exact symbolic SU(N) colour algebra](docs/COLOR.md)
 - [Yang--Mills symbolic layer](docs/YANG_MILLS.md)
 - [Scalar computer algebra](docs/CAS.md)
 - [Notebook shell and 2D layout](docs/NOTEBOOK.md)

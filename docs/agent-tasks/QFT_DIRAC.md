@@ -284,6 +284,16 @@ not required.
 `1/N` singlet bookkeeping and a canonical spinor-chain ordering, neither of
 which exists yet.
 
+**Implemented.** `include/phy/color.h` and `src/qft/color.c` provide symbolic
+`N`, typed `ColorAdjoint` indices, canonical `SUNDelta`/`SUNF`/`SUND`, short
+traces, held long traces, commutators, Casimir presentation/expansion, and
+exact one-based SU(2)/SU(3) components. `tests/test_color.c` has 216 direct
+exact checks; the independent C-1...C-7 matrix oracle remains in
+`tests/oracle/`. `make color-link-check` retains 23/23 public APIs without a
+float formatter, libm, or ARM soft-float helper. The reader-facing `SUN*`
+commands and insertion palette use the same evaluator and MathTree output path
+as the rest of the notebook. The Fierz prohibition above remains in force.
+
 ---
 
 ## Q-7 — Device build and resource measurement
@@ -327,7 +337,7 @@ until this contract's hardware measurements are recorded.
 | Q-3 | Lorentz contraction | Q-2 | **done** |
 | Q-4 | Dirac traces without `γ⁵` | Q-3 | **done** |
 | Q-5 | Mandelstam variables | Q-1 | **done** |
-| Q-6 | SU(N) colour algebra | Q-1 | pending |
+| Q-6 | SU(N) colour algebra | Q-1 | **done** |
 | Q-7 | Device build and measurement | Q-4, Q-6 | **ARM link done; CX II timing pending** |
 
 Deferred, with the blocking dependency named, not to be picked up as part of

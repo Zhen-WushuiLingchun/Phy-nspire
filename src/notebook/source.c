@@ -165,10 +165,11 @@ static const char *canonical_function(const char *name)
  * case-insensitive, so `manifold[...]` and `Manifold[...]` must reach the same
  * evaluator entry rather than intern two unrelated heads.
  *
- * The geometry, Lie, Yang-Mills, relativity and query groups are evaluated by
- * src/eval against the corresponding native backend. The bounded scalar-QFT
- * group is parsed and displayed only; docs/EVALUATOR.md records that boundary
- * rather than letting it look computed.
+ * The geometry, Lie, Yang-Mills, relativity, bounded QFT, SU(N)-colour and
+ * query groups are evaluated by src/eval against the corresponding native
+ * backend. Output-only heads such as ScalarField and BubbleIntegral share this
+ * canonical operator vocabulary but are constructed by evaluated commands;
+ * docs/EVALUATOR.md records that boundary.
  */
 static const char *const kObjectHeads[] = {
     "Manifold",     "DifferentialForm", "Metric",        "VectorField",
@@ -191,6 +192,12 @@ static const char *const kObjectHeads[] = {
     "ScalarField",  "Propagator",       "Vertex",        "TadpoleIntegral",
     "BubbleIntegral", "Phi4Lagrangian",  "Phi4EOM",       "Phi4Diagrams",
     "LorentzDot",   "MandelstamReduce", "DiracTrace",
+
+    "SUNDelta",     "SUNF",              "SUND",          "SUNT",
+    "SUNTrace",     "SUNCommutator",     "SUNDeltaContract",
+    "SUNCF",        "SUNCA",             "SUNFComponent",
+    "SUNExpandCasimirs", "SUNFundamentalCasimir",
+    "SUNAdjointCasimir",
 };
 
 static const char *canonical_object_head(const char *name)

@@ -16,6 +16,7 @@
 #   cas-link-check prove the scalar CAS links on device
 #   geom-link-check    prove manifolds and differential forms link on device
 #   ym-link-check      prove Yang-Mills and all dependencies link on device
+#   color-link-check   prove exact SU(N) colour algebra links on device
 #   eval-link-check    prove the stateful evaluator and its whole backend
 #                      stack link on device
 #   cas-smoke      build an observable on-device symbolic CAS acceptance test
@@ -103,6 +104,7 @@ SOURCES := \
     src/qft/lorentz.c \
     src/qft/dirac.c \
     src/qft/mandelstam.c \
+    src/qft/color.c \
     src/cas/num.c \
     src/cas/engine.c \
     src/cas/simplify.c \
@@ -188,7 +190,8 @@ CAS_SMOKE_ELF := $(DISTDIR)/$(CAS_SMOKE_EXE).elf
 CAS_SMOKE_TNS := $(DISTDIR)/$(CAS_SMOKE_EXE).tns
 
 .PHONY: all clean size-report symbol-report ir-link-check tensor-link-check \
-        cas-link-check geom-link-check ym-link-check eval-link-check \
+        cas-link-check geom-link-check ym-link-check color-link-check \
+        eval-link-check \
         cas-smoke check-sdk
 
 all: $(TNS)
@@ -249,6 +252,9 @@ geom-link-check: check-sdk
 
 ym-link-check: check-sdk
 	@tools/link-check.sh ym
+
+color-link-check: check-sdk
+	@tools/link-check.sh color
 
 eval-link-check: check-sdk
 	@tools/link-check.sh eval

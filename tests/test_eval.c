@@ -530,6 +530,86 @@ static void test_qft_heads_reach_native_backends(void)
     fixture_close(&f);
 }
 
+static void test_sun_colour_heads_reach_native_backend(void)
+{
+    fixture f = fixture_open();
+
+    expect_decision(
+        &f, "EquivalentQ[SUNCF[N],(N^2-1)/(2N)]", "True");
+    expect_scalar(&f, "SUNCF[3]", "(rat 4 3)");
+    expect_scalar(&f, "SUNCA[N]", "N");
+    expect_decision(
+        &f,
+        "EquivalentQ[SUNExpandCasimirs[C_F+C_A,N],"
+        "(N^2-1)/(2N)+N]",
+        "True");
+
+    expect_scalar(&f, "SUNFComponent[3,1,2,3]", "1");
+    expect_scalar(&f, "SUNFComponent[3,1,4,7]", "(rat 1 2)");
+    expect_decision(
+        &f,
+        "EquivalentQ[SUNFComponent[3,4,5,8],Sqrt[3]/2]",
+        "True");
+
+    expect_decision(
+        &f, "EquivalentQ[SUNDelta[a,a,N],N^2-1]", "True");
+    expect_scalar(&f, "SUNF[a,a,c,N]", "0");
+
+    const phy_value trace2 = run(&f, "SUNTrace[{a,b},N]");
+    PHY_CHECK_EQ_INT(trace2.kind, PHY_VALUE_SCALAR);
+    const char *trace2_text = expansion(&f, trace2);
+    PHY_CHECK(strstr(trace2_text, "SUNDelta") != NULL);
+    PHY_CHECK(strstr(trace2_text, "(rat 1 2)") != NULL);
+
+    const phy_value trace3 = run(&f, "SUNTrace[{a,b,c},N]");
+    const char *trace3_text = expansion(&f, trace3);
+    PHY_CHECK(strstr(trace3_text, "SUND") != NULL);
+    PHY_CHECK(strstr(trace3_text, "SUNF") != NULL);
+    PHY_CHECK(strstr(trace3_text, " I ") != NULL);
+
+    const phy_value trace4 = run(&f, "SUNTrace[{a,b,c,d},N]");
+    PHY_CHECK_EQ_INT(
+        phy_ir_kind_of(f.ir, trace4.as.scalar), PHY_IR_OPERATOR);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, trace4.as.scalar)),
+        "SUNTrace");
+    PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, trace4.as.scalar), 5);
+    const char *held_trace = expansion(&f, trace4);
+    PHY_CHECK(strstr(held_trace, "SUNTrace N") != NULL);
+
+    /* The held long-trace spelling is stable when pasted back into a cell. */
+    const phy_value trace4_again = run(&f, "SUNTrace[N,a,b,c,d]");
+    PHY_CHECK_EQ_INT(trace4_again.as.scalar, trace4.as.scalar);
+
+    const phy_value commutator = run(&f, "SUNCommutator[a,b,N]");
+    const char *commutator_text = expansion(&f, commutator);
+    PHY_CHECK(strstr(commutator_text, "SUNF") != NULL);
+    PHY_CHECK(strstr(commutator_text, "SUNGenerator") != NULL);
+    PHY_CHECK(strstr(commutator_text, " I ") != NULL);
+
+    const phy_value contraction =
+        run(&f, "SUNDeltaContract[a,b,SUNT[b,N],N]");
+    const char *contraction_text = expansion(&f, contraction);
+    PHY_CHECK(strstr(contraction_text, "SUNGenerator") != NULL);
+    PHY_CHECK(strstr(contraction_text, "idx a up ColorAdjoint") != NULL);
+
+    const phy_value fundamental =
+        run(&f, "SUNFundamentalCasimir[N]");
+    const char *fundamental_text = expansion(&f, fundamental);
+    PHY_CHECK(strstr(fundamental_text, "C_F") != NULL);
+    PHY_CHECK(strstr(fundamental_text, "IdentityFundamental") != NULL);
+    const phy_value adjoint = run(&f, "SUNAdjointCasimir[a,b,N]");
+    const char *adjoint_text = expansion(&f, adjoint);
+    PHY_CHECK(strstr(adjoint_text, "C_A") != NULL);
+    PHY_CHECK(strstr(adjoint_text, "SUNDelta") != NULL);
+
+    /* A Lorentz index can never be consumed as colour. */
+    expect_status(
+        &f, "SUNDelta[a,Up[mu,Lorentz],N]", PHY_ERR_TYPE);
+    expect_status(&f, "SUNFComponent[N,1,2,3]", PHY_ERR_UNSUPPORTED);
+    fixture_close(&f);
+}
+
 /* -------------------------------------------------------- typed errors */
 
 static void test_reserved_heads_never_silently_pass_through(void)
@@ -596,7 +676,12 @@ static void test_every_evaluated_head_rejects_empty_arguments(void)
         "RicciScalar",  "Einstein",            "Kretschmann",
         "CovariantDerivative",                 "Phi4Lagrangian",
         "Phi4EOM",      "Phi4Diagrams",         "MandelstamReduce",
-        "DiracTrace",   "Component",
+        "DiracTrace",   "SUNDelta",             "SUNF",
+        "SUND",         "SUNT",                 "SUNTrace",
+        "SUNCommutator", "SUNDeltaContract",    "SUNCF",
+        "SUNCA",        "SUNFComponent",         "SUNExpandCasimirs",
+        "SUNFundamentalCasimir",                "SUNAdjointCasimir",
+        "Component",
         "Degree",       "Dimension",           "Rank",
         "ZeroQ",        "EquivalentQ",
     };
@@ -790,6 +875,7 @@ int main(void)
     PHY_TEST_CASE(test_nonabelian_gauge_field);
     PHY_TEST_CASE(test_curvature_pipeline);
     PHY_TEST_CASE(test_qft_heads_reach_native_backends);
+    PHY_TEST_CASE(test_sun_colour_heads_reach_native_backend);
     PHY_TEST_CASE(test_reserved_heads_never_silently_pass_through);
     PHY_TEST_CASE(test_every_evaluated_head_rejects_empty_arguments);
     PHY_TEST_CASE(test_objects_are_swept_and_never_leaked);

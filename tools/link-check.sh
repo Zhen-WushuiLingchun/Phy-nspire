@@ -22,7 +22,7 @@
 # Nothing here touches dist/. The probe is built into its own directory and
 # is never linked into the product.
 #
-# Usage: tools/link-check.sh [ir|cas|geom|ym|eval]   (default ir)
+# Usage: tools/link-check.sh [ir|cas|geom|ym|color|eval]   (default ir)
 #        after eval "$(tools/bootstrap-ndless.sh --env-only)"
 
 set -euo pipefail
@@ -71,6 +71,7 @@ PHYSICS_SOURCES=(
     src/qft/lorentz.c
     src/qft/dirac.c
     src/qft/mandelstam.c
+    src/qft/color.c
     src/geom/manifold.c
     src/geom/form.c
     src/geom/exterior.c
@@ -143,6 +144,17 @@ ym)
              src/geom/metric.c
              src/qft/yang_mills.c)
     ;;
+color)
+    LABEL="SU(N) colour"
+    PROBE="tests/device/color_link_probe.c"
+    HEADER="include/phy/color.h"
+    OBJECT_GLOB="src_qft_color.o"
+    EXCLUDE='^$'
+    MIN_ENTRY_POINTS=20
+    SOURCES=("${COMMON_SOURCES[@]}" "${CAS_SOURCES[@]}"
+             src/lie/lie.c
+             src/qft/color.c)
+    ;;
 eval)
     LABEL="evaluator"
     PROBE="tests/device/eval_link_probe.c"
@@ -158,7 +170,7 @@ eval)
              src/eval/display.c)
     ;;
 *)
-    echo "usage: tools/link-check.sh [ir|cas|geom|ym|eval]" >&2
+    echo "usage: tools/link-check.sh [ir|cas|geom|ym|color|eval]" >&2
     exit 2
     ;;
 esac
@@ -309,7 +321,8 @@ printf '  ok    %d/%d public entry points retained\n' \
 BANNED_PATTERN='(^|[[:space:]_])(_dtoa|_strtod|_printf_float|_scanf_float|_vfprintf|__sf_fake)'
 STRICT_FLOAT=0
 if [ "$LAYER" = "cas" ] || [ "$LAYER" = "geom" ] ||
-   [ "$LAYER" = "ym" ] || [ "$LAYER" = "eval" ]; then
+   [ "$LAYER" = "ym" ] || [ "$LAYER" = "color" ] ||
+   [ "$LAYER" = "eval" ]; then
     STRICT_FLOAT=1
     BANNED_PATTERN+='|[[:space:]]_?(sin|cos|tan|exp|log|pow|sqrt|floor|ceil|fmod)$|__aeabi_[df]'
 fi

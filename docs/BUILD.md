@@ -188,6 +188,7 @@ make cas-link-check      # include/phy/cas.h
 make tensor-link-check   # include/phy/tensor.h
 make geom-link-check     # include/phy/geom.h
 make ym-link-check       # include/phy/yang_mills.h
+make color-link-check    # include/phy/color.h
 make eval-link-check     # include/phy/eval.h, and the whole backend stack
 ```
 
@@ -208,14 +209,19 @@ Measured on the pinned ARM toolchain on 2026-07-27:
   package;
 - Yang--Mills: 22/22 APIs retained, 4,524 bytes of layer text, 54,260-byte
   probe package;
-- both contain no float formatter, libm call, or ARM soft-float helper.
+- SU(N) colour: 23/23 APIs retained, 4,924 bytes of layer text, 43,176-byte
+  probe package;
+- evaluator plus complete backend stack: 15/15 public evaluator APIs retained
+  from 33 portable sources, 23,756 bytes of evaluator text, 117,936-byte
+  isolated probe;
+- all four isolated probes contain no float formatter, libm call, or ARM
+  soft-float helper.
 
-`eval-link-check` has **not been run**, and neither has an ARM build of the
-evaluator: the Ndless SDK is absent from the machine that phase was developed
-on. `tests/device/eval_link_probe.c` compiles clean under the project warning
-set with a host GCC, and that is the only claim made for it. Because the linked
-image now retains the physics layers, the last measured `.tns` size is stale as
-well.
+A clean product build from the same source is 1,099,509 bytes (17.5% of the
+6 MiB ceiling). The product includes nMarkdown/FreeType/HarfBuzz and therefore
+has different retained dependencies from the exact isolated probes; the
+no-float statement above is specifically a property of those native symbolic
+paths, not of the full typesetter image.
 
 ### Native symbolic CAS acceptance test
 

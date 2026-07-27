@@ -170,6 +170,31 @@ entries returned by `Phi4Diagrams` are exact combinatorial coefficients times
 typed `TadpoleIntegral`/`BubbleIntegral` masters; they are not numerical
 integrals or dimensional-regularization results.
 
+### SU(N) colour
+
+| Spelling | Backend/result |
+| --- | --- |
+| `SUNDelta[a,b,N]` | canonical adjoint delta; equal indices give `N^2-1` |
+| `SUNF[a,b,c,N]` | real, totally antisymmetric structure constant |
+| `SUND[a,b,c,N]` | totally symmetric invariant tensor |
+| `SUNT[a,N]` | fundamental generator object |
+| `SUNTrace[{indices},N]` | exact traces through length 3; longer traces stay held |
+| `SUNCommutator[a,b,N]` | `I f^(abc) T^c` with a fresh typed dummy |
+| `SUNDeltaContract[a,b,expr,N]` | one unambiguous adjoint-delta contraction |
+| `SUNCF[N]`, `SUNCA[N]` | raw exact Casimirs |
+| `SUNFComponent[N,a,b,c]` | one-based exact built-in SU(2)/SU(3) component |
+| `SUNExpandCasimirs[expr,N]` | replace presentation atoms `C_F`, `C_A` |
+| `SUNFundamentalCasimir[N]` | `C_F IdentityFundamental` |
+| `SUNAdjointCasimir[a,b,N]` | `C_A SUNDelta[a,b]` |
+
+Bare index names become upper `ColorAdjoint` indices. An explicit Lorentz or
+other-space index is `PHY_ERR_TYPE`, so colour and Dirac contraction cannot
+interfere. `N` may remain symbolic. Exact component lookup is intentionally
+bounded to the textbook SU(2)/SU(3) tables; abstract `SUNF` works for symbolic
+`N`. Traces longer than three retain the explicit, re-runnable form
+`SUNTrace[N,a,b,c,d,...]`. The conventions and the Fierz boundary are in
+[`COLOR.md`](COLOR.md).
+
 ### Queries
 
 `Component[obj, indices...]`, `Degree[form]`, `Rank[tensor]`, `Dimension[obj]`,
@@ -195,7 +220,7 @@ spelling.
 ## Output constructors
 
 `ScalarField`, `Propagator`, `Vertex`, `TadpoleIntegral`, `BubbleIntegral`,
-`LorentzDot`, and `DiracGamma` are typed output vocabulary. They remain visible
+`LorentzDot`, `DiracGamma`, and `SUNGenerator` are typed output vocabulary. They remain visible
 IR rather than pretending to be independent commands. The reader-facing
 commands above construct and reduce them through the native backends.
 
@@ -262,7 +287,7 @@ expression still fails as a typed `PHY_ERR_NODE_LIMIT`.
 
 ## Verification
 
-`tests/test_eval.c`, 918 checks. The physics cases deliberately reproduce,
+`tests/test_eval.c`, 1,048 checks. The physics cases deliberately reproduce,
 through reader-facing source, results the backend suites already certify
 directly:
 
@@ -277,6 +302,9 @@ directly:
   `K = 4/a^4`, and a vanishing covariant derivative of Ricci;
 - four-dimensional Dirac traces, both routed Mandelstam conventions, and the
   exact phi4 Lagrangian/EOM/tree-plus-loop set;
+- symbolic-`N` colour Casimirs, exact SU(3) `f123`, `f147`, `f458`, invariant
+  tensor symmetries, generator commutators, short/held traces, and typed
+  Lorentz/colour separation from `tests/test_color.c`;
 - graded commutativity of the wedge, `d^2 = 0`, the graded Leibniz rule, and
   `iota_v iota_v = 0` from `tests/test_geom.c`;
 - `[T1,T2] = T3`, structure-constant antisymmetry, and `K_ab = -2 delta_ab` from
@@ -297,13 +325,13 @@ palette that inserts something the evaluator rejects is worse than no palette.
 The ARM link check is `make eval-link-check` and
 `tests/device/eval_link_probe.c`: 15 declared entry points, the whole physics
 stack behind one dispatcher, and the same no-float/no-libm/no-soft-float
-standard the CAS and geometry layers are held to. It now links 32 portable
+standard the CAS and geometry layers are held to. It now links 33 portable
 sources, retains 15/15 public evaluator entry points, contains no forbidden
-float/libm/soft-float dependency, and packages as a 110,340-byte isolated
+float/libm/soft-float dependency, and packages as a 117,936-byte isolated
 probe. That probe size includes its dependencies and is not an incremental
 product-size measurement.
 
 One consequence of this phase that the earlier link-check reports called out as
 future work has now happened: the application genuinely calls the geometry,
 Lie, Yang--Mills, and QFT layers, so `--gc-sections` no longer drops them.
-`dist/phy-nspire.tns` is currently 1,095,275 bytes.
+`dist/phy-nspire.tns` is currently 1,099,509 bytes.

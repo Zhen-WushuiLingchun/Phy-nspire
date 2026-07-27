@@ -242,12 +242,21 @@ static void test_assignment_and_reserved_heads(void)
                      "(op ZeroQ (op Bianchi A g))");
     command = parse(ir, "RicciScalar[c]");
     PHY_CHECK_EQ_STR(render(ir, command.expression), "(op RicciScalar c)");
+    command = parse(ir, "sunf[a,b,c,N]");
+    PHY_CHECK_EQ_STR(render(ir, command.expression),
+                     "(op SUNF a b c N)");
+    command = parse(ir, "SUNTrace[{a,b,c,d},N]");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(op SUNTrace (fn List a b c d) N)");
 
     /* A reserved spelling is not a bindable name. */
     size_t error = 0u;
     PHY_CHECK_EQ_INT(phy_source_parse(ir, "Cos = 1", &command, &error),
                      PHY_ERR_TYPE);
     PHY_CHECK_EQ_INT(phy_source_parse(ir, "Ricci = 1", &command, &error),
+                     PHY_ERR_TYPE);
+    PHY_CHECK_EQ_INT(phy_source_parse(ir, "SUNCF = 1", &command, &error),
                      PHY_ERR_TYPE);
     PHY_CHECK_EQ_INT(phy_source_parse(ir, "Integrate = 1", &command, &error),
                      PHY_ERR_TYPE);

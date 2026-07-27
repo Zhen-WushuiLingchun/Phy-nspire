@@ -21,6 +21,7 @@
 #include <string.h>
 
 #include "eval_internal.h"
+#include "phy/color.h"
 #include "phy/dirac.h"
 #include "phy/mandelstam.h"
 #include "phy/qft_scalar.h"
@@ -1500,6 +1501,307 @@ static phy_status eval_dirac_trace(phy_env *env, phy_ir_ref expr,
     return status;
 }
 
+/* ---------------------------------------------------------- SU(N) colour */
+
+static phy_status color_from_arg(phy_env *env, phy_ir_ref expr,
+                                 size_t n_argument, phy_color **out_color)
+{
+    phy_ir_ref n = PHY_IR_NULL;
+    const phy_status status =
+        arg_scalar(env, expr, n_argument, &n);
+    return status == PHY_OK
+               ? phy_color_create(env->cas, n, out_color)
+               : status;
+}
+
+static phy_status color_index_from_ref(phy_env *env, const phy_color *color,
+                                       phy_ir_ref raw,
+                                       phy_ir_ref *out_index)
+{
+    if (phy_ir_kind_of(env->ir, raw) == PHY_IR_SYMBOL) {
+        const char *name =
+            phy_ir_symbol_name(env->ir, phy_ir_head(env->ir, raw));
+        return name != NULL
+                   ? phy_color_index(color, name, out_index)
+                   : PHY_ERR_CORRUPT_DOCUMENT;
+    }
+    if (!phy_color_owns_index(color, raw)) {
+        return PHY_ERR_TYPE;
+    }
+    *out_index = raw;
+    return PHY_OK;
+}
+
+static phy_status color_indices_from_refs(
+    phy_env *env, const phy_color *color, const phy_ir_ref *raw, size_t count,
+    phy_ir_ref *out_indices)
+{
+    for (size_t index = 0u; index < count; ++index) {
+        const phy_status status = color_index_from_ref(
+            env, color, raw[index], &out_indices[index]);
+        if (status != PHY_OK) {
+            return status;
+        }
+    }
+    return PHY_OK;
+}
+
+static phy_status eval_sun_invariant(phy_env *env, phy_ir_ref expr,
+                                     eval_head which,
+                                     phy_value *out_value)
+{
+    const size_t arity = which == EVAL_HEAD_SUN_T       ? 2u
+                         : which == EVAL_HEAD_SUN_DELTA ? 3u
+                                                        : 4u;
+    if (arg_count(env, expr) != arity) {
+        return PHY_ERR_PARSE;
+    }
+    const size_t index_count = arity - 1u;
+    phy_color *color = NULL;
+    phy_status status =
+        color_from_arg(env, expr, index_count, &color);
+    phy_ir_ref indices[3] = {
+        PHY_IR_NULL, PHY_IR_NULL, PHY_IR_NULL};
+    for (size_t index = 0u; status == PHY_OK && index < index_count; ++index) {
+        status = color_index_from_ref(
+            env, color, arg_ref(env, expr, index), &indices[index]);
+    }
+    phy_ir_ref result = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        switch (which) {
+        case EVAL_HEAD_SUN_DELTA:
+            status = phy_color_delta(
+                color, indices[0], indices[1], &result);
+            break;
+        case EVAL_HEAD_SUN_F:
+            status = phy_color_structure_constant(
+                color, indices[0], indices[1], indices[2], &result);
+            break;
+        case EVAL_HEAD_SUN_D:
+            status = phy_color_symmetric_tensor(
+                color, indices[0], indices[1], indices[2], &result);
+            break;
+        case EVAL_HEAD_SUN_T:
+            status = phy_color_generator(color, indices[0], &result);
+            break;
+        default:
+            status = PHY_ERR_CORRUPT_DOCUMENT;
+            break;
+        }
+    }
+    phy_color_destroy(color);
+    if (status == PHY_OK) {
+        *out_value = scalar_value(result);
+    }
+    return status;
+}
+
+static phy_status eval_sun_trace(phy_env *env, phy_ir_ref expr,
+                                 phy_value *out_value)
+{
+    const size_t arguments = arg_count(env, expr);
+    if (arguments < 2u || arguments > PHY_COLOR_MAX_TRACE + 1u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_ir_ref raw[PHY_COLOR_MAX_TRACE];
+    size_t count = 0u;
+    size_t n_argument = 0u;
+    if (phy_ir_kind_of(env->ir, arg_ref(env, expr, 0u)) == PHY_IR_FUNCTION &&
+        phy_ir_head(env->ir, arg_ref(env, expr, 0u)) == env->list_head) {
+        if (arguments != 2u) {
+            return PHY_ERR_PARSE;
+        }
+        phy_status status = list_refs(
+            env, arg_ref(env, expr, 0u), raw, PHY_COLOR_MAX_TRACE, &count);
+        if (status != PHY_OK) {
+            return status;
+        }
+        n_argument = 1u;
+    } else {
+        /*
+         * This is also the stable held form returned for a long trace:
+         * SUNTrace[N,a,b,c,d].  Re-evaluating or pasting it is idempotent.
+         */
+        n_argument = 0u;
+        count = arguments - 1u;
+        for (size_t index = 0u; index < count; ++index) {
+            raw[index] = arg_ref(env, expr, index + 1u);
+        }
+    }
+
+    phy_color *color = NULL;
+    phy_status status = color_from_arg(env, expr, n_argument, &color);
+    phy_ir_ref indices[PHY_COLOR_MAX_TRACE];
+    if (status == PHY_OK) {
+        status =
+            color_indices_from_refs(env, color, raw, count, indices);
+    }
+    phy_ir_ref result = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = phy_color_trace(color, indices, count, &result);
+    }
+    phy_color_destroy(color);
+    if (status == PHY_OK) {
+        *out_value = scalar_value(result);
+    }
+    return status;
+}
+
+static phy_status eval_sun_commutator(phy_env *env, phy_ir_ref expr,
+                                      phy_value *out_value)
+{
+    if (arg_count(env, expr) != 3u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_color *color = NULL;
+    phy_status status = color_from_arg(env, expr, 2u, &color);
+    phy_ir_ref indices[2] = {PHY_IR_NULL, PHY_IR_NULL};
+    for (size_t index = 0u; status == PHY_OK && index < 2u; ++index) {
+        status = color_index_from_ref(
+            env, color, arg_ref(env, expr, index), &indices[index]);
+    }
+    phy_ir_ref result = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = phy_color_commutator(
+            color, indices[0], indices[1], &result);
+    }
+    phy_color_destroy(color);
+    if (status == PHY_OK) {
+        *out_value = scalar_value(result);
+    }
+    return status;
+}
+
+static phy_status eval_sun_delta_contract(phy_env *env, phy_ir_ref expr,
+                                          phy_value *out_value)
+{
+    if (arg_count(env, expr) != 4u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_color *color = NULL;
+    phy_status status = color_from_arg(env, expr, 3u, &color);
+    phy_ir_ref indices[2] = {PHY_IR_NULL, PHY_IR_NULL};
+    for (size_t index = 0u; status == PHY_OK && index < 2u; ++index) {
+        status = color_index_from_ref(
+            env, color, arg_ref(env, expr, index), &indices[index]);
+    }
+    phy_ir_ref expression = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = arg_scalar(env, expr, 2u, &expression);
+    }
+    phy_ir_ref result = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = phy_color_delta_contract(
+            color, indices[0], indices[1], expression, &result);
+    }
+    phy_color_destroy(color);
+    if (status == PHY_OK) {
+        *out_value = scalar_value(result);
+    }
+    return status;
+}
+
+static phy_status eval_sun_casimir(phy_env *env, phy_ir_ref expr,
+                                   eval_head which,
+                                   phy_value *out_value)
+{
+    const size_t expected =
+        which == EVAL_HEAD_SUN_ADJOINT_CASIMIR ? 3u : 1u;
+    if (arg_count(env, expr) != expected) {
+        return PHY_ERR_PARSE;
+    }
+    phy_color *color = NULL;
+    phy_status status =
+        color_from_arg(env, expr, expected - 1u, &color);
+    phy_ir_ref result = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        switch (which) {
+        case EVAL_HEAD_SUN_CF:
+            status = phy_color_casimir_fundamental(color, &result);
+            break;
+        case EVAL_HEAD_SUN_CA:
+            status = phy_color_casimir_adjoint(color, &result);
+            break;
+        case EVAL_HEAD_SUN_FUNDAMENTAL_CASIMIR:
+            status = phy_color_fundamental_casimir(color, &result);
+            break;
+        case EVAL_HEAD_SUN_ADJOINT_CASIMIR: {
+            phy_ir_ref indices[2] = {PHY_IR_NULL, PHY_IR_NULL};
+            status = color_index_from_ref(
+                env, color, arg_ref(env, expr, 0u), &indices[0]);
+            if (status == PHY_OK) {
+                status = color_index_from_ref(
+                    env, color, arg_ref(env, expr, 1u), &indices[1]);
+            }
+            if (status == PHY_OK) {
+                status = phy_color_adjoint_casimir(
+                    color, indices[0], indices[1], &result);
+            }
+            break;
+        }
+        default:
+            status = PHY_ERR_CORRUPT_DOCUMENT;
+            break;
+        }
+    }
+    phy_color_destroy(color);
+    if (status == PHY_OK) {
+        *out_value = scalar_value(result);
+    }
+    return status;
+}
+
+static phy_status eval_sun_f_component(phy_env *env, phy_ir_ref expr,
+                                       phy_value *out_value)
+{
+    if (arg_count(env, expr) != 4u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_color *color = NULL;
+    phy_status status = color_from_arg(env, expr, 0u, &color);
+    unsigned component[3] = {0u, 0u, 0u};
+    for (size_t index = 0u; status == PHY_OK && index < 3u; ++index) {
+        status = arg_unsigned(env, expr, index + 1u, 9u, &component[index]);
+        if (status == PHY_OK && component[index] == 0u) {
+            status = PHY_ERR_DOMAIN;
+        }
+    }
+    phy_ir_ref result = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = phy_color_structure_constant_component(
+            color, component[0], component[1], component[2], &result);
+    }
+    phy_color_destroy(color);
+    if (status == PHY_OK) {
+        *out_value = scalar_value(result);
+    }
+    return status;
+}
+
+static phy_status eval_sun_expand_casimirs(phy_env *env, phy_ir_ref expr,
+                                           phy_value *out_value)
+{
+    if (arg_count(env, expr) != 2u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_color *color = NULL;
+    phy_status status = color_from_arg(env, expr, 1u, &color);
+    phy_ir_ref expression = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = arg_scalar(env, expr, 0u, &expression);
+    }
+    phy_ir_ref result = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status =
+            phy_color_expand_casimirs(color, expression, &result);
+    }
+    phy_color_destroy(color);
+    if (status == PHY_OK) {
+        *out_value = scalar_value(result);
+    }
+    return status;
+}
+
 /* --------------------------------------------------------------- queries */
 
 static phy_status eval_component(phy_env *env, phy_ir_ref expr,
@@ -1904,6 +2206,27 @@ static phy_status eval_operator(phy_env *env, phy_ir_ref expr,
         return eval_mandelstam_reduce(env, expr, out_value);
     case EVAL_HEAD_DIRAC_TRACE:
         return eval_dirac_trace(env, expr, out_value);
+
+    case EVAL_HEAD_SUN_DELTA:
+    case EVAL_HEAD_SUN_F:
+    case EVAL_HEAD_SUN_D:
+    case EVAL_HEAD_SUN_T:
+        return eval_sun_invariant(env, expr, which, out_value);
+    case EVAL_HEAD_SUN_TRACE:
+        return eval_sun_trace(env, expr, out_value);
+    case EVAL_HEAD_SUN_COMMUTATOR:
+        return eval_sun_commutator(env, expr, out_value);
+    case EVAL_HEAD_SUN_DELTA_CONTRACT:
+        return eval_sun_delta_contract(env, expr, out_value);
+    case EVAL_HEAD_SUN_CF:
+    case EVAL_HEAD_SUN_CA:
+    case EVAL_HEAD_SUN_FUNDAMENTAL_CASIMIR:
+    case EVAL_HEAD_SUN_ADJOINT_CASIMIR:
+        return eval_sun_casimir(env, expr, which, out_value);
+    case EVAL_HEAD_SUN_F_COMPONENT:
+        return eval_sun_f_component(env, expr, out_value);
+    case EVAL_HEAD_SUN_EXPAND_CASIMIRS:
+        return eval_sun_expand_casimirs(env, expr, out_value);
 
     case EVAL_HEAD_COMPONENT:
         return eval_component(env, expr, out_value);

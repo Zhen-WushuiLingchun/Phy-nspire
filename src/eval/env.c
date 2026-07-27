@@ -33,6 +33,12 @@ static const char *const kEvalHeadNames[EVAL_HEAD_COUNT] = {
     "Phi4Lagrangian", "Phi4EOM",         "Phi4Diagrams",
     "MandelstamReduce", "DiracTrace",
 
+    "SUNDelta",      "SUNF",             "SUND",
+    "SUNT",          "SUNTrace",         "SUNCommutator",
+    "SUNDeltaContract", "SUNCF",         "SUNCA",
+    "SUNFComponent", "SUNExpandCasimirs", "SUNFundamentalCasimir",
+    "SUNAdjointCasimir",
+
     "Component",    "Degree",           "Dimension",   "Rank",
     "ZeroQ",        "EquivalentQ",
 };
