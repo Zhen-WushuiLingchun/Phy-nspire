@@ -680,6 +680,8 @@ static bool same_payload(const phy_ir_context *ctx, const phy_ir_node *stored,
                held->numerator == rat->numerator &&
                held->denominator == rat->denominator;
     }
+    case PHY_IR_INDEX:
+        return stored->u.index_space == proto->u.index_space;
     default:
         break;
     }
@@ -914,6 +916,13 @@ phy_ir_ref phy_ir_symbol_ref(phy_ir_context *ctx, phy_ir_symbol sym)
 phy_ir_ref phy_ir_index(phy_ir_context *ctx, phy_ir_symbol name,
                         phy_ir_variance variance)
 {
+    return phy_ir_index_in_space(ctx, name, variance, PHY_IR_NO_SYMBOL);
+}
+
+phy_ir_ref phy_ir_index_in_space(phy_ir_context *ctx, phy_ir_symbol name,
+                                 phy_ir_variance variance,
+                                 phy_ir_symbol space)
+{
     if (ctx == NULL) {
         return PHY_IR_NULL;
     }
@@ -921,7 +930,29 @@ phy_ir_ref phy_ir_index(phy_ir_context *ctx, phy_ir_symbol name,
         phy_ir_set_error(ctx, PHY_ERR_INVALID_ARGUMENT);
         return PHY_IR_NULL;
     }
-    return make_headed_atom(ctx, PHY_IR_INDEX, name, (uint8_t)variance);
+    const phy_ir_symbol_record *name_record = phy_ir_symbol_at(ctx, name);
+    const phy_ir_symbol_record *space_record =
+        space == PHY_IR_NO_SYMBOL ? NULL : phy_ir_symbol_at(ctx, space);
+    if (name_record == NULL ||
+        (space != PHY_IR_NO_SYMBOL && space_record == NULL)) {
+        phy_ir_set_error(ctx, PHY_ERR_INVALID_ARGUMENT);
+        return PHY_IR_NULL;
+    }
+
+    phy_ir_node proto;
+    memset(&proto, 0, sizeof proto);
+    proto.kind = (uint8_t)PHY_IR_INDEX;
+    proto.aux = (uint8_t)variance;
+    proto.depth = 1u;
+    proto.head = name;
+    proto.u.index_space = space;
+    proto.hash =
+        hash_u32(hash_u32(hash_u32(FNV_OFFSET, (uint32_t)PHY_IR_INDEX),
+                          name_record->name_hash),
+                 (uint32_t)variance);
+    proto.hash = hash_u32(
+        proto.hash, space_record != NULL ? space_record->name_hash : 0u);
+    return intern_node(ctx, &proto, NULL, NULL);
 }
 
 phy_ir_ref phy_ir_error(phy_ir_context *ctx, phy_status code)
@@ -1296,6 +1327,14 @@ bool phy_ir_index_variance(const phy_ir_context *ctx, phy_ir_ref ref,
     return true;
 }
 
+phy_ir_symbol phy_ir_index_space(const phy_ir_context *ctx, phy_ir_ref ref)
+{
+    const phy_ir_node *node = phy_ir_node_at(ctx, ref);
+    return node != NULL && node->kind == (uint8_t)PHY_IR_INDEX
+               ? node->u.index_space
+               : PHY_IR_NO_SYMBOL;
+}
+
 bool phy_ir_error_status(const phy_ir_context *ctx, phy_ir_ref ref,
                          phy_status *out_status)
 {
@@ -1366,6 +1405,11 @@ phy_status phy_ir_validate(const phy_ir_context *ctx)
                 return PHY_ERR_CORRUPT_DOCUMENT;
             }
             claimed_rationals++;
+        }
+        if (node->kind == (uint8_t)PHY_IR_INDEX &&
+            node->u.index_space != PHY_IR_NO_SYMBOL &&
+            phy_ir_symbol_at(ctx, node->u.index_space) == NULL) {
+            return PHY_ERR_CORRUPT_DOCUMENT;
         }
 
         if (node->child_count == 0u) {

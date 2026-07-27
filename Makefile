@@ -91,6 +91,7 @@ SOURCES := \
     src/cas/engine.c \
     src/cas/simplify.c \
     src/cas/diff.c \
+    src/cas/integrate.c \
     src/cas/normal.c \
     src/app/main_ndless.c \
     src/platform/ndless/platform_ndless.c \
@@ -155,6 +156,7 @@ CAS_SMOKE_SOURCES := \
     src/cas/engine.c \
     src/cas/simplify.c \
     src/cas/diff.c \
+    src/cas/integrate.c \
     src/cas/normal.c \
     tests/device/cas_smoke.c \
     src/platform/ndless/platform_ndless.c \

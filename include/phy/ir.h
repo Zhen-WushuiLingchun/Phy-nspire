@@ -267,6 +267,16 @@ phy_ir_ref phy_ir_symbol_ref(phy_ir_context *ctx, phy_ir_symbol sym);
 phy_ir_ref phy_ir_index(phy_ir_context *ctx, phy_ir_symbol name,
                         phy_ir_variance variance);
 
+/*
+ * An index may additionally name its bundle/space.  Lorentz, Spinor,
+ * ColorFundamental, ColorAdjoint, and user-defined spaces are ordinary
+ * interned symbols rather than a closed enum.  PHY_IR_NO_SYMBOL means the
+ * generic legacy space and is what phy_ir_index() uses.
+ */
+phy_ir_ref phy_ir_index_in_space(phy_ir_context *ctx, phy_ir_symbol name,
+                                 phy_ir_variance variance,
+                                 phy_ir_symbol space);
+
 /* A typed error as a value. `code` must be an error, not PHY_OK. */
 phy_ir_ref phy_ir_error(phy_ir_context *ctx, phy_status code);
 
@@ -327,6 +337,7 @@ bool phy_ir_real_value(const phy_ir_context *ctx, phy_ir_ref ref,
                        double *out_value);
 bool phy_ir_index_variance(const phy_ir_context *ctx, phy_ir_ref ref,
                            phy_ir_variance *out_variance);
+phy_ir_symbol phy_ir_index_space(const phy_ir_context *ctx, phy_ir_ref ref);
 bool phy_ir_error_status(const phy_ir_context *ctx, phy_ir_ref ref,
                          phy_status *out_status);
 

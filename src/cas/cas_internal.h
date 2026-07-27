@@ -63,6 +63,7 @@ typedef enum {
     PHY_CAS_MEMO_SIMPLIFY, /* (expr)          -> simplified */
     PHY_CAS_MEMO_EXPAND,   /* (expr)          -> expanded */
     PHY_CAS_MEMO_DIFF,     /* (expr, var)     -> derivative */
+    PHY_CAS_MEMO_INTEGRATE,/* (expr, var)     -> antiderivative */
     PHY_CAS_MEMO_DEPENDS,  /* (expr, var)     -> 0 or 1 */
     PHY_CAS_MEMO_SUBST,    /* (expr, epoch)   -> substituted */
     PHY_CAS_MEMO_TRIG,     /* (expr)          -> on one trigonometric basis */
@@ -104,6 +105,7 @@ struct phy_cas {
     phy_ir_symbol fn_tan;
     phy_ir_symbol fn_exp;
     phy_ir_symbol fn_log;
+    phy_ir_symbol fn_integrate;
 
     phy_ir_ref zero;
     phy_ir_ref one;
@@ -235,6 +237,8 @@ phy_status phy_cas_rebuild_at(phy_cas *cas, phy_ir_kind kind,
 
 phy_status phy_cas_diff_node(phy_cas *cas, phy_ir_ref expr, phy_ir_ref var,
                              phy_ir_ref *out_ref);
+phy_status phy_cas_integrate_node(phy_cas *cas, phy_ir_ref expr,
+                                  phy_ir_ref var, phy_ir_ref *out_ref);
 
 /*
  * May `expr` depend on `var`? True for the variable itself, and for every

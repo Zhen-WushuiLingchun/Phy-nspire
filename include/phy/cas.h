@@ -244,6 +244,16 @@ phy_status phy_cas_substitute(phy_cas *cas, phy_ir_ref expr,
 phy_status phy_cas_diff(phy_cas *cas, phy_ir_ref expr, phy_ir_ref var,
                         phy_ir_ref *out_ref);
 
+/*
+ * Exact symbolic antiderivative on the currently decidable class:
+ * constants and sums, products with a variable-independent coefficient,
+ * rational powers of a linear inner expression, and Sin/Cos/Tan/Exp/Log of
+ * a linear inner expression. Anything outside that class is returned as an
+ * unevaluated Integrate[expr,var] IR function, never guessed numerically.
+ */
+phy_status phy_cas_integrate(phy_cas *cas, phy_ir_ref expr, phy_ir_ref var,
+                             phy_ir_ref *out_ref);
+
 /* ------------------------------------------------------------ the zero decision */
 
 /*

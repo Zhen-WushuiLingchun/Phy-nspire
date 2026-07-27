@@ -23,7 +23,8 @@ typedef enum {
     PHY_SOURCE_TOGETHER,
     PHY_SOURCE_NUMERATOR,
     PHY_SOURCE_DENOMINATOR,
-    PHY_SOURCE_DIFFERENTIATE
+    PHY_SOURCE_DIFFERENTIATE,
+    PHY_SOURCE_INTEGRATE
 } phy_source_operation;
 
 #define PHY_SOURCE_MAX_VARIABLES 8u
@@ -32,7 +33,7 @@ typedef struct {
     phy_source_operation operation;
     phy_ir_ref expression;
     phy_ir_ref variables[PHY_SOURCE_MAX_VARIABLES];
-    size_t variable_count; /* only for DIFFERENTIATE */
+    size_t variable_count; /* only for DIFFERENTIATE / INTEGRATE */
 } phy_source_command;
 
 /*

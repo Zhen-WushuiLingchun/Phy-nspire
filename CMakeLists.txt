@@ -143,6 +143,7 @@ add_library(phy_core STATIC
     src/cas/engine.c
     src/cas/simplify.c
     src/cas/diff.c
+    src/cas/integrate.c
     src/cas/normal.c
 )
 target_include_directories(phy_core PUBLIC include PRIVATE

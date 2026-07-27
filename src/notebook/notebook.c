@@ -373,6 +373,19 @@ static phy_status evaluate_command(phy_notebook *notebook,
         *out_result = result;
         return PHY_OK;
     }
+    case PHY_SOURCE_INTEGRATE: {
+        phy_ir_ref result = command->expression;
+        for (size_t i = 0u; i < command->variable_count; ++i) {
+            phy_status status =
+                phy_cas_integrate(notebook->cas, result,
+                                  command->variables[i], &result);
+            if (status != PHY_OK) {
+                return status;
+            }
+        }
+        *out_result = result;
+        return PHY_OK;
+    }
     default:
         return PHY_ERR_UNSUPPORTED;
     }

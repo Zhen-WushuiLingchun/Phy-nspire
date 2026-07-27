@@ -71,7 +71,7 @@ A node is 32 bytes, asserted at compile time in `src/ir/ir.c`:
 | `hash`        | u32   | structural, portable across contexts             |
 | `intern_next` | u32   | hash bucket chain                                |
 | `head`        | u32   | symbol id, or `PHY_IR_NO_SYMBOL`                 |
-| union         | 8     | children offset, rational index, `int64`, `double` |
+| union         | 8     | children offset, rational index, index-space symbol, `int64`, `double` |
 
 All memory is taken through `phy_alloc`/`phy_free`, so IR usage shows up in
 `phy_telemetry` alongside everything else, and is additionally capped by
@@ -237,7 +237,8 @@ list        := "(" form ")"
 
 form        := "rat" integer integer         exact rational
              | "real" hex64                  IEEE-754 bit pattern
-             | "idx" symbol ("up" | "dn")    index with variance
+             | "idx" symbol ("up" | "dn") [symbol]
+                                               index with variance and optional space
              | "err" status-name             error value
              | "+"     expression+           commutative sum
              | "*"     expression+           commutative product

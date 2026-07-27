@@ -172,8 +172,13 @@ static void write_expr(writer *w, const phy_ir_context *ctx, phy_ir_ref ref)
     case PHY_IR_INDEX:
         emit_cstr(w, "(idx ");
         emit_name(w, ctx, node->head);
-        emit_cstr(w,
-                  (node->aux == (uint8_t)PHY_IR_INDEX_UPPER) ? " up)" : " dn)");
+        emit_cstr(w, (node->aux == (uint8_t)PHY_IR_INDEX_UPPER) ? " up"
+                                                                : " dn");
+        if (node->u.index_space != PHY_IR_NO_SYMBOL) {
+            emit_char(w, ' ');
+            emit_name(w, ctx, node->u.index_space);
+        }
+        emit_char(w, ')');
         return;
 
     case PHY_IR_ERROR:
@@ -701,14 +706,21 @@ static phy_ir_ref parse_list(reader *r)
             fail(r, PHY_ERR_PARSE);
             return PHY_IR_NULL;
         }
+        phy_ir_variance position;
         if (memcmp(variance, "up", 2u) == 0) {
-            result = phy_ir_index(r->ctx, name, PHY_IR_INDEX_UPPER);
+            position = PHY_IR_INDEX_UPPER;
         } else if (memcmp(variance, "dn", 2u) == 0) {
-            result = phy_ir_index(r->ctx, name, PHY_IR_INDEX_LOWER);
+            position = PHY_IR_INDEX_LOWER;
         } else {
             fail(r, PHY_ERR_PARSE);
             return PHY_IR_NULL;
         }
+        const phy_ir_symbol space =
+            peek(r, ')') ? PHY_IR_NO_SYMBOL : read_symbol(r);
+        if (r->error != PHY_OK) {
+            return PHY_IR_NULL;
+        }
+        result = phy_ir_index_in_space(r->ctx, name, position, space);
         break;
     }
 

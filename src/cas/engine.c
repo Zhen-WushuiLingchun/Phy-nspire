@@ -152,13 +152,15 @@ phy_cas *phy_cas_create(phy_ir_context *ir, const phy_cas_limits *limits)
     cas->fn_tan = phy_ir_intern(ir, "tan");
     cas->fn_exp = phy_ir_intern(ir, "exp");
     cas->fn_log = phy_ir_intern(ir, "log");
+    cas->fn_integrate = phy_ir_intern(ir, "Integrate");
     cas->zero = phy_ir_integer(ir, 0);
     cas->one = phy_ir_integer(ir, 1);
     cas->minus_one = phy_ir_integer(ir, -1);
 
     if (cas->fn_sin == PHY_IR_NO_SYMBOL || cas->fn_cos == PHY_IR_NO_SYMBOL ||
         cas->fn_tan == PHY_IR_NO_SYMBOL || cas->fn_exp == PHY_IR_NO_SYMBOL ||
-        cas->fn_log == PHY_IR_NO_SYMBOL || cas->zero == PHY_IR_NULL ||
+        cas->fn_log == PHY_IR_NO_SYMBOL ||
+        cas->fn_integrate == PHY_IR_NO_SYMBOL || cas->zero == PHY_IR_NULL ||
         cas->one == PHY_IR_NULL || cas->minus_one == PHY_IR_NULL) {
         phy_cas_destroy(cas);
         return NULL;

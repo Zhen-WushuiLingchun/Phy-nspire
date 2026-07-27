@@ -172,7 +172,10 @@ int phy_ir_compare(const phy_ir_context *ctx, phy_ir_ref a, phy_ir_ref b)
         if (by_name != 0) {
             return by_name;
         }
-        return (na->aux < nb->aux) ? -1 : 1;
+        if (na->aux != nb->aux) {
+            return (na->aux < nb->aux) ? -1 : 1;
+        }
+        return compare_names(ctx, na->u.index_space, nb->u.index_space);
     }
 
     case PHY_IR_ERROR:

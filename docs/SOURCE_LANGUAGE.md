@@ -45,6 +45,9 @@ The parser also maps useful FullForm constructors directly to IR:
 - `Plus`, `Times`, `Power`;
 - `Rational`, `Sqrt`;
 - `Equal`;
+- `Up[index,space]`, `Down[index,space]`;
+- `Tensor[head,indices...]`, `Operator[head,args...]`;
+- `NonCommutativeMultiply`, `Wedge`;
 - `{...}` to the structural `List` head.
 
 Unknown non-reserved heads remain typed function applications. That is the
@@ -61,9 +64,10 @@ objects; it does not grant them evaluator semantics prematurely.
 | `Together` | native rational form reconstructed as one quotient |
 | `Numerator`, `Denominator` | selected part of native rational form |
 | `D[expr,x,...]` | repeated exact symbolic differentiation |
+| `Integrate[expr,x,...]` | exact symbolic antiderivative on the documented linear-inner class; otherwise an explicit unevaluated `Integrate` |
 
 Registered but not implemented commands include `Cancel`, `Factor`, `Apart`,
-`Integrate`, `Limit`, `Series`, `Solve`, `NSolve`, `Reduce`, `Refine`, and the
+`Limit`, `Series`, `Solve`, `NSolve`, `Reduce`, `Refine`, and the
 `Trig*` family. They return `PHY_ERR_UNSUPPORTED`. They are never accepted as
 opaque ordinary functions, because that would present a no-op as successful
 computer algebra.
@@ -77,7 +81,8 @@ scheduling is future work; until then it fails explicitly.
 - no arbitrary-precision integers beyond the exact `int64` core;
 - no complex literals or numeric approximation command;
 - no implicit function application beyond bracket/parenthesis calls;
-- no tensor-index surface syntax yet;
+- no shorthand Einstein syntax yet; explicit `Up`/`Down` indices retain their
+  Generic/Lorentz/Spinor/color space in typed IR;
 - no strings, associations, datasets, or Wolfram Language evaluation model.
 
 This is a deliberately compatible symbolic surface, not a claim to implement

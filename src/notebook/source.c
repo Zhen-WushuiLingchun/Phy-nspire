@@ -32,6 +32,7 @@ static const command_descriptor kCommands[] = {
     {"Numerator", PHY_SOURCE_NUMERATOR, true, false},
     {"Denominator", PHY_SOURCE_DENOMINATOR, true, false},
     {"D", PHY_SOURCE_DIFFERENTIATE, true, true},
+    {"Integrate", PHY_SOURCE_INTEGRATE, true, true},
 
     /*
      * Reserved Wolfram-style commands must fail honestly until their algebra
@@ -41,7 +42,6 @@ static const command_descriptor kCommands[] = {
     {"Cancel", PHY_SOURCE_SIMPLIFY, false, false},
     {"Factor", PHY_SOURCE_SIMPLIFY, false, false},
     {"Apart", PHY_SOURCE_SIMPLIFY, false, false},
-    {"Integrate", PHY_SOURCE_SIMPLIFY, false, false},
     {"Limit", PHY_SOURCE_SIMPLIFY, false, false},
     {"Series", PHY_SOURCE_SIMPLIFY, false, false},
     {"Solve", PHY_SOURCE_SIMPLIFY, false, false},
@@ -375,6 +375,41 @@ static phy_ir_ref parse_primary(source_reader *reader)
             return PHY_IR_NULL;
         }
         result = phy_ir_rational(reader->ir, numerator, denominator);
+    } else if ((name_equals(name, "Up") || name_equals(name, "Down")) &&
+               (count == 1u || count == 2u)) {
+        if (phy_ir_kind_of(reader->ir, arguments[0]) != PHY_IR_SYMBOL ||
+            (count == 2u &&
+             phy_ir_kind_of(reader->ir, arguments[1]) != PHY_IR_SYMBOL)) {
+            fail(reader, PHY_ERR_TYPE);
+            return PHY_IR_NULL;
+        }
+        const phy_ir_symbol index_name =
+            phy_ir_head(reader->ir, arguments[0]);
+        const phy_ir_symbol space =
+            count == 2u ? phy_ir_head(reader->ir, arguments[1])
+                        : PHY_IR_NO_SYMBOL;
+        result = phy_ir_index_in_space(
+            reader->ir, index_name,
+            name_equals(name, "Up") ? PHY_IR_INDEX_UPPER
+                                    : PHY_IR_INDEX_LOWER,
+            space);
+    } else if ((name_equals(name, "Tensor") ||
+                name_equals(name, "Operator")) &&
+               count >= 1u) {
+        if (phy_ir_kind_of(reader->ir, arguments[0]) != PHY_IR_SYMBOL) {
+            fail(reader, PHY_ERR_TYPE);
+            return PHY_IR_NULL;
+        }
+        const phy_ir_symbol head = phy_ir_head(reader->ir, arguments[0]);
+        result = name_equals(name, "Tensor")
+                     ? phy_ir_tensor(reader->ir, head, &arguments[1],
+                                     count - 1u)
+                     : phy_ir_operator(reader->ir, head, &arguments[1],
+                                       count - 1u);
+    } else if (name_equals(name, "NonCommutativeMultiply")) {
+        result = phy_ir_ncmul(reader->ir, arguments, count);
+    } else if (name_equals(name, "Wedge")) {
+        result = phy_ir_wedge(reader->ir, arguments, count);
     } else {
         const char *head_name = canonical_function(name);
         const phy_ir_symbol head = phy_ir_intern(reader->ir, head_name);

@@ -30,6 +30,7 @@ static const phy_palette_entry kCasFunctions[] = {
 static const phy_palette_entry kCasCalculus[] = {
     {"D[..., x]", "D[, x]", 2u},
     {"D[..., x, y]", "D[, x, y]", 2u},
+    {"Integrate[..., x]", "Integrate[, x]", 10u},
     {"Power[..., ...]", "Power[,]", 6u},
     {"Plus[..., ...]", "Plus[,]", 5u},
     {"Times[..., ...]", "Times[,]", 6u},
@@ -37,10 +38,22 @@ static const phy_palette_entry kCasCalculus[] = {
     {"List {...}", "{}", 1u},
 };
 
+static const phy_palette_entry kCasPhysics[] = {
+    {"Upper Lorentz index", "Up[,Lorentz]", 3u},
+    {"Lower Lorentz index", "Down[,Lorentz]", 5u},
+    {"Rank-2 tensor",
+     "Tensor[g,Down[mu,Lorentz],Down[nu,Lorentz]]", 7u},
+    {"Indexed operator", "Operator[Gamma,Up[mu,Lorentz]]", 9u},
+    {"Noncommutative product", "NonCommutativeMultiply[,]",
+     sizeof("NonCommutativeMultiply[") - 1u},
+    {"Exterior product", "Wedge[,]", sizeof("Wedge[") - 1u},
+};
+
 static const palette_category kCasCategories[] = {
     {"Algebra", kCasAlgebra, ARRAY_COUNT(kCasAlgebra)},
     {"Functions", kCasFunctions, ARRAY_COUNT(kCasFunctions)},
     {"Calculus/Syntax", kCasCalculus, ARRAY_COUNT(kCasCalculus)},
+    {"Tensor/Indices", kCasPhysics, ARRAY_COUNT(kCasPhysics)},
 };
 
 static const phy_palette_entry kLatexLayout[] = {

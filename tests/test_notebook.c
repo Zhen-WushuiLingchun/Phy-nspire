@@ -219,6 +219,27 @@ static void test_compound_power_is_not_algebraically_corrupted(void)
     phy_platform_shutdown();
 }
 
+static void test_integrate_command_reaches_the_symbolic_evaluator(void)
+{
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    phy_notebook *notebook = phy_notebook_create();
+    PHY_CHECK(notebook != NULL);
+
+    size_t input = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_notebook_add_input(
+            notebook, "Integrate[Sin[2x],x]", &input),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(phy_notebook_evaluate(notebook, input), PHY_OK);
+    expect_expression(notebook, input, "(fn sin (* 2 x))");
+    expect_expression(
+        notebook, input + 1u,
+        "(* (rat -1 2) (fn cos (* 2 x)))");
+
+    phy_notebook_destroy(notebook);
+    phy_platform_shutdown();
+}
+
 static void test_template_insertion_and_edit_context(void)
 {
     PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
@@ -355,6 +376,7 @@ int main(void)
     PHY_TEST_CASE(test_bounded_sources);
     PHY_TEST_CASE(test_edit_and_insert_use_reader_source);
     PHY_TEST_CASE(test_compound_power_is_not_algebraically_corrupted);
+    PHY_TEST_CASE(test_integrate_command_reaches_the_symbolic_evaluator);
     PHY_TEST_CASE(test_template_insertion_and_edit_context);
     PHY_TEST_CASE(test_markdown_latex_uses_native_typesetter);
     PHY_TEST_CASE(test_notebook_frame_fixture);

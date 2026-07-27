@@ -554,6 +554,87 @@ static void test_differentiation_defers_what_it_cannot_see(void)
     close_fixture(&f);
 }
 
+/* ------------------------------------------------------------ integration */
+
+static const char *antiderivative(fixture *f, const char *text,
+                                  const char *variable)
+{
+    phy_ir_ref out = PHY_IR_NULL;
+    const phy_status status =
+        phy_cas_integrate(f->cas, parse(f->ir, text),
+                          parse(f->ir, variable), &out);
+    return status == PHY_OK ? render(f->ir, out) : phy_status_name(status);
+}
+
+static void test_exact_symbolic_integration(void)
+{
+    fixture f = open_fixture();
+
+    PHY_CHECK_EQ_STR(antiderivative(&f, "3", "x"), "(* 3 x)");
+    PHY_CHECK_EQ_STR(antiderivative(&f, "x", "x"),
+                     "(* (rat 1 2) (^ x 2))");
+    PHY_CHECK_EQ_STR(antiderivative(&f, "(^ x 3)", "x"),
+                     "(* (rat 1 4) (^ x 4))");
+    PHY_CHECK_EQ_STR(antiderivative(&f, "(^ x -1)", "x"), "(fn log x)");
+    PHY_CHECK_EQ_STR(antiderivative(&f, "(fn sin (* 2 x))", "x"),
+                     "(* (rat -1 2) (fn cos (* 2 x)))");
+    PHY_CHECK_EQ_STR(antiderivative(&f, "(fn cos (* 3 x))", "x"),
+                     "(* (rat 1 3) (fn sin (* 3 x)))");
+    PHY_CHECK_EQ_STR(
+        antiderivative(&f, "(fn exp (+ 1 (* 3 x)))", "x"),
+        "(* (rat 1 3) (fn exp (+ 1 (* 3 x))))");
+    PHY_CHECK_EQ_STR(antiderivative(&f, "(fn log x)", "x"),
+                     "(+ (* -1 x) (* x (fn log x)))");
+    PHY_CHECK_EQ_STR(
+        antiderivative(&f, "(+ 3 x (^ x 2))", "x"),
+        "(+ (* (rat 1 3) (^ x 3)) (* (rat 1 2) (^ x 2)) (* 3 x))");
+
+    /* Unsupported classes remain explicit symbolic work, not numeric output. */
+    PHY_CHECK_EQ_STR(antiderivative(&f, "(fn bessel x)", "x"),
+                     "(fn Integrate (fn bessel x) x)");
+    PHY_CHECK_EQ_STR(
+        antiderivative(&f, "(tensor g (idx mu dn Lorentz))", "x"),
+        "(fn Integrate (tensor g (idx mu dn Lorentz)) x)");
+
+    phy_ir_ref out = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_integrate(f.cas, parse(f.ir, "x"),
+                          parse(f.ir, "(idx mu dn)"), &out),
+        PHY_ERR_TYPE);
+
+    close_fixture(&f);
+}
+
+static void test_supported_integrals_differentiate_back(void)
+{
+    fixture f = open_fixture();
+    static const char *const cases[] = {
+        "(+ 3 x (^ x 5))",
+        "(fn sin (+ 1 (* 2 x)))",
+        "(fn cos (* 3 x))",
+        "(fn exp (+ -2 (* 7 x)))",
+        "(^ (+ 1 (* 4 x)) (rat 3 2))",
+        "(^ (+ 2 (* 5 x)) -1)",
+        "(fn log (+ 3 (* 2 x)))",
+    };
+    const phy_ir_ref x = parse(f.ir, "x");
+    for (size_t index = 0u; index < sizeof cases / sizeof cases[0]; ++index) {
+        const phy_ir_ref original = parse(f.ir, cases[index]);
+        phy_ir_ref integral = PHY_IR_NULL;
+        phy_ir_ref derivative_result = PHY_IR_NULL;
+        phy_cas_decision decision = PHY_CAS_UNKNOWN;
+        PHY_CHECK_EQ_INT(
+            phy_cas_integrate(f.cas, original, x, &integral), PHY_OK);
+        PHY_CHECK_EQ_INT(
+            phy_cas_diff(f.cas, integral, x, &derivative_result), PHY_OK);
+        PHY_CHECK_EQ_INT(
+            phy_cas_equivalent(f.cas, original, derivative_result, &decision),
+            PHY_OK);
+        PHY_CHECK_EQ_INT(decision, PHY_CAS_ZERO);
+    }
+    close_fixture(&f);
+}
+
 /* ------------------------------------------------------- the zero decision */
 
 static void test_zero_decision_basics(void)
@@ -1037,6 +1118,8 @@ int main(void)
     PHY_TEST_CASE(test_substitute);
     PHY_TEST_CASE(test_differentiation);
     PHY_TEST_CASE(test_differentiation_defers_what_it_cannot_see);
+    PHY_TEST_CASE(test_exact_symbolic_integration);
+    PHY_TEST_CASE(test_supported_integrals_differentiate_back);
     PHY_TEST_CASE(test_zero_decision_basics);
     PHY_TEST_CASE(test_zero_decision_reads_assumptions);
     PHY_TEST_CASE(test_zero_decision_stays_honest);

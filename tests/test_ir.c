@@ -263,6 +263,27 @@ static void test_index_and_error_atoms(void)
     PHY_CHECK_EQ_INT(variance, PHY_IR_INDEX_LOWER);
     PHY_CHECK(!phy_ir_index_variance(ctx, phy_ir_integer(ctx, 1), &variance));
 
+    const phy_ir_symbol lorentz = phy_ir_intern(ctx, "Lorentz");
+    const phy_ir_ref spaced =
+        phy_ir_index_in_space(ctx, mu, PHY_IR_INDEX_LOWER, lorentz);
+    PHY_CHECK(spaced != PHY_IR_NULL);
+    PHY_CHECK(!phy_ir_equal(lower, spaced));
+    PHY_CHECK_EQ_INT(phy_ir_index_space(ctx, lower), PHY_IR_NO_SYMBOL);
+    PHY_CHECK_EQ_INT(phy_ir_index_space(ctx, spaced), lorentz);
+    PHY_CHECK_EQ_INT(phy_ir_index_space(ctx, phy_ir_integer(ctx, 1)),
+                     PHY_IR_NO_SYMBOL);
+    char serialized[64];
+    size_t serialized_length = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_ir_write(ctx, spaced, serialized, sizeof serialized,
+                     &serialized_length),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(serialized, "(idx mu dn Lorentz)");
+    phy_ir_ref restored = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_ir_read(ctx, serialized, &restored, NULL), PHY_OK);
+    PHY_CHECK(phy_ir_equal(spaced, restored));
+
     /* Errors are values, so a failed cell can sit inside a saved document. */
     const phy_ir_ref failure = phy_ir_error(ctx, PHY_ERR_TIMEOUT);
     PHY_CHECK(failure != PHY_IR_NULL);

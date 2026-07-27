@@ -46,6 +46,7 @@ typedef struct {
     union {
         uint32_t child_offset;   /* compound: start index in ctx->children */
         uint32_t rational_index; /* RATIONAL: index in ctx->rationals */
+        uint32_t index_space;    /* INDEX: phy_ir_symbol or NO_SYMBOL */
         int64_t integer;         /* INTEGER */
         double real;             /* REAL */
     } u;

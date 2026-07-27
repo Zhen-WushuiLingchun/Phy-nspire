@@ -5,7 +5,7 @@
 
 static void test_catalog_bounds_and_representative_entries(void)
 {
-    PHY_CHECK_EQ_INT(phy_palette_category_count(PHY_PALETTE_CAS), 3);
+    PHY_CHECK_EQ_INT(phy_palette_category_count(PHY_PALETTE_CAS), 4);
     PHY_CHECK_EQ_INT(phy_palette_category_count(PHY_PALETTE_LATEX), 6);
     PHY_CHECK_EQ_STR(phy_palette_category_name(PHY_PALETTE_CAS, 0u),
                      "Algebra");
@@ -22,6 +22,8 @@ static void test_catalog_bounds_and_representative_entries(void)
 
     PHY_CHECK(phy_palette_get(PHY_PALETTE_LATEX, 5u, 0u, &entry));
     PHY_CHECK(strstr(entry.snippet, "\\begin{matrix}") != NULL);
+    PHY_CHECK(phy_palette_get(PHY_PALETTE_CAS, 3u, 2u, &entry));
+    PHY_CHECK(strstr(entry.snippet, "Tensor[g") != NULL);
     PHY_CHECK(!phy_palette_get(PHY_PALETTE_CAS, 20u, 0u, &entry));
     PHY_CHECK(!phy_palette_get(PHY_PALETTE_CAS, 0u, 20u, &entry));
     PHY_CHECK(!phy_palette_get(PHY_PALETTE_CAS, 0u, 0u, NULL));

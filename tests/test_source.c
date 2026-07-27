@@ -85,6 +85,10 @@ static void test_commands_and_functions(void)
     command = parse(ir, "D[x y, x, y]");
     PHY_CHECK_EQ_INT(command.variable_count, 2);
     PHY_CHECK_EQ_STR(render(ir, command.expression), "(* x y)");
+    command = parse(ir, "Integrate[Sin[2x], x]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_INTEGRATE);
+    PHY_CHECK_EQ_INT(command.variable_count, 1);
+    PHY_CHECK_EQ_STR(render(ir, command.expression), "(fn sin (* 2 x))");
 
     command = parse(ir, "2x + (x+1)(x-1) == {x, y}");
     PHY_CHECK_EQ_STR(
@@ -97,6 +101,25 @@ static void test_commands_and_functions(void)
         "(+ (rat 1 2) (^ x 2) (^ y (rat 1 2)))");
     command = parse(ir, "Equal[Times[2,x], 4]");
     PHY_CHECK_EQ_STR(render(ir, command.expression), "(= (* 2 x) 4)");
+
+    command = parse(
+        ir,
+        "Tensor[g,Down[mu,Lorentz],Up[nu,Lorentz]]");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(tensor g (idx mu dn Lorentz) (idx nu up Lorentz))");
+    command = parse(
+        ir,
+        "NonCommutativeMultiply[Operator[Gamma,Up[mu,Lorentz]],"
+        "Operator[Gamma,Down[nu,Lorentz]]]");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(nc* (op Gamma (idx mu up Lorentz)) "
+        "(op Gamma (idx nu dn Lorentz)))");
+    command = parse(ir, "Wedge[Down[mu],Down[nu]]");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(wedge (idx mu dn) (idx nu dn))");
 
     phy_ir_context_destroy(ir);
     phy_platform_shutdown();
@@ -118,6 +141,9 @@ static void test_diagnostics_and_bounds(void)
     PHY_CHECK(error > 0u);
     PHY_CHECK_EQ_INT(phy_source_parse(ir, "D[x^2, x+1]", &command, &error),
                      PHY_ERR_TYPE);
+    PHY_CHECK_EQ_INT(
+        phy_source_parse(ir, "Integrate[x, Down[mu]]", &command, &error),
+        PHY_ERR_TYPE);
     PHY_CHECK_EQ_INT(phy_source_parse(ir, "Factor[x^2-1]", &command, &error),
                      PHY_ERR_UNSUPPORTED);
     PHY_CHECK_EQ_INT(
