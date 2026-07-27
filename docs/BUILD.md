@@ -45,6 +45,9 @@ Useful binaries:
 `tests/fixtures/notebook_frame.digest` separately pins the production notebook
 viewport. `test_smoke` and `test_notebook` write an actual PPM beside the host
 build when either rendering drifts, so the difference can be inspected.
+CTest runs them from the build directory. Direct launches from the repository
+root also find `tests/fixtures`; an unusual working directory can set the
+runtime `PHY_FIXTURE_DIR` environment variable explicitly.
 
 After an intentional change to the baseline frame, regenerate it:
 
@@ -74,6 +77,9 @@ This clones Ndless at the commit pinned in `research/upstreams.lock.json`,
 verifies the checkout, obtains an ARM cross toolchain, and builds the SDK. It
 writes only to `$PHY_SDK_ROOT` (default `~/.phy-nspire`) and never into the
 repository.
+The emitted `PATH` assignment is quoted, so an inherited WSL/Windows path
+containing spaces remains valid under `eval`; `test_bootstrap_env.sh` pins this
+without downloading or modifying the SDK.
 
 Two toolchain modes:
 
@@ -192,9 +198,9 @@ quietly going unlinked. None of them touches `dist/`.
 
 Measured on the pinned ARM toolchain on 2026-07-27:
 
-- geometry: 44/44 APIs retained, 8,297 bytes of layer text, 48,120-byte probe
+- geometry: 44/44 APIs retained, 8,577 bytes of layer text, 48,400-byte probe
   package;
-- Yang--Mills: 22/22 APIs retained, 4,524 bytes of layer text, 53,980-byte
+- Yang--Mills: 22/22 APIs retained, 4,524 bytes of layer text, 54,260-byte
   probe package;
 - both contain no float formatter, libm call, or ARM soft-float helper.
 

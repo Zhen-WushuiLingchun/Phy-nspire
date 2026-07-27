@@ -7,6 +7,29 @@
  */
 #include "geom_internal.h"
 
+static bool exact_numeric_sign(phy_ir_context *ir, phy_ir_ref value,
+                               int *out_sign)
+{
+    int64_t integer = 0;
+    if (phy_ir_integer_value(ir, value, &integer)) {
+        *out_sign = (integer > 0) - (integer < 0);
+        return true;
+    }
+
+    int64_t numerator = 0;
+    int64_t denominator = 0;
+    if (phy_ir_rational_value(
+            ir, value, &numerator, &denominator)) {
+        const int numerator_sign =
+            (numerator > 0) - (numerator < 0);
+        const int denominator_sign =
+            (denominator > 0) - (denominator < 0);
+        *out_sign = numerator_sign * denominator_sign;
+        return true;
+    }
+    return false;
+}
+
 static int metric_orientation_sign(const phy_manifold *manifold)
 {
     switch (phy_manifold_orientation(manifold)) {
@@ -133,6 +156,22 @@ phy_status phy_form_hodge_metric(phy_cas *cas, const phy_form *form,
 
     phy_ir_ref determinant = PHY_IR_NULL;
     status = phy_tensor_determinant(cas, metric, &determinant);
+    int determinant_sign = 0;
+    if (status == PHY_OK &&
+        exact_numeric_sign(
+            phy_cas_ir(cas), determinant, &determinant_sign) &&
+        determinant_sign !=
+            phy_manifold_metric_sign(form->manifold)) {
+        /*
+         * The manifold declares the metric inertia.  A numeric metric that
+         * contradicts it is a caller error, not a source of sqrt(-1) in a
+         * real pseudo-Riemannian Hodge star.  Symbolic determinants remain an
+         * explicit assumption because this bounded CAS has no general sign
+         * solver.
+         */
+        phy_tensor_destroy(inverse);
+        return PHY_ERR_ASSUMPTION;
+    }
     phy_ir_ref absolute_determinant = determinant;
     if (status == PHY_OK &&
         phy_manifold_metric_sign(form->manifold) < 0) {

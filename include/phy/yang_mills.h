@@ -122,6 +122,14 @@ phy_status phy_yang_mills_bianchi(
  * Killing form; this is intentionally zero for U(1), so Abelian callers
  * normally provide their representation trace form explicitly.
  *
+ * For compact non-Abelian algebras in the anti-Hermitian real basis used by
+ * this library the Killing form is negative definite (for example,
+ * K_ab=-2 delta_ab for SU(2)).  Therefore the NULL default fixes a precise
+ * algebraic convention but does not automatically equal the positive
+ * representation-trace normalization often used in physics.  Pass the
+ * desired invariant trace form explicitly when matching an action
+ * convention.
+ *
  * The metric is a symmetric covariant rank-2 tensor on the same chart.
  */
 phy_status phy_yang_mills_lagrangian(

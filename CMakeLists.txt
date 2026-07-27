@@ -223,6 +223,10 @@ if(BUILD_TESTING)
             COMMAND ${PHY_BASH}
                 "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_symbol_report.sh"
                 "${CMAKE_CURRENT_SOURCE_DIR}")
+        add_test(NAME bootstrap_env
+            COMMAND ${PHY_BASH}
+                "${CMAKE_CURRENT_SOURCE_DIR}/tests/test_bootstrap_env.sh"
+                "${CMAKE_CURRENT_SOURCE_DIR}")
     endif()
 
     # QFT/gauge golden cases. The oracle deliberately links against nothing

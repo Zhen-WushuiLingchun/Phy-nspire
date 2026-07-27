@@ -1,5 +1,6 @@
 /* Native notebook model, per-cell run badges, and 2D result rendering. */
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "phy/formula.h"
@@ -16,6 +17,28 @@
 #endif
 
 static uint16_t g_pixels[PHY_SCREEN_PIXELS];
+
+static FILE *open_fixture_file(const char *name, char *path,
+                               size_t path_capacity)
+{
+    const char *runtime_dir = getenv("PHY_FIXTURE_DIR");
+    if (runtime_dir != NULL && runtime_dir[0] != '\0') {
+        (void)snprintf(path, path_capacity, "%s/%s", runtime_dir, name);
+        FILE *file = fopen(path, "r");
+        if (file != NULL) {
+            return file;
+        }
+    }
+
+    (void)snprintf(path, path_capacity, "%s/%s", PHY_FIXTURE_DIR, name);
+    FILE *file = fopen(path, "r");
+    if (file != NULL) {
+        return file;
+    }
+
+    (void)snprintf(path, path_capacity, "tests/fixtures/%s", name);
+    return fopen(path, "r");
+}
 
 static void expect_expression(const phy_notebook *notebook, size_t index,
                               const char *expected)
@@ -342,8 +365,9 @@ static void test_notebook_frame_fixture(void)
     const unsigned long long actual =
         (unsigned long long)phy_gfx_digest(&surface);
 
-    const char *path = PHY_FIXTURE_DIR "/notebook_frame.digest";
-    FILE *file = fopen(path, "r");
+    char path[512];
+    FILE *file = open_fixture_file(
+        "notebook_frame.digest", path, sizeof path);
     unsigned long long expected = 0u;
     const int scanned = file != NULL ? fscanf(file, "%llx", &expected) : 0;
     if (file != NULL) {

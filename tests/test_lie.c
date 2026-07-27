@@ -35,6 +35,26 @@ static void expect_integer(phy_cas *cas, phy_ir_ref actual, int64_t expected)
     PHY_CHECK_EQ_INT(decision, PHY_CAS_ZERO);
 }
 
+static phy_ir_ref read_expr(phy_ir_context *ir, const char *text)
+{
+    phy_ir_ref expression = PHY_IR_NULL;
+    size_t offset = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_ir_read(ir, text, &expression, &offset), PHY_OK);
+    return expression;
+}
+
+static void expect_expression(fixture *f, phy_ir_ref actual,
+                              const char *expected)
+{
+    phy_cas_decision decision = PHY_CAS_UNKNOWN;
+    PHY_CHECK_EQ_INT(
+        phy_cas_equivalent(
+            f->cas, actual, read_expr(f->ir, expected), &decision),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(decision, PHY_CAS_ZERO);
+}
+
 static void test_builtin_catalog_and_metadata(void)
 {
     fixture f = fixture_open();
@@ -121,6 +141,46 @@ static void test_su2_bracket_and_killing_form(void)
     phy_lie_element_destroy(t2);
     phy_lie_element_destroy(t1);
     phy_lie_group_destroy(group);
+    fixture_close(&f);
+}
+
+static void test_builtin_normalizations_are_pinned(void)
+{
+    fixture f = fixture_open();
+    phy_lie_group *su3 = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_lie_group_builtin(f.cas, PHY_LIE_GROUP_SU3, &su3), PHY_OK);
+    const phy_lie_algebra *su3_algebra = phy_lie_group_algebra(su3);
+
+    /* [T4,T5] = 1/2 T3 + sqrt(3)/2 T8 in the Gell-Mann basis. */
+    expect_expression(
+        &f, phy_lie_structure_constant(su3_algebra, 3u, 4u, 2u),
+        "(rat 1 2)");
+    expect_expression(
+        &f, phy_lie_structure_constant(su3_algebra, 3u, 4u, 7u),
+        "(* (rat 1 2) (^ 3 (rat 1 2)))");
+    expect_expression(
+        &f, phy_lie_structure_constant(su3_algebra, 4u, 3u, 7u),
+        "(* (rat -1 2) (^ 3 (rat 1 2)))");
+    phy_lie_group_destroy(su3);
+
+    phy_lie_group *lorentz = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_lie_group_builtin(
+            f.cas, PHY_LIE_GROUP_SO13, &lorentz),
+        PHY_OK);
+    const phy_lie_algebra *lorentz_algebra =
+        phy_lie_group_algebra(lorentz);
+    /* [K1,K2] = -J3 and [J1,K2] = K3. */
+    expect_integer(
+        f.cas,
+        phy_lie_structure_constant(lorentz_algebra, 3u, 4u, 2u),
+        -1);
+    expect_integer(
+        f.cas,
+        phy_lie_structure_constant(lorentz_algebra, 0u, 4u, 5u),
+        1);
+    phy_lie_group_destroy(lorentz);
     fixture_close(&f);
 }
 
@@ -222,6 +282,7 @@ int main(void)
     }
     PHY_TEST_CASE(test_builtin_catalog_and_metadata);
     PHY_TEST_CASE(test_su2_bracket_and_killing_form);
+    PHY_TEST_CASE(test_builtin_normalizations_are_pinned);
     PHY_TEST_CASE(test_symbolic_bilinearity);
     PHY_TEST_CASE(test_generic_noncommutative_commutator);
     PHY_TEST_CASE(test_rejects_non_lie_structure_constants);

@@ -25,6 +25,29 @@
 
 static uint16_t g_scratch[PHY_SCREEN_PIXELS];
 
+static FILE *open_fixture_file(const char *name, char *path,
+                               size_t path_capacity)
+{
+    const char *runtime_dir = getenv("PHY_FIXTURE_DIR");
+    if (runtime_dir != NULL && runtime_dir[0] != '\0') {
+        (void)snprintf(path, path_capacity, "%s/%s", runtime_dir, name);
+        FILE *file = fopen(path, "r");
+        if (file != NULL) {
+            return file;
+        }
+    }
+
+    (void)snprintf(path, path_capacity, "%s/%s", PHY_FIXTURE_DIR, name);
+    FILE *file = fopen(path, "r");
+    if (file != NULL) {
+        return file;
+    }
+
+    /* Makes `build/test_smoke` launched from the repository root intuitive. */
+    (void)snprintf(path, path_capacity, "tests/fixtures/%s", name);
+    return fopen(path, "r");
+}
+
 static void test_app_requires_platform(void)
 {
     PHY_CHECK(!phy_platform_is_initialized());
@@ -269,8 +292,9 @@ static void test_baseline_is_deterministic(void)
  */
 static void test_baseline_matches_fixture(void)
 {
-    const char *path = PHY_FIXTURE_DIR "/baseline_frame.digest";
-    FILE *file = fopen(path, "r");
+    char path[512];
+    FILE *file = open_fixture_file(
+        "baseline_frame.digest", path, sizeof path);
     if (file == NULL) {
         g_phy_test_failures++;
         fprintf(stderr, "FAIL cannot open fixture %s\n", path);

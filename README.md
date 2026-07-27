@@ -67,8 +67,8 @@ integrating Giac.
 Measured on the pinned toolchain after the math-engine integration:
 `dist/phy-nspire.tns` is 1,055,745 bytes, 16.8% of the 6 MiB ceiling. The
 strict Windows host suite passes 23/23 and its assertion-bearing executables
-contain 69,796 explicit checks. The WSL AddressSanitizer/UndefinedBehaviorSanitizer
-suite passes 24/24, including the symbol-report shell test and the C++ rendering
+contain 70,039 explicit checks. The WSL AddressSanitizer/UndefinedBehaviorSanitizer
+suite passes 25/25, including the symbol-report/bootstrap shell tests and the C++ rendering
 slice.
 
 The native CAS smoke artifact has run on the target CX II and shown all seven

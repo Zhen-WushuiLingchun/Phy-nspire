@@ -234,6 +234,12 @@ cannot reduce it. `phy_form_volume_metric` is the corresponding general volume
 form. Wedge, exterior derivative, and interior product remain
 metric-independent.
 
+When the determinant is an exact integer or rational, the implementation also
+checks its sign against the manifold's declared inertia and rejects a
+contradiction with `PHY_ERR_ASSUMPTION`. For a symbolic determinant the
+inertia remains an explicit caller assumption: the bounded scalar CAS does not
+pretend to be a general real-domain sign solver.
+
 ## Degrees outside `0..n`
 
 `Lambda^p` is the zero vector space for `p > n`, and this layer has no object
@@ -396,7 +402,7 @@ operation that reached `libm` would defeat the reason the CAS computes only in
 exact rationals.
 
 The probe retained 44/44 public APIs, compiled the geometry translation units
-to 8,297 bytes of ARM text, packaged a 48,120-byte dependency-complete `.tns`,
+to 8,577 bytes of ARM text, packaged a 48,400-byte dependency-complete `.tns`,
 and retained no float formatter, libm call, or ARM soft-float helper.
 
 ## Not in this layer

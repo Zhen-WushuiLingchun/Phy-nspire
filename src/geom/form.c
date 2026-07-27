@@ -389,7 +389,13 @@ phy_status phy_form_set_at(phy_cas *cas, phy_form *form, size_t position,
 phy_status phy_geom_apply_sign(phy_cas *cas, phy_ir_ref value, int sign,
                                phy_ir_ref *out_ref)
 {
-    if (sign >= 0) {
+    if (cas == NULL || value == PHY_IR_NULL || out_ref == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    if (sign == 0) {
+        return PHY_ERR_ASSUMPTION;
+    }
+    if (sign > 0) {
         *out_ref = value;
         return PHY_OK;
     }

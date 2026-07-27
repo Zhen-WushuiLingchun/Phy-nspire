@@ -20,7 +20,8 @@ static phy_ir_ref read_expr(phy_ir_context *ir, const char *text)
     return expression;
 }
 
-static fixture open_fixture(phy_orientation orientation)
+static fixture open_fixture_with_signature(
+    phy_orientation orientation, const int8_t *signature)
 {
     fixture f = {0};
     f.ir = phy_ir_context_create(NULL);
@@ -29,12 +30,17 @@ static fixture open_fixture(phy_orientation orientation)
     PHY_CHECK_EQ_INT(
         phy_chart_create(f.ir, coordinates, 2u, &f.chart), PHY_OK);
     PHY_CHECK_EQ_INT(
-        phy_manifold_create(f.ir, "M", 2u, orientation, NULL,
+        phy_manifold_create(f.ir, "M", 2u, orientation, signature,
                             &f.manifold),
         PHY_OK);
     PHY_CHECK_EQ_INT(
         phy_manifold_add_chart(f.manifold, f.chart, NULL), PHY_OK);
     return f;
+}
+
+static fixture open_fixture(phy_orientation orientation)
+{
+    return open_fixture_with_signature(orientation, NULL);
 }
 
 static void close_fixture(fixture *f)
@@ -97,6 +103,17 @@ static phy_form *basis_one_form(fixture *f, unsigned axis)
             f->cas, form, index, read_expr(f->ir, "1")),
         PHY_OK);
     return form;
+}
+
+static void expect_form_equivalent(
+    fixture *f, const phy_form *actual, const phy_form *expected)
+{
+    phy_cas_decision decision = PHY_CAS_UNKNOWN;
+    PHY_CHECK_EQ_INT(
+        phy_form_equivalent(
+            f->cas, actual, expected, &decision),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(decision, PHY_CAS_ZERO);
 }
 
 static void test_diagonal_coordinate_metric(void)
@@ -163,6 +180,107 @@ static void test_nondiagonal_coordinate_metric(void)
     close_fixture(&f);
 }
 
+static void test_lorentzian_metric_hodge_and_orientation(void)
+{
+    static const int8_t lorentz[2] = {-1, 1};
+    static const char *const entries[4] = {"-1", "0", "0", "1"};
+    fixture f = open_fixture_with_signature(
+        PHY_ORIENTATION_POSITIVE, lorentz);
+    phy_tensor *metric = make_metric(&f, entries);
+    phy_form *dt = basis_one_form(&f, 0u);
+
+    phy_form *star_dt = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_form_hodge_metric(f.cas, dt, metric, &star_dt), PHY_OK);
+    expect_equivalent(&f, component(star_dt, 0u), "0");
+    expect_equivalent(&f, component(star_dt, 1u), "-1");
+
+    phy_form *star_star_dt = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_form_hodge_metric(
+            f.cas, star_dt, metric, &star_star_dt),
+        PHY_OK);
+    expect_form_equivalent(&f, star_star_dt, dt);
+
+    phy_form *volume = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_form_volume_metric(
+            f.cas, f.manifold, 0u, metric, &volume),
+        PHY_OK);
+    expect_equivalent(&f, component(volume, 0u), "1");
+
+    phy_form_destroy(volume);
+    phy_form_destroy(star_star_dt);
+    phy_form_destroy(star_dt);
+    phy_form_destroy(dt);
+    phy_tensor_destroy(metric);
+    close_fixture(&f);
+
+    f = open_fixture_with_signature(
+        PHY_ORIENTATION_NEGATIVE, lorentz);
+    metric = make_metric(&f, entries);
+    dt = basis_one_form(&f, 0u);
+    star_dt = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_form_hodge_metric(f.cas, dt, metric, &star_dt), PHY_OK);
+    expect_equivalent(&f, component(star_dt, 1u), "1");
+    phy_form_destroy(star_dt);
+    phy_form_destroy(dt);
+    phy_tensor_destroy(metric);
+    close_fixture(&f);
+}
+
+static void test_metric_hodge_square_and_symbolic_volume(void)
+{
+    fixture f = open_fixture(PHY_ORIENTATION_POSITIVE);
+    static const char *const entries[4] = {"2", "1", "1", "2"};
+    phy_tensor *metric = make_metric(&f, entries);
+    phy_form *alpha = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_form_create(f.manifold, 0u, NULL, 1u, &alpha), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_form_set_at(f.cas, alpha, 0u, read_expr(f.ir, "x")),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_form_set_at(f.cas, alpha, 1u, read_expr(f.ir, "y")),
+        PHY_OK);
+
+    phy_form *once = NULL;
+    phy_form *twice = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_form_hodge_metric(f.cas, alpha, metric, &once), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_form_hodge_metric(f.cas, once, metric, &twice), PHY_OK);
+    phy_form *minus_alpha = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_form_scale(
+            f.cas, alpha, read_expr(f.ir, "-1"), &minus_alpha),
+        PHY_OK);
+    expect_form_equivalent(&f, twice, minus_alpha);
+
+    phy_form_destroy(minus_alpha);
+    phy_form_destroy(twice);
+    phy_form_destroy(once);
+    phy_form_destroy(alpha);
+    phy_tensor_destroy(metric);
+
+    static const char *const polar_entries[4] = {
+        "1", "0", "0", "(^ r 2)"};
+    metric = make_metric(&f, polar_entries);
+    phy_form *volume = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_form_volume_metric(
+            f.cas, f.manifold, 0u, metric, &volume),
+        PHY_OK);
+    expect_equivalent(
+        &f, component(volume, 0u),
+        "(^ (^ r 2) (rat 1 2))");
+
+    phy_form_destroy(volume);
+    phy_tensor_destroy(metric);
+    close_fixture(&f);
+}
+
 static void test_metric_hodge_rejections_are_typed(void)
 {
     fixture f = open_fixture(PHY_ORIENTATION_POSITIVE);
@@ -190,6 +308,34 @@ static void test_metric_hodge_rejections_are_typed(void)
     phy_tensor_destroy(identity);
     phy_form_destroy(dx);
     close_fixture(&f);
+
+    f = open_fixture(PHY_ORIENTATION_POSITIVE);
+    static const char *const nonsymmetric_entries[4] = {
+        "1", "1", "0", "1"};
+    phy_tensor *nonsymmetric = make_metric(&f, nonsymmetric_entries);
+    dx = basis_one_form(&f, 0u);
+    PHY_CHECK_EQ_INT(
+        phy_form_hodge_metric(f.cas, dx, nonsymmetric, &sentinel),
+        PHY_ERR_ASSUMPTION);
+    PHY_CHECK(sentinel == NULL);
+    phy_tensor_destroy(nonsymmetric);
+    phy_form_destroy(dx);
+    close_fixture(&f);
+
+    static const int8_t lorentz[2] = {-1, 1};
+    f = open_fixture_with_signature(
+        PHY_ORIENTATION_POSITIVE, lorentz);
+    static const char *const positive_entries[4] = {
+        "1", "0", "0", "1"};
+    phy_tensor *positive = make_metric(&f, positive_entries);
+    dx = basis_one_form(&f, 0u);
+    PHY_CHECK_EQ_INT(
+        phy_form_hodge_metric(f.cas, dx, positive, &sentinel),
+        PHY_ERR_ASSUMPTION);
+    PHY_CHECK(sentinel == NULL);
+    phy_tensor_destroy(positive);
+    phy_form_destroy(dx);
+    close_fixture(&f);
 }
 
 int main(void)
@@ -200,6 +346,8 @@ int main(void)
     }
     PHY_TEST_CASE(test_diagonal_coordinate_metric);
     PHY_TEST_CASE(test_nondiagonal_coordinate_metric);
+    PHY_TEST_CASE(test_lorentzian_metric_hodge_and_orientation);
+    PHY_TEST_CASE(test_metric_hodge_square_and_symbolic_volume);
     PHY_TEST_CASE(test_metric_hodge_rejections_are_typed);
     const int result = PHY_TEST_REPORT("test_geom_metric");
     phy_platform_shutdown();

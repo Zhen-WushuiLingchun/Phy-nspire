@@ -81,10 +81,19 @@ static void expect_equivalent(fixture *f, phy_ir_ref actual,
         phy_cas_equivalent(
             f->cas, actual, read_expr(f->ir, expected), &decision),
         PHY_OK);
+    if (decision != PHY_CAS_ZERO) {
+        char text[256];
+        size_t length = 0u;
+        if (phy_ir_write(
+                f->ir, actual, text, sizeof text, &length) == PHY_OK) {
+            fprintf(stderr, "actual expression: %s\n", text);
+        }
+    }
     PHY_CHECK_EQ_INT(decision, PHY_CAS_ZERO);
 }
 
-static phy_tensor *identity_metric(fixture *f)
+static phy_tensor *make_metric(
+    fixture *f, const char *const entries[9])
 {
     static const phy_ir_variance lower[2] = {
         PHY_IR_INDEX_LOWER, PHY_IR_INDEX_LOWER};
@@ -97,11 +106,22 @@ static phy_tensor *identity_metric(fixture *f)
             PHY_CHECK_EQ_INT(
                 phy_tensor_set(
                     metric, indices,
-                    phy_ir_integer(f->ir, row == column ? 1 : 0)),
+                    read_expr(
+                        f->ir, entries[(size_t)row * 3u + column])),
                 PHY_OK);
         }
     }
     return metric;
+}
+
+static phy_tensor *identity_metric(fixture *f)
+{
+    static const char *const entries[9] = {
+        "1", "0", "0",
+        "0", "1", "0",
+        "0", "0", "1",
+    };
+    return make_metric(f, entries);
 }
 
 static void test_u1_curvature_bianchi_and_density(void)
@@ -200,6 +220,87 @@ static void test_su2_nonlinear_curvature(void)
     phy_lie_form_destroy(residual);
     phy_lie_form_destroy(curvature);
     phy_lie_form_destroy(connection);
+    close_fixture(&f);
+}
+
+static void test_su2_killing_density_sign(void)
+{
+    fixture f = open_fixture(PHY_LIE_GROUP_SU2);
+    const phy_lie_algebra *algebra = phy_lie_group_algebra(f.group);
+    phy_lie_form *connection = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_lie_form_create(
+            algebra, f.manifold, 0u, 1u, &connection),
+        PHY_OK);
+    put(&f, connection, 0u, 0u, "1");
+    put(&f, connection, 1u, 1u, "1");
+    put(&f, connection, 2u, 2u, "1");
+    const phy_ir_ref coupling = read_expr(f.ir, "g");
+
+    phy_lie_form *curvature = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_yang_mills_field_strength(
+            f.cas, connection, coupling, &curvature),
+        PHY_OK);
+    phy_tensor *metric = identity_metric(&f);
+    phy_form *lagrangian = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_yang_mills_lagrangian(
+            f.cas, curvature, metric, NULL, &lagrangian),
+        PHY_OK);
+    phy_ir_ref density = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_form_get_at(lagrangian, 0u, &density), PHY_OK);
+    /*
+     * K_ab=-2 delta_ab for this compact-basis normalization, so the API's
+     * -1/2 K_ab convention gives +sum_a F^a wedge *F^a = 3 g^2 vol.
+     */
+    expect_equivalent(&f, density, "(* 3 (^ g 2))");
+
+    phy_form_destroy(lagrangian);
+    phy_tensor_destroy(metric);
+    phy_lie_form_destroy(curvature);
+    phy_lie_form_destroy(connection);
+    close_fixture(&f);
+}
+
+static void test_nondiagonal_metric_density_integration(void)
+{
+    fixture f = open_fixture(PHY_LIE_GROUP_SU2);
+    const phy_lie_algebra *algebra = phy_lie_group_algebra(f.group);
+    phy_lie_form *curvature = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_lie_form_create(
+            algebra, f.manifold, 0u, 2u, &curvature),
+        PHY_OK);
+    /* F^1 = dx wedge dy. */
+    put(&f, curvature, 0u, 0u, "1");
+
+    static const char *const metric_entries[9] = {
+        "2", "1", "0",
+        "1", "2", "0",
+        "0", "0", "3",
+    };
+    phy_tensor *metric = make_metric(&f, metric_entries);
+    phy_ir_ref bilinear[9];
+    for (size_t index = 0u; index < 9u; ++index) {
+        bilinear[index] = read_expr(f.ir, index == 0u ? "1" : "0");
+    }
+
+    phy_form *lagrangian = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_yang_mills_lagrangian(
+            f.cas, curvature, metric, bilinear, &lagrangian),
+        PHY_OK);
+    phy_ir_ref density = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_form_get_at(lagrangian, 0u, &density), PHY_OK);
+    expect_equivalent(
+        &f, density, "(* (rat -1 6) (^ 9 (rat 1 2)))");
+
+    phy_form_destroy(lagrangian);
+    phy_tensor_destroy(metric);
+    phy_lie_form_destroy(curvature);
     close_fixture(&f);
 }
 
@@ -380,6 +481,8 @@ int main(void)
     }
     PHY_TEST_CASE(test_u1_curvature_bianchi_and_density);
     PHY_TEST_CASE(test_su2_nonlinear_curvature);
+    PHY_TEST_CASE(test_su2_killing_density_sign);
+    PHY_TEST_CASE(test_nondiagonal_metric_density_integration);
     PHY_TEST_CASE(test_gauge_variations_and_type_checks);
     PHY_TEST_CASE(test_su2_bianchi_uses_symbolic_cancellation);
     PHY_TEST_CASE(test_infinitesimal_curvature_covariance);

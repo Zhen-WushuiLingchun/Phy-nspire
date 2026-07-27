@@ -50,6 +50,14 @@ The layer can:
   `L = -1/2 h_ab F^a wedge star_g(F^b)` with either a caller-supplied
   invariant bilinear form or the algebra's Killing form.
 
+The `NULL` bilinear default is deliberately the mathematical Killing form,
+not a hidden physics trace normalization. In this library's real
+anti-Hermitian compact basis it is negative definite; for example, `SU(2)`
+has `K_ab=-2 delta_ab`. Consequently the default changes the overall sign
+relative to conventions that take a positive representation trace. Callers
+matching a particular Yang--Mills action should pass that invariant trace
+form explicitly.
+
 `star_g` is the general coordinate-metric Hodge dual. It uses the exact tensor
 inverse and determinant, so curved/non-diagonal coordinates retain
 `sqrt(|det g|)` symbolically instead of sampling a sign or decimal value.
@@ -64,6 +72,8 @@ inverse and determinant, so curved/non-diagonal coordinates retain
 - `SU(2)`: `A^1=dx`, `A^2=dy`, `A^3=dz`, producing all three non-Abelian
   curvature components with their exact signs;
 - an `SU(2)` Bianchi residual and a nonzero infinitesimal gauge variation;
+- the `SU(2)` Killing-default density, including its compact-basis sign;
+- a non-Abelian density through a genuinely non-diagonal coordinate metric;
 - typed rejection of a form with the wrong degree.
 
 The underlying Lie suite separately proves antisymmetry and every Jacobi

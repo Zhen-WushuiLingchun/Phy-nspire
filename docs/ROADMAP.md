@@ -143,10 +143,12 @@ Verification:
   `iota_v iota_v = 0`, and `** = (-1)^{p(n-p)} sign(det g)` at every degree in
   Euclidean and Lorentzian 2D, Euclidean 3D and Minkowski 4D;
 - general coordinate-metric Hodge/volume cases are done for diagonal,
-  non-diagonal, singular, and unoriented inputs in `tests/test_geom_metric.c`;
+  non-diagonal, Lorentzian, negative-orientation, symbolic-determinant,
+  singular, nonsymmetric, inertia-mismatched, and unoriented inputs in
+  `tests/test_geom_metric.c`, including the general-metric `**` identity;
 - comparison corpus derived from xAct examples;
 - bounded rank/dimension benchmarks on desktop and CX II;
-- the ARM geometry link check retains 44/44 APIs with 8,297 bytes of layer
+- the ARM geometry link check retains 44/44 APIs with 8,577 bytes of layer
   text and no float/libm/soft-float dependency;
 
 ## Phase 3 — general relativity and black holes
