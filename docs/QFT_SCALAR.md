@@ -24,7 +24,10 @@ the layer creates:
 - the labelled, amputated tree-level `2 -> 2` graph and stripped-`i`
   amplitude `-lambda`;
 - the one-loop two-point tadpole and the three `s/t/u` four-point bubbles;
-- exact symmetry factors and coupling weights;
+- an allocation-free connected multigraph analyser for up to four quartic
+  vertices and eight individually labelled external legs;
+- exact Wick multiplicities, vertex automorphisms, symmetry factors and
+  coupling weights;
 - exact graph checks `4V = 2I + E`, `L = I - V + 1`, and superficial degree
   `omega = D L - 2 I`;
 - unevaluated typed `TadpoleIntegral` and `BubbleIntegral` masters;
@@ -34,7 +37,7 @@ the layer creates:
 The loop corpus separates topology/combinatorics from convention-dependent
 amplitude phases:
 
-| object | V | I | E | L | symmetry factor | stripped weight |
+| object | V | I | E | L | legacy `1/S` field | stripped weight |
 | --- | ---: | ---: | ---: | ---: | ---: | ---: |
 | labelled tree vertex | 1 | 0 | 4 | 0 | `1` | `-lambda` |
 | tadpole | 1 | 1 | 2 | 1 | `1/2` | `lambda/2` |
@@ -42,18 +45,76 @@ amplitude phases:
 | `t` bubble | 2 | 2 | 4 | 1 | `1/2` | `lambda^2/2` |
 | `u` bubble | 2 | 2 | 4 | 1 | `1/2` | `lambda^2/2` |
 
+The older bounded-diagram record names its rational `1/S` field
+`symmetry_factor`. The general graph result removes that ambiguity: it returns
+the positive integer `SymmetryFactor -> S` and the exact rational
+`SymmetryWeight -> 1/S` separately.
+
+## Connected multigraph analysis
+
+The notebook spelling is
+
+```text
+Phi4Graph[phi,m,lambda,D,externalVertices,adjacency]
+```
+
+`adjacency[[i,j]]` is the number of internal lines between vertices `i` and
+`j`; a diagonal entry is a tadpole self-loop and contributes twice to that
+vertex's degree. `externalVertices` lists the attachment vertex of each
+individually labelled external leg. Vertex numbers are zero-based, matching
+the component/index input used elsewhere in the native interface.
+
+For example, the two-loop two-point sunset is
+
+```text
+Phi4Graph[phi,m,lambda,4,{0,1},{{0,3},{3,0}}]
+```
+
+Every accepted vertex satisfies
+
+```text
+external_i + 2 adjacency[i,i] + Sum[j != i, adjacency[i,j]] = 4.
+```
+
+The interaction vertices must be connected by non-diagonal internal lines.
+The analyser then computes
+
+```text
+D_internal = Product[i, 2^m_ii m_ii!]
+             Product[i<j, m_ij!]
+Wick        = (4!)^V / D_internal
+S           = |Aut_vertices| D_internal
+weight      = lambda^V / S
+L           = I - V + 1
+omega       = D L - 2 I.
+```
+
+A vertex automorphism must preserve the complete multigraph and every labelled
+external attachment. The result is an ordered list of labelled rules:
+`Vertices`, `ExternalLegs`, `InternalLines`, `Loops`,
+`SuperficialDegree`, `VertexAutomorphisms`, `VertexLabelings`,
+`WickMultiplicity`, `SymmetryFactor`, `SymmetryWeight`, and
+`CouplingWeight`.
+
+The direct golden corpus includes the quartic tree (`S=1`), tadpole (`S=2`),
+one-channel bubble (`S=2`), sunset (`S=6`), one-vertex double vacuum bubble
+(`S=8`), and two-vertex vacuum basketball (`S=48`). Invalid degrees,
+asymmetric matrices, disconnected vertices, and invalid external attachments
+are rejected before a result is published.
+
 No integral is evaluated numerically. The typed masters remain the stable
 boundary for a later finite-part table; the one-loop UV constants below use a
 separately declared normalization rather than silently assigning one to those
 opaque master heads.
 
 Notebook cells call the backend through
-`Phi4Lagrangian[phi,m,lambda,D]`, `Phi4EOM[...]`, and
-`Phi4Diagrams[phi,m,lambda,D,s,t,u]`. The last result is an ordered list
+`Phi4Lagrangian[phi,m,lambda,D]`, `Phi4EOM[...]`,
+`Phi4Diagrams[phi,m,lambda,D,s,t,u]`, and `Phi4Graph[...]`. The bounded
+diagram result is an ordered list
 containing the tree amplitude, tadpole, and `s/t/u` bubbles. Host tests cover
-these evaluator paths as well as the direct graph topology, exact weights,
-field equation, and typed rejection of inconsistent graphs and unsupported
-dimensions.
+these evaluator paths as well as the direct multigraph topology, exact
+weights, field equation, and transactional typed rejection of inconsistent
+graphs and unsupported dimensions.
 
 The one-loop renormalization commands are:
 
@@ -97,7 +158,9 @@ Keeping the convention in the public API avoids mixing that epsilon with a
 Not yet implemented:
 
 - functional differentiation beyond the built-in model equation;
-- Wick-contraction and general graph generation;
+- automatic Wick-contraction enumeration and graph generation from an
+  interaction order (a supplied graph is analysed exactly);
+- momentum routing and conversion of an analysed graph into a loop integrand;
 - finite parts of dimensionally regulated masters, automatic UV-pole
   extraction from arbitrary integrands, or renormalization-group running;
 - multi-loop topology reduction or IBP;

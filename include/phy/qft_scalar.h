@@ -8,6 +8,8 @@
 #ifndef PHY_QFT_SCALAR_H
 #define PHY_QFT_SCALAR_H
 
+#include <stdint.h>
+
 #include "phy/cas.h"
 
 #ifdef __cplusplus
@@ -57,6 +59,43 @@ typedef struct {
     phy_ir_ref delta_z_mass;     /* Z_m - 1 */
     phy_ir_ref delta_z_coupling; /* Z_lambda - 1 */
 } phy_phi4_renorm_constants;
+
+/*
+ * A bounded connected phi^4 multigraph with individually labelled external
+ * legs. Off-diagonal entries count parallel internal lines; a diagonal entry
+ * counts tadpole self-loops and therefore contributes twice to the degree of
+ * its vertex. The adjacency matrix must be symmetric.
+ *
+ * Four vertices and eight external legs cover the first useful tree through
+ * three-loop corpus while keeping the CX II analysis allocation-free.
+ */
+#define PHY_PHI4_GRAPH_MAX_VERTICES 4u
+#define PHY_PHI4_GRAPH_MAX_EXTERNAL 8u
+
+typedef struct {
+    uint8_t vertices;
+    uint8_t external_legs;
+    uint8_t external_vertex[PHY_PHI4_GRAPH_MAX_EXTERNAL];
+    uint8_t
+        internal_edges[PHY_PHI4_GRAPH_MAX_VERTICES]
+                      [PHY_PHI4_GRAPH_MAX_VERTICES];
+} phy_phi4_graph;
+
+typedef struct {
+    unsigned internal_lines;
+    unsigned loop_order;
+    int superficial_degree;
+    uint64_t wick_multiplicity;
+    uint32_t vertex_automorphisms;
+    uint32_t vertex_labelings;
+    uint64_t symmetry_factor;
+    phy_ir_ref symmetry_weight; /* exact 1 / symmetry_factor */
+    /*
+     * Exact lambda^V / symmetry_factor. Overall signs, factors of i, momentum
+     * routing, and loop-integral normalization are deliberately not inferred.
+     */
+    phy_ir_ref coupling_weight;
+} phy_phi4_graph_analysis;
 
 /*
  * `mass` and `coupling` are exact scalar IR expressions in `cas`.
@@ -167,6 +206,28 @@ phy_status phy_phi4_one_loop_renormalization(
 phy_status phy_phi4_one_loop_counterterm_lagrangian(
     const phy_phi4_model *model, phy_ir_ref epsilon,
     phy_phi4_renorm_scheme scheme, phy_ir_ref *out_lagrangian);
+
+/*
+ * Validate and analyse a connected graph transactionally.
+ *
+ * Every vertex must have degree four:
+ *
+ *   external_i + 2 adjacency[i][i] + sum_(j != i) adjacency[i][j] = 4.
+ *
+ * For individually labelled external legs, the exact combinatorics are
+ *
+ *   D = product_i 2^m_ii m_ii! product_(i<j) m_ij!
+ *   Wick = (4!)^V / D
+ *   S = |Aut_vertices| D
+ *   weight = lambda^V / S.
+ *
+ * A vertex automorphism must preserve the full multigraph and every external
+ * leg attachment. Invalid topology returns PHY_ERR_ASSUMPTION; unsupported
+ * bounds return PHY_ERR_UNSUPPORTED. `out_analysis` is untouched on failure.
+ */
+phy_status phy_phi4_graph_analyze(
+    const phy_phi4_model *model, const phy_phi4_graph *graph,
+    phy_phi4_graph_analysis *out_analysis);
 
 #ifdef __cplusplus
 }

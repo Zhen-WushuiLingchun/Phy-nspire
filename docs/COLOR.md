@@ -156,7 +156,7 @@ order-dependent.
 - `make color-link-check`: 23/23 public APIs retained by the Ndless linker,
   4,924 bytes of colour-layer text, a 43,176-byte isolated probe, and no float
   formatter, libm call, or ARM soft-float helper;
-- the clean product build is 1,102,959 bytes, 17.5% of the 6 MiB ceiling.
+- the clean product build is 1,104,874 bytes, 17.6% of the 6 MiB ceiling.
 
 The numeric oracle is host-only and independent of the native implementation:
 it certifies the conventions from explicit matrices, while the calculator

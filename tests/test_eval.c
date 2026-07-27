@@ -555,6 +555,57 @@ static void test_qft_heads_reach_native_backends(void)
     PHY_CHECK(strstr(diagram_text, "TadpoleIntegral") != NULL);
     PHY_CHECK(strstr(diagram_text, "BubbleIntegral") != NULL);
 
+    const phy_value graph = run(
+        &f, "Phi4Graph[phi,m,lambda,4,{0,1},{{0,3},{3,0}}]");
+    PHY_CHECK_EQ_INT(graph.kind, PHY_VALUE_SCALAR);
+    PHY_CHECK_EQ_INT(
+        phy_ir_kind_of(f.ir, graph.as.scalar), PHY_IR_FUNCTION);
+    PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, graph.as.scalar), 11);
+    static const char *const graph_labels[11] = {
+        "Vertices",            "ExternalLegs",
+        "InternalLines",       "Loops",
+        "SuperficialDegree",   "VertexAutomorphisms",
+        "VertexLabelings",     "WickMultiplicity",
+        "SymmetryFactor",      "SymmetryWeight",
+        "CouplingWeight"};
+    static const int64_t graph_integers[9] = {
+        2, 2, 3, 2, 2, 1, 2, 96, 6};
+    for (size_t index = 0u; index < 11u; ++index) {
+        const phy_ir_ref rule =
+            phy_ir_child(f.ir, graph.as.scalar, index);
+        PHY_CHECK_EQ_STR(
+            phy_ir_symbol_name(
+                f.ir, phy_ir_head(f.ir, phy_ir_child(f.ir, rule, 0u))),
+            graph_labels[index]);
+        if (index < 9u) {
+            int64_t integer = 0;
+            PHY_CHECK(phy_ir_integer_value(
+                f.ir, phy_ir_child(f.ir, rule, 1u), &integer));
+            PHY_CHECK_EQ_INT(integer, graph_integers[index]);
+        }
+    }
+    const phy_ir_ref symmetry_rule =
+        phy_ir_child(f.ir, graph.as.scalar, 9u);
+    int64_t symmetry_numerator = 0;
+    int64_t symmetry_denominator = 0;
+    PHY_CHECK(phy_ir_rational_value(
+        f.ir, phy_ir_child(f.ir, symmetry_rule, 1u),
+        &symmetry_numerator, &symmetry_denominator));
+    PHY_CHECK_EQ_INT(symmetry_numerator, 1);
+    PHY_CHECK_EQ_INT(symmetry_denominator, 6);
+    const phy_ir_ref coupling_rule =
+        phy_ir_child(f.ir, graph.as.scalar, 10u);
+    const phy_ir_ref coupling_weight =
+        phy_ir_child(f.ir, coupling_rule, 1u);
+    const phy_ir_ref expected_coupling =
+        run(&f, "lambda^2/6").as.scalar;
+    phy_cas_decision graph_decision = PHY_CAS_UNKNOWN;
+    PHY_CHECK_EQ_INT(
+        phy_cas_equivalent(
+            f.cas, coupling_weight, expected_coupling, &graph_decision),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(graph_decision, PHY_CAS_ZERO);
+
     (void)run(&f, "MSBar = 7");
     const phy_value renormalization = run(
         &f,
@@ -584,6 +635,15 @@ static void test_qft_heads_reach_native_backends(void)
     expect_status(
         &f, "Phi4Counterterm[phi,m,lambda,3,epsilon,MS]",
         PHY_ERR_UNSUPPORTED);
+    expect_status(
+        &f, "Phi4Graph[phi,m,lambda,4,{},{{0}}]",
+        PHY_ERR_ASSUMPTION);
+    expect_status(
+        &f, "Phi4Graph[phi,m,lambda,4,{0,1},{{0,x},{x,0}}]",
+        PHY_ERR_TYPE);
+    expect_status(
+        &f, "Phi4Graph[phi,m,lambda,4,{1,1,1,1},{{0}}]",
+        PHY_ERR_DOMAIN);
     fixture_close(&f);
 }
 
@@ -734,7 +794,8 @@ static void test_every_evaluated_head_rejects_empty_arguments(void)
         "RicciScalar",  "Einstein",            "Kretschmann",
         "Weyl",         "WeylSquared",          "GeodesicAcceleration",
         "CovariantDerivative",                 "Phi4Lagrangian",
-        "Phi4EOM",      "Phi4Diagrams",         "Phi4Renormalization",
+        "Phi4EOM",      "Phi4Diagrams",         "Phi4Graph",
+        "Phi4Renormalization",
         "Phi4Counterterm",                      "MandelstamReduce",
         "DiracTrace",   "SUNDelta",             "SUNF",
         "SUND",         "SUNT",                 "SUNTrace",

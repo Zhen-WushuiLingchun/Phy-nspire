@@ -32,7 +32,7 @@ static const char *const kEvalHeadNames[EVAL_HEAD_COUNT] = {
     "Kretschmann",  "Weyl",             "WeylSquared",
     "GeodesicAcceleration",             "CovariantDerivative",
 
-    "Phi4Lagrangian", "Phi4EOM",         "Phi4Diagrams",
+    "Phi4Lagrangian", "Phi4EOM",         "Phi4Diagrams", "Phi4Graph",
     "Phi4Renormalization", "Phi4Counterterm",
     "MandelstamReduce", "DiracTrace",
 

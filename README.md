@@ -66,7 +66,9 @@ traces without gamma-five, routed Mandelstam reduction, and exact symbolic
 SU(N) colour tensors, traces, commutators, and Casimirs with symbolic `N`.
 The scalar sector also exposes convention-pinned one-loop MS/MSbar
 renormalization constants and the local phi4 counterterm density for
-`D = 4 - 2 epsilon`.
+`D = 4 - 2 epsilon`. A bounded connected phi4 multigraph command proves
+quartic degree/connectedness and returns exact Wick multiplicities, vertex
+automorphisms, `S`, `1/S`, loop order and `lambda^V/S` for a supplied topology.
 The CAS answers "unknown" rather than guessing outside its decidable class, so
 the scalar operations needed by the tensor, geometry, and GR phases no longer depend on
 integrating Giac.
@@ -80,16 +82,16 @@ exterior derivative, `LieDerivative[alpha,v]` evaluates Cartan's formula, and
 `FieldStrength[A,g]` calls the Yang--Mills curvature;
 `ZeroQ[Bianchi[A,g]]` proves the identity rather than asserting it;
 `DiracTrace[...]`, `MandelstamReduce[...]`, `Phi4Lagrangian[...]`,
-`Phi4EOM[...]`, `Phi4Diagrams[...]`, and the `SUN*` colour commands reach their
+`Phi4EOM[...]`, `Phi4Diagrams[...]`, `Phi4Graph[...]`, and the `SUN*` colour commands reach their
 native QFT backends. Before this layer those heads were parsed into typed IR and handed to the scalar CAS, which
 by contract preserves an operator and simplifies only its operands: the head
 survived a round trip and nothing computed.
 
 The strict Windows host suite passes 29/29. The WSL ASan/UBSan/leak suite
-passes 31/31, and the assertion-bearing executables contain 94,276 explicit
+passes 31/31, and the assertion-bearing executables contain 94,457 explicit
 checks.
 
-The current native build is measured at 1,102,959 bytes, 17.5% of the 6 MiB
+The current native build is measured at 1,104,874 bytes, 17.6% of the 6 MiB
 ceiling. Its evaluator ARM probe links the complete current physics stack,
 retains 15/15 public evaluator entry points, packages to a `.tns`, and imports
 no libm, floating-point formatter, or ARM soft-float helper.

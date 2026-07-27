@@ -243,6 +243,175 @@ static void test_invalid_graphs_are_rejected(void)
     fixture_close(&f);
 }
 
+static void expect_graph_analysis(
+    fixture *f, const phy_phi4_graph *graph, unsigned internal_lines,
+    unsigned loops, int degree, uint64_t wick, uint32_t automorphisms,
+    uint32_t labelings, uint64_t symmetry_factor)
+{
+    phy_phi4_graph_analysis analysis;
+    memset(&analysis, 0, sizeof analysis);
+    PHY_CHECK_EQ_INT(
+        phy_phi4_graph_analyze(f->model, graph, &analysis), PHY_OK);
+    PHY_CHECK_EQ_INT(analysis.internal_lines, internal_lines);
+    PHY_CHECK_EQ_INT(analysis.loop_order, loops);
+    PHY_CHECK_EQ_INT(analysis.superficial_degree, degree);
+    PHY_CHECK_EQ_INT(analysis.wick_multiplicity, wick);
+    PHY_CHECK_EQ_INT(analysis.vertex_automorphisms, automorphisms);
+    PHY_CHECK_EQ_INT(analysis.vertex_labelings, labelings);
+    PHY_CHECK_EQ_INT(analysis.symmetry_factor, symmetry_factor);
+
+    phy_ir_ref expected_weight = PHY_IR_NULL;
+    phy_ir_ref exponent = PHY_IR_NULL;
+    phy_ir_ref coupling_power = PHY_IR_NULL;
+    phy_ir_ref expected_coupling = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_number(
+            f->cas, 1, (int64_t)symmetry_factor, &expected_weight),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_cas_number(f->cas, graph->vertices, 1, &exponent), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_cas_pow(
+            f->cas, f->coupling, exponent, &coupling_power),
+        PHY_OK);
+    {
+        const phy_ir_ref factors[2] = {expected_weight, coupling_power};
+        PHY_CHECK_EQ_INT(
+            phy_cas_mul(f->cas, factors, 2u, &expected_coupling),
+            PHY_OK);
+    }
+    expect_equivalent(f->cas, analysis.symmetry_weight, expected_weight);
+    expect_equivalent(
+        f->cas, analysis.coupling_weight, expected_coupling);
+}
+
+static void test_phi4_graph_symmetry_factor_corpus(void)
+{
+    fixture f = fixture_open();
+    phy_phi4_graph graph;
+
+    /* One labelled quartic vertex: 4! fixed-vertex Wick contractions. */
+    memset(&graph, 0, sizeof graph);
+    graph.vertices = 1u;
+    graph.external_legs = 4u;
+    expect_graph_analysis(&f, &graph, 0u, 0u, 0, 24u, 1u, 1u, 1u);
+
+    /* Two-point tadpole: D = 2, hence S = 2 and Wick = 12. */
+    memset(&graph, 0, sizeof graph);
+    graph.vertices = 1u;
+    graph.external_legs = 2u;
+    graph.internal_edges[0][0] = 1u;
+    expect_graph_analysis(&f, &graph, 1u, 1u, 2, 12u, 1u, 1u, 2u);
+
+    /* One labelled s/t/u channel: two parallel lines give S = 2. */
+    memset(&graph, 0, sizeof graph);
+    graph.vertices = 2u;
+    graph.external_legs = 4u;
+    graph.external_vertex[0] = 0u;
+    graph.external_vertex[1] = 0u;
+    graph.external_vertex[2] = 1u;
+    graph.external_vertex[3] = 1u;
+    graph.internal_edges[0][1] = 2u;
+    graph.internal_edges[1][0] = 2u;
+    expect_graph_analysis(
+        &f, &graph, 2u, 1u, 0, 288u, 1u, 2u, 2u);
+
+    /* Sunset two-point topology: three parallel lines give S = 3! = 6. */
+    memset(&graph, 0, sizeof graph);
+    graph.vertices = 2u;
+    graph.external_legs = 2u;
+    graph.external_vertex[0] = 0u;
+    graph.external_vertex[1] = 1u;
+    graph.internal_edges[0][1] = 3u;
+    graph.internal_edges[1][0] = 3u;
+    expect_graph_analysis(
+        &f, &graph, 3u, 2u, 2, 96u, 1u, 2u, 6u);
+
+    /*
+     * Vacuum basketball: four parallel lines and a vertex exchange,
+     * S = 4! * 2 = 48.
+     */
+    memset(&graph, 0, sizeof graph);
+    graph.vertices = 2u;
+    graph.internal_edges[0][1] = 4u;
+    graph.internal_edges[1][0] = 4u;
+    expect_graph_analysis(
+        &f, &graph, 4u, 3u, 4, 24u, 2u, 1u, 48u);
+
+    /* One-vertex double bubble: D = 2^2 2! = 8. */
+    memset(&graph, 0, sizeof graph);
+    graph.vertices = 1u;
+    graph.internal_edges[0][0] = 2u;
+    expect_graph_analysis(&f, &graph, 2u, 2u, 4, 3u, 1u, 1u, 8u);
+    fixture_close(&f);
+}
+
+static void test_phi4_graph_rejections_are_transactional(void)
+{
+    fixture f = fixture_open();
+    phy_phi4_graph graph;
+    phy_phi4_graph_analysis output;
+    phy_phi4_graph_analysis before;
+
+#define EXPECT_GRAPH_FAILURE(expected_status)                                \
+    do {                                                                     \
+        memset(&output, 0xa5, sizeof output);                                \
+        before = output;                                                     \
+        PHY_CHECK_EQ_INT(                                                    \
+            phy_phi4_graph_analyze(f.model, &graph, &output),                \
+            (expected_status));                                              \
+        PHY_CHECK(memcmp(&output, &before, sizeof output) == 0);             \
+    } while (0)
+
+    memset(&graph, 0, sizeof graph);
+    EXPECT_GRAPH_FAILURE(PHY_ERR_UNSUPPORTED);
+
+    memset(&graph, 0, sizeof graph);
+    graph.vertices = 1u;
+    EXPECT_GRAPH_FAILURE(PHY_ERR_ASSUMPTION);
+
+    memset(&graph, 0, sizeof graph);
+    graph.vertices = 2u;
+    graph.internal_edges[0][0] = 2u;
+    graph.internal_edges[1][1] = 2u;
+    EXPECT_GRAPH_FAILURE(PHY_ERR_ASSUMPTION);
+
+    memset(&graph, 0, sizeof graph);
+    graph.vertices = 2u;
+    graph.external_legs = 7u;
+    graph.external_vertex[3] = 1u;
+    graph.external_vertex[4] = 1u;
+    graph.external_vertex[5] = 1u;
+    graph.external_vertex[6] = 1u;
+    graph.internal_edges[0][1] = 1u;
+    EXPECT_GRAPH_FAILURE(PHY_ERR_ASSUMPTION);
+
+    memset(&graph, 0, sizeof graph);
+    graph.vertices = 1u;
+    graph.external_legs = 4u;
+    graph.external_vertex[3] = 1u;
+    EXPECT_GRAPH_FAILURE(PHY_ERR_ASSUMPTION);
+
+    memset(&graph, 0, sizeof graph);
+    graph.vertices = 1u;
+    graph.external_legs = PHY_PHI4_GRAPH_MAX_EXTERNAL + 1u;
+    EXPECT_GRAPH_FAILURE(PHY_ERR_UNSUPPORTED);
+
+    PHY_CHECK_EQ_INT(
+        phy_phi4_graph_analyze(NULL, &graph, &output),
+        PHY_ERR_INVALID_ARGUMENT);
+    PHY_CHECK_EQ_INT(
+        phy_phi4_graph_analyze(f.model, NULL, &output),
+        PHY_ERR_INVALID_ARGUMENT);
+    PHY_CHECK_EQ_INT(
+        phy_phi4_graph_analyze(f.model, &graph, NULL),
+        PHY_ERR_INVALID_ARGUMENT);
+
+#undef EXPECT_GRAPH_FAILURE
+
+    fixture_close(&f);
+}
+
 static void test_one_loop_ms_renormalization(void)
 {
     fixture f = fixture_open();
@@ -394,6 +563,8 @@ int main(void)
     PHY_TEST_CASE(test_equation_of_motion_and_tree);
     PHY_TEST_CASE(test_one_loop_diagram_corpus);
     PHY_TEST_CASE(test_invalid_graphs_are_rejected);
+    PHY_TEST_CASE(test_phi4_graph_symmetry_factor_corpus);
+    PHY_TEST_CASE(test_phi4_graph_rejections_are_transactional);
     PHY_TEST_CASE(test_one_loop_ms_renormalization);
     PHY_TEST_CASE(test_one_loop_msbar_and_typed_rejections);
     PHY_TEST_CASE(test_rejections_are_typed);

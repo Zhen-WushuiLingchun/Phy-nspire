@@ -432,6 +432,275 @@ phy_status phy_phi4_diagram_expression(const phy_phi4_model *model,
     return phy_cas_mul(model->cas, factors, 2u, out_expression);
 }
 
+static bool checked_u64_mul(uint64_t left, uint64_t right,
+                            uint64_t *out_product)
+{
+    if (right != 0u && left > UINT64_MAX / right) {
+        return false;
+    }
+    *out_product = left * right;
+    return true;
+}
+
+static bool small_factorial(unsigned value, uint64_t *out_factorial)
+{
+    uint64_t result = 1u;
+    for (unsigned factor = 2u; factor <= value; ++factor) {
+        if (!checked_u64_mul(result, factor, &result)) {
+            return false;
+        }
+    }
+    *out_factorial = result;
+    return true;
+}
+
+static bool next_permutation(uint8_t *permutation, size_t count)
+{
+    size_t pivot = count;
+    while (pivot > 1u &&
+           permutation[pivot - 2u] >= permutation[pivot - 1u]) {
+        --pivot;
+    }
+    if (pivot <= 1u) {
+        return false;
+    }
+    const size_t left = pivot - 2u;
+    size_t right = count - 1u;
+    while (permutation[right] <= permutation[left]) {
+        --right;
+    }
+    const uint8_t temporary = permutation[left];
+    permutation[left] = permutation[right];
+    permutation[right] = temporary;
+
+    size_t first = pivot - 1u;
+    right = count - 1u;
+    while (first < right) {
+        const uint8_t swap = permutation[first];
+        permutation[first] = permutation[right];
+        permutation[right] = swap;
+        ++first;
+        --right;
+    }
+    return true;
+}
+
+static bool graph_is_connected(const phy_phi4_graph *graph)
+{
+    const size_t vertices = graph->vertices;
+    bool visited[PHY_PHI4_GRAPH_MAX_VERTICES] = {
+        false, false, false, false};
+    uint8_t queue[PHY_PHI4_GRAPH_MAX_VERTICES];
+    size_t begin = 0u;
+    size_t end = 0u;
+    visited[0] = true;
+    queue[end++] = 0u;
+    while (begin < end) {
+        const size_t vertex = queue[begin++];
+        for (size_t other = 0u; other < vertices; ++other) {
+            if (other != vertex && !visited[other] &&
+                graph->internal_edges[vertex][other] != 0u) {
+                visited[other] = true;
+                queue[end++] = (uint8_t)other;
+            }
+        }
+    }
+    for (size_t vertex = 0u; vertex < vertices; ++vertex) {
+        if (!visited[vertex]) {
+            return false;
+        }
+    }
+    return true;
+}
+
+static bool permutation_is_automorphism(
+    const phy_phi4_graph *graph, const uint8_t *permutation)
+{
+    const size_t vertices = graph->vertices;
+    for (size_t leg = 0u; leg < graph->external_legs; ++leg) {
+        const uint8_t attached = graph->external_vertex[leg];
+        if (permutation[attached] != attached) {
+            return false;
+        }
+    }
+    for (size_t left = 0u; left < vertices; ++left) {
+        for (size_t right = 0u; right < vertices; ++right) {
+            if (graph->internal_edges[left][right] !=
+                graph->internal_edges[permutation[left]]
+                                     [permutation[right]]) {
+                return false;
+            }
+        }
+    }
+    return true;
+}
+
+static uint32_t graph_automorphism_count(const phy_phi4_graph *graph)
+{
+    uint8_t permutation[PHY_PHI4_GRAPH_MAX_VERTICES] = {0u, 1u, 2u, 3u};
+    uint32_t count = 0u;
+    do {
+        if (permutation_is_automorphism(graph, permutation)) {
+            ++count;
+        }
+    } while (next_permutation(permutation, graph->vertices));
+    return count;
+}
+
+phy_status phy_phi4_graph_analyze(
+    const phy_phi4_model *model, const phy_phi4_graph *graph,
+    phy_phi4_graph_analysis *out_analysis)
+{
+    if (model == NULL || graph == NULL || out_analysis == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    if (graph->vertices == 0u ||
+        graph->vertices > PHY_PHI4_GRAPH_MAX_VERTICES ||
+        graph->external_legs > PHY_PHI4_GRAPH_MAX_EXTERNAL) {
+        return PHY_ERR_UNSUPPORTED;
+    }
+
+    const size_t vertices = graph->vertices;
+    unsigned external_degree[PHY_PHI4_GRAPH_MAX_VERTICES] = {
+        0u, 0u, 0u, 0u};
+    for (size_t leg = 0u; leg < graph->external_legs; ++leg) {
+        if (graph->external_vertex[leg] >= graph->vertices) {
+            return PHY_ERR_ASSUMPTION;
+        }
+        ++external_degree[graph->external_vertex[leg]];
+    }
+
+    unsigned internal_lines = 0u;
+    uint64_t edge_denominator = 1u;
+    for (size_t vertex = 0u; vertex < vertices; ++vertex) {
+        unsigned degree =
+            external_degree[vertex] +
+            2u * (unsigned)graph->internal_edges[vertex][vertex];
+        for (size_t other = 0u; other < vertices; ++other) {
+            if (graph->internal_edges[vertex][other] !=
+                graph->internal_edges[other][vertex]) {
+                return PHY_ERR_ASSUMPTION;
+            }
+            if (other != vertex) {
+                degree += graph->internal_edges[vertex][other];
+            }
+        }
+        if (degree != 4u) {
+            return PHY_ERR_ASSUMPTION;
+        }
+
+        const unsigned tadpoles =
+            graph->internal_edges[vertex][vertex];
+        internal_lines += tadpoles;
+        uint64_t tadpole_factor = 1u;
+        if (!small_factorial(tadpoles, &tadpole_factor)) {
+            return PHY_ERR_OVERFLOW;
+        }
+        for (unsigned loop = 0u; loop < tadpoles; ++loop) {
+            if (!checked_u64_mul(
+                    tadpole_factor, 2u, &tadpole_factor)) {
+                return PHY_ERR_OVERFLOW;
+            }
+        }
+        if (!checked_u64_mul(
+                edge_denominator, tadpole_factor, &edge_denominator)) {
+            return PHY_ERR_OVERFLOW;
+        }
+
+        for (size_t other = vertex + 1u; other < vertices; ++other) {
+            const unsigned multiplicity =
+                graph->internal_edges[vertex][other];
+            internal_lines += multiplicity;
+            uint64_t parallel_factor = 1u;
+            if (!small_factorial(multiplicity, &parallel_factor) ||
+                !checked_u64_mul(edge_denominator, parallel_factor,
+                                 &edge_denominator)) {
+                return PHY_ERR_OVERFLOW;
+            }
+        }
+    }
+    if (!graph_is_connected(graph) ||
+        internal_lines + 1u < graph->vertices) {
+        return PHY_ERR_ASSUMPTION;
+    }
+
+    const unsigned loop_order =
+        internal_lines - graph->vertices + 1u;
+    const int64_t degree =
+        (int64_t)model->dimension * (int64_t)loop_order -
+        2ll * (int64_t)internal_lines;
+    if (degree < INT_MIN || degree > INT_MAX) {
+        return PHY_ERR_OVERFLOW;
+    }
+
+    const uint32_t automorphisms = graph_automorphism_count(graph);
+    if (automorphisms == 0u) {
+        return PHY_ERR_CORRUPT_DOCUMENT;
+    }
+    uint64_t vertex_factorial = 1u;
+    if (!small_factorial(graph->vertices, &vertex_factorial) ||
+        vertex_factorial % automorphisms != 0u) {
+        return PHY_ERR_CORRUPT_DOCUMENT;
+    }
+    const uint64_t labelings = vertex_factorial / automorphisms;
+    if (labelings > UINT32_MAX) {
+        return PHY_ERR_OVERFLOW;
+    }
+
+    uint64_t wick_numerator = 1u;
+    for (size_t vertex = 0u; vertex < vertices; ++vertex) {
+        if (!checked_u64_mul(wick_numerator, 24u, &wick_numerator)) {
+            return PHY_ERR_OVERFLOW;
+        }
+    }
+    if (edge_denominator == 0u ||
+        wick_numerator % edge_denominator != 0u) {
+        return PHY_ERR_CORRUPT_DOCUMENT;
+    }
+    const uint64_t wick_multiplicity =
+        wick_numerator / edge_denominator;
+    uint64_t symmetry_factor = 0u;
+    if (!checked_u64_mul(
+            edge_denominator, automorphisms, &symmetry_factor) ||
+        symmetry_factor > (uint64_t)INT64_MAX) {
+        return PHY_ERR_OVERFLOW;
+    }
+
+    phy_phi4_graph_analysis result;
+    memset(&result, 0, sizeof result);
+    result.internal_lines = internal_lines;
+    result.loop_order = loop_order;
+    result.superficial_degree = (int)degree;
+    result.wick_multiplicity = wick_multiplicity;
+    result.vertex_automorphisms = automorphisms;
+    result.vertex_labelings = (uint32_t)labelings;
+    result.symmetry_factor = symmetry_factor;
+
+    phy_status status = phy_cas_number(
+        model->cas, 1, (int64_t)symmetry_factor,
+        &result.symmetry_weight);
+    phy_ir_ref exponent = PHY_IR_NULL;
+    phy_ir_ref coupling_power = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = phy_cas_number(
+            model->cas, graph->vertices, 1, &exponent);
+    }
+    if (status == PHY_OK) {
+        status = phy_cas_pow(
+            model->cas, model->coupling, exponent, &coupling_power);
+    }
+    if (status == PHY_OK) {
+        const phy_ir_ref factors[2] = {
+            result.symmetry_weight, coupling_power};
+        status = phy_cas_mul(
+            model->cas, factors, 2u, &result.coupling_weight);
+    }
+    if (status == PHY_OK) {
+        *out_analysis = result;
+    }
+    return status;
+}
+
 phy_status phy_phi4_tree_2to2(const phy_phi4_model *model,
                               phy_phi4_diagram *out_diagram)
 {

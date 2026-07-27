@@ -169,6 +169,7 @@ prepended.
 | `Phi4Lagrangian[phi,m,lambda,D]` | exact real-scalar model density |
 | `Phi4EOM[phi,m,lambda,D]` | exact equation-of-motion left-hand side |
 | `Phi4Diagrams[phi,m,lambda,D,s,t,u]` | tree amplitude and four bounded one-loop expressions |
+| `Phi4Graph[phi,m,lambda,D,{external vertices},{{adjacency}}]` | exact connected multigraph/Wick/symmetry analysis |
 | `Phi4Renormalization[phi,m,lambda,4,epsilon,MS]` | labelled one-loop `DeltaZPhi`, `DeltaZm`, `DeltaZLambda` for `D=4-2 epsilon` |
 | the same with `MSBar` | explicit `1/epsilon-EulerGamma+Log[4 Pi]` replacement |
 | `Phi4Counterterm[phi,m,lambda,4,epsilon,scheme]` | corresponding exact local counterterm density |
@@ -178,7 +179,11 @@ prepended.
 third/fourth external momenta is not inferable from the symbols. The loop
 entries returned by `Phi4Diagrams` are exact combinatorial coefficients times
 typed `TadpoleIntegral`/`BubbleIntegral` masters; they are not numerical
-integrals. The renormalization commands do not pretend to evaluate those
+integrals. `Phi4Graph` accepts a bounded supplied topology, proves the quartic
+degree and connectedness conditions, and returns `S`, `1/S`, Wick
+multiplicity, loop order, superficial degree and `lambda^V/S`. It does not
+invent momentum routing, amplitude phases, or a loop integral. The
+renormalization commands do not pretend to evaluate those
 opaque masters: they expose the separately normalized one-loop UV result,
 with the epsilon convention fixed in the command contract.
 
@@ -299,7 +304,7 @@ expression still fails as a typed `PHY_ERR_NODE_LIMIT`.
 
 ## Verification
 
-`tests/test_eval.c`, 1,125 checks. The physics cases deliberately reproduce,
+`tests/test_eval.c`, 1,174 checks. The physics cases deliberately reproduce,
 through reader-facing source, results the backend suites already certify
 directly:
 
@@ -312,8 +317,9 @@ directly:
 - the round two-sphere of `tests/test_gr.c`: `R = 2/a^2`, the two Christoffel
   symbols, `R_{theta phi theta phi}`, a vanishing Einstein tensor,
   `K = 4/a^4`, and a vanishing covariant derivative of Ricci;
-- four-dimensional Dirac traces, both routed Mandelstam conventions, and the
-  exact phi4 Lagrangian/EOM/tree-plus-loop set;
+- four-dimensional Dirac traces, both routed Mandelstam conventions, the
+  exact phi4 Lagrangian/EOM/tree-plus-loop set, and the sunset graph's exact
+  Wick/symmetry analysis;
 - symbolic-`N` colour Casimirs, exact SU(3) `f123`, `f147`, `f458`, invariant
   tensor symmetries, generator commutators, short/held traces, and typed
   Lorentz/colour separation from `tests/test_color.c`;
@@ -339,11 +345,11 @@ The ARM link check is `make eval-link-check` and
 stack behind one dispatcher, and the same no-float/no-libm/no-soft-float
 standard the CAS and geometry layers are held to. It now links 33 portable
 sources, retains 15/15 public evaluator entry points, contains no forbidden
-float/libm/soft-float dependency, and packages as a 125,276-byte isolated
+float/libm/soft-float dependency, and packages as a 128,528-byte isolated
 probe. That probe size includes its dependencies and is not an incremental
 product-size measurement.
 
 One consequence of this phase that the earlier link-check reports called out as
 future work has now happened: the application genuinely calls the geometry,
 Lie, Yang--Mills, and QFT layers, so `--gc-sections` no longer drops them.
-`dist/phy-nspire.tns` is currently 1,102,959 bytes.
+`dist/phy-nspire.tns` is currently 1,104,874 bytes.

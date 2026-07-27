@@ -193,7 +193,7 @@ static const char *const kObjectHeads[] = {
 
     "ScalarField",  "Propagator",       "Vertex",        "TadpoleIntegral",
     "BubbleIntegral", "Phi4Lagrangian",  "Phi4EOM",       "Phi4Diagrams",
-    "Phi4Renormalization", "Phi4Counterterm",
+    "Phi4Graph",      "Phi4Renormalization", "Phi4Counterterm",
     "LorentzDot",   "MandelstamReduce", "DiracTrace",
 
     "SUNDelta",     "SUNF",              "SUND",          "SUNT",

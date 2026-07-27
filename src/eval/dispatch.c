@@ -1452,6 +1452,150 @@ static phy_status eval_phi4_diagrams(phy_env *env, phy_ir_ref expr,
     return PHY_OK;
 }
 
+static phy_status exact_unsigned_ref(phy_env *env, phy_ir_ref ref,
+                                     unsigned limit, unsigned *out_value)
+{
+    int64_t number = 0;
+    if (!phy_ir_integer_value(env->ir, ref, &number)) {
+        return PHY_ERR_TYPE;
+    }
+    if (number < 0 || (uint64_t)number >= (uint64_t)limit) {
+        return PHY_ERR_DOMAIN;
+    }
+    *out_value = (unsigned)number;
+    return PHY_OK;
+}
+
+static phy_status phi4_graph_from_call(
+    phy_env *env, phy_ir_ref expr, phy_phi4_graph *out_graph)
+{
+    phy_phi4_graph graph;
+    memset(&graph, 0, sizeof graph);
+
+    phy_ir_ref rows[PHY_PHI4_GRAPH_MAX_VERTICES];
+    size_t vertex_count = 0u;
+    phy_status status = list_refs(
+        env, arg_ref(env, expr, 5u), rows,
+        PHY_PHI4_GRAPH_MAX_VERTICES, &vertex_count);
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (vertex_count == 0u) {
+        return PHY_ERR_PARSE;
+    }
+    graph.vertices = (uint8_t)vertex_count;
+    for (size_t row = 0u; row < vertex_count; ++row) {
+        phy_ir_ref entries[PHY_PHI4_GRAPH_MAX_VERTICES];
+        size_t width = 0u;
+        status = list_scalars(
+            env, rows[row], entries, PHY_PHI4_GRAPH_MAX_VERTICES, &width);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (width != vertex_count) {
+            return PHY_ERR_PARSE;
+        }
+        for (size_t column = 0u; column < width; ++column) {
+            unsigned multiplicity = 0u;
+            status = exact_unsigned_ref(
+                env, entries[column], 5u, &multiplicity);
+            if (status != PHY_OK) {
+                return status;
+            }
+            graph.internal_edges[row][column] =
+                (uint8_t)multiplicity;
+        }
+    }
+
+    phy_ir_ref external[PHY_PHI4_GRAPH_MAX_EXTERNAL];
+    size_t external_count = 0u;
+    status = list_scalars(
+        env, arg_ref(env, expr, 4u), external,
+        PHY_PHI4_GRAPH_MAX_EXTERNAL, &external_count);
+    if (status != PHY_OK) {
+        return status;
+    }
+    graph.external_legs = (uint8_t)external_count;
+    for (size_t leg = 0u; leg < external_count; ++leg) {
+        unsigned vertex = 0u;
+        status = exact_unsigned_ref(
+            env, external[leg], (unsigned)vertex_count, &vertex);
+        if (status != PHY_OK) {
+            return status;
+        }
+        graph.external_vertex[leg] = (uint8_t)vertex;
+    }
+    *out_graph = graph;
+    return PHY_OK;
+}
+
+static phy_status eval_phi4_graph(phy_env *env, phy_ir_ref expr,
+                                  phy_value *out_value)
+{
+    if (arg_count(env, expr) != 6u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_phi4_model *model = NULL;
+    phy_status status = phi4_model_from_call(env, expr, &model);
+    phy_phi4_graph graph;
+    memset(&graph, 0, sizeof graph);
+    if (status == PHY_OK) {
+        status = phi4_graph_from_call(env, expr, &graph);
+    }
+    phy_phi4_graph_analysis analysis;
+    memset(&analysis, 0, sizeof analysis);
+    if (status == PHY_OK) {
+        status = phy_phi4_graph_analyze(model, &graph, &analysis);
+    }
+    phy_phi4_model_destroy(model);
+    if (status != PHY_OK) {
+        return status;
+    }
+
+    static const char *const labels[11] = {
+        "Vertices",            "ExternalLegs",
+        "InternalLines",       "Loops",
+        "SuperficialDegree",   "VertexAutomorphisms",
+        "VertexLabelings",     "WickMultiplicity",
+        "SymmetryFactor",      "SymmetryWeight",
+        "CouplingWeight"};
+    phy_ir_ref values[11] = {
+        phy_ir_integer(env->ir, graph.vertices),
+        phy_ir_integer(env->ir, graph.external_legs),
+        phy_ir_integer(env->ir, analysis.internal_lines),
+        phy_ir_integer(env->ir, analysis.loop_order),
+        phy_ir_integer(env->ir, analysis.superficial_degree),
+        phy_ir_integer(env->ir, analysis.vertex_automorphisms),
+        phy_ir_integer(env->ir, analysis.vertex_labelings),
+        phy_ir_integer(env->ir, (int64_t)analysis.wick_multiplicity),
+        phy_ir_integer(env->ir, (int64_t)analysis.symmetry_factor),
+        analysis.symmetry_weight,
+        analysis.coupling_weight};
+    const phy_ir_symbol rule_head = phy_ir_intern(env->ir, "Rule");
+    phy_ir_ref rules[11];
+    for (size_t index = 0u; index < 11u; ++index) {
+        const phy_ir_ref label = phy_ir_symbol_ref(
+            env->ir, phy_ir_intern(env->ir, labels[index]));
+        if (rule_head == PHY_IR_NO_SYMBOL || label == PHY_IR_NULL ||
+            values[index] == PHY_IR_NULL) {
+            return phy_ir_last_error(env->ir);
+        }
+        const phy_ir_ref arguments[2] = {label, values[index]};
+        rules[index] =
+            phy_ir_function(env->ir, rule_head, arguments, 2u);
+        if (rules[index] == PHY_IR_NULL) {
+            return phy_ir_last_error(env->ir);
+        }
+    }
+    const phy_ir_ref result =
+        phy_ir_function(env->ir, env->list_head, rules, 11u);
+    if (result == PHY_IR_NULL) {
+        return phy_ir_last_error(env->ir);
+    }
+    *out_value = scalar_value(result);
+    return PHY_OK;
+}
+
 static phy_status phi4_scheme_from_call(
     phy_env *env, phy_ir_ref expr, size_t index,
     phy_phi4_renorm_scheme *out_scheme)
@@ -2415,6 +2559,8 @@ static phy_status eval_operator(phy_env *env, phy_ir_ref expr,
         return eval_phi4_eom(env, expr, out_value);
     case EVAL_HEAD_PHI4_DIAGRAMS:
         return eval_phi4_diagrams(env, expr, out_value);
+    case EVAL_HEAD_PHI4_GRAPH:
+        return eval_phi4_graph(env, expr, out_value);
     case EVAL_HEAD_PHI4_RENORMALIZATION:
         return eval_phi4_renormalization(env, expr, out_value);
     case EVAL_HEAD_PHI4_COUNTERTERM:

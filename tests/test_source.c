@@ -249,6 +249,12 @@ static void test_assignment_and_reserved_heads(void)
     PHY_CHECK_EQ_STR(
         render(ir, command.expression),
         "(op SUNTrace (fn List a b c d) N)");
+    command = parse(
+        ir, "phi4graph[phi,m,lambda,4,{0,1},{{0,3},{3,0}}]");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(op Phi4Graph phi m lambda 4 (fn List 0 1) "
+        "(fn List (fn List 0 3) (fn List 3 0)))");
 
     /* A reserved spelling is not a bindable name. */
     size_t error = 0u;
@@ -258,6 +264,9 @@ static void test_assignment_and_reserved_heads(void)
                      PHY_ERR_TYPE);
     PHY_CHECK_EQ_INT(phy_source_parse(ir, "SUNCF = 1", &command, &error),
                      PHY_ERR_TYPE);
+    PHY_CHECK_EQ_INT(
+        phy_source_parse(ir, "Phi4Graph = 1", &command, &error),
+        PHY_ERR_TYPE);
     PHY_CHECK_EQ_INT(phy_source_parse(ir, "Integrate = 1", &command, &error),
                      PHY_ERR_TYPE);
     PHY_CHECK_EQ_INT(phy_source_parse(ir, "Set[Sin, 1]", &command, &error),

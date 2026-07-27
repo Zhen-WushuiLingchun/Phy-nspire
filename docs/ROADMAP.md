@@ -22,9 +22,9 @@ Verification:
 - host smoke test — done; the suite covers the platform, relative pointer,
   source language, drawing, notebook, the stateful evaluator, IR, tensor
   storage, differential forms, GR, Lie/QFT foundations, CAS, QFT oracle, and
-  full lifecycle: Windows 29/29, WSL ASan/UBSan/leak 31/31, and 94,276
+  full lifecycle: Windows 29/29, WSL ASan/UBSan/leak 31/31, and 94,457
   explicit checks;
-- generated `.tns` size report — 1,102,959 bytes, 17.5% of the 6 MiB ceiling,
+- generated `.tns` size report — 1,104,874 bytes, 17.6% of the 6 MiB ceiling,
   with the current evaluator and physics stack linked;
 - launch of a Phy-nspire artifact on the real CX II — done on 2026-07-26 with
   the observable CAS smoke screen;
@@ -107,21 +107,22 @@ Verification:
   stale outputs, Markdown selection, independent run-badge hit testing, 2D
   metrics, nMarkdown LaTeX integration, memory return, and the framebuffer
   fixture;
-- evaluator tests — done, `tests/test_eval.c`, 1,125 checks. The physics cases
+- evaluator tests — done, `tests/test_eval.c`, 1,174 checks. The physics cases
   reproduce, through reader-facing source, results the backend suites already
   certify directly: the U(1) and SU(2) curvature components and vanishing
   Bianchi residuals of `tests/test_yang_mills.c`, the round two-sphere
   curvature of `tests/test_gr.c`, the wedge/`d^2 = 0`/Leibniz/interior-product
   identities of `tests/test_geom.c`, `[T1,T2] = T3` and `K_ab = -2 delta_ab`
   from `tests/test_lie.c`, plus Kretschmann/covariant-derivative and bounded
-  Dirac/Mandelstam/phi4/SU(N)-colour cell paths. The remaining cases cover state flow between cells,
+  Dirac/Mandelstam/phi4/SU(N)-colour cell paths, including exact sunset-graph
+  combinatorics. The remaining cases cover state flow between cells,
   every typed-error path, the ownership sweep under rebinding and failure, the
   binding ceiling, and save/reopen;
 - formula bridge tests — done, `tests/test_formula.c`, 33 checks covering
   initialization, matrices, metrics, RGB565 rendering, and local error
   recovery;
-- source, palette and pointer tests — done: 228 source-language checks
-  including assignment and reserved-head canonicalization, 696 palette checks
+- source, palette and pointer tests — done: 234 source-language checks
+  including assignment and reserved-head canonicalization, 703 palette checks
   including every CAS snippet parsing, and 29 relative touchpad checks.
 
 The IR carries no simplification, evaluation, or arithmetic: it is the
@@ -135,9 +136,9 @@ observable `phy-cas-smoke.tns` then ran seven symbolic cases on the physical
 CX II on 2026-07-26, displayed 7/7 PASS, and returned cleanly to Documents.
 
 The evaluator's real Ndless check now compiles 33 portable sources, retains
-15/15 public evaluator entry points, packages a 125,276-byte isolated probe,
+15/15 public evaluator entry points, packages a 128,528-byte isolated probe,
 and contains no float formatter, libm call, or ARM soft-float helper. The
-product is 1,102,959 bytes. The independent SU(N) colour probe retains 23/23
+product is 1,104,874 bytes. The independent SU(N) colour probe retains 23/23
 public APIs, 4,924 bytes of layer text, and packages to 43,176 bytes under the
 same no-float rule. These establish ARM link/package and size, not
 physical-device runtime or performance.
@@ -241,7 +242,10 @@ operations, and built-in `U(1)`, `SU(2)`, `SO(3)`, `SU(3)`, and `SO(1,3)`
 metadata. A bounded real `phi^4` layer now emits the exact Lagrangian,
 propagator/vertex objects, and the one-loop tadpole plus `s/t/u` bubble
 topologies with exact symmetry/coupling weights and unevaluated master
-integrals. It also returns the exact one-loop MS/MSbar multiplicative
+integrals. Its supplied-topology analyser covers connected quartic multigraphs
+through four vertices/eight labelled external legs and returns exact Wick
+multiplicity, vertex automorphisms, `S`, `1/S`, loop order, superficial degree,
+and `lambda^V/S`. It also returns the exact one-loop MS/MSbar multiplicative
 renormalization constants and local counterterm density in the explicitly
 declared `D=4-2 epsilon` convention. The differential-form/Lie foundation now also supports
 Lie-algebra-valued forms, `D_A`, non-Abelian
@@ -287,8 +291,8 @@ from the notebook: `LieGroup`,
 `LieAlgebra`, `Generator`, `LieElement`, `LieBracket`, `StructureConstant`,
 `Killing`, `LieForm`, `GaugeConnection`, `CovariantD`, `FieldStrength`,
 `GaugeVariation`, `Bianchi`, `YangMillsLagrangian`, `ColorComponent`,
-`DiracTrace`, `MandelstamReduce`, `Phi4Lagrangian`, `Phi4EOM`, and
-`Phi4Diagrams`, `Phi4Renormalization`, `Phi4Counterterm`, plus `SUNDelta`,
+`DiracTrace`, `MandelstamReduce`, `Phi4Lagrangian`, `Phi4EOM`,
+`Phi4Diagrams`, `Phi4Graph`, `Phi4Renormalization`, `Phi4Counterterm`, plus `SUNDelta`,
 `SUNF`, `SUND`, `SUNT`, `SUNTrace`,
 `SUNCommutator`, `SUNCF`, `SUNCA`, and the other bounded `SUN*` commands,
 dispatch onto native backends. Typed master-integral and
