@@ -16,6 +16,8 @@
 #   cas-link-check prove the scalar CAS links on device
 #   geom-link-check    prove manifolds and differential forms link on device
 #   ym-link-check      prove Yang-Mills and all dependencies link on device
+#   eval-link-check    prove the stateful evaluator and its whole backend
+#                      stack link on device
 #   cas-smoke      build an observable on-device symbolic CAS acceptance test
 #   clean
 
@@ -45,12 +47,14 @@ NMARKDOWN_CPPFLAGS := -I$(NMARKDOWN_ROOT)/include \
 
 GCCFLAGS := -Wall -Wextra -Wshadow -Wpointer-arith -std=c11 -marm \
             -ffunction-sections -fdata-sections -Iinclude -Isrc/gfx -Isrc/ir \
-            -Isrc/tensor -Isrc/cas -Isrc/geom -Isrc/notebook -Isrc/render -Isrc/storage \
+            -Isrc/tensor -Isrc/cas -Isrc/geom -Isrc/eval -Isrc/notebook \
+            -Isrc/render -Isrc/storage \
             $(NMARKDOWN_CPPFLAGS)
 CXXFLAGS := -Wall -Wextra -Wpedantic -std=c++17 -marm \
             -ffunction-sections -fdata-sections -fexceptions -fno-rtti \
             -Iinclude -Isrc/gfx -Isrc/ir -Isrc/tensor -Isrc/cas -Isrc/geom \
-            -Isrc/notebook -Isrc/render -Isrc/storage $(NMARKDOWN_CPPFLAGS)
+            -Isrc/eval -Isrc/notebook -Isrc/render -Isrc/storage \
+            $(NMARKDOWN_CPPFLAGS)
 # The Ndless ldscript intentionally produces a single RWX load segment, which
 # binutils 2.39+ warns about. Ndless's own toolchain build disables that
 # warning at configure time; we silence it at link time instead.
@@ -81,6 +85,9 @@ SOURCES := \
     src/notebook/source.c \
     src/notebook/notebook.c \
     src/notebook/workspace.c \
+    src/eval/env.c \
+    src/eval/dispatch.c \
+    src/eval/display.c \
     src/storage/storage.c \
     src/app/app.c \
     src/ir/ir.c \
@@ -178,7 +185,8 @@ CAS_SMOKE_ELF := $(DISTDIR)/$(CAS_SMOKE_EXE).elf
 CAS_SMOKE_TNS := $(DISTDIR)/$(CAS_SMOKE_EXE).tns
 
 .PHONY: all clean size-report symbol-report ir-link-check tensor-link-check \
-        cas-link-check geom-link-check ym-link-check cas-smoke check-sdk
+        cas-link-check geom-link-check ym-link-check eval-link-check \
+        cas-smoke check-sdk
 
 all: $(TNS)
 
@@ -238,6 +246,9 @@ geom-link-check: check-sdk
 
 ym-link-check: check-sdk
 	@tools/link-check.sh ym
+
+eval-link-check: check-sdk
+	@tools/link-check.sh eval
 
 tensor-link-check: check-sdk
 	@tools/tensor-link-check.sh

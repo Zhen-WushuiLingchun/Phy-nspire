@@ -131,16 +131,23 @@ static void draw_status(const phy_surface *surface, const app_ui *ui,
                             phy_status_name(ui->status), COLOR_ERROR);
 }
 
+/*
+ * Four entries. "Run all cells" is not a convenience: cells now share an
+ * evaluator environment that a reopened document does not carry, so replaying
+ * the notebook in order is the only way to make a loaded one consistent again.
+ */
+#define APP_FILE_MENU_ITEMS 4u
+
 static void draw_file_menu(const phy_surface *surface, const app_ui *ui)
 {
-    draw_modal_panel(surface, 42, 132, "Notebook files");
-    static const char *const items[] = {"New blank notebook", "Save",
-                                        "Open..."};
-    for (size_t i = 0u; i < sizeof items / sizeof items[0]; ++i) {
-        draw_modal_row(surface, 72 + (int)i * 28, items[i],
+    draw_modal_panel(surface, 42, 154, "Notebook");
+    static const char *const items[APP_FILE_MENU_ITEMS] = {
+        "New blank notebook", "Save", "Open...", "Run all cells"};
+    for (size_t i = 0u; i < APP_FILE_MENU_ITEMS; ++i) {
+        draw_modal_row(surface, 72 + (int)i * 25, items[i],
                        ui->selected == i);
     }
-    draw_status(surface, ui, 160);
+    draw_status(surface, ui, 178);
 }
 
 static void draw_save_as(const phy_surface *surface, const app_ui *ui)
@@ -399,8 +406,17 @@ static void activate_file_menu(app_ui *ui, phy_workspace *workspace,
         } else {
             (void)begin_save_as(ui, workspace);
         }
-    } else {
+    } else if (ui->selected == 2u) {
         request_pending(ui, workspace, APP_PENDING_OPEN, running);
+    } else {
+        const phy_status status =
+            phy_notebook_evaluate_all(phy_workspace_notebook(workspace));
+        app_ui_set_status(ui, status);
+        /*
+         * A failing cell is a result, not a reason to keep the menu open: the
+         * notebook itself now shows which cell it was.
+         */
+        ui->view = APP_VIEW_NOTEBOOK;
     }
 }
 
@@ -494,9 +510,9 @@ static void handle_modal_pointer(app_ui *ui, phy_workspace *workspace,
                                  const phy_event *event, bool *running)
 {
     if (ui->view == APP_VIEW_FILE_MENU) {
-        for (size_t i = 0u; i < 3u; ++i) {
+        for (size_t i = 0u; i < APP_FILE_MENU_ITEMS; ++i) {
             if (pointer_in_rect(event, MODAL_X + 8,
-                                68 + (int)i * 28, MODAL_WIDTH - 16, 21)) {
+                                68 + (int)i * 25, MODAL_WIDTH - 16, 21)) {
                 ui->selected = i;
                 activate_file_menu(ui, workspace, running);
                 return;
@@ -550,8 +566,9 @@ static void handle_modal_pointer(app_ui *ui, phy_workspace *workspace,
 static void move_modal_selection(app_ui *ui, int direction)
 {
     size_t count = 0u;
-    if (ui->view == APP_VIEW_FILE_MENU ||
-        ui->view == APP_VIEW_DIRTY_CONFIRM) {
+    if (ui->view == APP_VIEW_FILE_MENU) {
+        count = APP_FILE_MENU_ITEMS;
+    } else if (ui->view == APP_VIEW_DIRTY_CONFIRM) {
         count = 3u;
     } else if (ui->view == APP_VIEW_OPEN) {
         count = ui->catalog.count;

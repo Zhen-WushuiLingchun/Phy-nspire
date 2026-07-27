@@ -4,10 +4,10 @@
 
 The production entry point opens a new, empty 320 × 240 notebook rather than
 the Phase 0 hardware diagnostic or a seeded demo. `FILE`/`MENU` exposes New,
-Save, and Open. New documents are `Untitled`; saved documents default to
-`/documents/phy-nspire/notebooks` and use the versioned, CRC32-protected
-`PHYNB001` codec. Save is atomic and Open replaces the active workspace only
-after the complete file validates.
+Save, Open, and Run all cells. New documents are `Untitled`; saved documents
+default to `/documents/phy-nspire/notebooks` and use the versioned,
+CRC32-protected `PHYNB001` codec. Save is atomic and Open replaces the active
+workspace only after the complete file validates.
 
 ## Cell model
 
@@ -22,7 +22,26 @@ Implemented cell kinds:
 - Markdown heading/body;
 - symbolic input;
 - typed-IR symbolic output;
+- typed physics-object output, shown as a descriptor line;
 - typed error output.
+
+### Cells share state
+
+The notebook owns one evaluator environment, documented in
+[`EVALUATOR.md`](EVALUATOR.md), and a cell is evaluated against it. A cell can
+bind a name — `M = Manifold[{x,y}, Euclidean]` — that later cells read. Three
+consequences are visible in the shell:
+
+- running a cell marks every result *after* it stale, because a cell that binds
+  a name changes what the cells below it mean;
+- an output whose value is a manifold, a Lie group, or a curvature bundle has no
+  expansion in the typed IR, so the card shows a descriptor line
+  (`Manifold M dim 2 Riemannian +oriented (x,y)`) instead. Objects that do have
+  an expansion — forms, algebra-valued forms, Lie elements, tensors up to rank
+  two — are drawn by the ordinary typed-IR renderer;
+- the document codec stores cells, never objects, so a reopened notebook starts
+  with an empty environment. `FILE` > `Run all cells` replays it in order, which
+  is `phy_notebook_evaluate_all`.
 
 Every executable input has an independent `RUN` badge in its upper-right
 corner. The badge has a tested hit rectangle: clicking the card body only
@@ -38,7 +57,9 @@ path.
 
 Inside edit mode, `MENU` opens a context-sensitive insertion palette. Math
 cells expose only reader commands and functions already accepted by the
-current evaluator, grouped as Algebra, Functions, and Calculus/Syntax.
+current evaluator — `test_palette` parses every one of them — grouped as
+Algebra, Functions, Calculus/Syntax, Tensor/Indices, Differential Geometry, and
+Lie/QFT Objects.
 Markdown bodies expose nMarkdown-backed LaTeX templates for layout, calculus,
 Greek letters, accents/styles, and matrices. Left/right changes category,
 up/down selects, and Enter or a touch on a row inserts the template with the
@@ -90,21 +111,29 @@ braces. Both held modifiers and tap-then-key modifiers are accepted.
 
 ## Verification
 
-- `test_notebook`: 148 checks over exact results, editing, insertion, stale
+- `test_notebook`: 162 checks over exact results, editing, insertion, stale
   results, source/IR agreement, bounds, memory return, selection, `RUN` hit
   testing, Markdown LaTeX integration, 2D metrics, and deterministic pixels;
-- `test_palette`: 264 checks over every category, entry, snippet, and cursor
-  bound;
-- `test_formula`: 20 checks over lifecycle, metrics, matrices, RGB565 drawing,
+- `test_eval`: 847 checks over the stateful evaluator, including the notebook
+  integration — state flowing between cells, descriptor outputs, forward
+  staleness, and a save/reopen that restores descriptors but not objects;
+- `test_palette`: 512 checks over every category, entry, snippet, and cursor
+  bound, and over every CAS snippet actually parsing;
+- `test_formula`: 33 checks over lifecycle, metrics, matrices, RGB565 drawing,
   and malformed-formula recovery;
-- `test_source`: 90 checks over the permanent reader-facing grammar and command
-  registry;
+- `test_source`: 217 checks over the permanent reader-facing grammar, the
+  command registry, assignment, and reserved-head canonicalization;
 - `test_pointer`: 29 checks over relative contact/motion behavior;
 - `test_modifier`: 8 checks over tapped and held Shift/Ctrl behavior;
 - `tests/fixtures/notebook_frame.digest`: bit-exact 320 × 240 host fixture;
-- strict host suite: 18/18 and 61,849 explicit checks;
-- ASan + UBSan + leak detection: 18/18, including the C++ formula slice;
-- Ndless r2022 ARM build: 1,050,677-byte `.tns`, 16.7% of the 6 MiB ceiling.
+- strict host suite: 24/24 and 70,824 explicit checks;
+- Ndless r2022 ARM build: **not rebuilt for this phase**. The last measured
+  `.tns` was 1,050,677 bytes, and that figure predates the evaluator. Wiring the
+  geometry, Lie and Yang--Mills layers into the application means
+  `--gc-sections` no longer drops them, so the artifact will grow by
+  approximately the layer text those link checks report; the new total is
+  unmeasured because the Ndless SDK is not installed on the machine this phase
+  was developed on.
 
 Directional keys on the CX II touchpad are filtered at the platform boundary:
 while one is down, the overlapping touch contact/click report is suppressed.
@@ -125,7 +154,9 @@ already-complete seven-case CAS smoke.
 - two-dimensional visual formula editing and direct typed-IR-to-nMarkdown
   layout;
 - LaTeX export and a larger optional CJK asset stack;
-- cell deletion/reordering and tensor/physics object palettes;
+- cell deletion and reordering;
+- a bindings inspector: the environment is queryable through
+  `phy_env_binding`, but the shell does not show it;
 - tables, matrices, plots, and diagram cells.
 
 These remain Phase 1 work. The current artifact establishes their cell,

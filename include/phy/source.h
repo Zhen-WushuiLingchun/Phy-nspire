@@ -24,7 +24,15 @@ typedef enum {
     PHY_SOURCE_NUMERATOR,
     PHY_SOURCE_DENOMINATOR,
     PHY_SOURCE_DIFFERENTIATE,
-    PHY_SOURCE_INTEGRATE
+    PHY_SOURCE_INTEGRATE,
+
+    /*
+     * The two operations that read and write the notebook environment rather
+     * than only the expression. `name = rhs` and `Set[name, rhs]` bind;
+     * `Clear[name]` and `ClearAll[]` unbind. See include/phy/eval.h.
+     */
+    PHY_SOURCE_ASSIGN,
+    PHY_SOURCE_CLEAR
 } phy_source_operation;
 
 #define PHY_SOURCE_MAX_VARIABLES 8u
@@ -34,13 +42,24 @@ typedef struct {
     phy_ir_ref expression;
     phy_ir_ref variables[PHY_SOURCE_MAX_VARIABLES];
     size_t variable_count; /* only for DIFFERENTIATE / INTEGRATE */
+    /*
+     * The name an ASSIGN binds or a CLEAR unbinds. PHY_IR_NO_SYMBOL for every
+     * other operation, and for `ClearAll[]`, which clears the whole
+     * environment. `expression` is PHY_IR_NULL for CLEAR and only for CLEAR.
+     */
+    phy_ir_symbol target;
 } phy_source_command;
 
 /*
  * Supported surface:
  *   identifiers, exact integers/decimals, explicit or implicit multiplication,
- *   + - * / ^, (), {}, ==, function calls with [] or (), known scalar
- *   functions, and registered top-level commands.
+ *   + - * / ^, (), {}, ==, `name = value` assignment, function calls with []
+ *   or (), known scalar functions, reserved physics heads, and registered
+ *   top-level commands.
+ *
+ * `=` is assignment and `==` is an equation; the parser distinguishes them by
+ * lookahead, so `x = 1` and `x == 1` are different commands and neither is a
+ * typo for the other.
  */
 phy_status phy_source_parse(phy_ir_context *ir, const char *source,
                             phy_source_command *out_command,

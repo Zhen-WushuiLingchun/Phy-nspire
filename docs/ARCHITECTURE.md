@@ -9,17 +9,19 @@ does not execute through TI Lua.
 flowchart TD
     UI["Notebook UI<br/>cells, pointer, palettes"] --> IR["Typed expression IR"]
     UI --> RENDER["Markdown + 2D math renderer"]
-    IR --> PHYS["Physics modules"]
+    IR --> EVAL["Stateful evaluator<br/>environment, dispatch, sweep"]
+    EVAL --> PHYS["Physics modules"]
     PHYS --> TENSOR["Tensor / manifold core"]
     PHYS --> GR["GR / black-hole layer"]
     PHYS --> QM["Quantum mechanics"]
     PHYS --> QFT["QFT / gauge layer"]
-    IR --> SCALAR["Native scalar CAS<br/>normal form, exact zero decision"]
+    EVAL --> SCALAR["Native scalar CAS<br/>normal form, exact zero decision"]
     SCALAR --> PHYS
     IR --> BACKEND["CAS backend interface"]
     BACKEND --> GIAC["Trimmed native Giac<br/>not integrated"]
     TENSOR --> GEOM["Manifolds and forms<br/>wedge, d, interior, Hodge"]
     TENSOR --> XPERM["Optional xPerm C core"]
+    EVAL --> RENDER
     RENDER --> PLATFORM["Ndless LCD / keypad / touchpad"]
     UI --> PLATFORM
 ```
@@ -53,6 +55,11 @@ command registry. It produces typed IR before evaluation; the renderer never
 computes from the visible string. A successful input cell stores both its
 source and stable IR serialization, so save/reopen can verify their agreement.
 See [`SOURCE_LANGUAGE.md`](SOURCE_LANGUAGE.md).
+
+Cells are not independent. They share one evaluator environment, so a cell may
+bind a name that later cells read, running one marks every result after it
+stale, and a reopened document must be replayed before its bindings exist. See
+the evaluator section below.
 
 ### Rendering
 
@@ -134,6 +141,35 @@ algebra layer to implement algebra-valued forms, connections, covariant
 derivatives, curvature, gauge variations, Bianchi residuals, and quadratic
 Yang--Mills densities without a second expression system.
 
+### Stateful evaluator
+
+`include/phy/eval.h` and `src/eval`, documented in
+[`EVALUATOR.md`](EVALUATOR.md), sit between the notebook and every physics
+module. They own the notebook environment — names bound to typed values that
+outlive the cell that produced them — and the dispatch that turns a reserved
+operator head into a backend call.
+
+The layer exists because the alternative had already shipped and was
+indistinguishable from working. The notebook accepted `ExteriorD[omega]` and
+`FieldStrength[A,g]`, built `PHY_IR_OPERATOR` nodes, and handed them to the
+scalar CAS, which by its own contract simplifies an operator's operands and
+leaves the node alone. The head survived, nothing computed, and the geometry,
+Lie-algebra and Yang--Mills layers below — fully implemented, thousands of
+checks each — were unreachable from the product.
+
+Two rules make the replacement checkable rather than aspirational: every
+reserved head is either evaluated or a typed error, and nothing is rebuilt as an
+inert operator with the same head. The test suite calls a head with no arguments
+and requires it to reject, so a name that falls out of either the parser's table
+or the evaluator's fails a test instead of silently degrading.
+
+State is required because a manifold, a chart, a connection or a curvature
+bundle is not an expression and should not become one. The environment owns
+those objects, sweeps unreachable intermediates after every command, and
+destroys survivors in the reverse of creation order — which is the order the
+layers below require. It is deliberately not serialized: a document stores cell
+sources and results, and reopening one replays them.
+
 ### CAS backend
 
 The planned backend is a size-trimmed native Giac library derived from the
@@ -157,13 +193,17 @@ incrementally.
 
 1. Input events edit a source cell or select a palette object.
 2. The parser creates typed IR and local diagnostics.
-3. The evaluator schedules native physics rewrites and eligible Giac calls.
-4. The result is normalized, bounded, and stored as a result cell.
+3. The evaluator resolves bindings, dispatches reserved heads onto the native
+   physics layers, and would schedule eligible Giac calls.
+4. The result is a typed value: a scalar, or an object the environment owns. It
+   is normalized, bounded, and stored as a result cell together with either its
+   typed-IR expansion or its descriptor line.
 5. The display tree converts the result to two-dimensional layout and optional
    LaTeX.
 6. The target save path writes source, declarations, and compact results
    atomically under `/documents/phy-nspire/notebooks`; loading validates the
-   complete versioned, checksummed document before replacing the workspace.
+   complete versioned, checksummed document before replacing the workspace. The
+   environment is not part of the document and is rebuilt by replaying cells.
 
 ## Performance policy
 

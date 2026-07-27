@@ -20,10 +20,14 @@ Output:
 Verification:
 
 - host smoke test — done; the suite covers the platform, relative pointer,
-  source language, drawing, notebook, IR, tensor storage, differential forms,
-  GR, Lie/QFT foundations, CAS, QFT oracle, and full lifecycle;
-- generated `.tns` size report — done, 1,055,745 bytes against a 6 MiB
-  ceiling after the nMarkdown math integration;
+  source language, drawing, notebook, the stateful evaluator, IR, tensor
+  storage, differential forms, GR, Lie/QFT foundations, CAS, QFT oracle, and
+  full lifecycle: 24/24 suites and 70,824 explicit checks;
+- generated `.tns` size report — 1,055,745 bytes against a 6 MiB ceiling was
+  measured after the nMarkdown math integration and is **stale as of the
+  evaluator phase**, which pulls the geometry, Lie and Yang--Mills layers into
+  the linked image for the first time. Not remeasured: no Ndless SDK on the
+  development machine;
 - launch of a Phy-nspire artifact on the real CX II — done on 2026-07-26 with
   the observable CAS smoke screen;
 - clean exit without display corruption — done; `ESC` returned normally to
@@ -35,10 +39,12 @@ Verification:
 
 ## Phase 1 — notebook and CAS boundary
 
-Status: the typed expression IR, scalar CAS, persistence shell, and first
-nMarkdown-backed LaTeX rendering pass are implemented and ARM-built. The CAS
-and earlier input shell passed physical smoke tests; the persistence +
-typesetter build still needs calculator acceptance.
+Status: the typed expression IR, scalar CAS, persistence shell, first
+nMarkdown-backed LaTeX rendering pass, and the stateful evaluator are
+implemented. The CAS and earlier input shell passed physical smoke tests; the
+persistence + typesetter build still needs calculator acceptance, and the
+evaluator has not been ARM-built at all — see the note at the end of this
+section.
 
 Output:
 
@@ -72,7 +78,15 @@ Output:
 - native Giac adapter for a small scalar command set — **not needed for the
   scalar operations the tensor and curvature phases require**, which the layer
   above now supplies natively. The backend boundary in
-  `docs/ARCHITECTURE.md` stands, but nothing downstream is blocked on it.
+  `docs/ARCHITECTURE.md` stands, but nothing downstream is blocked on it;
+- stateful notebook evaluator — done, `include/phy/eval.h`, `src/eval`,
+  documented in [`EVALUATOR.md`](EVALUATOR.md): a per-notebook environment of
+  named typed values, `name = value` assignment, and dispatch of every reserved
+  physics head onto the differential-geometry, Lie-algebra, Yang--Mills, tensor
+  and general-relativity backends. This is what made those layers reachable from
+  the product: before it they were fully implemented, fully tested, and called
+  by nothing, because the notebook handed their heads to the scalar CAS, which
+  preserved them.
 
 Verification:
 
@@ -88,26 +102,49 @@ Verification:
   form, exact arithmetic and its overflow statuses, differentiation, and the
   zero decision, including the four `sphere_2d` corpus entries whose stated
   trigonometric form differs from the computed one.
-- notebook tests — done, `tests/test_notebook.c`, 148 checks covering bounded
+- notebook tests — done, `tests/test_notebook.c`, 162 checks covering bounded
   cell storage, exact seeded results, editing, insertion, source/IR agreement,
   stale outputs, Markdown selection, independent run-badge hit testing, 2D
   metrics, nMarkdown LaTeX integration, memory return, and the framebuffer
   fixture;
-- formula bridge tests — done, `tests/test_formula.c`, 20 checks covering
+- evaluator tests — done, `tests/test_eval.c`, 847 checks. The physics cases
+  reproduce, through reader-facing source, results the backend suites already
+  certify directly: the U(1) and SU(2) curvature components and vanishing
+  Bianchi residuals of `tests/test_yang_mills.c`, the round two-sphere
+  curvature of `tests/test_gr.c`, the wedge/`d^2 = 0`/Leibniz/interior-product
+  identities of `tests/test_geom.c`, `[T1,T2] = T3` and `K_ab = -2 delta_ab`
+  from `tests/test_lie.c`. The remaining cases cover state flow between cells,
+  every typed-error path, the ownership sweep under rebinding and failure, the
+  binding ceiling, and save/reopen;
+- formula bridge tests — done, `tests/test_formula.c`, 33 checks covering
   initialization, matrices, metrics, RGB565 rendering, and local error
   recovery;
-- source and pointer tests — done: 90 source-language checks and 29 relative
-  touchpad checks, including no-jump contact, fractional motion, and edges.
+- source, palette and pointer tests — done: 217 source-language checks
+  including assignment and reserved-head canonicalization, 512 palette checks
+  including every CAS snippet parsing, and 29 relative touchpad checks.
 
 The IR carries no simplification, evaluation, or arithmetic: it is the
 substrate those work on. Dummy-index canonicalization and anything that
 consumes declared symmetries stay in Phase 2.
 
-The real Ndless r2022/ARM GNU toolchain link check is done: 24/24 CAS APIs
-survive garbage collection and the probe packages to a 37,720-byte `.tns`
-without float formatting, libm, or ARM soft-float dependencies. The observable
-`phy-cas-smoke.tns` then ran seven symbolic cases on the physical CX II on
-2026-07-26, displayed 7/7 PASS, and returned cleanly to Documents.
+The real Ndless r2022/ARM GNU toolchain link check is done for the CAS: 24/24
+CAS APIs survive garbage collection and the probe packages to a 37,720-byte
+`.tns` without float formatting, libm, or ARM soft-float dependencies. The
+observable `phy-cas-smoke.tns` then ran seven symbolic cases on the physical
+CX II on 2026-07-26, displayed 7/7 PASS, and returned cleanly to Documents.
+
+**The evaluator has no device figures.** `make eval-link-check` and
+`tests/device/eval_link_probe.c` exist and hold the layer to the same
+no-float/no-libm/no-soft-float standard, but the Ndless SDK is not installed on
+the machine this phase was developed on, so neither that check nor an ARM build
+has been run. The probe compiles clean under the project warning set with a host
+GCC, and that is the only claim made for it. The same applies to the `.tns` size:
+wiring the geometry, Lie and Yang--Mills layers into the application means
+`--gc-sections` no longer discards them, so the artifact will grow, and by how
+much is unmeasured. `tools/link-check.sh` also gained `src/cas/integrate.c`,
+which `include/phy/cas.h` declares an entry point for and which the script's CAS
+source list had omitted since integration landed — `cas-link-check` could not
+have linked without it.
 
 ## Phase 2 — tensor and manifold CAS
 
@@ -120,6 +157,11 @@ exterior derivative, interior product and Hodge dual, documented in
 [`docs/GEOMETRY.md`](GEOMETRY.md). Transition maps/pullbacks, abstract
 dummy-index canonicalization, and higher-level covariant form operations remain
 open.
+
+The layer is now reachable from the notebook: `Manifold`, `DifferentialForm`,
+`Metric`, `VectorField`, `Wedge`, `ExteriorD`, `InteriorProduct`, `HodgeStar`
+and `Volume` dispatch onto it through
+[`docs/EVALUATOR.md`](EVALUATOR.md) rather than surviving as operator heads.
 
 Output:
 
@@ -157,8 +199,13 @@ Status: the first coordinate-metric curvature pipeline is implemented. It
 computes the inverse metric, Christoffel symbols, mixed and covariant Riemann
 tensors, Ricci tensor, scalar curvature, and Einstein tensor through the
 native exact CAS. Host acceptance currently covers Cartesian Minkowski space
-and the round 2-sphere. Geodesics, invariants, the full metric corpus, UI
-commands, ARM link retention, and physical-device timing remain open.
+and the round 2-sphere. Geodesics, invariants, the full metric corpus, ARM link
+retention, and physical-device timing remain open.
+
+UI commands are done: `Curvature[g]` and the `InverseMetric`, `Christoffel`,
+`Riemann`, `RiemannMixed`, `Ricci`, `RicciScalar` and `Einstein` accessors run
+the pipeline from a notebook cell, and `tests/test_eval.c` reproduces the
+two-sphere result through them.
 
 Output:
 
@@ -223,6 +270,16 @@ connection/curvature slice are implemented and documented in
 [`docs/GEOMETRY.md`](GEOMETRY.md),
 [`docs/QFT_SCALAR.md`](QFT_SCALAR.md), and
 [`docs/YANG_MILLS.md`](YANG_MILLS.md).
+
+The Lie and Yang--Mills halves are reachable from the notebook: `LieGroup`,
+`LieAlgebra`, `Generator`, `LieElement`, `LieBracket`, `StructureConstant`,
+`Killing`, `LieForm`, `GaugeConnection`, `CovariantD`, `FieldStrength`,
+`GaugeVariation`, `Bianchi`, `YangMillsLagrangian` and `ColorComponent`
+dispatch onto them. The bounded `phi^4` heads — `ScalarField`, `Propagator`,
+`Vertex`, `TadpoleIntegral`, `BubbleIntegral` — are the one group that still
+only constructs typed IR; wiring them is the next evaluator increment and
+[`docs/EVALUATOR.md`](EVALUATOR.md) records the boundary rather than letting it
+look computed.
 
 Verification:
 

@@ -225,12 +225,20 @@ phy_notebook *phy_notebook_create(void)
     memset(notebook, 0, sizeof *notebook);
     notebook->next_execution = 1u;
 
+    /*
+     * The ceilings a stateful physics evaluator needs rather than the ones a
+     * two-cell scalar demo needed. A 4D curvature pass interns several thousand
+     * nodes and the IR has no collection, so a document that computes one and
+     * then edits a cell has to be able to compute it again. The limits stay
+     * limits: an intentionally explosive expression still fails as a typed
+     * PHY_ERR_NODE_LIMIT rather than exhausting the calculator.
+     */
     phy_ir_limits ir_limits;
     phy_ir_limits_defaults(&ir_limits);
-    ir_limits.max_nodes = 4096u;
+    ir_limits.max_nodes = 65536u;
     ir_limits.max_depth = 64u;
     ir_limits.max_children = 256u;
-    ir_limits.max_bytes = 512u * 1024u;
+    ir_limits.max_bytes = 2048u * 1024u;
     notebook->ir = phy_ir_context_create(&ir_limits);
     if (notebook->ir == NULL) {
         phy_free(notebook, sizeof *notebook);
@@ -239,10 +247,18 @@ phy_notebook *phy_notebook_create(void)
 
     phy_cas_limits cas_limits;
     phy_cas_limits_defaults(&cas_limits);
-    cas_limits.max_steps = 50000u;
-    cas_limits.max_bytes = 128u * 1024u;
+    cas_limits.max_steps = 200000u;
+    cas_limits.max_bytes = 512u * 1024u;
     notebook->cas = phy_cas_create(notebook->ir, &cas_limits);
     if (notebook->cas == NULL) {
+        phy_ir_context_destroy(notebook->ir);
+        phy_free(notebook, sizeof *notebook);
+        return NULL;
+    }
+
+    notebook->env = phy_env_create(notebook->cas);
+    if (notebook->env == NULL) {
+        phy_cas_destroy(notebook->cas);
         phy_ir_context_destroy(notebook->ir);
         phy_free(notebook, sizeof *notebook);
         return NULL;
@@ -255,9 +271,16 @@ void phy_notebook_destroy(phy_notebook *notebook)
     if (notebook == NULL) {
         return;
     }
+    /* Objects borrow the CAS and the IR context; they die first. */
+    phy_env_destroy(notebook->env);
     phy_cas_destroy(notebook->cas);
     phy_ir_context_destroy(notebook->ir);
     phy_free(notebook, sizeof *notebook);
+}
+
+phy_env *phy_notebook_environment(phy_notebook *notebook)
+{
+    return notebook != NULL ? notebook->env : NULL;
 }
 
 phy_status phy_notebook_add_markdown(phy_notebook *notebook,
@@ -332,62 +355,18 @@ static phy_status ensure_output(phy_notebook *notebook, size_t input_index,
     return PHY_OK;
 }
 
-static phy_status evaluate_command(phy_notebook *notebook,
-                                   const phy_source_command *command,
-                                   phy_ir_ref *out_result)
+/*
+ * Evaluation is now forward-dependent: a cell may bind a name that later cells
+ * read, so running one invalidates every result after it. Marking those stale
+ * is the only honest thing to display -- the alternative is an `Out[7]` that
+ * was computed against a state the document no longer has.
+ */
+static void mark_following_stale(phy_notebook *notebook, size_t after)
 {
-    switch (command->operation) {
-    case PHY_SOURCE_SIMPLIFY:
-        return phy_cas_simplify(notebook->cas, command->expression, out_result);
-    case PHY_SOURCE_EXPAND:
-        return phy_cas_expand(notebook->cas, command->expression, out_result);
-    case PHY_SOURCE_TOGETHER:
-    case PHY_SOURCE_NUMERATOR:
-    case PHY_SOURCE_DENOMINATOR: {
-        phy_ir_ref numerator = PHY_IR_NULL;
-        phy_ir_ref denominator = PHY_IR_NULL;
-        phy_status status = phy_cas_rational_form(
-            notebook->cas, command->expression, &numerator, &denominator);
-        if (status != PHY_OK) {
-            return status;
+    for (size_t i = after + 1u; i < notebook->count; ++i) {
+        if (notebook->cells[i].kind != PHY_NOTEBOOK_CELL_MARKDOWN) {
+            notebook->cells[i].stale = true;
         }
-        if (command->operation == PHY_SOURCE_NUMERATOR) {
-            *out_result = numerator;
-            return PHY_OK;
-        }
-        if (command->operation == PHY_SOURCE_DENOMINATOR) {
-            *out_result = denominator;
-            return PHY_OK;
-        }
-        return phy_cas_div(notebook->cas, numerator, denominator, out_result);
-    }
-    case PHY_SOURCE_DIFFERENTIATE: {
-        phy_ir_ref result = command->expression;
-        for (size_t i = 0u; i < command->variable_count; ++i) {
-            phy_status status = phy_cas_diff(notebook->cas, result,
-                                             command->variables[i], &result);
-            if (status != PHY_OK) {
-                return status;
-            }
-        }
-        *out_result = result;
-        return PHY_OK;
-    }
-    case PHY_SOURCE_INTEGRATE: {
-        phy_ir_ref result = command->expression;
-        for (size_t i = 0u; i < command->variable_count; ++i) {
-            phy_status status =
-                phy_cas_integrate(notebook->cas, result,
-                                  command->variables[i], &result);
-            if (status != PHY_OK) {
-                return status;
-            }
-        }
-        *out_result = result;
-        return PHY_OK;
-    }
-    default:
-        return PHY_ERR_UNSUPPORTED;
     }
 }
 
@@ -415,7 +394,7 @@ phy_status phy_notebook_evaluate(phy_notebook *notebook, size_t input_index)
     status = phy_source_parse(notebook->ir, input->primary, &command,
                               &error_offset);
     (void)error_offset;
-    if (status == PHY_OK) {
+    if (status == PHY_OK && command.expression != PHY_IR_NULL) {
         input->expression = command.expression;
         size_t length = 0u;
         status = phy_ir_write(notebook->ir, command.expression,
@@ -426,9 +405,26 @@ phy_status phy_notebook_evaluate(phy_notebook *notebook, size_t input_index)
         }
     }
 
+    phy_value value;
+    value.kind = PHY_VALUE_NONE;
+    value.as.scalar = PHY_IR_NULL;
     phy_ir_ref result = PHY_IR_NULL;
+    char description[PHY_EVAL_DESCRIPTION_CAPACITY];
+    description[0] = '\0';
     if (status == PHY_OK) {
-        status = evaluate_command(notebook, &command, &result);
+        status = phy_eval_command(notebook->env, &command, &value);
+    }
+    if (status == PHY_OK) {
+        status = phy_eval_value_expression(notebook->env, value, &result);
+    }
+    if (status == PHY_OK && result == PHY_IR_NULL &&
+        value.kind != PHY_VALUE_NONE) {
+        /*
+         * A manifold, a group, a curvature bundle: no expansion in the typed
+         * IR, so the cell shows what the object is instead of nothing.
+         */
+        status = phy_eval_describe(notebook->env, value, description,
+                                   sizeof description);
     }
 
     input->status = status;
@@ -440,9 +436,41 @@ phy_status phy_notebook_evaluate(phy_notebook *notebook, size_t input_index)
     output->execution = input->execution;
     output->owner_input = input_index;
     output->stale = false;
+    if (status == PHY_OK) {
+        (void)copy_text(output->primary, sizeof output->primary, description);
+    } else {
+        output->primary[0] = '\0';
+    }
+    mark_following_stale(notebook, input_index + 1u);
     notebook->dirty = true;
     ensure_selected_visible(notebook);
     return status;
+}
+
+phy_status phy_notebook_evaluate_all(phy_notebook *notebook)
+{
+    if (notebook == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    /*
+     * Reopening a document restores its cells but not its environment, so the
+     * only way to make a stateful notebook consistent again is to replay it
+     * from an empty one. Every input runs; the first failing status is
+     * reported, and later cells still run so the reader sees which of them
+     * depended on the failure.
+     */
+    phy_env_reset(notebook->env);
+    phy_status first_error = PHY_OK;
+    for (size_t i = 0u; i < notebook->count; ++i) {
+        if (notebook->cells[i].kind != PHY_NOTEBOOK_CELL_INPUT) {
+            continue;
+        }
+        const phy_status status = phy_notebook_evaluate(notebook, i);
+        if (status != PHY_OK && first_error == PHY_OK) {
+            first_error = status;
+        }
+    }
+    return first_error;
 }
 
 phy_status phy_notebook_activate_selected(phy_notebook *notebook)
@@ -977,6 +1005,39 @@ static int draw_text_span(const phy_surface *surface, int x, int y,
     return phy_gfx_draw_text(surface, x, y, span, color);
 }
 
+/*
+ * A physics-object descriptor across the two lines an output card has room
+ * for, broken at spaces so a manifold's coordinate tuple stays legible.
+ */
+static void draw_wrapped_text(const phy_surface *surface, int x, int y,
+                              int width, const char *text, uint16_t color)
+{
+    const size_t per_line =
+        width > 0 ? (size_t)(width / PHY_GLYPH_ADVANCE) : 0u;
+    if (per_line == 0u) {
+        return;
+    }
+    const char *cursor = text;
+    for (int line = 0; line < 2 && *cursor != '\0'; ++line) {
+        size_t take = strlen(cursor);
+        if (take > per_line) {
+            take = per_line;
+            size_t split = take;
+            while (split > 0u && cursor[split] != ' ') {
+                split--;
+            }
+            if (split > 0u) {
+                take = split;
+            }
+        }
+        (void)draw_text_span(surface, x, y + line * 11, cursor, take, color);
+        cursor += take;
+        while (*cursor == ' ') {
+            cursor++;
+        }
+    }
+}
+
 static bool find_inline_formula(const char *text, const char **out_open,
                                 const char **out_source, size_t *out_length,
                                 const char **out_after)
@@ -1197,6 +1258,21 @@ void phy_notebook_draw_document(const phy_surface *surface,
             phy_formula_metrics metrics;
             const int maximum_width =
                 NOTEBOOK_CELL_X + NOTEBOOK_CELL_WIDTH - 63;
+            if (cell->expression == PHY_IR_NULL &&
+                cell->primary[0] != '\0') {
+                /*
+                 * A typed physics object. It has no expansion in the IR, so the
+                 * cell reports what it is rather than drawing nothing.
+                 */
+                draw_wrapped_text(surface, 61, y + 9, maximum_width,
+                                  cell->primary, result_color);
+                if (cell->stale) {
+                    (void)phy_gfx_draw_text(surface, PHY_SCREEN_WIDTH - 39,
+                                            y + height - 11, "stale",
+                                            COLOR_DIM);
+                }
+                continue;
+            }
             const phy_status measure_status =
                 phy_formula_measure_ir(
                     notebook->ir, cell->expression,

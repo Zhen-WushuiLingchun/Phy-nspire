@@ -1,10 +1,16 @@
 /*
  * Native notebook cell model and 320x240 shell.
  *
- * The model owns one typed-IR context and one native CAS. Cell source remains
- * separate from evaluated IR so a failed calculation never makes the
- * document unsaveable. Storage is bounded: this first shell has twelve cells
- * and fixed source buffers rather than untracked heap growth.
+ * The model owns one typed-IR context, one native CAS, and one evaluator
+ * environment. Cell source remains separate from evaluated IR so a failed
+ * calculation never makes the document unsaveable. Storage is bounded: this
+ * first shell has twelve cells and fixed source buffers rather than untracked
+ * heap growth.
+ *
+ * Cells are no longer independent. A cell may bind a name that later cells
+ * read -- see include/phy/eval.h -- so running one marks every following result
+ * stale, and a document reopened from disk starts with an empty environment
+ * until phy_notebook_evaluate_all replays it.
  */
 #ifndef PHY_NOTEBOOK_H
 #define PHY_NOTEBOOK_H
@@ -13,6 +19,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "phy/eval.h"
 #include "phy/gfx.h"
 #include "phy/ir.h"
 #include "phy/phy.h"
@@ -43,6 +50,10 @@ typedef enum {
 /*
  * Read-only snapshot. Text pointers remain valid until the notebook is
  * modified; callers should not retain them across add/evaluate calls.
+ *
+ * For an output cell `primary` is the descriptor of a typed physics object and
+ * is empty for an ordinary scalar result, which is carried by `expression`
+ * instead. Exactly one of the two is populated on a successful output.
  */
 typedef struct {
     phy_notebook_cell_kind kind;
@@ -63,14 +74,30 @@ phy_status phy_notebook_add_markdown(phy_notebook *notebook,
 phy_status phy_notebook_add_input(phy_notebook *notebook,
                                   const char *source, size_t *out_index);
 
-/* Evaluate one input and insert/update its following output cell. */
+/*
+ * Evaluate one input against the current environment and insert/update its
+ * following output cell. Every result after `input_index` becomes stale,
+ * because a cell that binds a name changes what the cells below it mean.
+ */
 phy_status phy_notebook_evaluate(phy_notebook *notebook, size_t input_index);
+
+/*
+ * Clear the environment and replay every input in order. This is what makes a
+ * reopened document consistent again: the codec restores cells, never objects.
+ * Returns the first failing status; later cells still run, so the reader can
+ * see which of them depended on the failure.
+ */
+phy_status phy_notebook_evaluate_all(phy_notebook *notebook);
+
 phy_status phy_notebook_activate_selected(phy_notebook *notebook);
 
 size_t phy_notebook_cell_count(const phy_notebook *notebook);
 bool phy_notebook_cell(const phy_notebook *notebook, size_t index,
                        phy_notebook_cell_view *out_view);
 const phy_ir_context *phy_notebook_ir(const phy_notebook *notebook);
+
+/* The notebook's evaluator environment; NULL for a NULL notebook. */
+phy_env *phy_notebook_environment(phy_notebook *notebook);
 
 size_t phy_notebook_selected(const phy_notebook *notebook);
 bool phy_notebook_select(phy_notebook *notebook, size_t index);

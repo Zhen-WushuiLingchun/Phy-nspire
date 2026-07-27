@@ -6,6 +6,7 @@
 #include <stdint.h>
 
 #include "phy/cas.h"
+#include "phy/eval.h"
 #include "phy/notebook.h"
 
 #define NOTEBOOK_TEXT_CAPACITY 96u
@@ -13,6 +14,14 @@
 
 typedef struct {
     phy_notebook_cell_kind kind;
+    /*
+     * Markdown: heading.
+     * Input: reader-facing source.
+     * Output: the descriptor line of a typed physics object, empty for an
+     *         ordinary scalar result. It is what the cell shows when the value
+     *         has no expansion in the typed IR -- a manifold, a group, a
+     *         curvature bundle -- and it persists with the document.
+     */
     char primary[NOTEBOOK_TEXT_CAPACITY];
     /*
      * Markdown: paragraph body.
@@ -29,6 +38,7 @@ typedef struct {
 struct phy_notebook {
     phy_ir_context *ir;
     phy_cas *cas;
+    phy_env *env;
     notebook_cell cells[PHY_NOTEBOOK_MAX_CELLS];
     size_t count;
     size_t selected;

@@ -131,6 +131,9 @@ add_library(phy_core STATIC
     src/notebook/source.c
     src/notebook/notebook.c
     src/notebook/workspace.c
+    src/eval/env.c
+    src/eval/dispatch.c
+    src/eval/display.c
     src/storage/storage.c
     src/app/app.c
     src/ir/ir.c
@@ -156,7 +159,7 @@ add_library(phy_core STATIC
     src/qft/yang_mills.c
 )
 target_include_directories(phy_core PUBLIC include PRIVATE
-    src/gfx src/ir src/tensor src/cas src/geom)
+    src/gfx src/ir src/tensor src/cas src/geom src/eval)
 target_link_libraries(phy_core PRIVATE phy_warnings nmarkdown_math)
 if(MSVC)
     target_compile_options(phy_core PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/EHsc>
@@ -194,7 +197,7 @@ if(BUILD_TESTING)
                   test_smoke test_document test_storage test_workspace
                   test_notebook test_ir test_tensor test_gr test_lie
                   test_qft_scalar test_yang_mills test_cas test_geom
-                  test_geom_metric)
+                  test_geom_metric test_eval)
         add_executable(${suite} tests/${suite}.c)
         target_link_libraries(${suite} PRIVATE phy_core phy_platform_host phy_warnings)
         target_include_directories(${suite} PRIVATE tests)

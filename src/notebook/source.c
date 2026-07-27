@@ -33,6 +33,9 @@ static const command_descriptor kCommands[] = {
     {"Denominator", PHY_SOURCE_DENOMINATOR, true, false},
     {"D", PHY_SOURCE_DIFFERENTIATE, true, true},
     {"Integrate", PHY_SOURCE_INTEGRATE, true, true},
+    {"Set", PHY_SOURCE_ASSIGN, true, false},
+    {"Clear", PHY_SOURCE_CLEAR, true, false},
+    {"ClearAll", PHY_SOURCE_CLEAR, true, false},
 
     /*
      * Reserved Wolfram-style commands must fail honestly until their algebra
@@ -153,6 +156,50 @@ static const char *canonical_function(const char *name)
         }
     }
     return name;
+}
+
+/*
+ * Heads that construct a typed physics object rather than a function
+ * application. Everything here becomes a PHY_IR_OPERATOR whose head is the
+ * spelling *in this table*, not the spelling the reader typed: name matching is
+ * case-insensitive, so `manifold[...]` and `Manifold[...]` must reach the same
+ * evaluator entry rather than intern two unrelated heads.
+ *
+ * The geometry, Lie, Yang-Mills, relativity and query groups are evaluated by
+ * src/eval against the corresponding native backend. The bounded scalar-QFT
+ * group is parsed and displayed only; docs/EVALUATOR.md records that boundary
+ * rather than letting it look computed.
+ */
+static const char *const kObjectHeads[] = {
+    "Manifold",     "DifferentialForm", "Metric",        "VectorField",
+    "ExteriorD",    "InteriorProduct",  "HodgeStar",     "Volume",
+
+    "LieGroup",     "LieAlgebra",       "Generator",     "LieElement",
+    "LieBracket",   "StructureConstant", "Killing",
+
+    "LieForm",      "GaugeConnection",  "CovariantD",    "FieldStrength",
+    "GaugeVariation", "Bianchi",        "YangMillsLagrangian",
+    "ColorComponent",
+
+    "Curvature",    "InverseMetric",    "Christoffel",   "Riemann",
+    "RiemannMixed", "Ricci",            "RicciScalar",   "Einstein",
+
+    "Component",    "Degree",           "Dimension",     "Rank",
+    "ZeroQ",        "EquivalentQ",
+
+    "ScalarField",  "Propagator",       "Vertex",        "TadpoleIntegral",
+    "BubbleIntegral",
+};
+
+static const char *canonical_object_head(const char *name)
+{
+    for (size_t i = 0u; i < sizeof kObjectHeads / sizeof kObjectHeads[0];
+         ++i) {
+        if (name_equals(name, kObjectHeads[i])) {
+            return kObjectHeads[i];
+        }
+    }
+    return NULL;
 }
 
 static phy_ir_ref parse_expression(source_reader *reader);
@@ -429,26 +476,9 @@ static phy_ir_ref parse_primary(source_reader *reader)
             phy_ir_mul(reader->ir, negative_factors, 2u);
         const phy_ir_ref terms[2] = {forward, negative};
         result = phy_ir_add(reader->ir, terms, 2u);
-    } else if (name_equals(name, "LieBracket") ||
-               name_equals(name, "StructureConstant") ||
-               name_equals(name, "LieGroup") ||
-               name_equals(name, "Manifold") ||
-               name_equals(name, "DifferentialForm") ||
-               name_equals(name, "Metric") ||
-               name_equals(name, "ScalarField") ||
-               name_equals(name, "Propagator") ||
-               name_equals(name, "Vertex") ||
-               name_equals(name, "TadpoleIntegral") ||
-               name_equals(name, "BubbleIntegral") ||
-               name_equals(name, "ExteriorD") ||
-               name_equals(name, "InteriorProduct") ||
-               name_equals(name, "HodgeStar") ||
-               name_equals(name, "GaugeConnection") ||
-               name_equals(name, "CovariantD") ||
-               name_equals(name, "FieldStrength") ||
-               name_equals(name, "GaugeVariation") ||
-               name_equals(name, "YangMillsLagrangian")) {
-        const phy_ir_symbol head = phy_ir_intern(reader->ir, name);
+    } else if (canonical_object_head(name) != NULL) {
+        const phy_ir_symbol head =
+            phy_ir_intern(reader->ir, canonical_object_head(name));
         result = phy_ir_operator(reader->ir, head, arguments, count);
     } else {
         const char *head_name = canonical_function(name);
@@ -549,6 +579,46 @@ static phy_ir_ref parse_expression(source_reader *reader)
     return left;
 }
 
+/*
+ * `name` is bindable when it is neither a registered command nor a reserved
+ * object head nor a known scalar function. Allowing `Sin = 2` would leave the
+ * reader with a document in which `Sin[x]` means two different things depending
+ * on cell order, which no diagnostic afterwards can untangle.
+ */
+static bool bindable_name(const char *name)
+{
+    return find_command(name) == NULL && canonical_object_head(name) == NULL &&
+           canonical_function(name) == name;
+}
+
+/*
+ * `name = rhs`, distinguished from the equation `name == rhs` by one character
+ * of lookahead. Returns PHY_IR_NO_SYMBOL and restores the read position when
+ * the input is not an assignment.
+ */
+static phy_ir_symbol begin_assignment(source_reader *reader)
+{
+    const size_t saved = reader->at;
+    char name[SOURCE_NAME_CAPACITY];
+    if (!read_name(reader, name)) {
+        reader->at = saved;
+        return PHY_IR_NO_SYMBOL;
+    }
+    skip_space(reader);
+    if (reader->at >= reader->length || reader->source[reader->at] != '=' ||
+        (reader->at + 1u < reader->length &&
+         reader->source[reader->at + 1u] == '=')) {
+        reader->at = saved;
+        return PHY_IR_NO_SYMBOL;
+    }
+    if (!bindable_name(name)) {
+        fail(reader, PHY_ERR_TYPE);
+        return PHY_IR_NO_SYMBOL;
+    }
+    reader->at++;
+    return phy_ir_intern(reader->ir, name);
+}
+
 static const command_descriptor *begin_command(source_reader *reader,
                                                char *out_closer)
 {
@@ -597,11 +667,51 @@ phy_status phy_source_parse(phy_ir_context *ir, const char *source,
         PHY_IR_NULL,
         {PHY_IR_NULL},
         0u,
+        PHY_IR_NO_SYMBOL,
     };
 
     char closer = '\0';
     const command_descriptor *descriptor = begin_command(&reader, &closer);
-    if (descriptor != NULL && reader.status == PHY_OK) {
+    if (descriptor != NULL && reader.status == PHY_OK &&
+        descriptor->operation == PHY_SOURCE_CLEAR) {
+        /*
+         * `Clear[name]` names one binding; `ClearAll[]` and a bare `Clear[]`
+         * clear the environment. The expression stays PHY_IR_NULL, which is
+         * the one operation for which that is well-formed.
+         */
+        command.operation = PHY_SOURCE_CLEAR;
+        if (peek(&reader) != closer) {
+            char name[SOURCE_NAME_CAPACITY];
+            if (!read_name(&reader, name)) {
+                fail(&reader, PHY_ERR_PARSE);
+            } else if (!bindable_name(name)) {
+                fail(&reader, PHY_ERR_TYPE);
+            } else {
+                command.target = phy_ir_intern(ir, name);
+            }
+        }
+        if (!take(&reader, closer)) {
+            fail(&reader, PHY_ERR_PARSE);
+        }
+    } else if (descriptor != NULL && reader.status == PHY_OK &&
+               descriptor->operation == PHY_SOURCE_ASSIGN) {
+        /* `Set[name, rhs]`, the FullForm spelling of `name = rhs`. */
+        command.operation = PHY_SOURCE_ASSIGN;
+        char name[SOURCE_NAME_CAPACITY];
+        if (!read_name(&reader, name)) {
+            fail(&reader, PHY_ERR_PARSE);
+        } else if (!bindable_name(name)) {
+            fail(&reader, PHY_ERR_TYPE);
+        } else if (!take(&reader, ',')) {
+            fail(&reader, PHY_ERR_PARSE);
+        } else {
+            command.target = phy_ir_intern(ir, name);
+            command.expression = parse_expression(&reader);
+        }
+        if (reader.status == PHY_OK && !take(&reader, closer)) {
+            fail(&reader, PHY_ERR_PARSE);
+        }
+    } else if (descriptor != NULL && reader.status == PHY_OK) {
         command.operation = descriptor->operation;
         command.expression = parse_expression(&reader);
         if (descriptor->derivative) {
@@ -625,14 +735,23 @@ phy_status phy_source_parse(phy_ir_context *ir, const char *source,
             fail(&reader, PHY_ERR_PARSE);
         }
     } else if (descriptor == NULL) {
-        command.expression = parse_expression(&reader);
+        const phy_ir_symbol target = begin_assignment(&reader);
+        if (target != PHY_IR_NO_SYMBOL) {
+            command.operation = PHY_SOURCE_ASSIGN;
+            command.target = target;
+        }
+        if (reader.status == PHY_OK) {
+            command.expression = parse_expression(&reader);
+        }
     }
 
     skip_space(&reader);
     if (reader.status == PHY_OK && reader.at != reader.length) {
         fail(&reader, PHY_ERR_PARSE);
     }
-    if (reader.status == PHY_OK && command.expression == PHY_IR_NULL) {
+    if (reader.status == PHY_OK &&
+        command.operation != PHY_SOURCE_CLEAR &&
+        command.expression == PHY_IR_NULL) {
         fail(&reader, phy_ir_last_error(ir));
     }
     if (out_error_offset != NULL) {

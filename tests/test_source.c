@@ -189,10 +189,84 @@ static void test_diagnostics_and_bounds(void)
     phy_platform_shutdown();
 }
 
+/*
+ * Assignment, the environment commands, and the reserved-head canonicalization
+ * the stateful evaluator depends on.
+ */
+static void test_assignment_and_reserved_heads(void)
+{
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    phy_ir_context *ir = phy_ir_context_create(NULL);
+    PHY_CHECK(ir != NULL);
+
+    phy_source_command command = parse(ir, "a = 2 x + 1");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_ASSIGN);
+    PHY_CHECK_EQ_STR(phy_ir_symbol_name(ir, command.target), "a");
+    PHY_CHECK_EQ_STR(render(ir, command.expression), "(+ 1 (* 2 x))");
+
+    command = parse(ir, "Set[b, y]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_ASSIGN);
+    PHY_CHECK_EQ_STR(phy_ir_symbol_name(ir, command.target), "b");
+
+    /* One character of lookahead separates assignment from an equation. */
+    command = parse(ir, "a == 3");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_SIMPLIFY);
+    PHY_CHECK_EQ_INT(command.target, PHY_IR_NO_SYMBOL);
+    PHY_CHECK_EQ_STR(render(ir, command.expression), "(= a 3)");
+
+    /* Clear names one binding; ClearAll and a bare Clear name none. */
+    command = parse(ir, "Clear[a]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_CLEAR);
+    PHY_CHECK_EQ_STR(phy_ir_symbol_name(ir, command.target), "a");
+    PHY_CHECK_EQ_INT(command.expression, PHY_IR_NULL);
+    command = parse(ir, "ClearAll[]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_CLEAR);
+    PHY_CHECK_EQ_INT(command.target, PHY_IR_NO_SYMBOL);
+    command = parse(ir, "Clear[]");
+    PHY_CHECK_EQ_INT(command.target, PHY_IR_NO_SYMBOL);
+
+    /*
+     * Head matching is case-insensitive but interning is not, so a reserved
+     * head must reach the evaluator under one spelling however it was typed.
+     * Two different heads here would mean `manifold[...]` silently doing
+     * nothing.
+     */
+    command = parse(ir, "manifold[{x,y},euclidean]");
+    PHY_CHECK_EQ_STR(render(ir, command.expression),
+                     "(op Manifold (fn List x y) euclidean)");
+    command = parse(ir, "ColorComponent[F,0]");
+    PHY_CHECK_EQ_STR(render(ir, command.expression),
+                     "(op ColorComponent F 0)");
+    command = parse(ir, "ZeroQ[Bianchi[A,g]]");
+    PHY_CHECK_EQ_STR(render(ir, command.expression),
+                     "(op ZeroQ (op Bianchi A g))");
+    command = parse(ir, "RicciScalar[c]");
+    PHY_CHECK_EQ_STR(render(ir, command.expression), "(op RicciScalar c)");
+
+    /* A reserved spelling is not a bindable name. */
+    size_t error = 0u;
+    PHY_CHECK_EQ_INT(phy_source_parse(ir, "Cos = 1", &command, &error),
+                     PHY_ERR_TYPE);
+    PHY_CHECK_EQ_INT(phy_source_parse(ir, "Ricci = 1", &command, &error),
+                     PHY_ERR_TYPE);
+    PHY_CHECK_EQ_INT(phy_source_parse(ir, "Integrate = 1", &command, &error),
+                     PHY_ERR_TYPE);
+    PHY_CHECK_EQ_INT(phy_source_parse(ir, "Set[Sin, 1]", &command, &error),
+                     PHY_ERR_TYPE);
+    PHY_CHECK_EQ_INT(phy_source_parse(ir, "2 = x", &command, &error),
+                     PHY_ERR_PARSE);
+    PHY_CHECK_EQ_INT(phy_source_parse(ir, "Set[a]", &command, &error),
+                     PHY_ERR_PARSE);
+
+    phy_ir_context_destroy(ir);
+    phy_platform_shutdown();
+}
+
 int main(void)
 {
     PHY_TEST_CASE(test_operator_precedence_and_exact_numbers);
     PHY_TEST_CASE(test_commands_and_functions);
     PHY_TEST_CASE(test_diagnostics_and_bounds);
+    PHY_TEST_CASE(test_assignment_and_reserved_heads);
     return PHY_TEST_REPORT("test_source");
 }

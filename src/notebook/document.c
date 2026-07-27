@@ -223,7 +223,14 @@ static phy_status parse_cell_expression(phy_notebook *notebook,
     }
     if (expression_size == 0u) {
         cell->expression = PHY_IR_NULL;
-        return cell->kind == PHY_NOTEBOOK_CELL_OUTPUT && cell->status == PHY_OK
+        /*
+         * A successful output with no expression is well-formed exactly when it
+         * carries an object descriptor instead: a manifold or a Lie group has
+         * no expansion in the typed IR. An output with neither is a truncated
+         * record.
+         */
+        return cell->kind == PHY_NOTEBOOK_CELL_OUTPUT &&
+                       cell->status == PHY_OK && cell->primary[0] == '\0'
                    ? PHY_ERR_CORRUPT_DOCUMENT
                    : PHY_OK;
     }

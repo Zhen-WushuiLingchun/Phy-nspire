@@ -179,10 +179,8 @@ record its physical channel-order acceptance before changing `PHY_RGB565`.
 
 ### Device link checks
 
-Backend layers not yet called by the notebook evaluator are removed from
-`dist/phy-nspire.tns` by `--gc-sections`; the ordinary ARM build therefore
-proves only that they compile. Each layer has a probe that
-references every public entry point and is linked with the production flags:
+Each layer has a probe that references every public entry point and is linked
+with the production flags:
 
 ```sh
 make ir-link-check       # include/phy/ir.h
@@ -190,11 +188,19 @@ make cas-link-check      # include/phy/cas.h
 make tensor-link-check   # include/phy/tensor.h
 make geom-link-check     # include/phy/geom.h
 make ym-link-check       # include/phy/yang_mills.h
+make eval-link-check     # include/phy/eval.h, and the whole backend stack
 ```
 
 Each derives the expected symbol set from the header rather than listing it, so
 adding a public function without extending the probe fails the check instead of
 quietly going unlinked. None of them touches `dist/`.
+
+The checks were originally needed because every backend layer was removed from
+`dist/phy-nspire.tns` by `--gc-sections`: nothing in the application called
+them, so the ordinary ARM build proved only that they compiled. The stateful
+evaluator changed that for the geometry, Lie, tensor, GR and Yang--Mills layers,
+which the notebook now genuinely calls. The probes remain the only way to check
+symbol retention against the header and the no-floating-point rule in isolation.
 
 Measured on the pinned ARM toolchain on 2026-07-27:
 
@@ -203,6 +209,13 @@ Measured on the pinned ARM toolchain on 2026-07-27:
 - Yang--Mills: 22/22 APIs retained, 4,524 bytes of layer text, 54,260-byte
   probe package;
 - both contain no float formatter, libm call, or ARM soft-float helper.
+
+`eval-link-check` has **not been run**, and neither has an ARM build of the
+evaluator: the Ndless SDK is absent from the machine that phase was developed
+on. `tests/device/eval_link_probe.c` compiles clean under the project warning
+set with a host GCC, and that is the only claim made for it. Because the linked
+image now retains the physics layers, the last measured `.tns` size is stale as
+well.
 
 ### Native symbolic CAS acceptance test
 

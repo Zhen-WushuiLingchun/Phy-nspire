@@ -64,24 +64,37 @@ The CAS answers "unknown" rather than guessing outside its decidable class, so
 the scalar operations needed by the tensor, geometry, and GR phases no longer depend on
 integrating Giac.
 
-Measured on the pinned toolchain after the math-engine integration:
-`dist/phy-nspire.tns` is 1,055,745 bytes, 16.8% of the 6 MiB ceiling. The
-strict Windows host suite passes 23/23 and its assertion-bearing executables
-contain 70,039 explicit checks. The WSL AddressSanitizer/UndefinedBehaviorSanitizer
-suite passes 25/25, including the symbol-report/bootstrap shell tests and the C++ rendering
-slice.
+Those foundations are now **reachable from the notebook**. A stateful evaluator,
+[docs/EVALUATOR.md](docs/EVALUATOR.md), gives the notebook an environment of
+named typed values — manifolds, forms, metrics, Lie groups and algebras,
+algebra-valued forms, curvature bundles — and dispatches each reserved physics
+head onto the corresponding native backend. `ExteriorD[alpha]` calls the
+exterior derivative; `FieldStrength[A,g]` calls the Yang--Mills curvature;
+`ZeroQ[Bianchi[A,g]]` proves the identity rather than asserting it. Before this
+layer those heads were parsed into typed IR and handed to the scalar CAS, which
+by contract preserves an operator and simplifies only its operands: the head
+survived a round trip and nothing computed. The bounded `phi^4` heads
+(`ScalarField`, `Propagator`, `Vertex`, and the two master integrals) are the
+one group still awaiting an evaluator, and that boundary is documented rather
+than hidden.
+
+The strict Windows host suite passes 24/24 and its assertion-bearing
+executables contain 70,824 explicit checks.
+
+Device figures are older than the evaluator. `dist/phy-nspire.tns` was last
+measured at 1,055,745 bytes, 16.8% of the 6 MiB ceiling, before the physics
+layers were linked into the application; wiring them means `--gc-sections` no
+longer discards them, and the new size is unmeasured because the machine this
+phase was developed on has no Ndless SDK.
 
 The native CAS smoke artifact has run on the target CX II and shown all seven
 exact symbolic checks passing. Returning from it restored Documents normally.
 The earlier notebook shell also passed its input and touchpad acceptance. The
 previous 1.0 MiB build containing persistence and nMarkdown LaTeX rendering has
 been transferred through the repository-owned CLI and verified byte-for-byte
-on the calculator. The current geometry/Yang--Mills build is ARM-verified but
-has not yet replaced that device file.
-Differential-geometry/Yang--Mills input heads and palette entries now exist;
-their stateful notebook evaluators, along with the GR/QFT evaluators, remain
-open. The separate baseline channel-order check remains tracked
-in [docs/BUILD.md](docs/BUILD.md).
+on the calculator. Neither the geometry/Yang--Mills build nor the evaluator
+build has replaced that device file. The separate baseline channel-order check
+remains tracked in [docs/BUILD.md](docs/BUILD.md).
 
 Start here:
 
@@ -97,6 +110,7 @@ Start here:
 - [Scalar computer algebra](docs/CAS.md)
 - [Notebook shell and 2D layout](docs/NOTEBOOK.md)
 - [Reader-facing symbolic source language](docs/SOURCE_LANGUAGE.md)
+- [Stateful notebook evaluator](docs/EVALUATOR.md)
 - [Manifolds and differential forms](docs/GEOMETRY.md)
 - [Roadmap](docs/ROADMAP.md)
 - [ADR-0001: native Ndless architecture](docs/adr/0001-native-ndless-architecture.md)

@@ -22,7 +22,7 @@
 # Nothing here touches dist/. The probe is built into its own directory and
 # is never linked into the product.
 #
-# Usage: tools/link-check.sh [ir|cas|geom|ym]   (default ir)
+# Usage: tools/link-check.sh [ir|cas|geom|ym|eval]   (default ir)
 #        after eval "$(tools/bootstrap-ndless.sh --env-only)"
 
 set -euo pipefail
@@ -46,12 +46,32 @@ COMMON_SOURCES=(
 )
 
 # The scalar layer, needed by anything that computes rather than only stores.
+# integrate.c is here because include/phy/cas.h declares phy_cas_integrate and
+# the entry-point check below is derived from that header: omitting the
+# translation unit that defines it fails the link rather than going unnoticed.
 CAS_SOURCES=(
     src/cas/num.c
     src/cas/engine.c
     src/cas/simplify.c
     src/cas/diff.c
+    src/cas/integrate.c
     src/cas/normal.c
+)
+
+# Everything the evaluator dispatches onto. It is the first layer whose probe
+# links the whole physics stack at once.
+PHYSICS_SOURCES=(
+    src/tensor/chart.c
+    src/tensor/symmetry.c
+    src/tensor/tensor.c
+    src/tensor/ops.c
+    src/gr/gr.c
+    src/lie/lie.c
+    src/geom/manifold.c
+    src/geom/form.c
+    src/geom/exterior.c
+    src/geom/metric.c
+    src/qft/yang_mills.c
 )
 
 # Entry points are derived from the header by this pattern rather than listed,
@@ -119,8 +139,22 @@ ym)
              src/geom/metric.c
              src/qft/yang_mills.c)
     ;;
+eval)
+    LABEL="evaluator"
+    PROBE="tests/device/eval_link_probe.c"
+    HEADER="include/phy/eval.h"
+    OBJECT_GLOB="src_eval_*.o"
+    SYMBOL_RE='phy_(env|eval|value)_'
+    EXCLUDE='^$'
+    MIN_ENTRY_POINTS=12
+    SOURCES=("${COMMON_SOURCES[@]}" "${CAS_SOURCES[@]}"
+             "${PHYSICS_SOURCES[@]}"
+             src/eval/env.c
+             src/eval/dispatch.c
+             src/eval/display.c)
+    ;;
 *)
-    echo "usage: tools/link-check.sh [ir|cas|geom|ym]" >&2
+    echo "usage: tools/link-check.sh [ir|cas|geom|ym|eval]" >&2
     exit 2
     ;;
 esac
@@ -271,7 +305,7 @@ printf '  ok    %d/%d public entry points retained\n' \
 BANNED_PATTERN='(^|[[:space:]_])(_dtoa|_strtod|_printf_float|_scanf_float|_vfprintf|__sf_fake)'
 STRICT_FLOAT=0
 if [ "$LAYER" = "cas" ] || [ "$LAYER" = "geom" ] ||
-   [ "$LAYER" = "ym" ]; then
+   [ "$LAYER" = "ym" ] || [ "$LAYER" = "eval" ]; then
     STRICT_FLOAT=1
     BANNED_PATTERN+='|[[:space:]]_?(sin|cos|tan|exp|log|pow|sqrt|floor|ceil|fmod)$|__aeabi_[df]'
 fi
