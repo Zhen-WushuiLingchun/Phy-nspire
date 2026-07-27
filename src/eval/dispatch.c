@@ -21,6 +21,9 @@
 #include <string.h>
 
 #include "eval_internal.h"
+#include "phy/dirac.h"
+#include "phy/mandelstam.h"
+#include "phy/qft_scalar.h"
 
 #define EVAL_MAX_LIST 64u
 
@@ -1188,6 +1191,315 @@ static phy_status eval_curvature_part(phy_env *env, phy_ir_ref expr,
     return publish_borrowed(env, tensor, &bundle, out_value);
 }
 
+static phy_status eval_kretschmann(phy_env *env, phy_ir_ref expr,
+                                   phy_value *out_value)
+{
+    if (arg_count(env, expr) != 1u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value bundle;
+    phy_status status =
+        arg_typed(env, expr, 0u, PHY_VALUE_CURVATURE, &bundle);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_ir_ref scalar = PHY_IR_NULL;
+    status = phy_gr_kretschmann(
+        env->cas, (phy_gr_result *)bundle.as.curvature, &scalar);
+    if (status == PHY_OK) {
+        *out_value = scalar_value(scalar);
+    }
+    return status;
+}
+
+static phy_status eval_tensor_covariant_derivative(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 2u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value tensor;
+    phy_status status =
+        arg_typed(env, expr, 0u, PHY_VALUE_TENSOR, &tensor);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_value bundle;
+    status = arg_typed(env, expr, 1u, PHY_VALUE_CURVATURE, &bundle);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_tensor *derivative = NULL;
+    status = phy_gr_covariant_derivative(
+        env->cas, bundle.as.curvature, tensor.as.tensor,
+        pending_name(env, "nabla"), &derivative);
+    return status == PHY_OK
+               ? publish(env, PHY_VALUE_TENSOR, derivative, &tensor, &bundle,
+                         out_value)
+               : status;
+}
+
+/* --------------------------------------------------------- bounded QFT */
+
+static phy_status phi4_model_from_call(phy_env *env, phy_ir_ref expr,
+                                       phy_phi4_model **out_model)
+{
+    const phy_ir_ref field_ref = arg_ref(env, expr, 0u);
+    if (phy_ir_kind_of(env->ir, field_ref) != PHY_IR_SYMBOL) {
+        return PHY_ERR_TYPE;
+    }
+    const char *field_name =
+        phy_ir_symbol_name(env->ir, phy_ir_head(env->ir, field_ref));
+    if (field_name == NULL) {
+        return PHY_ERR_CORRUPT_DOCUMENT;
+    }
+    phy_ir_ref mass = PHY_IR_NULL;
+    phy_status status = arg_scalar(env, expr, 1u, &mass);
+    phy_ir_ref coupling = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = arg_scalar(env, expr, 2u, &coupling);
+    }
+    unsigned dimension = 0u;
+    if (status == PHY_OK) {
+        status = arg_unsigned(env, expr, 3u, 5u, &dimension);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    return phy_phi4_model_create(
+        env->cas, field_name, mass, coupling, dimension, out_model);
+}
+
+static phy_status eval_phi4_lagrangian(phy_env *env, phy_ir_ref expr,
+                                       phy_value *out_value)
+{
+    if (arg_count(env, expr) != 4u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_phi4_model *model = NULL;
+    phy_status status = phi4_model_from_call(env, expr, &model);
+    phy_ir_ref result = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = phy_phi4_lagrangian(model, &result);
+    }
+    phy_phi4_model_destroy(model);
+    if (status == PHY_OK) {
+        *out_value = scalar_value(result);
+    }
+    return status;
+}
+
+static phy_status eval_phi4_eom(phy_env *env, phy_ir_ref expr,
+                                phy_value *out_value)
+{
+    if (arg_count(env, expr) != 4u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_phi4_model *model = NULL;
+    phy_status status = phi4_model_from_call(env, expr, &model);
+    phy_ir_ref result = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = phy_phi4_equation_of_motion(model, &result);
+    }
+    phy_phi4_model_destroy(model);
+    if (status == PHY_OK) {
+        *out_value = scalar_value(result);
+    }
+    return status;
+}
+
+static phy_status eval_phi4_diagrams(phy_env *env, phy_ir_ref expr,
+                                     phy_value *out_value)
+{
+    if (arg_count(env, expr) != 7u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_phi4_model *model = NULL;
+    phy_status status = phi4_model_from_call(env, expr, &model);
+    phy_ir_ref invariant[3] = {
+        PHY_IR_NULL, PHY_IR_NULL, PHY_IR_NULL};
+    for (size_t i = 0u; status == PHY_OK && i < 3u; ++i) {
+        status = arg_scalar(env, expr, 4u + i, &invariant[i]);
+    }
+
+    phy_phi4_diagram tree;
+    phy_phi4_diagram loop[4];
+    if (status == PHY_OK) {
+        status = phy_phi4_tree_2to2(model, &tree);
+    }
+    if (status == PHY_OK) {
+        status = phy_phi4_one_loop_diagrams(
+            model, invariant[0], invariant[1], invariant[2], loop);
+    }
+    phy_ir_ref expressions[5] = {
+        PHY_IR_NULL, PHY_IR_NULL, PHY_IR_NULL, PHY_IR_NULL, PHY_IR_NULL};
+    if (status == PHY_OK) {
+        status = phy_phi4_diagram_expression(
+            model, &tree, &expressions[0]);
+    }
+    for (size_t i = 0u; status == PHY_OK && i < 4u; ++i) {
+        status = phy_phi4_diagram_expression(
+            model, &loop[i], &expressions[i + 1u]);
+    }
+    phy_phi4_model_destroy(model);
+    if (status != PHY_OK) {
+        return status;
+    }
+    const phy_ir_ref result =
+        phy_ir_function(env->ir, env->list_head, expressions, 5u);
+    if (result == PHY_IR_NULL) {
+        return phy_ir_last_error(env->ir);
+    }
+    *out_value = scalar_value(result);
+    return PHY_OK;
+}
+
+static phy_status eval_mandelstam_reduce(phy_env *env, phy_ir_ref expr,
+                                         phy_value *out_value)
+{
+    if (arg_count(env, expr) != 4u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_ir_ref momentum_names[4];
+    size_t momentum_count = 0u;
+    phy_status status = list_refs(
+        env, arg_ref(env, expr, 1u), momentum_names, 4u, &momentum_count);
+    if (status != PHY_OK || momentum_count != 4u) {
+        return status != PHY_OK ? status : PHY_ERR_PARSE;
+    }
+    phy_ir_ref masses[4];
+    size_t mass_count = 0u;
+    status = list_scalars(
+        env, arg_ref(env, expr, 2u), masses, 4u, &mass_count);
+    if (status != PHY_OK || mass_count != 4u) {
+        return status != PHY_OK ? status : PHY_ERR_PARSE;
+    }
+    const char *routing_name = arg_keyword(env, expr, 3u);
+    phy_mandelstam_routing routing;
+    if (keyword_is(routing_name, "Peskin")) {
+        routing = PHY_MANDELSTAM_PESKIN_2_TO_2;
+    } else if (keyword_is(routing_name, "AllIncoming")) {
+        routing = PHY_MANDELSTAM_ALL_INCOMING;
+    } else {
+        return PHY_ERR_PARSE;
+    }
+
+    phy_lorentz_metric *metric = NULL;
+    status = phy_lorentz_metric_create(
+        env->cas, "eta", "Lorentz", 4u, PHY_LORENTZ_MOSTLY_MINUS, &metric);
+    phy_ir_ref momenta[4] = {
+        PHY_IR_NULL, PHY_IR_NULL, PHY_IR_NULL, PHY_IR_NULL};
+    phy_cas_rule rules[4];
+    for (size_t i = 0u; status == PHY_OK && i < 4u; ++i) {
+        if (phy_ir_kind_of(env->ir, momentum_names[i]) != PHY_IR_SYMBOL) {
+            status = PHY_ERR_TYPE;
+            break;
+        }
+        const char *name = phy_ir_symbol_name(
+            env->ir, phy_ir_head(env->ir, momentum_names[i]));
+        if (name == NULL) {
+            status = PHY_ERR_CORRUPT_DOCUMENT;
+            break;
+        }
+        status = phy_lorentz_momentum(metric, name, &momenta[i]);
+        rules[i].from = momentum_names[i];
+        rules[i].to = momenta[i];
+    }
+    phy_mandelstam *kinematics = NULL;
+    if (status == PHY_OK) {
+        status = phy_mandelstam_create(
+            metric, momenta, masses, routing, &kinematics);
+    }
+    phy_ir_ref routed = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = phy_cas_substitute(
+            env->cas, arg_ref(env, expr, 0u), rules, 4u, &routed);
+    }
+    phy_value evaluated = scalar_value(PHY_IR_NULL);
+    if (status == PHY_OK) {
+        status = eval_node(env, routed, &evaluated);
+        if (status == PHY_OK && evaluated.kind != PHY_VALUE_SCALAR) {
+            status = PHY_ERR_TYPE;
+        }
+    }
+    phy_ir_ref result = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = phy_mandelstam_reduce(
+            kinematics, evaluated.as.scalar, &result);
+    }
+    phy_mandelstam_destroy(kinematics);
+    phy_lorentz_metric_destroy(metric);
+    if (status == PHY_OK) {
+        *out_value = scalar_value(result);
+    }
+    return status;
+}
+
+static phy_status eval_dirac_trace(phy_env *env, phy_ir_ref expr,
+                                   phy_value *out_value)
+{
+    if (arg_count(env, expr) != 1u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_ir_ref arguments[PHY_DIRAC_MAX_FACTORS];
+    size_t count = 0u;
+    phy_status status = list_refs(
+        env, arg_ref(env, expr, 0u), arguments, PHY_DIRAC_MAX_FACTORS, &count);
+    phy_lorentz_metric *metric = NULL;
+    if (status == PHY_OK) {
+        status = phy_lorentz_metric_create(
+            env->cas, "eta", "Lorentz", 4u, PHY_LORENTZ_MOSTLY_MINUS,
+            &metric);
+    }
+    phy_dirac *dirac = NULL;
+    if (status == PHY_OK) {
+        status = phy_dirac_create(metric, NULL, &dirac);
+    }
+    phy_dirac_expr *product = NULL;
+    if (status == PHY_OK) {
+        status = phy_dirac_identity(dirac, 1u, &product);
+    }
+    for (size_t i = 0u; status == PHY_OK && i < count; ++i) {
+        phy_ir_ref index = arguments[i];
+        if (phy_ir_kind_of(env->ir, index) == PHY_IR_SYMBOL) {
+            const char *name =
+                phy_ir_symbol_name(env->ir, phy_ir_head(env->ir, index));
+            status = name != NULL
+                         ? phy_lorentz_index(
+                               metric, name, PHY_IR_INDEX_UPPER, &index)
+                         : PHY_ERR_CORRUPT_DOCUMENT;
+        } else if (!phy_lorentz_owns_index(metric, index)) {
+            status = PHY_ERR_TYPE;
+        }
+        phy_dirac_expr *gamma = NULL;
+        phy_dirac_expr *next = NULL;
+        if (status == PHY_OK) {
+            status = phy_dirac_gamma(dirac, 1u, index, &gamma);
+        }
+        if (status == PHY_OK) {
+            status = phy_dirac_mul(product, gamma, &next);
+        }
+        phy_dirac_expr_destroy(gamma);
+        if (status == PHY_OK) {
+            phy_dirac_expr_destroy(product);
+            product = next;
+        } else {
+            phy_dirac_expr_destroy(next);
+        }
+    }
+    phy_ir_ref result = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = phy_dirac_trace_scalar(product, 1u, &result);
+    }
+    phy_dirac_expr_destroy(product);
+    phy_dirac_destroy(dirac);
+    phy_lorentz_metric_destroy(metric);
+    if (status == PHY_OK) {
+        *out_value = scalar_value(result);
+    }
+    return status;
+}
+
 /* --------------------------------------------------------------- queries */
 
 static phy_status eval_component(phy_env *env, phy_ir_ref expr,
@@ -1577,6 +1889,21 @@ static phy_status eval_operator(phy_env *env, phy_ir_ref expr,
     case EVAL_HEAD_RICCI_SCALAR:
     case EVAL_HEAD_EINSTEIN:
         return eval_curvature_part(env, expr, which, out_value);
+    case EVAL_HEAD_KRETSCHMANN:
+        return eval_kretschmann(env, expr, out_value);
+    case EVAL_HEAD_COVARIANT_DERIVATIVE:
+        return eval_tensor_covariant_derivative(env, expr, out_value);
+
+    case EVAL_HEAD_PHI4_LAGRANGIAN:
+        return eval_phi4_lagrangian(env, expr, out_value);
+    case EVAL_HEAD_PHI4_EOM:
+        return eval_phi4_eom(env, expr, out_value);
+    case EVAL_HEAD_PHI4_DIAGRAMS:
+        return eval_phi4_diagrams(env, expr, out_value);
+    case EVAL_HEAD_MANDELSTAM_REDUCE:
+        return eval_mandelstam_reduce(env, expr, out_value);
+    case EVAL_HEAD_DIRAC_TRACE:
+        return eval_dirac_trace(env, expr, out_value);
 
     case EVAL_HEAD_COMPONENT:
         return eval_component(env, expr, out_value);

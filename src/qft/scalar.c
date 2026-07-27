@@ -1,5 +1,6 @@
 #include "phy/qft_scalar.h"
 
+#include <limits.h>
 #include <string.h>
 
 #include "phy/platform.h"
@@ -12,6 +13,7 @@ struct phy_phi4_model {
     unsigned dimension;
     phy_ir_symbol head_field;
     phy_ir_symbol head_partial;
+    phy_ir_symbol head_box;
     phy_ir_symbol head_lorentz_dot;
     phy_ir_symbol head_propagator;
     phy_ir_symbol head_tadpole;
@@ -68,6 +70,9 @@ phy_status phy_phi4_model_create(phy_cas *cas, const char *field_name,
     }
     if (status == PHY_OK) {
         status = intern_head(ir, "Partial", &model->head_partial);
+    }
+    if (status == PHY_OK) {
+        status = intern_head(ir, "Box", &model->head_box);
     }
     if (status == PHY_OK) {
         status =
@@ -259,6 +264,63 @@ phy_status phy_phi4_lagrangian(const phy_phi4_model *model,
     return status;
 }
 
+phy_status phy_phi4_equation_of_motion(const phy_phi4_model *model,
+                                       phy_ir_ref *out_lhs)
+{
+    if (model == NULL || out_lhs == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    phy_ir_context *ir = phy_cas_ir(model->cas);
+    phy_ir_ref field = PHY_IR_NULL;
+    phy_status status = model_field(model, &field);
+    phy_ir_ref box = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        box = phy_ir_operator(ir, model->head_box, &field, 1u);
+        if (box == PHY_IR_NULL) {
+            status = ir_failure(ir);
+        }
+    }
+
+    phy_ir_ref two = PHY_IR_NULL;
+    phy_ir_ref three = PHY_IR_NULL;
+    phy_ir_ref sixth = PHY_IR_NULL;
+    phy_ir_ref mass_squared = PHY_IR_NULL;
+    phy_ir_ref field_cubed = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = phy_cas_number(model->cas, 2, 1, &two);
+    }
+    if (status == PHY_OK) {
+        status = phy_cas_number(model->cas, 3, 1, &three);
+    }
+    if (status == PHY_OK) {
+        status = phy_cas_number(model->cas, 1, 6, &sixth);
+    }
+    if (status == PHY_OK) {
+        status =
+            phy_cas_pow(model->cas, model->mass, two, &mass_squared);
+    }
+    if (status == PHY_OK) {
+        status = phy_cas_pow(model->cas, field, three, &field_cubed);
+    }
+
+    phy_ir_ref mass_term = PHY_IR_NULL;
+    phy_ir_ref interaction = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        const phy_ir_ref factors[2] = {mass_squared, field};
+        status = phy_cas_mul(model->cas, factors, 2u, &mass_term);
+    }
+    if (status == PHY_OK) {
+        const phy_ir_ref factors[3] = {
+            sixth, model->coupling, field_cubed};
+        status = phy_cas_mul(model->cas, factors, 3u, &interaction);
+    }
+    if (status == PHY_OK) {
+        const phy_ir_ref terms[3] = {box, mass_term, interaction};
+        status = phy_cas_add(model->cas, terms, 3u, out_lhs);
+    }
+    return status;
+}
+
 phy_status phy_phi4_inverse_propagator(const phy_phi4_model *model,
                                        phy_ir_ref momentum_squared,
                                        phy_ir_ref *out_expression)
@@ -313,6 +375,88 @@ phy_status phy_phi4_vertex_stripped_i(const phy_phi4_model *model,
         return PHY_ERR_INVALID_ARGUMENT;
     }
     return phy_cas_neg(model->cas, model->coupling, out_vertex);
+}
+
+phy_status phy_phi4_diagram_validate(const phy_phi4_model *model,
+                                     const phy_phi4_diagram *diagram)
+{
+    if (model == NULL || diagram == NULL ||
+        diagram->symmetry_factor == PHY_IR_NULL ||
+        diagram->coupling_weight == PHY_IR_NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    const uint64_t vertex_half_edges = 4ull * diagram->vertices;
+    const uint64_t line_half_edges =
+        2ull * diagram->internal_lines + diagram->external_legs;
+    if (vertex_half_edges != line_half_edges) {
+        return PHY_ERR_ASSUMPTION;
+    }
+    if (diagram->internal_lines + 1u < diagram->vertices ||
+        diagram->loop_order !=
+            diagram->internal_lines - diagram->vertices + 1u) {
+        return PHY_ERR_ASSUMPTION;
+    }
+    const int64_t degree =
+        (int64_t)model->dimension * diagram->loop_order -
+        2ll * diagram->internal_lines;
+    if (degree < INT_MIN || degree > INT_MAX) {
+        return PHY_ERR_OVERFLOW;
+    }
+    if (diagram->superficial_degree != (int)degree) {
+        return PHY_ERR_ASSUMPTION;
+    }
+    if ((diagram->loop_order == 0u) !=
+        (diagram->loop_integral == PHY_IR_NULL)) {
+        return PHY_ERR_ASSUMPTION;
+    }
+    return PHY_OK;
+}
+
+phy_status phy_phi4_diagram_expression(const phy_phi4_model *model,
+                                       const phy_phi4_diagram *diagram,
+                                       phy_ir_ref *out_expression)
+{
+    if (out_expression == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    const phy_status status = phy_phi4_diagram_validate(model, diagram);
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (diagram->loop_integral == PHY_IR_NULL) {
+        *out_expression = diagram->coupling_weight;
+        return PHY_OK;
+    }
+    const phy_ir_ref factors[2] = {
+        diagram->coupling_weight, diagram->loop_integral};
+    return phy_cas_mul(model->cas, factors, 2u, out_expression);
+}
+
+phy_status phy_phi4_tree_2to2(const phy_phi4_model *model,
+                              phy_phi4_diagram *out_diagram)
+{
+    if (model == NULL || out_diagram == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    phy_phi4_diagram diagram;
+    memset(&diagram, 0, sizeof diagram);
+    diagram.kind = PHY_PHI4_DIAGRAM_TREE_4PT;
+    diagram.vertices = 1u;
+    diagram.external_legs = 4u;
+    diagram.superficial_degree = 0;
+    phy_status status =
+        phy_cas_number(model->cas, 1, 1, &diagram.symmetry_factor);
+    if (status == PHY_OK) {
+        status = phy_phi4_vertex_stripped_i(
+            model, &diagram.coupling_weight);
+    }
+    if (status == PHY_OK) {
+        status = phy_phi4_diagram_validate(model, &diagram);
+    }
+    if (status == PHY_OK) {
+        *out_diagram = diagram;
+    }
+    return status;
 }
 
 static phy_status master_integral(
@@ -374,13 +518,24 @@ static phy_status fill_diagram(
     }
     if (status == PHY_OK) {
         phy_phi4_diagram result;
+        memset(&result, 0, sizeof result);
         result.kind = kind;
+        result.vertices =
+            kind == PHY_PHI4_DIAGRAM_TADPOLE_2PT ? 1u : 2u;
+        result.internal_lines =
+            kind == PHY_PHI4_DIAGRAM_TADPOLE_2PT ? 1u : 2u;
         result.loop_order = 1u;
         result.external_legs = external_legs;
+        result.superficial_degree =
+            (int)model->dimension -
+            2 * (int)result.internal_lines;
         result.symmetry_factor = half;
         result.coupling_weight = weight;
         result.loop_integral = integral;
-        *out_diagram = result;
+        status = phy_phi4_diagram_validate(model, &result);
+        if (status == PHY_OK) {
+            *out_diagram = result;
+        }
     }
     return status;
 }

@@ -28,6 +28,10 @@ static const char *const kEvalHeadNames[EVAL_HEAD_COUNT] = {
 
     "Curvature",    "InverseMetric",    "Christoffel", "Riemann",
     "RiemannMixed", "Ricci",            "RicciScalar", "Einstein",
+    "Kretschmann",  "CovariantDerivative",
+
+    "Phi4Lagrangian", "Phi4EOM",         "Phi4Diagrams",
+    "MandelstamReduce", "DiracTrace",
 
     "Component",    "Degree",           "Dimension",   "Rank",
     "ZeroQ",        "EquivalentQ",

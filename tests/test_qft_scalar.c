@@ -111,6 +111,42 @@ static void test_free_rules(void)
     fixture_close(&f);
 }
 
+static void test_equation_of_motion_and_tree(void)
+{
+    fixture f = fixture_open();
+    phy_ir_ref eom = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_phi4_equation_of_motion(f.model, &eom), PHY_OK);
+    char text[1024];
+    size_t required = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_ir_write(f.ir, eom, text, sizeof text, &required), PHY_OK);
+    PHY_CHECK(strstr(text, "Box") != NULL);
+    PHY_CHECK(strstr(text, "ScalarField") != NULL);
+    PHY_CHECK(strstr(text, "(rat 1 6)") != NULL);
+
+    phy_phi4_diagram tree;
+    PHY_CHECK_EQ_INT(phy_phi4_tree_2to2(f.model, &tree), PHY_OK);
+    PHY_CHECK_EQ_INT(tree.kind, PHY_PHI4_DIAGRAM_TREE_4PT);
+    PHY_CHECK_EQ_INT(tree.vertices, 1);
+    PHY_CHECK_EQ_INT(tree.internal_lines, 0);
+    PHY_CHECK_EQ_INT(tree.external_legs, 4);
+    PHY_CHECK_EQ_INT(tree.loop_order, 0);
+    PHY_CHECK_EQ_INT(tree.superficial_degree, 0);
+    PHY_CHECK_EQ_INT(tree.loop_integral, PHY_IR_NULL);
+    PHY_CHECK_EQ_INT(
+        phy_phi4_diagram_validate(f.model, &tree), PHY_OK);
+
+    phy_ir_ref expected = PHY_IR_NULL;
+    phy_ir_ref amplitude = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_neg(f.cas, f.coupling, &expected), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_phi4_diagram_expression(f.model, &tree, &amplitude), PHY_OK);
+    expect_equivalent(f.cas, amplitude, expected);
+    fixture_close(&f);
+}
+
 static void test_one_loop_diagram_corpus(void)
 {
     fixture f = fixture_open();
@@ -145,7 +181,13 @@ static void test_one_loop_diagram_corpus(void)
     }
 
     PHY_CHECK_EQ_INT(diagrams[0].kind, PHY_PHI4_DIAGRAM_TADPOLE_2PT);
+    PHY_CHECK_EQ_INT(diagrams[0].vertices, 1);
+    PHY_CHECK_EQ_INT(diagrams[0].internal_lines, 1);
+    PHY_CHECK_EQ_INT(diagrams[0].loop_order, 1);
     PHY_CHECK_EQ_INT(diagrams[0].external_legs, 2);
+    PHY_CHECK_EQ_INT(diagrams[0].superficial_degree, 2);
+    PHY_CHECK_EQ_INT(
+        phy_phi4_diagram_validate(f.model, &diagrams[0]), PHY_OK);
     expect_equivalent(
         f.cas, diagrams[0].coupling_weight, tadpole_weight);
     PHY_CHECK_EQ_STR(
@@ -159,8 +201,13 @@ static void test_one_loop_diagram_corpus(void)
         PHY_PHI4_DIAGRAM_BUBBLE_U};
     for (unsigned index = 1u; index < 4u; ++index) {
         PHY_CHECK_EQ_INT(diagrams[index].kind, kinds[index - 1u]);
+        PHY_CHECK_EQ_INT(diagrams[index].vertices, 2);
+        PHY_CHECK_EQ_INT(diagrams[index].internal_lines, 2);
         PHY_CHECK_EQ_INT(diagrams[index].loop_order, 1);
         PHY_CHECK_EQ_INT(diagrams[index].external_legs, 4);
+        PHY_CHECK_EQ_INT(diagrams[index].superficial_degree, 0);
+        PHY_CHECK_EQ_INT(
+            phy_phi4_diagram_validate(f.model, &diagrams[index]), PHY_OK);
         expect_equivalent(
             f.cas, diagrams[index].symmetry_factor, half);
         expect_equivalent(
@@ -169,7 +216,30 @@ static void test_one_loop_diagram_corpus(void)
             phy_ir_symbol_name(
                 f.ir, phy_ir_head(f.ir, diagrams[index].loop_integral)),
             "BubbleIntegral");
+        phy_ir_ref expression = PHY_IR_NULL;
+        PHY_CHECK_EQ_INT(
+            phy_phi4_diagram_expression(
+                f.model, &diagrams[index], &expression),
+            PHY_OK);
+        PHY_CHECK(expression != PHY_IR_NULL);
     }
+    fixture_close(&f);
+}
+
+static void test_invalid_graphs_are_rejected(void)
+{
+    fixture f = fixture_open();
+    phy_phi4_diagram tree;
+    PHY_CHECK_EQ_INT(phy_phi4_tree_2to2(f.model, &tree), PHY_OK);
+    tree.external_legs = 2u;
+    PHY_CHECK_EQ_INT(
+        phy_phi4_diagram_validate(f.model, &tree),
+        PHY_ERR_ASSUMPTION);
+    tree.external_legs = 4u;
+    tree.loop_order = 1u;
+    PHY_CHECK_EQ_INT(
+        phy_phi4_diagram_validate(f.model, &tree),
+        PHY_ERR_ASSUMPTION);
     fixture_close(&f);
 }
 
@@ -203,7 +273,9 @@ int main(void)
     }
     PHY_TEST_CASE(test_model_and_lagrangian);
     PHY_TEST_CASE(test_free_rules);
+    PHY_TEST_CASE(test_equation_of_motion_and_tree);
     PHY_TEST_CASE(test_one_loop_diagram_corpus);
+    PHY_TEST_CASE(test_invalid_graphs_are_rejected);
     PHY_TEST_CASE(test_rejections_are_typed);
     const int result = PHY_TEST_REPORT("test_qft_scalar");
     phy_platform_shutdown();

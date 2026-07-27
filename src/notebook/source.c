@@ -183,12 +183,14 @@ static const char *const kObjectHeads[] = {
 
     "Curvature",    "InverseMetric",    "Christoffel",   "Riemann",
     "RiemannMixed", "Ricci",            "RicciScalar",   "Einstein",
+    "Kretschmann",  "CovariantDerivative",
 
     "Component",    "Degree",           "Dimension",     "Rank",
     "ZeroQ",        "EquivalentQ",
 
     "ScalarField",  "Propagator",       "Vertex",        "TadpoleIntegral",
-    "BubbleIntegral",
+    "BubbleIntegral", "Phi4Lagrangian",  "Phi4EOM",       "Phi4Diagrams",
+    "LorentzDot",   "MandelstamReduce", "DiracTrace",
 };
 
 static const char *canonical_object_head(const char *name)

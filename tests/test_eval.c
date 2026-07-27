@@ -473,6 +473,60 @@ static void test_curvature_pipeline(void)
     expect_decision(&f, "ZeroQ[Einstein[c]]", "True");
     expect_scalar(&f, "Component[InverseMetric[c], 0, 0]", "(^ a -2)");
     expect_scalar(&f, "Rank[Riemann[c]]", "4");
+    expect_scalar(&f, "Kretschmann[c]", "(* 4 (^ a -4))");
+    expect_decision(
+        &f, "ZeroQ[CovariantDerivative[Ricci[c], c]]", "True");
+    fixture_close(&f);
+}
+
+/* ----------------------------------------------------- bounded QFT front end */
+
+static void test_qft_heads_reach_native_backends(void)
+{
+    fixture f = fixture_open();
+
+    expect_scalar(&f, "DiracTrace[{}]", "4");
+    expect_scalar(
+        &f, "DiracTrace[{Up[mu,Lorentz],Down[mu,Lorentz]}]", "16");
+
+    expect_decision(
+        &f,
+        "EquivalentQ["
+        "MandelstamReduce[LorentzDot[p1,p2],{p1,p2,p3,p4},"
+        "{m1,m2,m3,m4},Peskin],"
+        "(s-m1^2-m2^2)/2]",
+        "True");
+    expect_decision(
+        &f,
+        "EquivalentQ["
+        "MandelstamReduce[LorentzDot[p1,p3],{p1,p2,p3,p4},"
+        "{m1,m2,m3,m4},AllIncoming],"
+        "(t-m1^2-m3^2)/2]",
+        "True");
+
+    const phy_value lagrangian =
+        run(&f, "Phi4Lagrangian[phi,m,lambda,4]");
+    PHY_CHECK_EQ_INT(lagrangian.kind, PHY_VALUE_SCALAR);
+    const char *lagrangian_text = expansion(&f, lagrangian);
+    PHY_CHECK(strstr(lagrangian_text, "ScalarField") != NULL);
+    PHY_CHECK(strstr(lagrangian_text, "Partial") != NULL);
+
+    const phy_value eom = run(&f, "Phi4EOM[phi,m,lambda,4]");
+    PHY_CHECK_EQ_INT(eom.kind, PHY_VALUE_SCALAR);
+    const char *eom_text = expansion(&f, eom);
+    PHY_CHECK(strstr(eom_text, "Box") != NULL);
+    PHY_CHECK(strstr(eom_text, "(rat 1 6)") != NULL);
+
+    const phy_value diagrams =
+        run(&f, "Phi4Diagrams[phi,m,lambda,4,s,t,u]");
+    PHY_CHECK_EQ_INT(diagrams.kind, PHY_VALUE_SCALAR);
+    PHY_CHECK_EQ_INT(
+        phy_ir_kind_of(f.ir, diagrams.as.scalar), PHY_IR_FUNCTION);
+    PHY_CHECK_EQ_INT(
+        phy_ir_child_count(f.ir, diagrams.as.scalar), 5);
+    const char *diagram_text = expansion(&f, diagrams);
+    PHY_CHECK(strstr(diagram_text, "TadpoleIntegral") != NULL);
+    PHY_CHECK(strstr(diagram_text, "BubbleIntegral") != NULL);
     fixture_close(&f);
 }
 
@@ -510,11 +564,7 @@ static void test_reserved_heads_never_silently_pass_through(void)
     expect_scalar(&f, "k = 2", "2");
     expect_status(&f, "D[k^2, k]", PHY_ERR_TYPE);
 
-    /*
-     * The bounded scalar-QFT heads have no evaluator yet. They are the one
-     * group that still constructs typed IR, and docs/EVALUATOR.md says so;
-     * they are checked here so that changing it is a deliberate act.
-     */
+    /* Output constructors remain typed IR and are not mistaken for commands. */
     const phy_value scalar_field = run(&f, "ScalarField[phi, 4]");
     PHY_CHECK_EQ_INT(scalar_field.kind, PHY_VALUE_SCALAR);
     PHY_CHECK_EQ_INT(phy_ir_kind_of(f.ir, scalar_field.as.scalar),
@@ -543,7 +593,10 @@ static void test_every_evaluated_head_rejects_empty_arguments(void)
         "YangMillsLagrangian",                 "ColorComponent",
         "Curvature",    "InverseMetric",       "Christoffel",
         "Riemann",      "RiemannMixed",        "Ricci",
-        "RicciScalar",  "Einstein",            "Component",
+        "RicciScalar",  "Einstein",            "Kretschmann",
+        "CovariantDerivative",                 "Phi4Lagrangian",
+        "Phi4EOM",      "Phi4Diagrams",         "MandelstamReduce",
+        "DiracTrace",   "Component",
         "Degree",       "Dimension",           "Rank",
         "ZeroQ",        "EquivalentQ",
     };
@@ -736,6 +789,7 @@ int main(void)
     PHY_TEST_CASE(test_abelian_gauge_field);
     PHY_TEST_CASE(test_nonabelian_gauge_field);
     PHY_TEST_CASE(test_curvature_pipeline);
+    PHY_TEST_CASE(test_qft_heads_reach_native_backends);
     PHY_TEST_CASE(test_reserved_heads_never_silently_pass_through);
     PHY_TEST_CASE(test_every_evaluated_head_rejects_empty_arguments);
     PHY_TEST_CASE(test_objects_are_swept_and_never_leaked);

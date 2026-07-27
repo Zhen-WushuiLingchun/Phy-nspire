@@ -99,6 +99,21 @@ static const phy_palette_entry kCasLieQft[] = {
      sizeof("YangMillsLagrangian[") - 1u},
     {"Curvature bundle", "c = Curvature[g]", sizeof("c = Curvature[") - 1u},
     {"Ricci scalar", "RicciScalar[c]", sizeof("RicciScalar[") - 1u},
+    {"Kretschmann invariant", "Kretschmann[c]",
+     sizeof("Kretschmann[") - 1u},
+    {"Tensor covariant derivative", "CovariantDerivative[Ricci[c],c]",
+     sizeof("CovariantDerivative[") - 1u},
+    {"Dirac trace", "DiracTrace[{mu,nu,rho,sigma}]",
+     sizeof("DiracTrace[{") - 1u},
+    {"Mandelstam reduction",
+     "MandelstamReduce[LorentzDot[p1,p2],{p1,p2,p3,p4},{m1,m2,m3,m4},Peskin]",
+     sizeof("MandelstamReduce[") - 1u},
+    {"phi4 Lagrangian", "Phi4Lagrangian[phi,m,lambda,4]",
+     sizeof("Phi4Lagrangian[") - 1u},
+    {"phi4 equation of motion", "Phi4EOM[phi,m,lambda,4]",
+     sizeof("Phi4EOM[") - 1u},
+    {"phi4 tree and one-loop set", "Phi4Diagrams[phi,m,lambda,4,s,t,u]",
+     sizeof("Phi4Diagrams[") - 1u},
 };
 
 static const palette_category kCasCategories[] = {
