@@ -146,6 +146,8 @@ add_library(phy_core STATIC
     src/gr/gr.c
     src/lie/lie.c
     src/qft/scalar.c
+    src/qft/lorentz.c
+    src/qft/dirac.c
     src/cas/num.c
     src/cas/engine.c
     src/cas/simplify.c
@@ -205,7 +207,7 @@ if(BUILD_TESTING)
                   test_smoke test_document test_storage test_workspace
                   test_notebook test_ir test_tensor test_gr test_lie
                   test_qft_scalar test_yang_mills test_cas test_geom
-                  test_geom_metric test_eval)
+                  test_geom_metric test_eval test_lorentz)
         add_executable(${suite} tests/${suite}.c)
         target_link_libraries(${suite} PRIVATE phy_core phy_platform_host phy_warnings)
         target_include_directories(${suite} PRIVATE tests)
@@ -268,6 +270,19 @@ if(BUILD_TESTING)
         target_link_libraries(test_qo_golden PRIVATE m)
     endif()
     add_test(NAME test_qo_golden COMMAND test_qo_golden)
+
+    # The native Dirac engine is checked against the oracle rather than
+    # against transcribed expected values, so this one suite links both. The
+    # dependency runs one way only: the oracle target above still links
+    # nothing from phy_core, so a core regression cannot mask a physics one.
+    add_executable(test_dirac tests/test_dirac.c tests/oracle/qo_dirac.c)
+    target_include_directories(test_dirac PRIVATE tests tests/oracle)
+    target_link_libraries(test_dirac PRIVATE phy_core phy_platform_host
+                                             phy_warnings)
+    if(NOT MSVC)
+        target_link_libraries(test_dirac PRIVATE m)
+    endif()
+    add_test(NAME test_dirac COMMAND test_dirac)
 endif()
 
 # Host size report. The device budget is enforced by tools/size-report.sh
