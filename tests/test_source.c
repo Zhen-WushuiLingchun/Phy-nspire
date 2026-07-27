@@ -133,6 +133,23 @@ static void test_commands_and_functions(void)
     command = parse(ir, "HodgeStar[Wedge[a,b]]");
     PHY_CHECK_EQ_STR(
         render(ir, command.expression), "(op HodgeStar (wedge a b))");
+    command = parse(ir, "Manifold[M,4,Lorentzian]");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(op Manifold M 4 Lorentzian)");
+    command = parse(ir, "HodgeStar[omega,g]");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression), "(op HodgeStar omega g)");
+    command = parse(ir, "FieldStrength[A,g]");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression), "(op FieldStrength A g)");
+    command = parse(ir, "CovariantD[A,omega,g]");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression), "(op CovariantD A omega g)");
+    command = parse(ir, "YangMillsLagrangian[F,gMetric,h]");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(op YangMillsLagrangian F gMetric h)");
 
     phy_ir_context_destroy(ir);
     phy_platform_shutdown();

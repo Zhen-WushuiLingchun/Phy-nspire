@@ -280,8 +280,16 @@ The target is not a dependency of `all` and the probe is not in the Makefile's
 
 Index canonicalization, abstract indices, and dummy-index renaming — Phase 2
 work that starts from the papers and BSGS fixtures in
-`docs/references/TENSOR_GEOMETRY.md`, and which nothing here anticipates.
-Differential forms, wedge products, Lie derivatives, torsion, tetrads, and
-frames. Symmetrization and antisymmetrization operators. Dimensions above 4
-and ranks above 4. Scalar functions beyond the native CAS contract remain in
-the CAS layer rather than being reimplemented here.
+`docs/references/TENSOR_GEOMETRY.md`, and which nothing here anticipates. Lie
+derivatives, torsion, tetrads, and frames. Symmetrization and
+antisymmetrization operators. Dimensions above 4 and ranks above 4. Scalar
+functions beyond the native CAS contract remain in the CAS layer rather than
+being reimplemented here.
+
+Differential forms and wedge products have since landed, but not here and not
+as tensors. `include/phy/geom.h` stores a form as its `C(n,p)` strictly
+increasing components, so antisymmetry is the representation rather than a
+declared symmetry this layer maintains; see [`docs/GEOMETRY.md`](GEOMETRY.md).
+What that layer does reuse is `phy_chart` and, for the interior product, a
+rank-1 contravariant `phy_tensor` — a vector field is a rank-1 tensor, and
+there was no reason to invent a second one.

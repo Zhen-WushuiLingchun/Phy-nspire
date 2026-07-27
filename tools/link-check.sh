@@ -22,7 +22,7 @@
 # Nothing here touches dist/. The probe is built into its own directory and
 # is never linked into the product.
 #
-# Usage: tools/link-check.sh [ir|cas]   (default ir)
+# Usage: tools/link-check.sh [ir|cas|geom|ym]   (default ir)
 #        after eval "$(tools/bootstrap-ndless.sh --env-only)"
 
 set -euo pipefail
@@ -39,9 +39,26 @@ COMMON_SOURCES=(
     src/ir/order.c
     src/ir/text.c
     src/core/status.c
+    src/input/modifier.c
+    src/input/pointer.c
     src/platform/ndless/platform_ndless.c
     src/platform/ndless/crt_compat.c
 )
+
+# The scalar layer, needed by anything that computes rather than only stores.
+CAS_SOURCES=(
+    src/cas/num.c
+    src/cas/engine.c
+    src/cas/simplify.c
+    src/cas/diff.c
+    src/cas/normal.c
+)
+
+# Entry points are derived from the header by this pattern rather than listed,
+# so adding a public function without extending the probe fails the check
+# instead of quietly going unlinked. Most layers name their functions after
+# themselves; the geometry layer exports two families.
+SYMBOL_RE="phy_${LAYER}_"
 
 case "$LAYER" in
 ir)
@@ -62,15 +79,48 @@ cas)
     OBJECT_GLOB="src_cas_*.o"
     EXCLUDE='^$'
     MIN_ENTRY_POINTS=20
-    SOURCES=("${COMMON_SOURCES[@]}"
-             src/cas/num.c
-             src/cas/engine.c
-             src/cas/simplify.c
-             src/cas/diff.c
-             src/cas/normal.c)
+    SOURCES=("${COMMON_SOURCES[@]}" "${CAS_SOURCES[@]}")
+    ;;
+geom)
+    LABEL="geometry"
+    PROBE="tests/device/geom_link_probe.c"
+    HEADER="include/phy/geom.h"
+    OBJECT_GLOB="src_geom_*.o"
+    SYMBOL_RE='phy_(manifold|form)_'
+    EXCLUDE='^$'
+    MIN_ENTRY_POINTS=30
+    SOURCES=("${COMMON_SOURCES[@]}" "${CAS_SOURCES[@]}"
+             src/tensor/chart.c
+             src/tensor/symmetry.c
+             src/tensor/tensor.c
+             src/tensor/ops.c
+             src/geom/manifold.c
+             src/geom/form.c
+             src/geom/exterior.c
+             src/geom/metric.c)
+    ;;
+ym)
+    LABEL="Yang-Mills"
+    PROBE="tests/device/yang_mills_link_probe.c"
+    HEADER="include/phy/yang_mills.h"
+    OBJECT_GLOB="src_qft_yang_mills.o"
+    SYMBOL_RE='phy_(lie_form|yang_mills)_'
+    EXCLUDE='^$'
+    MIN_ENTRY_POINTS=15
+    SOURCES=("${COMMON_SOURCES[@]}" "${CAS_SOURCES[@]}"
+             src/tensor/chart.c
+             src/tensor/symmetry.c
+             src/tensor/tensor.c
+             src/tensor/ops.c
+             src/lie/lie.c
+             src/geom/manifold.c
+             src/geom/form.c
+             src/geom/exterior.c
+             src/geom/metric.c
+             src/qft/yang_mills.c)
     ;;
 *)
-    echo "usage: tools/link-check.sh [ir|cas]" >&2
+    echo "usage: tools/link-check.sh [ir|cas|geom|ym]" >&2
     exit 2
     ;;
 esac
@@ -107,7 +157,8 @@ SIZE="$(find_binutil arm-none-eabi-size)"
 # these symbols survive collection because the probe genuinely references
 # them, not because collection was disabled.
 GCCFLAGS=(-Wall -Wextra -Wshadow -Wpointer-arith -std=c11 -marm -Os -DNDEBUG
-          -ffunction-sections -fdata-sections -Iinclude -Isrc/ir -Isrc/cas)
+          -ffunction-sections -fdata-sections -Iinclude -Isrc/ir -Isrc/cas
+          -Isrc/tensor -Isrc/geom)
 LDFLAGS=(-Wl,--gc-sections -Wl,--no-warn-rwx-segments)
 
 PROBE_NAME="$(basename "$PROBE" .c)"
@@ -158,7 +209,7 @@ nspire-ld "${objects[@]}" -o "$ELF" "${LDFLAGS[@]}"
 # adding a public function without extending the probe fails this check
 # instead of silently going unlinked.
 mapfile -t declared < <(
-    grep -oE "\bphy_${LAYER}_[a-z0-9_]+[[:space:]]*\(" "$HEADER" |
+    grep -oE "\b${SYMBOL_RE}[a-z0-9_]+[[:space:]]*\(" "$HEADER" |
         sed -E 's/[[:space:]]*\($//' |
         grep -Ev "$EXCLUDE" |
         sort -u
@@ -214,9 +265,14 @@ printf '  ok    %d/%d public entry points retained\n' \
 # The IR deliberately carries finite real literals, so its probe may retain
 # comparison helpers. The scalar CAS is stricter: it carries those atoms
 # without evaluating them, and therefore must retain neither libm nor any
-# soft-float arithmetic/comparison helper.
+# soft-float arithmetic/comparison helper. The geometry layer is held to the
+# CAS's standard because it is the first physics module to call the CAS, and a
+# form operation that reached libm would defeat the point of it.
 BANNED_PATTERN='(^|[[:space:]_])(_dtoa|_strtod|_printf_float|_scanf_float|_vfprintf|__sf_fake)'
-if [ "$LAYER" = "cas" ]; then
+STRICT_FLOAT=0
+if [ "$LAYER" = "cas" ] || [ "$LAYER" = "geom" ] ||
+   [ "$LAYER" = "ym" ]; then
+    STRICT_FLOAT=1
     BANNED_PATTERN+='|[[:space:]]_?(sin|cos|tan|exp|log|pow|sqrt|floor|ceil|fmod)$|__aeabi_[df]'
 fi
 banned=$("$NM" "$ELF" | grep -Ei "$BANNED_PATTERN" || true)
@@ -229,7 +285,7 @@ if [ -n "$banned" ]; then
     printf '%s\n' "$banned" | sed 's/^/          /' >&2
     exit 1
 fi
-if [ "$LAYER" = "cas" ]; then
+if [ "$STRICT_FLOAT" = "1" ]; then
     printf '  ok    no float formatter, libm call, or soft-float helper\n'
 else
     printf '  ok    no _dtoa / _strtod / _printf_float in the image\n'

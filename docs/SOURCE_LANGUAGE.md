@@ -49,17 +49,19 @@ The parser also maps useful FullForm constructors directly to IR:
 - `Tensor[head,indices...]`, `Operator[head,args...]`;
 - `NonCommutativeMultiply`, `Wedge`;
 - `Commutator[A,B]` to the exact typed noncommutative difference `A.B-B.A`;
-- typed physics-object heads `LieBracket`, `StructureConstant`,
-  `ScalarField`, `Propagator`, `Vertex`, `TadpoleIntegral`,
-  `BubbleIntegral`, `ExteriorD`, `InteriorProduct`, and `HodgeStar`;
+- typed physics-object heads `LieBracket`, `StructureConstant`, `LieGroup`,
+  `Manifold`, `DifferentialForm`, `Metric`, `ScalarField`, `Propagator`,
+  `Vertex`, `TadpoleIntegral`, `BubbleIntegral`, `ExteriorD`,
+  `InteriorProduct`, `HodgeStar`, `GaugeConnection`, `CovariantD`,
+  `FieldStrength`, `GaugeVariation`, and `YangMillsLagrangian`;
 - `{...}` to the structural `List` head.
 
 Except for `Commutator`, these physics-object spellings currently construct
 typed IR for display, persistence, and later dispatch; a bare cell's scalar
 simplifier preserves them but does not claim to run the corresponding
 stateful geometry/QFT backend. Unknown non-reserved heads remain typed function
-applications. That is the extension point for `Metric`, `Christoffel`, and
-`DiracTrace`; it does not grant them evaluator semantics prematurely.
+applications. That is the extension point for `Christoffel` and `DiracTrace`;
+it does not grant them evaluator semantics prematurely.
 
 ## Command registry
 

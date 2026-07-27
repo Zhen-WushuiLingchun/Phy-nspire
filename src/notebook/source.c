@@ -431,6 +431,10 @@ static phy_ir_ref parse_primary(source_reader *reader)
         result = phy_ir_add(reader->ir, terms, 2u);
     } else if (name_equals(name, "LieBracket") ||
                name_equals(name, "StructureConstant") ||
+               name_equals(name, "LieGroup") ||
+               name_equals(name, "Manifold") ||
+               name_equals(name, "DifferentialForm") ||
+               name_equals(name, "Metric") ||
                name_equals(name, "ScalarField") ||
                name_equals(name, "Propagator") ||
                name_equals(name, "Vertex") ||
@@ -438,7 +442,12 @@ static phy_ir_ref parse_primary(source_reader *reader)
                name_equals(name, "BubbleIntegral") ||
                name_equals(name, "ExteriorD") ||
                name_equals(name, "InteriorProduct") ||
-               name_equals(name, "HodgeStar")) {
+               name_equals(name, "HodgeStar") ||
+               name_equals(name, "GaugeConnection") ||
+               name_equals(name, "CovariantD") ||
+               name_equals(name, "FieldStrength") ||
+               name_equals(name, "GaugeVariation") ||
+               name_equals(name, "YangMillsLagrangian")) {
         const phy_ir_symbol head = phy_ir_intern(reader->ir, name);
         result = phy_ir_operator(reader->ir, head, arguments, count);
     } else {

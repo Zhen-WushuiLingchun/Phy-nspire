@@ -19,10 +19,10 @@ Output:
 
 Verification:
 
-- host smoke test — done, `ctest` runs seventeen tests covering the platform,
-  relative pointer, source language, drawing, notebook, IR, tensor storage,
-  CAS, QFT oracle, and full lifecycle;
-- generated `.tns` size report — done, 1,050,677 bytes against a 6 MiB
+- host smoke test — done; the suite covers the platform, relative pointer,
+  source language, drawing, notebook, IR, tensor storage, differential forms,
+  GR, Lie/QFT foundations, CAS, QFT oracle, and full lifecycle;
+- generated `.tns` size report — done, 1,055,745 bytes against a 6 MiB
   ceiling after the nMarkdown math integration;
 - launch of a Phy-nspire artifact on the real CX II — done on 2026-07-26 with
   the observable CAS smoke screen;
@@ -113,20 +113,41 @@ without float formatting, libm, or ARM soft-float dependencies. The observable
 
 Status: component storage, slot symmetries, exact component contraction,
 raise/lower, cofactor metric inversion, and component partial derivatives are
-implemented. Manifolds beyond one coordinate chart, abstract dummy-index
-canonicalization, covariant derivatives, and differential forms remain open.
+implemented. The differential-form layer over them has also landed — manifolds
+with
+orientation and signature, canonical antisymmetric components, and exact wedge,
+exterior derivative, interior product and Hodge dual, documented in
+[`docs/GEOMETRY.md`](GEOMETRY.md). Transition maps/pullbacks, abstract
+dummy-index canonicalization, and higher-level covariant form operations remain
+open.
 
 Output:
 
 - manifolds, charts, metrics, indices, symmetries, contraction, canonical dummy
-  indices, covariant derivatives, and differential forms;
+  indices, covariant derivatives, and differential forms — forms, contraction,
+  raise/lower, and coordinate-metric GR are done; canonical dummy indices and
+  higher-level covariant form syntax remain outstanding;
 - optional xPerm C integration after independent tests pass.
+
+Deferred with a named blocking dependency:
+
+- pullback along a coordinate map, which needs a validated `phy_map` with
+  provably disjoint coordinate symbols — substituting without that silently
+  captures and returns a wrong answer.
 
 Verification:
 
-- tensor identities and canonicalization properties;
+- tensor identities and canonicalization properties — the exterior-calculus
+  identities are done, `tests/test_geom.c`, 4,581 checks: graded commutativity
+  and associativity of the wedge, `d^2 = 0`, both graded Leibniz rules,
+  `iota_v iota_v = 0`, and `** = (-1)^{p(n-p)} sign(det g)` at every degree in
+  Euclidean and Lorentzian 2D, Euclidean 3D and Minkowski 4D;
+- general coordinate-metric Hodge/volume cases are done for diagonal,
+  non-diagonal, singular, and unoriented inputs in `tests/test_geom_metric.c`;
 - comparison corpus derived from xAct examples;
-- bounded rank/dimension benchmarks on desktop and CX II.
+- bounded rank/dimension benchmarks on desktop and CX II;
+- the ARM geometry link check retains 44/44 APIs with 8,297 bytes of layer
+  text and no float/libm/soft-float dependency;
 
 ## Phase 3 — general relativity and black holes
 
@@ -170,8 +191,13 @@ operations, and built-in `U(1)`, `SU(2)`, `SO(3)`, `SU(3)`, and `SO(1,3)`
 metadata. A bounded real `phi^4` layer now emits the exact Lagrangian,
 propagator/vertex objects, and the one-loop tadpole plus `s/t/u` bubble
 topologies with exact symmetry/coupling weights and unevaluated master
-integrals. Lorentz/Dirac/SU(N) reducers, dimensional regularization, general
-graph generation, and renormalization remain scoped rather than implemented.
+integrals. The differential-form/Lie foundation now also supports
+Lie-algebra-valued forms, `D_A`, non-Abelian
+`F=dA+(g/2)[A,A]`, infinitesimal gauge variations, explicit Bianchi residuals,
+and `-1/2 h_ab F^a wedge star_g(F^b)` with a general coordinate metric.
+Lorentz/Dirac/SU(N) reducers, dimensional regularization, general graph
+generation, gauge fixing/ghosts, Ward identities, and renormalization remain
+scoped rather than implemented.
 The MVP boundary, the pinned
 conventions, the algorithm specification and the verified identity set are in
 [`docs/references/QFT_GAUGE.md`](references/QFT_GAUGE.md); the contracts that
@@ -183,15 +209,18 @@ Output, MVP:
 - Lorentz contraction, Dirac algebra and traces without gamma-5, Mandelstam
   substitutions, and SU(N) color algebra.
 
-Output, deferred with a named blocking dependency (reference §2):
+Output, deferred:
 
 - gamma-5 and chiral projectors, Fierz rearrangement, spin and polarization
-  sums, squared amplitudes, loop integrals, and the covariant
-  derivative/field-strength layer, which needs the Phase 2 tensor core.
+  sums, squared amplitudes, general loop reduction, perturbative gauge-field
+  vertices, gauge fixing/ghosts, and Ward identities.
 
-The next dependency slice now explicitly includes exterior algebra,
-Lie-algebra-valued forms, a bounded `phi^4` field/vertex/propagator workflow,
-and Yang--Mills `F = dA + g A wedge A`; these are not yet implemented.
+Exterior algebra, Lie-algebra-valued forms, the bounded `phi^4`
+field/vertex/propagator workflow, and the classical Yang--Mills
+connection/curvature slice are implemented and documented in
+[`docs/GEOMETRY.md`](GEOMETRY.md),
+[`docs/QFT_SCALAR.md`](QFT_SCALAR.md), and
+[`docs/YANG_MILLS.md`](YANG_MILLS.md).
 
 Verification:
 
@@ -200,6 +229,10 @@ Verification:
   both the Dirac and Weyl representations;
 - Clifford and group-theory identities — done. Ward-identity checks move with
   the deferred amplitude layer;
+- classical gauge acceptance — done for exact U(1)/SU(2) curvature,
+  infinitesimal variation, Bianchi residual, and a general-metric quadratic
+  density; the ARM probe retains 22/22 Yang--Mills APIs with 4,524 bytes of
+  layer text and no float/libm/soft-float dependency;
 - resource-limit behavior on intentionally explosive expressions — **not
   done**, and the proposed ceilings are **UNVERIFIED**. They are combinatorial
   arithmetic plus figures quoted from FORM's manual, measured on unspecified

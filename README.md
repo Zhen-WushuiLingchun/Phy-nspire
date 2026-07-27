@@ -43,34 +43,44 @@ exact fractions and powers. Markdown bodies now typeset inline `$...$` /
 `\(...\)` and display `$$...$$` / `\[...\]` mathematics through the pinned
 nMarkdown OpenType MATH engine.
 
-Three native foundations are now connected through that shell: the typed
+Five native foundations are now in place behind that shell: the typed
 expression IR; a symbolic scalar computer algebra layer over it with
 exact rational arithmetic, a normal form, expansion, substitution,
 differentiation, bounded exact antiderivatives, and an exact zero decision;
-and the component tensor core with charts, dense storage, valence, signed slot
+the component tensor core with charts, dense storage, valence, signed slot
 symmetries, contraction, metric inversion, index raising/lowering, and
-component derivatives. A first native GR layer now computes Christoffel,
+component derivatives; and the differential-geometry layer with oriented
+manifolds, canonical antisymmetric forms, exact wedge, exterior derivative,
+interior product, and both orthonormal/general-metric Hodge duals. A first native GR layer now computes Christoffel,
 Riemann, Ricci, scalar-curvature, and Einstein tensors from a coordinate
 metric; it is host-tested but not yet exposed as notebook commands or timed on
 the calculator.
+Finite exact Lie algebras/groups, a bounded scalar `phi^4` model, and a
+classical Yang--Mills layer add structure constants/Jacobi/Killing operations,
+propagator and one-loop master objects, gauge curvature, covariant
+derivatives, gauge variations, Bianchi residuals, and exact
+`F wedge star_g(F)` densities.
 The CAS answers "unknown" rather than guessing outside its decidable class, so
-the scalar operations needed by the tensor and GR phases no longer depend on
+the scalar operations needed by the tensor, geometry, and GR phases no longer depend on
 integrating Giac.
 
 Measured on the pinned toolchain after the math-engine integration:
-`dist/phy-nspire.tns` is 1,050,677 bytes, 16.7% of the 6 MiB ceiling. The
-strict host suite passes 18/18, including 61,849 explicit checks. The prior
-and current trees pass under AddressSanitizer, UndefinedBehaviorSanitizer, and
-leak detection; the current run includes the C++ rendering slice.
+`dist/phy-nspire.tns` is 1,055,745 bytes, 16.8% of the 6 MiB ceiling. The
+strict Windows host suite passes 23/23 and its assertion-bearing executables
+contain 69,796 explicit checks. The WSL AddressSanitizer/UndefinedBehaviorSanitizer
+suite passes 24/24, including the symbol-report shell test and the C++ rendering
+slice.
 
 The native CAS smoke artifact has run on the target CX II and shown all seven
 exact symbolic checks passing. Returning from it restored Documents normally.
 The earlier notebook shell also passed its input and touchpad acceptance. The
-new 1.0 MiB build containing persistence and nMarkdown LaTeX rendering has
+previous 1.0 MiB build containing persistence and nMarkdown LaTeX rendering has
 been transferred through the repository-owned CLI and verified byte-for-byte
-on the calculator; its physical UI acceptance run is still pending.
-Full differential-form/manifold input, the physics-object palettes, and the
-GR/QFT evaluators remain open. The separate baseline channel-order check remains tracked
+on the calculator. The current geometry/Yang--Mills build is ARM-verified but
+has not yet replaced that device file.
+Differential-geometry/Yang--Mills input heads and palette entries now exist;
+their stateful notebook evaluators, along with the GR/QFT evaluators, remain
+open. The separate baseline channel-order check remains tracked
 in [docs/BUILD.md](docs/BUILD.md).
 
 Start here:
@@ -83,9 +93,11 @@ Start here:
 - [Native coordinate-metric GR](docs/GR.md)
 - [Finite Lie algebra and group metadata](docs/LIE.md)
 - [Bounded scalar phi4 QFT layer](docs/QFT_SCALAR.md)
+- [Yang--Mills symbolic layer](docs/YANG_MILLS.md)
 - [Scalar computer algebra](docs/CAS.md)
 - [Notebook shell and 2D layout](docs/NOTEBOOK.md)
 - [Reader-facing symbolic source language](docs/SOURCE_LANGUAGE.md)
+- [Manifolds and differential forms](docs/GEOMETRY.md)
 - [Roadmap](docs/ROADMAP.md)
 - [ADR-0001: native Ndless architecture](docs/adr/0001-native-ndless-architecture.md)
 - [Initial feasibility evidence](research/feasibility-2026-07-26.md)
@@ -102,6 +114,9 @@ src/ir/           typed expression IR: interning, ordering, serialization
 src/cas/          scalar algebra: normal form, calculus, the zero decision
 src/tensor/       component tensors: charts, storage, slot symmetries
 src/gr/           coordinate-metric GR curvature pipeline
+src/geom/         manifolds and differential forms: wedge, d, iota, Hodge
+src/lie/          exact finite Lie algebras and built-in group metadata
+src/qft/          scalar phi4 objects and classical Yang--Mills operations
 src/gfx/          RGB565 primitives and the built-in debug font
 src/render/       typed-IR layout and the narrow nMarkdown C++ bridge
 src/input/        relative pointer tracking

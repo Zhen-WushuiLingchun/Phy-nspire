@@ -149,9 +149,14 @@ add_library(phy_core STATIC
     src/cas/diff.c
     src/cas/integrate.c
     src/cas/normal.c
+    src/geom/manifold.c
+    src/geom/form.c
+    src/geom/exterior.c
+    src/geom/metric.c
+    src/qft/yang_mills.c
 )
 target_include_directories(phy_core PUBLIC include PRIVATE
-    src/gfx src/ir src/tensor src/cas)
+    src/gfx src/ir src/tensor src/cas src/geom)
 target_link_libraries(phy_core PRIVATE phy_warnings nmarkdown_math)
 if(MSVC)
     target_compile_options(phy_core PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/EHsc>
@@ -188,7 +193,8 @@ if(BUILD_TESTING)
     foreach(suite test_gfx test_formula test_modifier test_pointer test_source test_palette test_platform
                   test_smoke test_document test_storage test_workspace
                   test_notebook test_ir test_tensor test_gr test_lie
-                  test_qft_scalar test_cas)
+                  test_qft_scalar test_yang_mills test_cas test_geom
+                  test_geom_metric)
         add_executable(${suite} tests/${suite}.c)
         target_link_libraries(${suite} PRIVATE phy_core phy_platform_host phy_warnings)
         target_include_directories(${suite} PRIVATE tests)

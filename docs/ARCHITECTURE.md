@@ -18,6 +18,7 @@ flowchart TD
     SCALAR --> PHYS
     IR --> BACKEND["CAS backend interface"]
     BACKEND --> GIAC["Trimmed native Giac<br/>not integrated"]
+    TENSOR --> GEOM["Manifolds and forms<br/>wedge, d, interior, Hodge"]
     TENSOR --> XPERM["Optional xPerm C core"]
     RENDER --> PLATFORM["Ndless LCD / keypad / touchpad"]
     UI --> PLATFORM
@@ -111,6 +112,27 @@ of times, and an answer that arrives as a backend string, parsed and
 size-checked, is both slower and less trustworthy than one computed on the IR.
 The layer is the first and largest instance of the incremental replacement the
 narrow boundary below was designed to permit.
+
+### Tensor and geometry layers
+
+Above the scalar layer sit two component-level physics layers, neither wired to
+the UI. `include/phy/tensor.h` and `src/tensor` own charts, dense `n^r`
+component storage, and declared slot symmetries, documented in
+[`docs/TENSOR.md`](TENSOR.md). `include/phy/geom.h` and `src/geom` own
+manifolds — dimension, orientation, signature, borrowed charts — and
+differential forms in a chart's coordinate coframe, with exact wedge, exterior
+derivative, interior product, and orthonormal/general coordinate-metric Hodge
+duals, documented in
+[`docs/GEOMETRY.md`](GEOMETRY.md).
+
+The geometry layer is the first physics module to call the scalar layer rather
+than only to store handles, which is what makes the narrow CAS contract
+load-bearing: its budget, cancellation hook, exact arithmetic and memoization
+all apply to a form operation without that operation restating any of them.
+`include/phy/yang_mills.h` then composes these forms with the exact finite Lie
+algebra layer to implement algebra-valued forms, connections, covariant
+derivatives, curvature, gauge variations, Bianchi residuals, and quadratic
+Yang--Mills densities without a second expression system.
 
 ### CAS backend
 

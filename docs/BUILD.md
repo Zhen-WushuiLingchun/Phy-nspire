@@ -171,6 +171,33 @@ come back rendering normally. The separate Phase 0 RGB/pointer diagnostic is
 still available through the preserved `phy_app_draw_baseline` host fixture;
 record its physical channel-order acceptance before changing `PHY_RGB565`.
 
+### Device link checks
+
+Backend layers not yet called by the notebook evaluator are removed from
+`dist/phy-nspire.tns` by `--gc-sections`; the ordinary ARM build therefore
+proves only that they compile. Each layer has a probe that
+references every public entry point and is linked with the production flags:
+
+```sh
+make ir-link-check       # include/phy/ir.h
+make cas-link-check      # include/phy/cas.h
+make tensor-link-check   # include/phy/tensor.h
+make geom-link-check     # include/phy/geom.h
+make ym-link-check       # include/phy/yang_mills.h
+```
+
+Each derives the expected symbol set from the header rather than listing it, so
+adding a public function without extending the probe fails the check instead of
+quietly going unlinked. None of them touches `dist/`.
+
+Measured on the pinned ARM toolchain on 2026-07-27:
+
+- geometry: 44/44 APIs retained, 8,297 bytes of layer text, 48,120-byte probe
+  package;
+- Yang--Mills: 22/22 APIs retained, 4,524 bytes of layer text, 53,980-byte
+  probe package;
+- both contain no float formatter, libm call, or ARM soft-float helper.
+
 ### Native symbolic CAS acceptance test
 
 The production shell now calls the CAS. The separate

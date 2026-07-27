@@ -21,6 +21,27 @@ The order is deliberate. General relativity consumes 1--3. Yang--Mills
 consumes 1--5. Feynman diagrams consume typed field, vertex, propagator, and
 integral objects from 6 rather than being a disconnected drawing feature.
 
+## Implemented bounded slice
+
+As of 2026-07-27, the native backend implements:
+
+- oriented manifolds and bounded chart registration;
+- canonical differential forms, wedge, exterior derivative, interior product,
+  orthonormal Hodge, and general symmetric coordinate-metric Hodge/volume;
+- exact finite Lie algebras, Lie brackets, adjoint/Killing operations, and the
+  built-in `U(1)`, `SU(2)`, `SO(3)`, `SU(3)`, and `SO(1,3)` group metadata;
+- Lie-algebra-valued forms, gauge connections, `D_A`,
+  `F=dA+(g/2)[A,A]`, infinitesimal variations, Bianchi residuals, and
+  quadratic Yang--Mills densities;
+- the bounded real `phi^4` Lagrangian, propagator/vertex, tadpole, and
+  `s/t/u` one-loop master objects.
+
+Lie derivative/pullback/transition maps, automatic matrix-generator
+recognition, roots/weights, perturbative Yang--Mills vertices, ghosts/BRST,
+Ward identities, general diagram generation, and loop reduction remain
+deferred. Typed notebook heads and palettes exist, but the stateful notebook
+environment is not yet wired to these backend objects.
+
 ## Primary software oracles
 
 ### SageManifolds / SageMath
