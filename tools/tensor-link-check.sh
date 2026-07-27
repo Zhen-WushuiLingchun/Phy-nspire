@@ -39,10 +39,19 @@ SOURCES=(
     src/tensor/chart.c
     src/tensor/symmetry.c
     src/tensor/tensor.c
+    src/tensor/ops.c
+    src/cas/num.c
+    src/cas/engine.c
+    src/cas/simplify.c
+    src/cas/diff.c
+    src/cas/integrate.c
+    src/cas/normal.c
     src/ir/ir.c
     src/ir/order.c
     src/ir/text.c
     src/core/status.c
+    src/input/modifier.c
+    src/input/pointer.c
     src/platform/ndless/platform_ndless.c
     src/platform/ndless/crt_compat.c
 )
@@ -77,7 +86,8 @@ SIZE="$(find_binutil arm-none-eabi-size)"
 # these symbols survive collection because the probe genuinely references
 # them, not because collection was disabled.
 GCCFLAGS=(-Wall -Wextra -Wshadow -Wpointer-arith -std=c11 -marm -Os -DNDEBUG
-          -ffunction-sections -fdata-sections -Iinclude -Isrc/ir -Isrc/tensor)
+          -ffunction-sections -fdata-sections -Iinclude -Isrc/ir -Isrc/tensor
+          -Isrc/cas -Isrc/input)
 LDFLAGS=(-Wl,--gc-sections -Wl,--no-warn-rwx-segments)
 
 # Resolve and validate the exact recursive-delete target. In particular, do

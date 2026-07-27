@@ -87,6 +87,8 @@ SOURCES := \
     src/tensor/chart.c \
     src/tensor/symmetry.c \
     src/tensor/tensor.c \
+    src/tensor/ops.c \
+    src/gr/gr.c \
     src/cas/num.c \
     src/cas/engine.c \
     src/cas/simplify.c \

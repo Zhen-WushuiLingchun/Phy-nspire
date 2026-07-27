@@ -220,10 +220,11 @@ independent component so that two components agreeing is evidence rather than
 coincidence; canonical lookup over all 256 components; and the
 allocation-failure sweep.
 
-Four of the seven tests in `docs/agent-tasks/TENSOR_CORE.md` are absent by
-construction — Kronecker round trip, raise/lower involution, the first Bianchi
-identity, and contraction against known traces. Each compares expressions and
-so needs the zero decision. They land with the scalar layer.
+The scalar-dependent slice now covers metric inversion, raise/lower
+involution, contraction against known traces, signed-component extraction, and
+component partial derivatives. The first Bianchi identity and abstract-index
+canonicalization remain separate work because they need algebra over index
+orbits rather than only dense component arithmetic.
 
 Test 6, dimension independence, is honoured throughout: every structural test
 that can run at more than one dimension does. A corpus that is almost entirely
@@ -282,4 +283,5 @@ work that starts from the papers and BSGS fixtures in
 `docs/references/TENSOR_GEOMETRY.md`, and which nothing here anticipates.
 Differential forms, wedge products, Lie derivatives, torsion, tetrads, and
 frames. Symmetrization and antisymmetrization operators. Dimensions above 4
-and ranks above 4. And every scalar operation, for the reason given above.
+and ranks above 4. Scalar functions beyond the native CAS contract remain in
+the CAS layer rather than being reimplemented here.

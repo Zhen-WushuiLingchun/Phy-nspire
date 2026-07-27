@@ -43,6 +43,24 @@ static phy_ir_ref symbol_ref(phy_ir_context *ir, const char *name)
     return phy_ir_symbol_ref(ir, phy_ir_intern(ir, name));
 }
 
+static phy_ir_ref read_expr(phy_ir_context *ir, const char *text)
+{
+    phy_ir_ref expression = PHY_IR_NULL;
+    size_t offset = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_ir_read(ir, text, &expression, &offset), PHY_OK);
+    return expression;
+}
+
+static void expect_equivalent(phy_cas *cas, phy_ir_ref actual,
+                              phy_ir_ref expected)
+{
+    phy_cas_decision decision = PHY_CAS_UNKNOWN;
+    PHY_CHECK_EQ_INT(
+        phy_cas_equivalent(cas, actual, expected, &decision), PHY_OK);
+    PHY_CHECK_EQ_INT(decision, PHY_CAS_ZERO);
+}
+
 static phy_chart *make_chart(phy_ir_context *ir, unsigned dimension)
 {
     const char *const *names = kCoords4;
@@ -1199,6 +1217,198 @@ static void test_storage_is_bounded(void)
     phy_ir_context_destroy(ir);
 }
 
+/* ------------------------------------------------ symbolic tensor operations */
+
+static void test_metric_inverse_and_raise_lower_roundtrip(void)
+{
+    phy_ir_context *ir = phy_ir_context_create(NULL);
+    phy_cas *cas = phy_cas_create(ir, NULL);
+    phy_chart *chart = make_chart(ir, 2u);
+    PHY_CHECK(cas != NULL);
+    PHY_CHECK(chart != NULL);
+
+    static const phy_ir_variance lower2[2] = {
+        PHY_IR_INDEX_LOWER, PHY_IR_INDEX_LOWER};
+    phy_tensor *metric = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_create(chart, "g", 2u, lower2, &metric), PHY_OK);
+    static const int values[2][2] = {{2, 1}, {1, 2}};
+    for (unsigned row = 0u; row < 2u; ++row) {
+        for (unsigned column = 0u; column < 2u; ++column) {
+            const unsigned indices[2] = {row, column};
+            PHY_CHECK_EQ_INT(
+                phy_tensor_set(metric, indices,
+                               phy_ir_integer(ir, values[row][column])),
+                PHY_OK);
+        }
+    }
+
+    phy_tensor *inverse = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_inverse_metric(cas, metric, "ginv", &inverse), PHY_OK);
+    static const char *const expected[2][2] = {
+        {"(rat 2 3)", "(rat -1 3)"},
+        {"(rat -1 3)", "(rat 2 3)"},
+    };
+    for (unsigned row = 0u; row < 2u; ++row) {
+        for (unsigned column = 0u; column < 2u; ++column) {
+            const unsigned indices[2] = {row, column};
+            phy_ir_ref actual = PHY_IR_NULL;
+            PHY_CHECK_EQ_INT(
+                phy_tensor_component_expression(
+                    cas, inverse, indices, &actual),
+                PHY_OK);
+            expect_equivalent(cas, actual, read_expr(ir, expected[row][column]));
+        }
+    }
+
+    static const phy_ir_variance lower1[1] = {PHY_IR_INDEX_LOWER};
+    phy_tensor *covector = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_create(chart, "v", 1u, lower1, &covector), PHY_OK);
+    const unsigned zero[1] = {0u};
+    const unsigned one[1] = {1u};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_set(covector, zero, symbol_ref(ir, "a")), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_set(covector, one, symbol_ref(ir, "b")), PHY_OK);
+
+    phy_tensor *raised = NULL;
+    phy_tensor *lowered = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_raise_slot(cas, covector, 0u, inverse, "vup", &raised),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_lower_slot(cas, raised, 0u, metric, "vdown", &lowered),
+        PHY_OK);
+    for (unsigned axis = 0u; axis < 2u; ++axis) {
+        const unsigned indices[1] = {axis};
+        phy_ir_ref actual = PHY_IR_NULL;
+        phy_ir_ref wanted = PHY_IR_NULL;
+        PHY_CHECK_EQ_INT(
+            phy_tensor_component_expression(cas, lowered, indices, &actual),
+            PHY_OK);
+        PHY_CHECK_EQ_INT(
+            phy_tensor_component_expression(cas, covector, indices, &wanted),
+            PHY_OK);
+        expect_equivalent(cas, actual, wanted);
+    }
+
+    phy_tensor_destroy(lowered);
+    phy_tensor_destroy(raised);
+    phy_tensor_destroy(covector);
+    phy_tensor_destroy(inverse);
+    phy_tensor_destroy(metric);
+    phy_chart_destroy(chart);
+    phy_cas_destroy(cas);
+    phy_ir_context_destroy(ir);
+}
+
+static void test_contraction_and_componentwise_partial(void)
+{
+    phy_ir_context *ir = phy_ir_context_create(NULL);
+    phy_cas *cas = phy_cas_create(ir, NULL);
+    phy_chart *chart = make_chart(ir, 3u);
+    PHY_CHECK(cas != NULL);
+    PHY_CHECK(chart != NULL);
+
+    static const phy_ir_variance mixed[2] = {
+        PHY_IR_INDEX_UPPER, PHY_IR_INDEX_LOWER};
+    phy_tensor *matrix = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_create(chart, "A", 2u, mixed, &matrix), PHY_OK);
+    for (unsigned row = 0u; row < 3u; ++row) {
+        for (unsigned column = 0u; column < 3u; ++column) {
+            const unsigned indices[2] = {row, column};
+            const int value = row == column ? (int)row + 1 : 0;
+            PHY_CHECK_EQ_INT(
+                phy_tensor_set(matrix, indices, phy_ir_integer(ir, value)),
+                PHY_OK);
+        }
+    }
+    phy_tensor *trace = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_contract(cas, matrix, 0u, 1u, "trA", &trace), PHY_OK);
+    phy_ir_ref trace_value = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_component_expression(cas, trace, NULL, &trace_value),
+        PHY_OK);
+    expect_equivalent(cas, trace_value, phy_ir_integer(ir, 6));
+
+    static const phy_ir_variance lower1[1] = {PHY_IR_INDEX_LOWER};
+    phy_tensor *field = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_create(chart, "F", 1u, lower1, &field), PHY_OK);
+    const unsigned i0[1] = {0u};
+    const unsigned i1[1] = {1u};
+    const unsigned i2[1] = {2u};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_set(field, i0, read_expr(ir, "(^ x 2)")), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_set(field, i1, read_expr(ir, "(* x y)")), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_set(field, i2, read_expr(ir, "(fn sin x)")), PHY_OK);
+    phy_tensor *partial = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_partial(cas, field, 0u, "dFdx", &partial), PHY_OK);
+    static const char *const derivatives[3] = {
+        "(* 2 x)", "y", "(fn cos x)"};
+    for (unsigned axis = 0u; axis < 3u; ++axis) {
+        const unsigned indices[1] = {axis};
+        phy_ir_ref actual = PHY_IR_NULL;
+        PHY_CHECK_EQ_INT(
+            phy_tensor_component_expression(
+                cas, partial, indices, &actual),
+            PHY_OK);
+        expect_equivalent(cas, actual, read_expr(ir, derivatives[axis]));
+    }
+
+    PHY_CHECK_EQ_INT(
+        phy_tensor_contract(cas, matrix, 0u, 0u, "bad", &partial),
+        PHY_ERR_INVALID_ARGUMENT);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_partial(cas, field, 3u, "bad", &partial),
+        PHY_ERR_INVALID_ARGUMENT);
+
+    phy_tensor_destroy(partial);
+    phy_tensor_destroy(field);
+    phy_tensor_destroy(trace);
+    phy_tensor_destroy(matrix);
+    phy_chart_destroy(chart);
+    phy_cas_destroy(cas);
+    phy_ir_context_destroy(ir);
+}
+
+static void test_singular_metric_is_rejected(void)
+{
+    phy_ir_context *ir = phy_ir_context_create(NULL);
+    phy_cas *cas = phy_cas_create(ir, NULL);
+    phy_chart *chart = make_chart(ir, 2u);
+    static const phy_ir_variance lower2[2] = {
+        PHY_IR_INDEX_LOWER, PHY_IR_INDEX_LOWER};
+    phy_tensor *metric = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_create(chart, "singular", 2u, lower2, &metric), PHY_OK);
+    for (unsigned row = 0u; row < 2u; ++row) {
+        for (unsigned column = 0u; column < 2u; ++column) {
+            const unsigned indices[2] = {row, column};
+            PHY_CHECK_EQ_INT(
+                phy_tensor_set(metric, indices, phy_ir_integer(ir, 1)),
+                PHY_OK);
+        }
+    }
+    phy_tensor *inverse = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_inverse_metric(cas, metric, "bad", &inverse),
+        PHY_ERR_DOMAIN);
+    PHY_CHECK(inverse == NULL);
+
+    phy_tensor_destroy(metric);
+    phy_chart_destroy(chart);
+    phy_cas_destroy(cas);
+    phy_ir_context_destroy(ir);
+}
+
 /* -------------------------------------------------------------------- main */
 
 int main(void)
@@ -1227,6 +1437,9 @@ int main(void)
     PHY_TEST_CASE(test_check_symmetries_detects_disagreement);
     PHY_TEST_CASE(test_allocation_failure_unwinds);
     PHY_TEST_CASE(test_storage_is_bounded);
+    PHY_TEST_CASE(test_metric_inverse_and_raise_lower_roundtrip);
+    PHY_TEST_CASE(test_contraction_and_componentwise_partial);
+    PHY_TEST_CASE(test_singular_metric_is_rejected);
 
     const int result = PHY_TEST_REPORT("test_tensor");
     phy_platform_shutdown();

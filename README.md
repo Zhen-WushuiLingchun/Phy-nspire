@@ -46,8 +46,13 @@ nMarkdown OpenType MATH engine.
 Three native foundations are now connected through that shell: the typed
 expression IR; a symbolic scalar computer algebra layer over it with
 exact rational arithmetic, a normal form, expansion, substitution,
-differentiation, and an exact zero decision; and the component-independent
-tensor core with charts, dense storage, valence, and signed slot symmetries.
+differentiation, bounded exact antiderivatives, and an exact zero decision;
+and the component tensor core with charts, dense storage, valence, signed slot
+symmetries, contraction, metric inversion, index raising/lowering, and
+component derivatives. A first native GR layer now computes Christoffel,
+Riemann, Ricci, scalar-curvature, and Einstein tensors from a coordinate
+metric; it is host-tested but not yet exposed as notebook commands or timed on
+the calculator.
 The CAS answers "unknown" rather than guessing outside its decidable class, so
 the scalar operations needed by the tensor and GR phases no longer depend on
 integrating Giac.
@@ -64,9 +69,8 @@ The earlier notebook shell also passed its input and touchpad acceptance. The
 new 1.0 MiB build containing persistence and nMarkdown LaTeX rendering has
 been transferred through the repository-owned CLI and verified byte-for-byte
 on the calculator; its physical UI acceptance run is still pending.
-Full Markdown blocks, tensor/physics palettes, and direct
-typed-IR-to-nMarkdown layout remain
-open Phase 1 work. The separate baseline channel-order check remains tracked
+Full differential-form/manifold input, the physics-object palettes, and the
+GR/QFT evaluators remain open. The separate baseline channel-order check remains tracked
 in [docs/BUILD.md](docs/BUILD.md).
 
 Start here:
@@ -93,6 +97,7 @@ src/core/         portable, backend-neutral core
 src/ir/           typed expression IR: interning, ordering, serialization
 src/cas/          scalar algebra: normal form, calculus, the zero decision
 src/tensor/       component tensors: charts, storage, slot symmetries
+src/gr/           coordinate-metric GR curvature pipeline
 src/gfx/          RGB565 primitives and the built-in debug font
 src/render/       typed-IR layout and the narrow nMarkdown C++ bridge
 src/input/        relative pointer tracking

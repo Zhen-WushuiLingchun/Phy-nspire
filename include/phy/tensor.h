@@ -58,6 +58,7 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "phy/cas.h"
 #include "phy/ir.h"
 
 #ifdef __cplusplus
@@ -167,7 +168,7 @@ phy_status phy_tensor_create(phy_chart *chart, const char *name, unsigned rank,
                              phy_tensor **out_tensor);
 void phy_tensor_destroy(phy_tensor *tensor);
 
-const phy_chart *phy_tensor_chart(const phy_tensor *tensor);
+phy_chart *phy_tensor_chart(const phy_tensor *tensor);
 phy_ir_symbol phy_tensor_head(const phy_tensor *tensor);
 const char *phy_tensor_name(const phy_tensor *tensor);
 unsigned phy_tensor_rank(const phy_tensor *tensor);
@@ -358,6 +359,41 @@ phy_status phy_tensor_fill_symmetries(phy_tensor *tensor);
  * components by hand needs the same gate.
  */
 phy_status phy_tensor_check_symmetries(const phy_tensor *tensor);
+
+/* ------------------------------------------------ symbolic index operations */
+
+/* Fold the storage sign into one simplified scalar expression. */
+phy_status phy_tensor_component_expression(
+    phy_cas *cas, const phy_tensor *tensor, const unsigned *indices,
+    phy_ir_ref *out_expression);
+
+/*
+ * Deterministic cofactor/adjugate inverse of a symmetric lower metric.
+ * A determinant proved zero is PHY_ERR_DOMAIN. An undecidable symbolic
+ * determinant is accepted under the CAS generic-domain convention.
+ */
+phy_status phy_tensor_inverse_metric(phy_cas *cas, const phy_tensor *metric,
+                                     const char *name,
+                                     phy_tensor **out_inverse);
+
+phy_status phy_tensor_raise_slot(phy_cas *cas, const phy_tensor *tensor,
+                                 unsigned slot,
+                                 const phy_tensor *inverse_metric,
+                                 const char *name, phy_tensor **out_tensor);
+
+phy_status phy_tensor_lower_slot(phy_cas *cas, const phy_tensor *tensor,
+                                 unsigned slot, const phy_tensor *metric,
+                                 const char *name, phy_tensor **out_tensor);
+
+/* Contract one upper and one lower slot, reducing rank by two. */
+phy_status phy_tensor_contract(phy_cas *cas, const phy_tensor *tensor,
+                               unsigned slot_a, unsigned slot_b,
+                               const char *name, phy_tensor **out_tensor);
+
+/* Differentiate every component with respect to one chart coordinate. */
+phy_status phy_tensor_partial(phy_cas *cas, const phy_tensor *tensor,
+                              unsigned coordinate_axis, const char *name,
+                              phy_tensor **out_tensor);
 
 #ifdef __cplusplus
 }

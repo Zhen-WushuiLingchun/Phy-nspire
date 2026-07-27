@@ -111,10 +111,10 @@ without float formatting, libm, or ARM soft-float dependencies. The observable
 
 ## Phase 2 — tensor and manifold CAS
 
-Status: component-independent tensor storage and slot symmetries are complete;
-scalar-dependent contraction, raise/lower, metric inversion, and component
-derivatives are next. The scalar substrate is in place, including the exact
-zero decision that `docs/agent-tasks/TENSOR_CORE.md` calls load-bearing.
+Status: component storage, slot symmetries, exact component contraction,
+raise/lower, cofactor metric inversion, and component partial derivatives are
+implemented. Manifolds beyond one coordinate chart, abstract dummy-index
+canonicalization, covariant derivatives, and differential forms remain open.
 
 Output:
 
@@ -129,6 +129,13 @@ Verification:
 - bounded rank/dimension benchmarks on desktop and CX II.
 
 ## Phase 3 — general relativity and black holes
+
+Status: the first coordinate-metric curvature pipeline is implemented. It
+computes the inverse metric, Christoffel symbols, mixed and covariant Riemann
+tensors, Ricci tensor, scalar curvature, and Einstein tensor through the
+native exact CAS. Host acceptance currently covers Cartesian Minkowski space
+and the round 2-sphere. Geodesics, invariants, the full metric corpus, UI
+commands, ARM link retention, and physical-device timing remain open.
 
 Output:
 
@@ -173,6 +180,10 @@ Output, deferred with a named blocking dependency (reference §2):
 - gamma-5 and chiral projectors, Fierz rearrangement, spin and polarization
   sums, squared amplitudes, loop integrals, and the covariant
   derivative/field-strength layer, which needs the Phase 2 tensor core.
+
+The next dependency slice now explicitly includes exterior algebra,
+Lie-algebra-valued forms, a bounded `phi^4` field/vertex/propagator workflow,
+and Yang--Mills `F = dA + g A wedge A`; these are not yet implemented.
 
 Verification:
 

@@ -116,6 +116,75 @@ static void probe_components(phy_ir_context *ctx, phy_tensor *tensor)
     phy_tensor_clear(tensor);
 }
 
+static void probe_symbolic_operations(phy_cas *cas, phy_chart *chart)
+{
+    static const phy_ir_variance lower2[2] = {
+        PHY_IR_INDEX_LOWER, PHY_IR_INDEX_LOWER};
+    static const phy_ir_variance lower1[1] = {PHY_IR_INDEX_LOWER};
+    static const phy_ir_variance mixed2[2] = {
+        PHY_IR_INDEX_UPPER, PHY_IR_INDEX_LOWER};
+    phy_tensor *metric = 0;
+    phy_tensor *vector = 0;
+    phy_tensor *mixed = 0;
+    phy_tensor *inverse = 0;
+    phy_tensor *raised = 0;
+    phy_tensor *lowered = 0;
+    phy_tensor *trace = 0;
+    phy_tensor *partial = 0;
+    phy_ir_ref expression = PHY_IR_NULL;
+    const unsigned zero[2] = {0u, 0u};
+
+    sink((unsigned)phy_tensor_create(chart, "g", 2u, lower2, &metric));
+    sink((unsigned)phy_tensor_create(chart, "v", 1u, lower1, &vector));
+    sink((unsigned)phy_tensor_create(chart, "T", 2u, mixed2, &mixed));
+    if (metric == 0 || vector == 0 || mixed == 0) {
+        phy_tensor_destroy(mixed);
+        phy_tensor_destroy(vector);
+        phy_tensor_destroy(metric);
+        return;
+    }
+
+    sink((unsigned)phy_tensor_declare_slot_symmetry(
+        metric, 0u, 1u, PHY_IR_SYMMETRY_SYMMETRIC));
+    for (unsigned axis = 0u; axis < phy_chart_dimension(chart); ++axis) {
+        const unsigned diagonal[2] = {axis, axis};
+        sink((unsigned)phy_tensor_set(
+            metric, diagonal, phy_ir_integer(phy_chart_ir(chart), 1)));
+        sink((unsigned)phy_tensor_set(
+            mixed, diagonal, phy_ir_integer(phy_chart_ir(chart), 1)));
+    }
+    {
+        const unsigned first[1] = {0u};
+        sink((unsigned)phy_tensor_set(
+            vector, first, phy_chart_coordinate(chart, 0u)));
+    }
+
+    sink((unsigned)phy_tensor_component_expression(
+        cas, metric, zero, &expression));
+    sink((unsigned)expression);
+    sink((unsigned)phy_tensor_inverse_metric(
+        cas, metric, "gInv", &inverse));
+    if (inverse != 0) {
+        sink((unsigned)phy_tensor_raise_slot(
+            cas, vector, 0u, inverse, "vUp", &raised));
+    }
+    if (raised != 0) {
+        sink((unsigned)phy_tensor_lower_slot(
+            cas, raised, 0u, metric, "vDown", &lowered));
+    }
+    sink((unsigned)phy_tensor_contract(cas, mixed, 0u, 1u, "tr", &trace));
+    sink((unsigned)phy_tensor_partial(cas, vector, 0u, "dv", &partial));
+
+    phy_tensor_destroy(partial);
+    phy_tensor_destroy(trace);
+    phy_tensor_destroy(lowered);
+    phy_tensor_destroy(raised);
+    phy_tensor_destroy(inverse);
+    phy_tensor_destroy(mixed);
+    phy_tensor_destroy(vector);
+    phy_tensor_destroy(metric);
+}
+
 int main(void)
 {
     if (phy_platform_init() != PHY_OK) {
@@ -130,6 +199,7 @@ int main(void)
 
     phy_chart *chart = 0;
     probe_chart(ctx, &chart);
+    phy_cas *cas = phy_cas_create(ctx, 0);
 
     if (chart != 0) {
         static const phy_ir_variance valence[4] = {
@@ -145,9 +215,13 @@ int main(void)
             probe_components(ctx, tensor);
             phy_tensor_destroy(tensor);
         }
+        if (cas != 0) {
+            probe_symbolic_operations(cas, chart);
+        }
         phy_chart_destroy(chart);
     }
 
+    phy_cas_destroy(cas);
     phy_ir_context_destroy(ctx);
     phy_platform_shutdown();
     return (int)(g_phy_tensor_probe_sink & 1u);

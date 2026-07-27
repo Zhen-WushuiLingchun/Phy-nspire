@@ -116,7 +116,7 @@ void phy_tensor_destroy(phy_tensor *tensor)
 
 /* -------------------------------------------------------------- accessors */
 
-const phy_chart *phy_tensor_chart(const phy_tensor *tensor)
+phy_chart *phy_tensor_chart(const phy_tensor *tensor)
 {
     return tensor == NULL ? NULL : tensor->chart;
 }
