@@ -410,6 +410,37 @@ static phy_ir_ref parse_primary(source_reader *reader)
         result = phy_ir_ncmul(reader->ir, arguments, count);
     } else if (name_equals(name, "Wedge")) {
         result = phy_ir_wedge(reader->ir, arguments, count);
+    } else if (name_equals(name, "Commutator")) {
+        if (count != 2u) {
+            fail(reader, PHY_ERR_TYPE);
+            return PHY_IR_NULL;
+        }
+        const phy_ir_ref forward_factors[2] = {
+            arguments[0], arguments[1]};
+        const phy_ir_ref reverse_factors[2] = {
+            arguments[1], arguments[0]};
+        const phy_ir_ref forward =
+            phy_ir_ncmul(reader->ir, forward_factors, 2u);
+        const phy_ir_ref reverse =
+            phy_ir_ncmul(reader->ir, reverse_factors, 2u);
+        const phy_ir_ref minus_one = phy_ir_integer(reader->ir, -1);
+        const phy_ir_ref negative_factors[2] = {minus_one, reverse};
+        const phy_ir_ref negative =
+            phy_ir_mul(reader->ir, negative_factors, 2u);
+        const phy_ir_ref terms[2] = {forward, negative};
+        result = phy_ir_add(reader->ir, terms, 2u);
+    } else if (name_equals(name, "LieBracket") ||
+               name_equals(name, "StructureConstant") ||
+               name_equals(name, "ScalarField") ||
+               name_equals(name, "Propagator") ||
+               name_equals(name, "Vertex") ||
+               name_equals(name, "TadpoleIntegral") ||
+               name_equals(name, "BubbleIntegral") ||
+               name_equals(name, "ExteriorD") ||
+               name_equals(name, "InteriorProduct") ||
+               name_equals(name, "HodgeStar")) {
+        const phy_ir_symbol head = phy_ir_intern(reader->ir, name);
+        result = phy_ir_operator(reader->ir, head, arguments, count);
     } else {
         const char *head_name = canonical_function(name);
         const phy_ir_symbol head = phy_ir_intern(reader->ir, head_name);

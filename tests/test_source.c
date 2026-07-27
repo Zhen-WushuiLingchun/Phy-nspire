@@ -120,6 +120,19 @@ static void test_commands_and_functions(void)
     PHY_CHECK_EQ_STR(
         render(ir, command.expression),
         "(wedge (idx mu dn) (idx nu dn))");
+    command = parse(ir, "Commutator[A,B]");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(+ (* -1 (nc* B A)) (nc* A B))");
+    command = parse(ir, "LieBracket[X,Y]");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression), "(op LieBracket X Y)");
+    command = parse(ir, "ScalarField[phi]");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression), "(op ScalarField phi)");
+    command = parse(ir, "HodgeStar[Wedge[a,b]]");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression), "(op HodgeStar (wedge a b))");
 
     phy_ir_context_destroy(ir);
     phy_platform_shutdown();
@@ -149,6 +162,9 @@ static void test_diagnostics_and_bounds(void)
     PHY_CHECK_EQ_INT(
         phy_source_parse(ir, "Sin[Factor[x]]", &command, &error),
         PHY_ERR_UNSUPPORTED);
+    PHY_CHECK_EQ_INT(
+        phy_source_parse(ir, "Commutator[A]", &command, &error),
+        PHY_ERR_TYPE);
     PHY_CHECK_EQ_INT(phy_source_parse(NULL, "x", &command, &error),
                      PHY_ERR_INVALID_ARGUMENT);
 

@@ -49,11 +49,39 @@ static const phy_palette_entry kCasPhysics[] = {
     {"Exterior product", "Wedge[,]", sizeof("Wedge[") - 1u},
 };
 
+static const phy_palette_entry kCasGeometry[] = {
+    {"Exterior derivative", "ExteriorD[]", sizeof("ExteriorD[") - 1u},
+    {"Interior product", "InteriorProduct[,]",
+     sizeof("InteriorProduct[") - 1u},
+    {"Hodge dual", "HodgeStar[]", sizeof("HodgeStar[") - 1u},
+    {"Form wedge product", "Wedge[,]", sizeof("Wedge[") - 1u},
+};
+
+static const phy_palette_entry kCasLieQft[] = {
+    {"Commutator [A,B]", "Commutator[,]",
+     sizeof("Commutator[") - 1u},
+    {"Lie bracket", "LieBracket[,]", sizeof("LieBracket[") - 1u},
+    {"Structure constant", "StructureConstant[,,,]",
+     sizeof("StructureConstant[") - 1u},
+    {"Scalar field", "ScalarField[phi]",
+     sizeof("ScalarField[") - 1u},
+    {"Propagator", "Propagator[p2,m,4]",
+     sizeof("Propagator[") - 1u},
+    {"Quartic vertex", "Vertex[phi,phi,phi,phi]",
+     sizeof("Vertex[") - 1u},
+    {"Tadpole master", "TadpoleIntegral[m,4]",
+     sizeof("TadpoleIntegral[") - 1u},
+    {"Bubble master", "BubbleIntegral[s,m,4]",
+     sizeof("BubbleIntegral[") - 1u},
+};
+
 static const palette_category kCasCategories[] = {
     {"Algebra", kCasAlgebra, ARRAY_COUNT(kCasAlgebra)},
     {"Functions", kCasFunctions, ARRAY_COUNT(kCasFunctions)},
     {"Calculus/Syntax", kCasCalculus, ARRAY_COUNT(kCasCalculus)},
     {"Tensor/Indices", kCasPhysics, ARRAY_COUNT(kCasPhysics)},
+    {"Differential Geometry", kCasGeometry, ARRAY_COUNT(kCasGeometry)},
+    {"Lie/QFT Objects", kCasLieQft, ARRAY_COUNT(kCasLieQft)},
 };
 
 static const phy_palette_entry kLatexLayout[] = {
