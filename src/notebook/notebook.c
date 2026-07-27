@@ -533,6 +533,9 @@ bool phy_notebook_select(phy_notebook *notebook, size_t index)
     const bool changed = notebook->selected != index;
     notebook->selected = index;
     notebook->editing = false;
+    if (changed) {
+        notebook->output_pan = 0;
+    }
     ensure_selected_visible(notebook);
     return changed;
 }
@@ -993,6 +996,82 @@ static void draw_editable(const phy_surface *surface, int x, int y,
     }
 }
 
+#define NOTEBOOK_RESULT_MAX_WIDTH \
+    (NOTEBOOK_CELL_X + NOTEBOOK_CELL_WIDTH - 63)
+
+/*
+ * A result wider than the card steps down through smaller pixel sizes before
+ * giving up. Every attempted layout lands in the bridge cache, so the
+ * retries cost only the first frame. Draw and pan share this so the clamp
+ * always matches what is actually on screen.
+ */
+static phy_status measure_result_formula(const phy_notebook *notebook,
+                                         const notebook_cell *cell,
+                                         phy_formula_metrics *out_metrics,
+                                         int *out_pixel_size)
+{
+    static const int sizes[3] = {15, 12, 10};
+    phy_status status = PHY_ERR_BACKEND;
+    for (size_t attempt = 0u; attempt < 3u; ++attempt) {
+        *out_pixel_size = sizes[attempt];
+        status = phy_formula_measure_ir(
+            notebook->ir, cell->expression, PHY_FORMULA_STYLE_TEXT,
+            *out_pixel_size, NOTEBOOK_RESULT_MAX_WIDTH, out_metrics);
+        if (status != PHY_OK ||
+            (!out_metrics->overflow &&
+             out_metrics->width <= NOTEBOOK_RESULT_MAX_WIDTH)) {
+            break;
+        }
+    }
+    return status;
+}
+
+static int selected_result_excess(const phy_notebook *notebook)
+{
+    if (notebook->count == 0u || notebook->editing) {
+        return 0;
+    }
+    const notebook_cell *cell = &notebook->cells[notebook->selected];
+    if (cell->kind != PHY_NOTEBOOK_CELL_OUTPUT ||
+        cell->expression == PHY_IR_NULL) {
+        return 0;
+    }
+    phy_formula_metrics metrics;
+    int pixel_size = 0;
+    if (measure_result_formula(notebook, cell, &metrics, &pixel_size) !=
+        PHY_OK) {
+        return 0;
+    }
+    return metrics.width > NOTEBOOK_RESULT_MAX_WIDTH
+               ? metrics.width - NOTEBOOK_RESULT_MAX_WIDTH
+               : 0;
+}
+
+bool phy_notebook_pan_selected(phy_notebook *notebook, int direction)
+{
+    if (notebook == NULL || direction == 0) {
+        return false;
+    }
+    const int excess = selected_result_excess(notebook);
+    if (excess <= 0) {
+        return false;
+    }
+    int pan = notebook->output_pan + direction * 48;
+    if (pan < 0) {
+        pan = 0;
+    }
+    if (pan > excess) {
+        pan = excess;
+    }
+    notebook->output_pan = pan;
+    /*
+     * A wide result owns the horizontal keys even at either end of its
+     * travel: falling through to a selection move mid-formula would throw
+     * the reader somewhere else entirely.
+     */
+    return true;
+}
+
 static int draw_text_span(const phy_surface *surface, int x, int y,
                           const char *text, size_t length, uint16_t color)
 {
@@ -1273,19 +1352,42 @@ void phy_notebook_draw_document(const phy_surface *surface,
                 }
                 continue;
             }
-            const phy_status measure_status =
-                phy_formula_measure_ir(
-                    notebook->ir, cell->expression,
-                    PHY_FORMULA_STYLE_TEXT, 15, maximum_width, &metrics);
+            int pixel_size = 0;
+            const phy_status measure_status = measure_result_formula(
+                notebook, cell, &metrics, &pixel_size);
             if (measure_status == PHY_OK) {
+                const int excess =
+                    metrics.width > maximum_width
+                        ? metrics.width - maximum_width
+                        : 0;
+                int pan = 0;
+                if (selected && !notebook->editing) {
+                    pan = notebook->output_pan;
+                    if (pan > excess) {
+                        pan = excess;
+                    }
+                }
                 const int formula_height = metrics.ascent + metrics.descent;
                 const int baseline =
                     y + (height - formula_height) / 2 + metrics.ascent;
                 (void)phy_formula_draw_ir(
                     surface, notebook->ir, cell->expression,
-                    PHY_FORMULA_STYLE_TEXT, 15, maximum_width, 61, baseline, 0,
-                    result_color, fill, 61, y + 1, maximum_width,
-                    height - 2, NULL);
+                    PHY_FORMULA_STYLE_TEXT, pixel_size, maximum_width, 61,
+                    baseline, pan, result_color, fill, 61, y + 1,
+                    maximum_width, height - 2, NULL);
+                /*
+                 * Top-corner markers: content hidden on that side. The
+                 * bottom-right corner stays free for the stale label.
+                 */
+                if (pan > 0) {
+                    (void)phy_gfx_draw_text(surface, 61, y + 2, "<",
+                                            COLOR_DIM);
+                }
+                if (excess > pan) {
+                    (void)phy_gfx_draw_text(surface,
+                                            61 + maximum_width - 8, y + 2,
+                                            ">", COLOR_DIM);
+                }
             } else {
                 (void)phy_gfx_draw_text(surface, 61, y + 16,
                                         phy_status_name(measure_status),

@@ -55,6 +55,12 @@ backspaces; `TAB` switches between Markdown heading and body. The first `ESC`
 leaves edit mode, and a second `ESC` exits through the normal display-restore
 path.
 
+A result wider than its card first steps down through smaller formula sizes;
+what still does not fit pans: when such an output is selected, left/right
+scroll the formula horizontally and `<`/`>` corner markers show which side has
+hidden content. Up/down still change the selection, so a wide result never
+traps navigation.
+
 Inside edit mode, `MENU` opens a context-sensitive insertion palette. Math
 cells expose only reader commands and functions already accepted by the
 current evaluator — `test_palette` parses every one of them — grouped as

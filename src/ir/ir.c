@@ -368,10 +368,20 @@ phy_ir_context *phy_ir_context_create(const phy_ir_limits *limits)
     return ctx;
 }
 
+static void (*g_ir_destroy_observer)(const phy_ir_context *ctx) = NULL;
+
+void phy_ir_set_destroy_observer(void (*observer)(const phy_ir_context *ctx))
+{
+    g_ir_destroy_observer = observer;
+}
+
 void phy_ir_context_destroy(phy_ir_context *ctx)
 {
     if (ctx == NULL) {
         return;
+    }
+    if (g_ir_destroy_observer != NULL) {
+        g_ir_destroy_observer(ctx);
     }
     phy_ir_pool_release(ctx, &ctx->nodes, sizeof(phy_ir_node));
     phy_ir_pool_release(ctx, &ctx->children, sizeof(phy_ir_ref));

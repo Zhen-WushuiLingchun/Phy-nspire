@@ -939,6 +939,9 @@ phy_status phy_app_run(const phy_app_options *options, phy_app_result *out_resul
                     event.key == PHY_KEY_LEFT) {
                     needs_redraw =
                         phy_notebook_edit_move(notebook, -1) || needs_redraw;
+                } else if (event.key == PHY_KEY_LEFT &&
+                           phy_notebook_pan_selected(notebook, -1)) {
+                    needs_redraw = true;
                 } else {
                     needs_redraw =
                         phy_notebook_select_next(notebook, -1) || needs_redraw;
@@ -955,6 +958,9 @@ phy_status phy_app_run(const phy_app_options *options, phy_app_result *out_resul
                     needs_redraw =
                         phy_notebook_edit_switch_field(notebook) ||
                         needs_redraw;
+                } else if (event.key == PHY_KEY_RIGHT &&
+                           phy_notebook_pan_selected(notebook, 1)) {
+                    needs_redraw = true;
                 } else {
                     needs_redraw =
                         phy_notebook_select_next(notebook, 1) || needs_redraw;

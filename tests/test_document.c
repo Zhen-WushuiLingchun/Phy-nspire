@@ -228,6 +228,12 @@ static void test_structural_validation_after_valid_crc(void)
     g_document[output_record + 8u] = saved_owner0;
     g_document[output_record + 9u] = saved_owner1;
 
+    /*
+     * An output whose stored expression text no longer parses is a version
+     * mismatch, not corruption: the CRC above already proved the bytes are
+     * intact. The document still opens and the cell carries the parser's
+     * status instead of an expression.
+     */
     const uint16_t primary = read_u16(g_document + output_record + 10u);
     const uint16_t secondary = read_u16(g_document + output_record + 12u);
     const size_t expression_at =
@@ -235,13 +241,63 @@ static void test_structural_validation_after_valid_crc(void)
     const uint8_t saved_expression = g_document[expression_at];
     g_document[expression_at] = '?';
     refresh_crc(g_document);
-    expect_corrupt(g_document, bytes);
+    {
+        phy_notebook *degraded = NULL;
+        PHY_CHECK_EQ_INT(
+            phy_notebook_deserialize(g_document, bytes, &degraded), PHY_OK);
+        phy_notebook_cell_view cell;
+        PHY_CHECK(phy_notebook_cell(degraded, 2u, &cell));
+        PHY_CHECK_EQ_INT(cell.kind, PHY_NOTEBOOK_CELL_OUTPUT);
+        PHY_CHECK_EQ_INT(cell.status, PHY_ERR_PARSE);
+        PHY_CHECK(cell.stale);
+        PHY_CHECK_EQ_INT(cell.expression, PHY_IR_NULL);
+        phy_notebook_destroy(degraded);
+    }
     g_document[expression_at] = saved_expression;
 
     refresh_crc(g_document);
     phy_notebook *loaded = NULL;
     PHY_CHECK_EQ_INT(
         phy_notebook_deserialize(g_document, bytes, &loaded), PHY_OK);
+    phy_notebook_destroy(loaded);
+    phy_notebook_destroy(source);
+    phy_platform_shutdown();
+}
+
+/*
+ * A newer application can save source text an older parser rejects. The
+ * document must still open: the failing input keeps its source, reports the
+ * parser's typed status, and every other cell loads untouched.
+ */
+static void test_unparseable_input_source_degrades_to_stale(void)
+{
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    phy_notebook *source = make_sample();
+    const size_t bytes = serialize_sample(source);
+
+    const size_t input_record = record_at(g_document, 1u);
+    const uint16_t primary = read_u16(g_document + input_record + 10u);
+    const size_t secondary_at = input_record + RECORD_BYTES + primary;
+    const uint8_t saved = g_document[secondary_at];
+    g_document[secondary_at] = '?';
+    refresh_crc(g_document);
+
+    phy_notebook *loaded = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_notebook_deserialize(g_document, bytes, &loaded), PHY_OK);
+    phy_notebook_cell_view cell;
+    PHY_CHECK(phy_notebook_cell(loaded, 1u, &cell));
+    PHY_CHECK_EQ_INT(cell.kind, PHY_NOTEBOOK_CELL_INPUT);
+    PHY_CHECK_EQ_INT(cell.status, PHY_ERR_PARSE);
+    PHY_CHECK(cell.stale);
+    PHY_CHECK_EQ_INT(cell.expression, PHY_IR_NULL);
+    PHY_CHECK(cell.secondary[0] == '?');
+    PHY_CHECK(phy_notebook_cell(loaded, 2u, &cell));
+    PHY_CHECK_EQ_INT(cell.kind, PHY_NOTEBOOK_CELL_OUTPUT);
+    PHY_CHECK_EQ_INT(cell.status, PHY_OK);
+    PHY_CHECK(cell.expression != PHY_IR_NULL);
+
+    g_document[secondary_at] = saved;
     phy_notebook_destroy(loaded);
     phy_notebook_destroy(source);
     phy_platform_shutdown();
@@ -271,6 +327,7 @@ int main(void)
     PHY_TEST_CASE(test_round_trip_preserves_cells_and_cached_ir);
     PHY_TEST_CASE(test_header_crc_bounds_and_trailing_bytes);
     PHY_TEST_CASE(test_structural_validation_after_valid_crc);
+    PHY_TEST_CASE(test_unparseable_input_source_degrades_to_stale);
     PHY_TEST_CASE(test_empty_document_round_trip);
     return PHY_TEST_REPORT("test_document");
 }

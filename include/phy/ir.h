@@ -189,6 +189,13 @@ phy_ir_context *phy_ir_context_create(const phy_ir_limits *limits);
 void phy_ir_context_destroy(phy_ir_context *ctx);
 
 /*
+ * One process-wide observer runs at the top of every context destroy. A cache
+ * keyed by context address uses this to drop entries before the address can
+ * be reused; the renderer registers itself here. NULL disables it.
+ */
+void phy_ir_set_destroy_observer(void (*observer)(const phy_ir_context *ctx));
+
+/*
  * The first error since the last phy_ir_clear_error(). Builders return
  * PHY_IR_NULL on failure; this says why. Sticky, so a caller may build a
  * whole expression and check once.

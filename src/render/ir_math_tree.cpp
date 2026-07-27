@@ -280,11 +280,43 @@ private:
         }
         const std::string_view name(raw);
         const std::string_view displayed = display_symbol(name);
+        if (displayed == name && !roman && name.size() > 1U &&
+            name[0] == 'd') {
+            /*
+             * Coordinate one-forms arrive as single symbols named d<coord>.
+             * When the coordinate itself has a glyph, "dtheta" must read as
+             * an upright d against the Greek letter, not as one long
+             * italic identifier.
+             */
+            const std::string_view coordinate = name.substr(1U);
+            const std::string_view glyph = display_symbol(coordinate);
+            if (glyph != coordinate) {
+                return row({styled(text(MathNodeKind::Symbol, "d"),
+                                   MathVariant::Roman),
+                            text(MathNodeKind::Symbol, glyph)});
+            }
+        }
         MathNodeId result = text(MathNodeKind::Symbol, displayed);
         if (roman && displayed == name) {
             result = styled(result, MathVariant::Roman);
         }
         return result;
+    }
+
+    /*
+     * Juxtaposition works for single-letter factors: 2cos(x)sin(x) needs no
+     * dots. A multi-letter symbol such as dphi or rs fuses illegibly with
+     * whatever follows, so a commutative product separates it on both sides.
+     */
+    bool multi_letter_symbol(phy_ir_ref expression) const
+    {
+        const phy_ir_kind kind = phy_ir_kind_of(context_, expression);
+        if (kind != PHY_IR_SYMBOL && kind != PHY_IR_INDEX) {
+            return false;
+        }
+        const char *raw =
+            phy_ir_symbol_name(context_, phy_ir_head(context_, expression));
+        return raw != nullptr && raw[0] != '\0' && raw[1] != '\0';
     }
 
     MathNodeId arguments(phy_ir_ref expression, unsigned depth,
@@ -412,9 +444,19 @@ private:
                 phy_ir_child_count(context_, expression);
             items.reserve(count * 2U);
             for (std::size_t index = 0; index < count; ++index) {
-                if (index != 0U && !separator.empty()) {
-                    items.push_back(text(MathNodeKind::Symbol, separator,
-                                         separator_class));
+                if (index != 0U) {
+                    std::string_view gap = separator;
+                    if (kind == PHY_IR_MUL &&
+                        (multi_letter_symbol(phy_ir_child(
+                             context_, expression, index - 1U)) ||
+                         multi_letter_symbol(phy_ir_child(
+                             context_, expression, index)))) {
+                        gap = u8"⋅";
+                    }
+                    if (!gap.empty()) {
+                        items.push_back(text(MathNodeKind::Symbol, gap,
+                                             separator_class));
+                    }
                 }
                 items.push_back(child_with_precedence(
                     phy_ir_child(context_, expression, index), depth,

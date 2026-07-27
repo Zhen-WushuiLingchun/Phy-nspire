@@ -19,6 +19,16 @@ static bool ends_with_tns(const char *name, size_t length)
 
 static bool name_equal_folded(const char *left, const char *right);
 
+static bool ends_with_folded(const char *name, size_t length,
+                             const char *suffix)
+{
+    const size_t suffix_length = strlen(suffix);
+    if (length < suffix_length) {
+        return false;
+    }
+    return name_equal_folded(name + (length - suffix_length), suffix);
+}
+
 bool phy_storage_name_valid(const char *name)
 {
     if (name == NULL) {
@@ -32,6 +42,16 @@ bool phy_storage_name_valid(const char *name)
     }
     if (name_equal_folded(name, PHY_STORAGE_TEMPORARY_NAME) ||
         name_equal_folded(name, PHY_STORAGE_BACKUP_NAME)) {
+        return false;
+    }
+    /*
+     * The deploy CLI parks its rollback and staging copies next to the real
+     * document as <name>.previous.tns and <name>.upload.tns. They are
+     * recovery artifacts, not notebooks: listing them invites opening a
+     * stale version by accident.
+     */
+    if (ends_with_folded(name, length, ".previous.tns") ||
+        ends_with_folded(name, length, ".upload.tns")) {
         return false;
     }
     for (size_t i = 0u; i < length; ++i) {

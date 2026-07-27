@@ -9,8 +9,17 @@
 #include "phy/eval.h"
 #include "phy/notebook.h"
 
-#define NOTEBOOK_TEXT_CAPACITY 96u
-#define NOTEBOOK_DETAIL_CAPACITY 192u
+/*
+ * A six-gamma DiracTrace with explicit Lorentz index spaces is 109 bytes of
+ * source; 96 cut it off.
+ */
+#define NOTEBOOK_TEXT_CAPACITY 128u
+/*
+ * Holds the canonical IR text an input reparses on load. A 4x4 symbolic
+ * metric -- the Schwarzschild line in the CAS tour -- canonicalizes to just
+ * over 200 bytes, so 192 was the binding constraint.
+ */
+#define NOTEBOOK_DETAIL_CAPACITY 320u
 
 typedef struct {
     phy_notebook_cell_kind kind;
@@ -49,6 +58,12 @@ struct phy_notebook {
     bool edit_secondary;
     size_t cursor;
     int scroll_y;
+    /*
+     * Horizontal viewport offset of the selected output cell's formula, in
+     * pixels. Runtime-only: it resets when the selection moves and is never
+     * serialized.
+     */
+    int output_pan;
     bool dirty;
 };
 

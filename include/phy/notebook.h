@@ -110,6 +110,14 @@ bool phy_notebook_select_next(phy_notebook *notebook, int direction);
 bool phy_notebook_select_at(phy_notebook *notebook, int x, int y);
 
 /*
+ * Pan the selected output cell's formula horizontally when it is wider than
+ * its card. Returns true when the selected cell is such a formula -- the
+ * caller should then not treat the key as a selection move -- and false
+ * otherwise. The pan resets when the selection changes.
+ */
+bool phy_notebook_pan_selected(phy_notebook *notebook, int direction);
+
+/*
  * Runs the input whose upper-right RUN badge contains (x,y). Returns true
  * when a badge was hit; the evaluation result is written separately because
  * a real cell error is different from missing the button.
@@ -144,6 +152,11 @@ bool phy_notebook_edit_switch_field(phy_notebook *notebook);
 /*
  * Versioned, checksummed document codec. Loading is transactional and returns
  * a newly allocated notebook only after the whole document validates.
+ * PHY_ERR_CORRUPT_DOCUMENT means the bytes themselves are wrong: magic,
+ * version, CRC, layout, or cell shape. A cell whose CRC-intact stored text no
+ * longer parses -- a document saved by a different application version --
+ * loads anyway, without an expression, carrying the parser's typed status and
+ * the stale flag, so one such cell never makes the whole document unopenable.
  *
  * Serialize follows snprintf sizing conventions: *out_size is the required
  * byte count. A NULL/short buffer returns PHY_ERR_INVALID_ARGUMENT after

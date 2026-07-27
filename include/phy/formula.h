@@ -42,6 +42,13 @@ void phy_formula_shutdown(void);
 bool phy_formula_is_ready(void);
 
 /*
+ * Drop every cached typed-IR layout. Destroying an IR context already evicts
+ * its entries through the phy_ir_set_destroy_observer hook that
+ * phy_formula_initialize registers; this is the manual override.
+ */
+void phy_formula_ir_cache_reset(void);
+
+/*
  * source does not need to be NUL terminated. pixel_size and maximum_width are
  * integer pixels. A non-positive maximum_width disables overflow checking.
  */

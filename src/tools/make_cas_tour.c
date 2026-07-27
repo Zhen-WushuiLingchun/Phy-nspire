@@ -9,6 +9,7 @@
 #include <stdlib.h>
 #include <string.h>
 
+#include "phy/formula.h"
 #include "phy/notebook.h"
 #include "phy/platform.h"
 
@@ -61,7 +62,7 @@ static const tour_cell kTour[] = {
     {TOUR_INPUT, "Tensor[H,Down[i],Up[j]]", NULL},
 
     {TOUR_MARKDOWN, "Exterior calculus",
-     "$$d^2=0,\\quad \\mathcal{L}_v=d\\iota_v+\\iota_vd$$"},
+     "$$d^2=0,\\quad L_v=d\\iota_v+\\iota_v d$$"},
     {TOUR_INPUT, "a=DifferentialForm[M,1,{0,Sin[theta]}]", NULL},
     {TOUR_INPUT, "ExteriorD[a]", NULL},
     {TOUR_INPUT, "v=VectorField[M,{1,0}]", NULL},
@@ -113,8 +114,8 @@ static const tour_cell kTour[] = {
      "YangMillsLagrangian[F,gm,{{1,0,0},{0,1,0},{0,0,1}}]", NULL},
 
     {TOUR_MARKDOWN, "Scalar QFT, Dirac and colour",
-     "$$\\mathcal{L}=\\frac12(\\partial\\phi)^2-\\frac12m^2\\phi^2"
-     "-\\frac{\\lambda}{4!}\\phi^4$$"},
+     "$$L=\\frac{(\\partial\\phi)^2-m^2\\phi^2}{2}"
+     "-\\frac{\\lambda\\phi^4}{24}$$"},
     {TOUR_INPUT, "Phi4Lagrangian[phi,m,lambda,4]", NULL},
     {TOUR_INPUT, "Phi4EOM[phi,m,lambda,4]", NULL},
     {TOUR_INPUT, "Phi4Diagrams[phi,m,lambda,4,s,t,u]", NULL},
@@ -145,9 +146,23 @@ static const tour_cell kTour[] = {
     {TOUR_INPUT, "SUNFundamentalCasimir[Nc]", NULL},
     {TOUR_INPUT, "SUNAdjointCasimir[ca,cb,Nc]", NULL},
 
+    {TOUR_MARKDOWN, "Deep symbolic stress: Schwarzschild",
+     "$$R=0,\\qquad R_{abcd}R^{abcd}=\\frac{12r_s^2}{r^6}$$"},
+    {TOUR_INPUT, "S2=Manifold[{tq,rq,thq,phq},Lorentzian]", NULL},
+    {TOUR_INPUT,
+     "gs=Metric[S2,{{-(1-rs/rq),0,0,0},{0,1/(1-rs/rq),0,0},"
+     "{0,0,rq^2,0},{0,0,0,rq^2*Sin[thq]^2}}]",
+     NULL},
+    {TOUR_INPUT, "cs=Curvature[gs]", NULL},
+    {TOUR_INPUT, "RicciScalar[cs]", NULL},
+    {TOUR_INPUT, "Kretschmann[cs]", NULL},
+    {TOUR_INPUT,
+     "DiracTrace[{Up[mu,Lorentz],Up[nu,Lorentz],Up[rho,Lorentz],"
+     "Up[sigma,Lorentz],Up[eta,Lorentz],Up[chi,Lorentz]}]",
+     NULL},
+
     {TOUR_MARKDOWN, "Exact decisions and resource bounds",
-     "$$L=I-V+1,\\quad \\omega=DL-2I,\\quad "
-     "w=\\frac{\\lambda^V}{S}$$"},
+     "$$L=I-V+1,\\quad \\omega=DL-2I$$"},
     {TOUR_INPUT, "ZeroQ[CovariantDerivative[Ricci[c],c]]", NULL},
     {TOUR_INPUT, "MemoryStatus[]", NULL},
 };
@@ -173,6 +188,48 @@ static size_t tour_input_count(void)
         }
     }
     return count;
+}
+
+/*
+ * The device renders a $$..$$ body as one display formula inside a card
+ * roughly 273 pixels wide. A body that fails to lay out, or lays out wider
+ * than the card, degrades to raw LaTeX text on the calculator, so the
+ * generator refuses to ship one.
+ */
+#define TOUR_MARKDOWN_MAX_WIDTH 270
+
+static phy_status validate_markdown_formulas(void)
+{
+    phy_status status = phy_formula_initialize();
+    if (status != PHY_OK) {
+        return status;
+    }
+    for (size_t index = 0u; index < tour_source_cell_count(); ++index) {
+        if (kTour[index].kind != TOUR_MARKDOWN ||
+            kTour[index].secondary == NULL) {
+            continue;
+        }
+        const char *body = kTour[index].secondary;
+        const size_t length = strlen(body);
+        if (length < 4u || body[0] != '$' || body[1] != '$' ||
+            body[length - 1u] != '$' || body[length - 2u] != '$') {
+            continue;
+        }
+        phy_formula_metrics metrics;
+        status = phy_formula_measure_latex(
+            body + 2, length - 4u, PHY_FORMULA_STYLE_DISPLAY, 17,
+            TOUR_MARKDOWN_MAX_WIDTH, &metrics);
+        if (status != PHY_OK || metrics.width > TOUR_MARKDOWN_MAX_WIDTH) {
+            (void)fprintf(
+                stderr, "markdown cell %zu: %s (width %d, limit %d)\n",
+                index,
+                status == PHY_OK ? "formula wider than the card"
+                                 : phy_status_name(status),
+                metrics.width, TOUR_MARKDOWN_MAX_WIDTH);
+            return status == PHY_OK ? PHY_ERR_TERM_LIMIT : status;
+        }
+    }
+    return PHY_OK;
 }
 
 static phy_status populate_tour(phy_notebook *notebook)
@@ -241,6 +298,14 @@ int main(int argc, char **argv)
     }
 
     int result = 1;
+    {
+        const phy_status markdown_status = validate_markdown_formulas();
+        if (markdown_status != PHY_OK) {
+            (void)fail_status("markdown formulas", markdown_status);
+            phy_platform_shutdown();
+            return 1;
+        }
+    }
     phy_notebook *notebook = phy_notebook_create();
     if (notebook == NULL) {
         (void)fail_status("notebook create", PHY_ERR_OUT_OF_MEMORY);

@@ -603,16 +603,10 @@ static phy_status make_su3(phy_cas *cas, phy_lie_group **out_group)
          index < sizeof nonzero / sizeof nonzero[0] && status == PHY_OK;
          ++index) {
         phy_ir_ref value = PHY_IR_NULL;
-        if (nonzero[index].root_three) {
-            status = mul2(cas, half, root_three, &value);
-        } else {
-            status = phy_cas_number(
-                cas, nonzero[index].numerator,
-                nonzero[index].denominator, &value);
-        }
-        if (status == PHY_OK && nonzero[index].numerator < 0 &&
-            nonzero[index].root_three) {
-            status = phy_cas_neg(cas, value, &value);
+        status = phy_cas_number(cas, nonzero[index].numerator,
+                                nonzero[index].denominator, &value);
+        if (status == PHY_OK && nonzero[index].root_three) {
+            status = mul2(cas, value, root_three, &value);
         }
         phy_ir_ref negative = PHY_IR_NULL;
         if (status == PHY_OK) {

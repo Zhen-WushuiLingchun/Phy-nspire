@@ -208,20 +208,48 @@ static bool valid_cell_shape(const phy_notebook *notebook, size_t index,
     return true;
 }
 
+/*
+ * A cell whose stored text no longer parses is a version or capability
+ * mismatch between the application that saved the document and the one
+ * loading it, not byte corruption: the CRC has already proved the bytes
+ * arrived intact. Such a cell loads without an expression, keeps its source
+ * text, and carries the parser's typed status, so the document still opens
+ * and the failing cell reports exactly why. Only memory exhaustion and
+ * structural violations abort the load.
+ */
+static bool degrades_to_stale_cell(phy_status status)
+{
+    switch (status) {
+    case PHY_ERR_PARSE:
+    case PHY_ERR_TYPE:
+    case PHY_ERR_DOMAIN:
+    case PHY_ERR_ASSUMPTION:
+    case PHY_ERR_UNSUPPORTED:
+    case PHY_ERR_OVERFLOW:
+    case PHY_ERR_NODE_LIMIT:
+    case PHY_ERR_DEPTH_LIMIT:
+    case PHY_ERR_TERM_LIMIT:
+    case PHY_ERR_MEMORY_LIMIT:
+        return true;
+    default:
+        return false;
+    }
+}
+
 static phy_status parse_cell_expression(phy_notebook *notebook,
                                         notebook_cell *cell,
                                         const uint8_t *expression,
                                         uint32_t expression_size)
 {
+    phy_status status;
     if (cell->kind == PHY_NOTEBOOK_CELL_INPUT) {
         if (cell->secondary[0] == '\0') {
             cell->expression = PHY_IR_NULL;
             return PHY_OK;
         }
-        return phy_ir_read(notebook->ir, cell->secondary, &cell->expression,
-                           NULL);
-    }
-    if (expression_size == 0u) {
+        status = phy_ir_read(notebook->ir, cell->secondary,
+                             &cell->expression, NULL);
+    } else if (expression_size == 0u) {
         cell->expression = PHY_IR_NULL;
         /*
          * A successful output with no expression is well-formed exactly when it
@@ -233,12 +261,19 @@ static phy_status parse_cell_expression(phy_notebook *notebook,
                        cell->status == PHY_OK && cell->primary[0] == '\0'
                    ? PHY_ERR_CORRUPT_DOCUMENT
                    : PHY_OK;
-    }
-    if (expression[expression_size - 1u] != '\0') {
+    } else if (expression[expression_size - 1u] != '\0') {
         return PHY_ERR_CORRUPT_DOCUMENT;
+    } else {
+        status = phy_ir_read(notebook->ir, (const char *)expression,
+                             &cell->expression, NULL);
     }
-    return phy_ir_read(notebook->ir, (const char *)expression,
-                       &cell->expression, NULL);
+    if (degrades_to_stale_cell(status)) {
+        cell->expression = PHY_IR_NULL;
+        cell->status = status;
+        cell->stale = true;
+        return PHY_OK;
+    }
+    return status;
 }
 
 phy_status phy_notebook_deserialize(const uint8_t *buffer, size_t size,
@@ -328,8 +363,12 @@ phy_status phy_notebook_deserialize(const uint8_t *buffer, size_t size,
     }
     if (status != PHY_OK) {
         phy_notebook_destroy(notebook);
-        return status == PHY_ERR_OUT_OF_MEMORY ? status
-                                               : PHY_ERR_CORRUPT_DOCUMENT;
+        /*
+         * Structural violations already carry PHY_ERR_CORRUPT_DOCUMENT.
+         * Anything else reports itself: masking, say, memory exhaustion as
+         * corruption sends whoever reads the screen after the wrong cause.
+         */
+        return status;
     }
     notebook->selected = 0u;
     notebook->editing = false;

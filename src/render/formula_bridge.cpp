@@ -18,6 +18,46 @@ namespace {
 std::unique_ptr<nmarkdown::TextSystem> g_text;
 std::unique_ptr<nmarkdown::MathSystem> g_math;
 
+/*
+ * Typed-IR references are interned and append-only, so a laid-out expression
+ * never changes for the lifetime of its context. The notebook redraws every
+ * visible output on every frame; without this cache each frame rebuilds the
+ * MathTree and re-runs layout twice per cell (measure, then draw), which is
+ * what made large Yang-Mills and phi^4 outputs crawl on the CX II. The cache
+ * must be reset whenever an IR context is destroyed, because a new context
+ * can reuse the address; phy_formula_ir_cache_reset is that hook.
+ */
+struct IrLayoutSlot {
+    const phy_ir_context *context = nullptr;
+    phy_ir_ref expression = 0;
+    phy_formula_style style = PHY_FORMULA_STYLE_DISPLAY;
+    int pixel_size = 0;
+    int maximum_width = 0;
+    std::uint32_t stamp = 0;
+    std::shared_ptr<const nmarkdown::MathLayoutResult> layout;
+};
+
+constexpr std::size_t kIrLayoutSlots = 16;
+IrLayoutSlot g_ir_layouts[kIrLayoutSlots];
+std::uint32_t g_ir_layout_clock = 0;
+
+void ir_cache_clear()
+{
+    for (IrLayoutSlot& slot : g_ir_layouts) {
+        slot = IrLayoutSlot();
+    }
+    g_ir_layout_clock = 0;
+}
+
+void ir_cache_drop_context(const phy_ir_context *context)
+{
+    for (IrLayoutSlot& slot : g_ir_layouts) {
+        if (slot.context == context) {
+            slot = IrLayoutSlot();
+        }
+    }
+}
+
 nmarkdown::MathStyle convert_style(phy_formula_style style)
 {
     return style == PHY_FORMULA_STYLE_DISPLAY
@@ -95,6 +135,17 @@ phy_status layout_ir_formula(
         return validation;
     }
 
+    for (IrLayoutSlot& slot : g_ir_layouts) {
+        if (slot.layout != nullptr && slot.context == context &&
+            slot.expression == expression && slot.style == style &&
+            slot.pixel_size == pixel_size &&
+            slot.maximum_width == maximum_width) {
+            slot.stamp = ++g_ir_layout_clock;
+            out_layout = slot.layout;
+            return PHY_OK;
+        }
+    }
+
     nmarkdown::MathTree tree;
     std::string diagnostic;
     if (!phy_build_ir_math_tree(context, expression, tree, diagnostic)) {
@@ -111,6 +162,25 @@ phy_status layout_ir_formula(
             nmarkdown::kCoreMathFontConstants, *layout)) {
         return PHY_ERR_BACKEND;
     }
+
+    IrLayoutSlot *victim = &g_ir_layouts[0];
+    for (IrLayoutSlot& slot : g_ir_layouts) {
+        if (slot.layout == nullptr) {
+            victim = &slot;
+            break;
+        }
+        if (slot.stamp < victim->stamp) {
+            victim = &slot;
+        }
+    }
+    victim->context = context;
+    victim->expression = expression;
+    victim->style = style;
+    victim->pixel_size = pixel_size;
+    victim->maximum_width = maximum_width;
+    victim->stamp = ++g_ir_layout_clock;
+    victim->layout = layout;
+
     out_layout = std::move(layout);
     return PHY_OK;
 }
@@ -149,6 +219,7 @@ extern "C" phy_status phy_formula_initialize(void)
             new nmarkdown::MathSystem(*text));
         g_text = std::move(text);
         g_math = std::move(math);
+        phy_ir_set_destroy_observer(ir_cache_drop_context);
         return PHY_OK;
     } catch (const std::bad_alloc&) {
         g_math.reset();
@@ -163,8 +234,15 @@ extern "C" phy_status phy_formula_initialize(void)
 
 extern "C" void phy_formula_shutdown(void)
 {
+    phy_ir_set_destroy_observer(NULL);
+    ir_cache_clear();
     g_math.reset();
     g_text.reset();
+}
+
+extern "C" void phy_formula_ir_cache_reset(void)
+{
+    ir_cache_clear();
 }
 
 extern "C" bool phy_formula_is_ready(void)
