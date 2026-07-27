@@ -291,7 +291,10 @@ phy_status phy_lorentz_rename_index(const phy_lorentz_metric *metric,
         from[0] == '\0' || to[0] == '\0' || out_expr == NULL) {
         return PHY_ERR_INVALID_ARGUMENT;
     }
-    phy_ir_ref from_upper, from_lower, to_upper, to_lower;
+    phy_ir_ref from_upper = PHY_IR_NULL;
+    phy_ir_ref from_lower = PHY_IR_NULL;
+    phy_ir_ref to_upper = PHY_IR_NULL;
+    phy_ir_ref to_lower = PHY_IR_NULL;
     phy_status status =
         phy_lorentz_index(metric, from, PHY_IR_INDEX_UPPER, &from_upper);
     if (status == PHY_OK) {
@@ -740,7 +743,9 @@ phy_status phy_lorentz_reduce(const phy_lorentz_metric *metric,
         if (metric->mass[i] == PHY_IR_NULL) {
             continue;
         }
-        phy_ir_ref from, two, mass_squared;
+        phy_ir_ref from = PHY_IR_NULL;
+        phy_ir_ref two = PHY_IR_NULL;
+        phy_ir_ref mass_squared = PHY_IR_NULL;
         status = phy_lorentz_dot(metric, metric->momentum[i],
                                  metric->momentum[i], &from);
         if (status == PHY_OK) {
