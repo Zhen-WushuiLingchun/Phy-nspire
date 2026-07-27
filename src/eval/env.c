@@ -17,7 +17,8 @@
 
 static const char *const kEvalHeadNames[EVAL_HEAD_COUNT] = {
     "Manifold",     "DifferentialForm", "Metric",      "VectorField",
-    "ExteriorD",    "InteriorProduct",  "HodgeStar",   "Volume",
+    "ExteriorD",    "InteriorProduct",  "LieDerivative",
+    "HodgeStar",    "Volume",
 
     "LieGroup",     "LieAlgebra",       "Generator",   "LieElement",
     "LieBracket",   "StructureConstant", "Killing",
@@ -28,7 +29,8 @@ static const char *const kEvalHeadNames[EVAL_HEAD_COUNT] = {
 
     "Curvature",    "InverseMetric",    "Christoffel", "Riemann",
     "RiemannMixed", "Ricci",            "RicciScalar", "Einstein",
-    "Kretschmann",  "CovariantDerivative",
+    "Kretschmann",  "Weyl",             "WeylSquared",
+    "GeodesicAcceleration",             "CovariantDerivative",
 
     "Phi4Lagrangian", "Phi4EOM",         "Phi4Diagrams",
     "Phi4Renormalization", "Phi4Counterterm",

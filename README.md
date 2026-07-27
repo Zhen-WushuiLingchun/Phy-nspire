@@ -51,10 +51,10 @@ the component tensor core with charts, dense storage, valence, signed slot
 symmetries, contraction, metric inversion, index raising/lowering, and
 component derivatives; and the differential-geometry layer with oriented
 manifolds, canonical antisymmetric forms, exact wedge, exterior derivative,
-interior product, and both orthonormal/general-metric Hodge duals. The native
+interior product, Lie derivative, and both orthonormal/general-metric Hodge duals. The native
 GR layer computes Christoffel, Riemann, Ricci, scalar-curvature and Einstein
-tensors, the Kretschmann invariant, and tensor covariant derivatives from a
-coordinate metric. These operations are exposed as notebook commands and
+tensors, the Kretschmann and Weyl invariants, affine geodesic acceleration,
+and tensor covariant derivatives from a coordinate metric. These operations are exposed as notebook commands and
 checked against a committed curvature corpus.
 Finite exact Lie algebras/groups, a bounded scalar `phi^4` model, and a
 classical Yang--Mills layer add structure constants/Jacobi/Killing operations,
@@ -76,7 +76,8 @@ Those foundations are now **reachable from the notebook**. A stateful evaluator,
 named typed values — manifolds, forms, metrics, Lie groups and algebras,
 algebra-valued forms, curvature bundles — and dispatches each reserved physics
 head onto the corresponding native backend. `ExteriorD[alpha]` calls the
-exterior derivative; `FieldStrength[A,g]` calls the Yang--Mills curvature;
+exterior derivative, `LieDerivative[alpha,v]` evaluates Cartan's formula, and
+`FieldStrength[A,g]` calls the Yang--Mills curvature;
 `ZeroQ[Bianchi[A,g]]` proves the identity rather than asserting it;
 `DiracTrace[...]`, `MandelstamReduce[...]`, `Phi4Lagrangian[...]`,
 `Phi4EOM[...]`, `Phi4Diagrams[...]`, and the `SUN*` colour commands reach their
@@ -85,10 +86,10 @@ by contract preserves an operator and simplifies only its operands: the head
 survived a round trip and nothing computed.
 
 The strict Windows host suite passes 29/29. The WSL ASan/UBSan/leak suite
-passes 31/31, and the assertion-bearing executables contain 90,123 explicit
+passes 31/31, and the assertion-bearing executables contain 94,276 explicit
 checks.
 
-The current native build is measured at 1,100,648 bytes, 17.5% of the 6 MiB
+The current native build is measured at 1,102,959 bytes, 17.5% of the 6 MiB
 ceiling. Its evaluator ARM probe links the complete current physics stack,
 retains 15/15 public evaluator entry points, packages to a `.tns`, and imports
 no libm, floating-point formatter, or ARM soft-float helper.

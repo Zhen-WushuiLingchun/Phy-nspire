@@ -114,7 +114,7 @@ braces. Both held modifiers and tap-then-key modifiers are accepted.
 - `test_notebook`: 162 checks over exact results, editing, insertion, stale
   results, source/IR agreement, bounds, memory return, selection, `RUN` hit
   testing, Markdown LaTeX integration, 2D metrics, and deterministic pixels;
-- `test_eval`: 1,048 checks over the stateful evaluator, including the notebook
+- `test_eval`: 1,125 checks over the stateful evaluator, including the notebook
   integration — state flowing between cells, descriptor outputs, forward
   staleness, and a save/reopen that restores descriptors but not objects;
 - `test_palette`: 652 checks over every category, entry, snippet, and cursor
@@ -126,9 +126,9 @@ braces. Both held modifiers and tap-then-key modifiers are accepted.
 - `test_pointer`: 29 checks over relative contact/motion behavior;
 - `test_modifier`: 8 checks over tapped and held Shift/Ctrl behavior;
 - `tests/fixtures/notebook_frame.digest`: bit-exact 320 × 240 host fixture;
-- strict Windows suite: 29/29; WSL ASan/UBSan/leak suite: 31/31; 90,123
+- strict Windows suite: 29/29; WSL ASan/UBSan/leak suite: 31/31; 94,276
   explicit checks;
-- Ndless r2022 ARM build: 1,100,648 bytes. The evaluator probe retains 15/15
+- Ndless r2022 ARM build: 1,102,959 bytes. The evaluator probe retains 15/15
   public APIs behind the complete physics stack and imports no forbidden
   float/libm/soft-float helper.
 

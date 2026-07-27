@@ -12,6 +12,7 @@
 #include "phy/platform.h"
 
 struct phy_gr_result {
+    const phy_tensor *metric;
     phy_tensor *inverse_metric;
     phy_tensor *christoffel;
     phy_tensor *riemann_mixed;
@@ -22,6 +23,8 @@ struct phy_gr_result {
     /* Filled by phy_gr_kretschmann(), which is not part of the pipeline. */
     phy_tensor *riemann_contravariant;
     phy_ir_ref kretschmann;
+    phy_tensor *weyl_covariant;
+    phy_ir_ref weyl_squared;
 };
 
 static void destroy_outputs(phy_gr_result *result)
@@ -29,6 +32,7 @@ static void destroy_outputs(phy_gr_result *result)
     if (result == NULL) {
         return;
     }
+    phy_tensor_destroy(result->weyl_covariant);
     phy_tensor_destroy(result->riemann_contravariant);
     phy_tensor_destroy(result->einstein);
     phy_tensor_destroy(result->ricci);
@@ -518,6 +522,7 @@ phy_status phy_gr_compute(phy_cas *cas, const phy_tensor *metric,
         return PHY_ERR_OUT_OF_MEMORY;
     }
     memset(result, 0, sizeof *result);
+    result->metric = metric;
 
     phy_status status = phy_tensor_inverse_metric(
         cas, metric, "InverseMetric", &result->inverse_metric);
@@ -676,6 +681,410 @@ phy_status phy_gr_kretschmann(phy_cas *cas, phy_gr_result *result,
     result->riemann_contravariant = raised_three;
     result->kretschmann = sum;
     *out_scalar = sum;
+    return PHY_OK;
+}
+
+static phy_status build_weyl(phy_cas *cas, const phy_gr_result *result,
+                             phy_tensor **out_tensor)
+{
+    static const phy_ir_variance kLower[4] = {
+        PHY_IR_INDEX_LOWER, PHY_IR_INDEX_LOWER,
+        PHY_IR_INDEX_LOWER, PHY_IR_INDEX_LOWER};
+    phy_tensor *weyl = NULL;
+    phy_status status = phy_tensor_create(
+        phy_tensor_chart(result->metric), "Weyl", 4u, kLower, &weyl);
+    if (status == PHY_OK) {
+        status = phy_tensor_declare_riemann_symmetry(weyl);
+    }
+    if (status != PHY_OK) {
+        phy_tensor_destroy(weyl);
+        return status;
+    }
+
+    const unsigned dimension = phy_tensor_dimension(result->metric);
+    if (dimension < 3u) {
+        *out_tensor = weyl;
+        return PHY_OK;
+    }
+
+    phy_ir_ref inverse_n_minus_two = PHY_IR_NULL;
+    phy_ir_ref inverse_scalar_denominator = PHY_IR_NULL;
+    status = phy_cas_number(
+        cas, 1, (int64_t)(dimension - 2u), &inverse_n_minus_two);
+    if (status == PHY_OK) {
+        status = phy_cas_number(
+            cas, 1,
+            (int64_t)((dimension - 1u) * (dimension - 2u)),
+            &inverse_scalar_denominator);
+    }
+    phy_ir_ref scalar_coefficient = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = mul2(
+            cas, result->scalar_curvature, inverse_scalar_denominator,
+            &scalar_coefficient);
+    }
+
+    for (unsigned a = 0u; a < dimension && status == PHY_OK; ++a) {
+        for (unsigned b = a + 1u; b < dimension && status == PHY_OK; ++b) {
+            for (unsigned c = 0u; c < dimension && status == PHY_OK; ++c) {
+                for (unsigned d = c + 1u;
+                     d < dimension && status == PHY_OK; ++d) {
+                    if (a > c || (a == c && b > d)) {
+                        continue;
+                    }
+
+                    const unsigned abcd[4] = {a, b, c, d};
+                    const unsigned ac[2] = {a, c};
+                    const unsigned ad[2] = {a, d};
+                    const unsigned bc[2] = {b, c};
+                    const unsigned bd[2] = {b, d};
+                    const unsigned db[2] = {d, b};
+                    const unsigned cb[2] = {c, b};
+                    const unsigned da[2] = {d, a};
+                    const unsigned ca[2] = {c, a};
+
+                    phy_ir_ref riemann = PHY_IR_NULL;
+                    phy_ir_ref g_ac = PHY_IR_NULL;
+                    phy_ir_ref g_ad = PHY_IR_NULL;
+                    phy_ir_ref g_bc = PHY_IR_NULL;
+                    phy_ir_ref g_bd = PHY_IR_NULL;
+                    phy_ir_ref r_db = PHY_IR_NULL;
+                    phy_ir_ref r_cb = PHY_IR_NULL;
+                    phy_ir_ref r_da = PHY_IR_NULL;
+                    phy_ir_ref r_ca = PHY_IR_NULL;
+                    status = component(
+                        cas, result->riemann_covariant, abcd, &riemann);
+                    if (status == PHY_OK) {
+                        status = component(cas, result->metric, ac, &g_ac);
+                    }
+                    if (status == PHY_OK) {
+                        status = component(cas, result->metric, ad, &g_ad);
+                    }
+                    if (status == PHY_OK) {
+                        status = component(cas, result->metric, bc, &g_bc);
+                    }
+                    if (status == PHY_OK) {
+                        status = component(cas, result->metric, bd, &g_bd);
+                    }
+                    if (status == PHY_OK) {
+                        status = component(cas, result->ricci, db, &r_db);
+                    }
+                    if (status == PHY_OK) {
+                        status = component(cas, result->ricci, cb, &r_cb);
+                    }
+                    if (status == PHY_OK) {
+                        status = component(cas, result->ricci, da, &r_da);
+                    }
+                    if (status == PHY_OK) {
+                        status = component(cas, result->ricci, ca, &r_ca);
+                    }
+
+                    phy_ir_ref products[4] = {
+                        PHY_IR_NULL, PHY_IR_NULL,
+                        PHY_IR_NULL, PHY_IR_NULL};
+                    if (status == PHY_OK) {
+                        status = mul2(cas, g_ac, r_db, &products[0]);
+                    }
+                    if (status == PHY_OK) {
+                        status = mul2(cas, g_ad, r_cb, &products[1]);
+                    }
+                    if (status == PHY_OK) {
+                        status = mul2(cas, g_bc, r_da, &products[2]);
+                    }
+                    if (status == PHY_OK) {
+                        status = mul2(cas, g_bd, r_ca, &products[3]);
+                    }
+                    phy_ir_ref ricci_correction = PHY_IR_NULL;
+                    if (status == PHY_OK) {
+                        status = sub2(
+                            cas, products[0], products[1],
+                            &ricci_correction);
+                    }
+                    if (status == PHY_OK) {
+                        status = sub2(
+                            cas, ricci_correction, products[2],
+                            &ricci_correction);
+                    }
+                    if (status == PHY_OK) {
+                        status = add2(
+                            cas, ricci_correction, products[3],
+                            &ricci_correction);
+                    }
+                    if (status == PHY_OK) {
+                        status = mul2(
+                            cas, ricci_correction, inverse_n_minus_two,
+                            &ricci_correction);
+                    }
+
+                    phy_ir_ref metric_products[2] = {
+                        PHY_IR_NULL, PHY_IR_NULL};
+                    if (status == PHY_OK) {
+                        status = mul2(cas, g_ac, g_bd, &metric_products[0]);
+                    }
+                    if (status == PHY_OK) {
+                        status = mul2(cas, g_ad, g_bc, &metric_products[1]);
+                    }
+                    phy_ir_ref metric_wedge = PHY_IR_NULL;
+                    phy_ir_ref scalar_correction = PHY_IR_NULL;
+                    if (status == PHY_OK) {
+                        status = sub2(
+                            cas, metric_products[0], metric_products[1],
+                            &metric_wedge);
+                    }
+                    if (status == PHY_OK) {
+                        status = mul2(
+                            cas, scalar_coefficient, metric_wedge,
+                            &scalar_correction);
+                    }
+
+                    phy_ir_ref value = PHY_IR_NULL;
+                    if (status == PHY_OK) {
+                        status = sub2(
+                            cas, riemann, ricci_correction, &value);
+                    }
+                    if (status == PHY_OK) {
+                        status = add2(
+                            cas, value, scalar_correction, &value);
+                    }
+                    if (status == PHY_OK) {
+                        status = phy_tensor_set(weyl, abcd, value);
+                    }
+                }
+            }
+        }
+    }
+    if (status == PHY_OK) {
+        status = fold(cas, weyl);
+    }
+    if (status != PHY_OK) {
+        phy_tensor_destroy(weyl);
+        return status;
+    }
+    *out_tensor = weyl;
+    return PHY_OK;
+}
+
+phy_status phy_gr_weyl(phy_cas *cas, phy_gr_result *result,
+                       const phy_tensor **out_tensor)
+{
+    if (cas == NULL || result == NULL || out_tensor == NULL ||
+        result->metric == NULL ||
+        phy_cas_ir(cas) !=
+            phy_chart_ir(phy_tensor_chart(result->metric))) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    if (result->weyl_covariant == NULL) {
+        phy_tensor *weyl = NULL;
+        const phy_status status = build_weyl(cas, result, &weyl);
+        if (status != PHY_OK) {
+            return status;
+        }
+        result->weyl_covariant = weyl;
+    }
+    *out_tensor = result->weyl_covariant;
+    return PHY_OK;
+}
+
+static phy_status ricci_squared(phy_cas *cas,
+                                const phy_gr_result *result,
+                                phy_ir_ref *out_scalar)
+{
+    phy_tensor *raised_one = NULL;
+    phy_tensor *raised_two = NULL;
+    phy_status status = phy_tensor_raise_slot(
+        cas, result->ricci, 0u, result->inverse_metric,
+        "RicciRaised1", &raised_one);
+    if (status == PHY_OK) {
+        status = fold(cas, raised_one);
+    }
+    if (status == PHY_OK) {
+        status = phy_tensor_raise_slot(
+            cas, raised_one, 1u, result->inverse_metric,
+            "RicciUpper", &raised_two);
+    }
+    if (status == PHY_OK) {
+        status = fold(cas, raised_two);
+    }
+
+    phy_ir_ref sum = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = phy_cas_number(cas, 0, 1, &sum);
+    }
+    const unsigned dimension = phy_tensor_dimension(result->ricci);
+    for (unsigned a = 0u; a < dimension && status == PHY_OK; ++a) {
+        for (unsigned b = 0u; b < dimension && status == PHY_OK; ++b) {
+            const unsigned indices[2] = {a, b};
+            phy_ir_ref lower = PHY_IR_NULL;
+            phy_ir_ref upper = PHY_IR_NULL;
+            phy_ir_ref term = PHY_IR_NULL;
+            status = component(cas, result->ricci, indices, &lower);
+            if (status == PHY_OK) {
+                status = component(cas, raised_two, indices, &upper);
+            }
+            if (status == PHY_OK) {
+                status = mul2(cas, lower, upper, &term);
+            }
+            if (status == PHY_OK) {
+                status = add2(cas, sum, term, &sum);
+            }
+        }
+    }
+    if (status == PHY_OK) {
+        status = fold_scalar(cas, &sum);
+    }
+    phy_tensor_destroy(raised_two);
+    phy_tensor_destroy(raised_one);
+    if (status == PHY_OK) {
+        *out_scalar = sum;
+    }
+    return status;
+}
+
+phy_status phy_gr_weyl_squared(phy_cas *cas, phy_gr_result *result,
+                               phy_ir_ref *out_scalar)
+{
+    if (cas == NULL || result == NULL || out_scalar == NULL ||
+        result->metric == NULL ||
+        phy_cas_ir(cas) !=
+            phy_chart_ir(phy_tensor_chart(result->metric))) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    if (result->weyl_squared != PHY_IR_NULL) {
+        *out_scalar = result->weyl_squared;
+        return PHY_OK;
+    }
+
+    const unsigned dimension = phy_tensor_dimension(result->metric);
+    phy_ir_ref value = PHY_IR_NULL;
+    phy_status status = PHY_OK;
+    if (dimension < 3u) {
+        status = phy_cas_number(cas, 0, 1, &value);
+    } else {
+        phy_ir_ref riemann_square = PHY_IR_NULL;
+        phy_ir_ref ricci_square = PHY_IR_NULL;
+        phy_ir_ref scalar_square = PHY_IR_NULL;
+        status = phy_gr_kretschmann(cas, result, &riemann_square);
+        if (status == PHY_OK) {
+            status = ricci_squared(cas, result, &ricci_square);
+        }
+        if (status == PHY_OK) {
+            status = mul2(
+                cas, result->scalar_curvature,
+                result->scalar_curvature, &scalar_square);
+        }
+
+        phy_ir_ref ricci_factor = PHY_IR_NULL;
+        phy_ir_ref scalar_factor = PHY_IR_NULL;
+        if (status == PHY_OK) {
+            status = phy_cas_number(
+                cas, -4, (int64_t)(dimension - 2u), &ricci_factor);
+        }
+        if (status == PHY_OK) {
+            status = phy_cas_number(
+                cas, 2,
+                (int64_t)((dimension - 1u) * (dimension - 2u)),
+                &scalar_factor);
+        }
+        phy_ir_ref ricci_term = PHY_IR_NULL;
+        phy_ir_ref scalar_term = PHY_IR_NULL;
+        if (status == PHY_OK) {
+            status =
+                mul2(cas, ricci_factor, ricci_square, &ricci_term);
+        }
+        if (status == PHY_OK) {
+            status =
+                mul2(cas, scalar_factor, scalar_square, &scalar_term);
+        }
+        if (status == PHY_OK) {
+            const phy_ir_ref terms[3] = {
+                riemann_square, ricci_term, scalar_term};
+            status = phy_cas_add(cas, terms, 3u, &value);
+        }
+        if (status == PHY_OK) {
+            status = fold_scalar(cas, &value);
+        }
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    result->weyl_squared = value;
+    *out_scalar = value;
+    return PHY_OK;
+}
+
+phy_status phy_gr_geodesic_acceleration(
+    phy_cas *cas, const phy_gr_result *result,
+    const phy_tensor *velocity, const char *name,
+    phy_tensor **out_tensor)
+{
+    if (cas == NULL || result == NULL || velocity == NULL || name == NULL ||
+        out_tensor == NULL ||
+        phy_cas_ir(cas) != phy_chart_ir(phy_tensor_chart(velocity)) ||
+        phy_tensor_chart(velocity) !=
+            phy_tensor_chart(result->christoffel)) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    if (phy_tensor_rank(velocity) != 1u ||
+        phy_tensor_valence(velocity, 0u) != PHY_IR_INDEX_UPPER) {
+        return PHY_ERR_TYPE;
+    }
+
+    static const phy_ir_variance kUpper[1] = {PHY_IR_INDEX_UPPER};
+    phy_tensor *acceleration = NULL;
+    phy_status status = phy_tensor_create(
+        phy_tensor_chart(velocity), name, 1u, kUpper, &acceleration);
+    if (status != PHY_OK) {
+        return status;
+    }
+
+    const unsigned dimension = phy_tensor_dimension(velocity);
+    for (unsigned mu = 0u; mu < dimension && status == PHY_OK; ++mu) {
+        phy_ir_ref sum = PHY_IR_NULL;
+        status = phy_cas_number(cas, 0, 1, &sum);
+        for (unsigned nu = 0u; nu < dimension && status == PHY_OK; ++nu) {
+            const unsigned velocity_nu_index[1] = {nu};
+            phy_ir_ref velocity_nu = PHY_IR_NULL;
+            status = component(
+                cas, velocity, velocity_nu_index, &velocity_nu);
+            for (unsigned rho = 0u;
+                 rho < dimension && status == PHY_OK; ++rho) {
+                const unsigned gamma_indices[3] = {mu, nu, rho};
+                const unsigned velocity_rho_index[1] = {rho};
+                phy_ir_ref gamma = PHY_IR_NULL;
+                phy_ir_ref velocity_rho = PHY_IR_NULL;
+                phy_ir_ref term = PHY_IR_NULL;
+                status = component(
+                    cas, result->christoffel, gamma_indices, &gamma);
+                if (status == PHY_OK) {
+                    status = component(
+                        cas, velocity, velocity_rho_index, &velocity_rho);
+                }
+                if (status == PHY_OK) {
+                    const phy_ir_ref factors[3] = {
+                        gamma, velocity_nu, velocity_rho};
+                    status = phy_cas_mul(cas, factors, 3u, &term);
+                }
+                if (status == PHY_OK) {
+                    status = add2(cas, sum, term, &sum);
+                }
+            }
+        }
+        if (status == PHY_OK) {
+            status = phy_cas_neg(cas, sum, &sum);
+        }
+        if (status == PHY_OK) {
+            const unsigned output[1] = {mu};
+            status = phy_tensor_set(acceleration, output, sum);
+        }
+    }
+    if (status == PHY_OK) {
+        status = fold(cas, acceleration);
+    }
+    if (status != PHY_OK) {
+        phy_tensor_destroy(acceleration);
+        return status;
+    }
+    *out_tensor = acceleration;
     return PHY_OK;
 }
 

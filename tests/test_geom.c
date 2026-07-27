@@ -1605,6 +1605,118 @@ static void test_interior_product_rejects(void)
     close_fixture(&f);
 }
 
+static void test_lie_derivative_cartan_and_boundary_degrees(void)
+{
+    fixture f = open_euclidean(2u);
+    phy_tensor *v = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_create(f.chart, "v", 1u, kUpper, &v), PHY_OK);
+    {
+        const unsigned x_axis = 0u;
+        const unsigned y_axis = 1u;
+        PHY_CHECK_EQ_INT(
+            phy_tensor_set(v, &x_axis, parse(f.ir, "x")), PHY_OK);
+        PHY_CHECK_EQ_INT(
+            phy_tensor_set(v, &y_axis, parse(f.ir, "y")), PHY_OK);
+    }
+
+    /* alpha = y dx and v = x d_x + y d_y give L_v alpha = 2 y dx. */
+    phy_form *alpha = make_form(&f, 1u);
+    put(&f, alpha, 0u, "y");
+    phy_form *lie_alpha = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_form_lie_derivative(f.cas, alpha, v, &lie_alpha), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_form_degree(lie_alpha), 1);
+    PHY_CHECK_EQ_STR(component(&f, lie_alpha, 0u), "(* 2 y)");
+    PHY_CHECK_EQ_STR(component(&f, lie_alpha, 1u), "0");
+
+    /* Verify the public result against Cartan's two independently built terms. */
+    phy_form *iota_alpha = NULL;
+    phy_form *d_iota_alpha = NULL;
+    phy_form *d_alpha = NULL;
+    phy_form *iota_d_alpha = NULL;
+    phy_form *cartan = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_form_interior_product(f.cas, alpha, v, &iota_alpha), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_form_exterior_derivative(f.cas, iota_alpha, &d_iota_alpha),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_form_exterior_derivative(f.cas, alpha, &d_alpha), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_form_interior_product(f.cas, d_alpha, v, &iota_d_alpha),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_form_add(f.cas, d_iota_alpha, iota_d_alpha, &cartan), PHY_OK);
+    check_equal(&f, lie_alpha, cartan);
+
+    /* Boundary p=0: L_v(x y) = i_v d(x y) = 2 x y. */
+    phy_form *scalar = make_form(&f, 0u);
+    put(&f, scalar, 0u, "(* x y)");
+    phy_form *lie_scalar = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_form_lie_derivative(f.cas, scalar, v, &lie_scalar), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_form_degree(lie_scalar), 0);
+    PHY_CHECK_EQ_STR(component(&f, lie_scalar, 0u), "(* 2 x y)");
+
+    /*
+     * Boundary p=n: L_v(x dx^dy) = d(i_v alpha) = 3 x dx^dy.
+     * The absent d(alpha) term must not surface as PHY_ERR_DOMAIN.
+     */
+    phy_form *top = make_form(&f, 2u);
+    put(&f, top, 0u, "x");
+    phy_form *lie_top = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_form_lie_derivative(f.cas, top, v, &lie_top), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_form_degree(lie_top), 2);
+    PHY_CHECK_EQ_STR(component(&f, lie_top, 0u), "(* 3 x)");
+
+    phy_form_destroy(lie_top);
+    phy_form_destroy(top);
+    phy_form_destroy(lie_scalar);
+    phy_form_destroy(scalar);
+    phy_form_destroy(cartan);
+    phy_form_destroy(iota_d_alpha);
+    phy_form_destroy(d_alpha);
+    phy_form_destroy(d_iota_alpha);
+    phy_form_destroy(iota_alpha);
+    phy_form_destroy(lie_alpha);
+    phy_form_destroy(alpha);
+    phy_tensor_destroy(v);
+    close_fixture(&f);
+}
+
+static void test_lie_derivative_rejects_invalid_vector(void)
+{
+    fixture f = open_euclidean(2u);
+    phy_form *alpha = generic_form(&f, 1u, "a");
+    static const phy_ir_variance kLowerOne[1] = {PHY_IR_INDEX_LOWER};
+    phy_tensor *covector = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_create(f.chart, "w", 1u, kLowerOne, &covector), PHY_OK);
+    phy_form *result = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_form_lie_derivative(f.cas, alpha, covector, &result),
+        PHY_ERR_TYPE);
+    PHY_CHECK(result == NULL);
+    PHY_CHECK_EQ_INT(
+        phy_form_lie_derivative(NULL, alpha, covector, &result),
+        PHY_ERR_INVALID_ARGUMENT);
+    PHY_CHECK_EQ_INT(
+        phy_form_lie_derivative(f.cas, NULL, covector, &result),
+        PHY_ERR_INVALID_ARGUMENT);
+    PHY_CHECK_EQ_INT(
+        phy_form_lie_derivative(f.cas, alpha, NULL, &result),
+        PHY_ERR_INVALID_ARGUMENT);
+    PHY_CHECK_EQ_INT(
+        phy_form_lie_derivative(f.cas, alpha, covector, NULL),
+        PHY_ERR_INVALID_ARGUMENT);
+
+    phy_tensor_destroy(covector);
+    phy_form_destroy(alpha);
+    close_fixture(&f);
+}
+
 /* -------------------------------------------------------------- the star */
 
 static void test_hodge_examples(void)
@@ -2103,6 +2215,8 @@ int main(void)
     PHY_TEST_CASE(test_interior_product_is_nilpotent);
     PHY_TEST_CASE(test_interior_product_is_an_antiderivation);
     PHY_TEST_CASE(test_interior_product_rejects);
+    PHY_TEST_CASE(test_lie_derivative_cartan_and_boundary_degrees);
+    PHY_TEST_CASE(test_lie_derivative_rejects_invalid_vector);
 
     PHY_TEST_CASE(test_hodge_examples);
     PHY_TEST_CASE(test_hodge_star_square);

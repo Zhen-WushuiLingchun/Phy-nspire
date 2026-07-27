@@ -801,6 +801,116 @@ static void check_cross_checks(const phy_json_value *entry,
     }
 }
 
+static void check_weyl(metric_case *state, const char *metric_name,
+                       phy_ir_ref kretschmann)
+{
+    const phy_tensor *weyl = NULL;
+    phy_status status =
+        phy_gr_weyl(state->cas, state->result, &weyl);
+    PHY_CHECK_EQ_INT(status, PHY_OK);
+    if (status != PHY_OK) {
+        return;
+    }
+
+    const bool conformally_flat =
+        strcmp(metric_name, "schwarzschild") != 0 &&
+        strcmp(metric_name, "reissner_nordstrom") != 0;
+    if (conformally_flat) {
+        unsigned indices[PHY_TENSOR_MAX_RANK] = {0u};
+        const size_t count = phy_tensor_component_count(weyl);
+        for (size_t flat = 0u; flat < count; ++flat) {
+            status = phy_tensor_unflatten(weyl, flat, indices);
+            PHY_CHECK_EQ_INT(status, PHY_OK);
+            if (status != PHY_OK) {
+                return;
+            }
+            phy_ir_ref value = PHY_IR_NULL;
+            status = phy_tensor_component_expression(
+                state->cas, weyl, indices, &value);
+            PHY_CHECK_EQ_INT(status, PHY_OK);
+            if (status != PHY_OK) {
+                return;
+            }
+            (void)expect_zero(
+                state->cas, value,
+                label("%s: Weyl component %lu", metric_name,
+                      (unsigned long)flat));
+        }
+    }
+
+    /* The defining trace g^{ac} C_abcd vanishes for every corpus metric. */
+    for (unsigned b = 0u; b < state->axes.dimension; ++b) {
+        for (unsigned d = 0u; d < state->axes.dimension; ++d) {
+            phy_ir_ref trace = PHY_IR_NULL;
+            status = phy_cas_number(state->cas, 0, 1, &trace);
+            for (unsigned a = 0u;
+                 a < state->axes.dimension && status == PHY_OK; ++a) {
+                for (unsigned c = 0u;
+                     c < state->axes.dimension && status == PHY_OK; ++c) {
+                    const unsigned inverse_indices[2] = {a, c};
+                    const unsigned weyl_indices[4] = {a, b, c, d};
+                    phy_ir_ref inverse = PHY_IR_NULL;
+                    phy_ir_ref component = PHY_IR_NULL;
+                    phy_ir_ref term = PHY_IR_NULL;
+                    status = phy_tensor_component_expression(
+                        state->cas, phy_gr_inverse_metric(state->result),
+                        inverse_indices, &inverse);
+                    if (status == PHY_OK) {
+                        status = phy_tensor_component_expression(
+                            state->cas, weyl, weyl_indices, &component);
+                    }
+                    if (status == PHY_OK) {
+                        const phy_ir_ref factors[2] = {inverse, component};
+                        status =
+                            phy_cas_mul(state->cas, factors, 2u, &term);
+                    }
+                    if (status == PHY_OK) {
+                        const phy_ir_ref terms[2] = {trace, term};
+                        status =
+                            phy_cas_add(state->cas, terms, 2u, &trace);
+                    }
+                }
+            }
+            PHY_CHECK_EQ_INT(status, PHY_OK);
+            if (status != PHY_OK) {
+                return;
+            }
+            (void)expect_zero(
+                state->cas, trace,
+                label("%s: g^ac C_abcd at b=%u,d=%u",
+                      metric_name, b, d));
+        }
+    }
+
+    phy_ir_ref square = PHY_IR_NULL;
+    status = phy_gr_weyl_squared(
+        state->cas, state->result, &square);
+    PHY_CHECK_EQ_INT(status, PHY_OK);
+    if (status != PHY_OK) {
+        return;
+    }
+
+    phy_ir_ref expected = phy_ir_integer(state->ir, 0);
+    if (strcmp(metric_name, "schwarzschild") == 0) {
+        expected = kretschmann;
+    } else if (strcmp(metric_name, "reissner_nordstrom") == 0) {
+        status = phy_corpus_expr_parse(
+            state->cas, "48*(M*r-Q**2)**2/r**8", &expected, NULL);
+        PHY_CHECK_EQ_INT(status, PHY_OK);
+        if (status != PHY_OK) {
+            return;
+        }
+    }
+    (void)expect_equivalent(
+        state->cas, square, expected,
+        label("%s: C_abcd C^abcd", metric_name));
+
+    phy_ir_ref again = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_gr_weyl_squared(state->cas, state->result, &again), PHY_OK);
+    PHY_CHECK(again == square);
+}
+
 static void run_metric_entry(const phy_json_value *entry)
 {
     const char *metric_name = phy_json_string(phy_json_member(entry, "name"));
@@ -847,6 +957,7 @@ static void run_metric_entry(const phy_json_value *entry)
             phy_gr_kretschmann(state.cas, state.result, &again), PHY_OK);
         PHY_CHECK(again == kretschmann);
         PHY_CHECK(phy_gr_riemann_contravariant(state.result) != NULL);
+        check_weyl(&state, metric_name, kretschmann);
     }
 
     check_inverse_metric(&state, metric_name);

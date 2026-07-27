@@ -610,6 +610,32 @@ static phy_status eval_interior_product(phy_env *env, phy_ir_ref expr,
                : status;
 }
 
+static phy_status eval_lie_derivative(phy_env *env, phy_ir_ref expr,
+                                      phy_value *out_value)
+{
+    if (arg_count(env, expr) != 2u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value form;
+    phy_status status =
+        arg_typed(env, expr, 0u, PHY_VALUE_FORM, &form);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_value vector;
+    status = arg_typed(env, expr, 1u, PHY_VALUE_TENSOR, &vector);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_form *result = NULL;
+    status = phy_form_lie_derivative(
+        env->cas, form.as.form, vector.as.tensor, &result);
+    return status == PHY_OK
+               ? publish(env, PHY_VALUE_FORM, result, &form, &vector,
+                         out_value)
+               : status;
+}
+
 static phy_status eval_hodge(phy_env *env, phy_ir_ref expr,
                              phy_value *out_value)
 {
@@ -1211,6 +1237,77 @@ static phy_status eval_kretschmann(phy_env *env, phy_ir_ref expr,
         *out_value = scalar_value(scalar);
     }
     return status;
+}
+
+static phy_status eval_weyl(phy_env *env, phy_ir_ref expr,
+                            phy_value *out_value)
+{
+    if (arg_count(env, expr) != 1u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value bundle;
+    phy_status status =
+        arg_typed(env, expr, 0u, PHY_VALUE_CURVATURE, &bundle);
+    if (status != PHY_OK) {
+        return status;
+    }
+    const phy_tensor *weyl = NULL;
+    status = phy_gr_weyl(env->cas, bundle.as.curvature, &weyl);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_value tensor;
+    tensor.kind = PHY_VALUE_TENSOR;
+    tensor.as.tensor = weyl;
+    return publish_borrowed(env, tensor, &bundle, out_value);
+}
+
+static phy_status eval_weyl_squared(phy_env *env, phy_ir_ref expr,
+                                    phy_value *out_value)
+{
+    if (arg_count(env, expr) != 1u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value bundle;
+    phy_status status =
+        arg_typed(env, expr, 0u, PHY_VALUE_CURVATURE, &bundle);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_ir_ref scalar = PHY_IR_NULL;
+    status = phy_gr_weyl_squared(
+        env->cas, bundle.as.curvature, &scalar);
+    if (status == PHY_OK) {
+        *out_value = scalar_value(scalar);
+    }
+    return status;
+}
+
+static phy_status eval_geodesic_acceleration(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 2u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value bundle;
+    phy_status status =
+        arg_typed(env, expr, 0u, PHY_VALUE_CURVATURE, &bundle);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_value velocity;
+    status = arg_typed(env, expr, 1u, PHY_VALUE_TENSOR, &velocity);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_tensor *acceleration = NULL;
+    status = phy_gr_geodesic_acceleration(
+        env->cas, bundle.as.curvature, velocity.as.tensor,
+        pending_name(env, "GeodesicAcceleration"), &acceleration);
+    return status == PHY_OK
+               ? publish(env, PHY_VALUE_TENSOR, acceleration,
+                         &bundle, &velocity, out_value)
+               : status;
 }
 
 static phy_status eval_tensor_covariant_derivative(
@@ -2252,6 +2349,8 @@ static phy_status eval_operator(phy_env *env, phy_ir_ref expr,
         return eval_exterior_derivative(env, expr, out_value);
     case EVAL_HEAD_INTERIOR_PRODUCT:
         return eval_interior_product(env, expr, out_value);
+    case EVAL_HEAD_LIE_DERIVATIVE:
+        return eval_lie_derivative(env, expr, out_value);
     case EVAL_HEAD_HODGE_STAR:
         return eval_hodge(env, expr, out_value);
     case EVAL_HEAD_VOLUME:
@@ -2301,6 +2400,12 @@ static phy_status eval_operator(phy_env *env, phy_ir_ref expr,
         return eval_curvature_part(env, expr, which, out_value);
     case EVAL_HEAD_KRETSCHMANN:
         return eval_kretschmann(env, expr, out_value);
+    case EVAL_HEAD_WEYL:
+        return eval_weyl(env, expr, out_value);
+    case EVAL_HEAD_WEYL_SQUARED:
+        return eval_weyl_squared(env, expr, out_value);
+    case EVAL_HEAD_GEODESIC_ACCELERATION:
+        return eval_geodesic_acceleration(env, expr, out_value);
     case EVAL_HEAD_COVARIANT_DERIVATIVE:
         return eval_tensor_covariant_derivative(env, expr, out_value);
 

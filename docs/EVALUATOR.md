@@ -93,6 +93,7 @@ one character of lookahead. `Set[name, value]` is the FullForm spelling.
 | `Wedge[a, b, ...]` | `phy_form_wedge` |
 | `ExteriorD[a]` | `phy_form_exterior_derivative` / `phy_lie_form_exterior_derivative` |
 | `InteriorProduct[a, v]` | `phy_form_interior_product` |
+| `LieDerivative[a, v]` | `phy_form_lie_derivative` (Cartan formula) |
 | `HodgeStar[a]`, `HodgeStar[a, g]` | `phy_form_hodge` / `phy_form_hodge_metric` |
 | `Volume[M]`, `Volume[M, g]` | `phy_form_volume` / `phy_form_volume_metric` |
 
@@ -147,7 +148,13 @@ representation trace form explicitly.
 `Curvature[g]` runs the whole coordinate-metric pipeline; `InverseMetric`,
 `Christoffel`, `Riemann`, `RiemannMixed`, `Ricci`, `RicciScalar` and `Einstein`
 read parts of the result. `Kretschmann[c]` performs and caches the more
-expensive four-index contraction on demand. `CovariantDerivative[T,c]`
+expensive four-index contraction on demand. `Weyl[c]` builds the covariant
+conformal curvature, while `WeylSquared[c]` uses the exact invariant
+decomposition to avoid raising four more tensor slots.
+`GeodesicAcceleration[c,v]` returns
+`-Gamma^mu_nu_rho v^nu v^rho`; it is the exact right-hand side of the affine
+geodesic equation, not a numerical trajectory integrator.
+`CovariantDerivative[T,c]`
 constructs the full component tensor `nabla T`, with the lower derivative slot
 prepended.
 
@@ -292,7 +299,7 @@ expression still fails as a typed `PHY_ERR_NODE_LIMIT`.
 
 ## Verification
 
-`tests/test_eval.c`, 1,048 checks. The physics cases deliberately reproduce,
+`tests/test_eval.c`, 1,125 checks. The physics cases deliberately reproduce,
 through reader-facing source, results the backend suites already certify
 directly:
 
@@ -332,11 +339,11 @@ The ARM link check is `make eval-link-check` and
 stack behind one dispatcher, and the same no-float/no-libm/no-soft-float
 standard the CAS and geometry layers are held to. It now links 33 portable
 sources, retains 15/15 public evaluator entry points, contains no forbidden
-float/libm/soft-float dependency, and packages as a 120,472-byte isolated
+float/libm/soft-float dependency, and packages as a 125,276-byte isolated
 probe. That probe size includes its dependencies and is not an incremental
 product-size measurement.
 
 One consequence of this phase that the earlier link-check reports called out as
 future work has now happened: the application genuinely calls the geometry,
 Lie, Yang--Mills, and QFT layers, so `--gc-sections` no longer drops them.
-`dist/phy-nspire.tns` is currently 1,100,648 bytes.
+`dist/phy-nspire.tns` is currently 1,102,959 bytes.

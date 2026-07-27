@@ -123,6 +123,7 @@ static void probe_exterior(phy_cas *cas, phy_manifold *manifold,
     phy_form *product = 0;
     phy_form *derivative = 0;
     phy_form *contracted = 0;
+    phy_form *lie_derivative = 0;
     phy_form *dual = 0;
     phy_form *metric_dual = 0;
     phy_form *volume = 0;
@@ -164,6 +165,8 @@ static void probe_exterior(phy_cas *cas, phy_manifold *manifold,
                                       phy_ir_integer(phy_cas_ir(cas), 1)));
         sink((unsigned)phy_form_interior_product(cas, form, vector,
                                                  &contracted));
+        sink((unsigned)phy_form_lie_derivative(cas, form, vector,
+                                               &lie_derivative));
         phy_tensor_destroy(vector);
     }
 
@@ -171,6 +174,7 @@ static void probe_exterior(phy_cas *cas, phy_manifold *manifold,
     phy_form_destroy(metric_volume);
     phy_form_destroy(dual);
     phy_form_destroy(metric_dual);
+    phy_form_destroy(lie_derivative);
     phy_form_destroy(contracted);
     phy_form_destroy(derivative);
     phy_form_destroy(product);

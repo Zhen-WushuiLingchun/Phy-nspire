@@ -14,10 +14,11 @@ the API reference and is not repeated here.
 | --- | --- |
 | manifold metadata: name, dimension ≤ 4, orientation, signature | pullback — needs a validated coordinate-map object |
 | bounded list of borrowed, validated charts | transition maps between registered charts |
-| canonical antisymmetric `C(n,p)` component storage | Lie derivative and pullback |
-| exact wedge product | Lie derivative, Lie bracket |
+| canonical antisymmetric `C(n,p)` component storage | pullback |
+| exact wedge product | vector-field Lie bracket |
 | exact exterior derivative | connection, torsion, curvature 2-forms |
 | exact interior product by a contravariant vector | integration, Stokes, cohomology |
+| exact Lie derivative of forms through Cartan's formula | |
 | orthonormal and general coordinate-metric Hodge/volume | frames and tetrads other than a coordinate coframe |
 | linear structure, copy, and the zero/equality decisions | |
 
@@ -176,6 +177,19 @@ that: `iota_v iota_v = 0`, and
 iota_v(alpha ^ beta) = (iota_v alpha) ^ beta + (-1)^p alpha ^ (iota_v beta)
 ```
 
+### Lie derivative of a form
+
+```
+L_v alpha = d(iota_v alpha) + iota_v(d alpha)
+```
+
+`phy_form_lie_derivative` evaluates Cartan's formula using the same exact
+exterior derivative and interior product, so no independent coordinate formula
+can drift out of convention. Degree zero and top degree are handled as genuine
+boundary cases: the nonexistent degree `-1` or `n+1` term is omitted rather
+than requested and turned into a spurious domain error. The tests pin all
+three branches (`p=0`, `0<p<n`, `p=n`) and a direct coordinate example.
+
 ### Hodge dual
 
 ```
@@ -231,7 +245,7 @@ The tensor layer supplies the exact inverse and determinant. The manifold's
 declared inertia supplies `sign(det g)`, so `|det g|` is formed without numeric
 sampling. Its square root stays an exact rational power if the scalar CAS
 cannot reduce it. `phy_form_volume_metric` is the corresponding general volume
-form. Wedge, exterior derivative, and interior product remain
+form. Wedge, exterior derivative, interior product, and Lie derivative remain
 metric-independent.
 
 When the determinant is an exact integer or rational, the implementation also
@@ -348,7 +362,7 @@ saying otherwise contradicts the storage. A value that merely cannot be
 
 ## Testing
 
-`tests/test_geom.c` has 4,581 checks in 31 cases. The separate
+`tests/test_geom.c` has 4,640 checks in 33 cases. The separate
 `tests/test_geom_metric.c` adds diagonal, non-diagonal, volume, singular, and
 orientation cases for the general-metric path.
 
@@ -401,14 +415,14 @@ and deliberately: this is the first physics module to call the CAS, and a form
 operation that reached `libm` would defeat the reason the CAS computes only in
 exact rationals.
 
-The probe retained 44/44 public APIs, compiled the geometry translation units
-to 8,577 bytes of ARM text, packaged a 48,400-byte dependency-complete `.tns`,
+The probe retained 45/45 public APIs, compiled the geometry translation units
+to 8,957 bytes of ARM text, packaged a 51,260-byte dependency-complete `.tns`,
 and retained no float formatter, libm call, or ARM soft-float helper.
 
 ## Not in this layer
 
-Pullback and transition maps, for the reason above. Lie derivatives and Lie
-brackets. Connections, torsion, and curvature 2-forms — the Cartan structure
+Pullback and transition maps, for the reason above. Vector-field Lie brackets.
+Connections, torsion, and curvature 2-forms — the Cartan structure
 equations are the natural next step and need only the wedge and the exterior
 derivative, both of which are here. Integration, Stokes' theorem, and anything
 cohomological. Frames and tetrads other than a chart's coordinate coframe.

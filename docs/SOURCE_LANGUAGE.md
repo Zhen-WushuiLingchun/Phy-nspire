@@ -72,14 +72,14 @@ unrelated heads.
 The evaluated object heads are:
 
 - geometry — `Manifold`, `DifferentialForm`, `Metric`, `VectorField`,
-  `ExteriorD`, `InteriorProduct`, `HodgeStar`, `Volume`;
+  `ExteriorD`, `InteriorProduct`, `LieDerivative`, `HodgeStar`, `Volume`;
 - Lie — `LieGroup`, `LieAlgebra`, `Generator`, `LieElement`, `LieBracket`,
   `StructureConstant`, `Killing`;
 - gauge — `LieForm`, `GaugeConnection`, `CovariantD`, `FieldStrength`,
   `GaugeVariation`, `Bianchi`, `YangMillsLagrangian`, `ColorComponent`;
 - relativity — `Curvature`, `InverseMetric`, `Christoffel`, `Riemann`,
   `RiemannMixed`, `Ricci`, `RicciScalar`, `Einstein`, `Kretschmann`,
-  `CovariantDerivative`;
+  `Weyl`, `WeylSquared`, `GeodesicAcceleration`, `CovariantDerivative`;
 - QFT — `DiracTrace`, `MandelstamReduce`, `Phi4Lagrangian`, `Phi4EOM`,
   `Phi4Diagrams`, `Phi4Renormalization`, `Phi4Counterterm`, `SUNDelta`,
   `SUNF`, `SUND`, `SUNT`, `SUNTrace`,

@@ -22,9 +22,9 @@ Verification:
 - host smoke test — done; the suite covers the platform, relative pointer,
   source language, drawing, notebook, the stateful evaluator, IR, tensor
   storage, differential forms, GR, Lie/QFT foundations, CAS, QFT oracle, and
-  full lifecycle: Windows 29/29, WSL ASan/UBSan/leak 31/31, and 90,123
+  full lifecycle: Windows 29/29, WSL ASan/UBSan/leak 31/31, and 94,276
   explicit checks;
-- generated `.tns` size report — 1,100,648 bytes, 17.5% of the 6 MiB ceiling,
+- generated `.tns` size report — 1,102,959 bytes, 17.5% of the 6 MiB ceiling,
   with the current evaluator and physics stack linked;
 - launch of a Phy-nspire artifact on the real CX II — done on 2026-07-26 with
   the observable CAS smoke screen;
@@ -107,7 +107,7 @@ Verification:
   stale outputs, Markdown selection, independent run-badge hit testing, 2D
   metrics, nMarkdown LaTeX integration, memory return, and the framebuffer
   fixture;
-- evaluator tests — done, `tests/test_eval.c`, 1,048 checks. The physics cases
+- evaluator tests — done, `tests/test_eval.c`, 1,125 checks. The physics cases
   reproduce, through reader-facing source, results the backend suites already
   certify directly: the U(1) and SU(2) curvature components and vanishing
   Bianchi residuals of `tests/test_yang_mills.c`, the round two-sphere
@@ -121,7 +121,7 @@ Verification:
   initialization, matrices, metrics, RGB565 rendering, and local error
   recovery;
 - source, palette and pointer tests — done: 228 source-language checks
-  including assignment and reserved-head canonicalization, 652 palette checks
+  including assignment and reserved-head canonicalization, 696 palette checks
   including every CAS snippet parsing, and 29 relative touchpad checks.
 
 The IR carries no simplification, evaluation, or arithmetic: it is the
@@ -135,9 +135,9 @@ observable `phy-cas-smoke.tns` then ran seven symbolic cases on the physical
 CX II on 2026-07-26, displayed 7/7 PASS, and returned cleanly to Documents.
 
 The evaluator's real Ndless check now compiles 33 portable sources, retains
-15/15 public evaluator entry points, packages a 120,472-byte isolated probe,
+15/15 public evaluator entry points, packages a 125,276-byte isolated probe,
 and contains no float formatter, libm call, or ARM soft-float helper. The
-product is 1,100,648 bytes. The independent SU(N) colour probe retains 23/23
+product is 1,102,959 bytes. The independent SU(N) colour probe retains 23/23
 public APIs, 4,924 bytes of layer text, and packages to 43,176 bytes under the
 same no-float rule. These establish ARM link/package and size, not
 physical-device runtime or performance.
@@ -148,15 +148,15 @@ Status: component storage, slot symmetries, exact component contraction,
 raise/lower, cofactor metric inversion, and component partial derivatives are
 implemented. The differential-form layer over them has also landed — manifolds
 with
-orientation and signature, canonical antisymmetric components, and exact wedge,
-exterior derivative, interior product and Hodge dual, documented in
+  orientation and signature, canonical antisymmetric components, and exact wedge,
+  exterior derivative, interior product, Lie derivative and Hodge dual, documented in
 [`docs/GEOMETRY.md`](GEOMETRY.md). Transition maps/pullbacks, abstract
 dummy-index canonicalization, and higher-level covariant form operations remain
 open.
 
 The layer is now reachable from the notebook: `Manifold`, `DifferentialForm`,
-`Metric`, `VectorField`, `Wedge`, `ExteriorD`, `InteriorProduct`, `HodgeStar`
-and `Volume` dispatch onto it through
+`Metric`, `VectorField`, `Wedge`, `ExteriorD`, `InteriorProduct`,
+`LieDerivative`, `HodgeStar` and `Volume` dispatch onto it through
 [`docs/EVALUATOR.md`](EVALUATOR.md) rather than surviving as operator heads.
 
 Output:
@@ -177,7 +177,7 @@ Deferred with a named blocking dependency:
 Verification:
 
 - tensor identities and canonicalization properties — the exterior-calculus
-  identities are done, `tests/test_geom.c`, 4,581 checks: graded commutativity
+  identities are done, `tests/test_geom.c`, 4,640 checks: graded commutativity
   and associativity of the wedge, `d^2 = 0`, both graded Leibniz rules,
   `iota_v iota_v = 0`, and `** = (-1)^{p(n-p)} sign(det g)` at every degree in
   Euclidean and Lorentzian 2D, Euclidean 3D and Minkowski 4D;
@@ -187,7 +187,7 @@ Verification:
   `tests/test_geom_metric.c`, including the general-metric `**` identity;
 - comparison corpus derived from xAct examples;
 - bounded rank/dimension benchmarks on desktop and CX II;
-- the ARM geometry link check retains 44/44 APIs with 8,577 bytes of layer
+- the ARM geometry link check retains 45/45 APIs with 8,957 bytes of layer
   text and no float/libm/soft-float dependency;
 
 ## Phase 3 — general relativity and black holes
@@ -195,21 +195,23 @@ Verification:
 Status: the first coordinate-metric curvature pipeline is implemented. It
 computes the inverse metric, Christoffel symbols, mixed/covariant/fully
 contravariant Riemann tensors, Ricci tensor, scalar curvature, Einstein tensor,
-Kretschmann invariant, and component tensor covariant derivatives through the
-native exact CAS. The committed corpus covers Cartesian Minkowski space, the
-round 2-sphere, Schwarzschild, Reissner--Nordstrom, and de Sitter. Geodesics,
-Weyl invariants, Kerr-specific reduction, and physical-device timing remain
-open.
+Kretschmann invariant, covariant Weyl tensor and squared invariant, geodesic
+acceleration, and component tensor covariant derivatives through the native
+exact CAS. The committed corpus covers Cartesian Minkowski space, the round
+2-sphere, Schwarzschild, Reissner--Nordstrom, and de Sitter. Numerical
+trajectory integration/boundary conditions, Kerr-specific reduction, and
+physical-device timing remain open.
 
 UI commands are done: `Curvature[g]` and the `InverseMetric`, `Christoffel`,
 `Riemann`, `RiemannMixed`, `Ricci`, `RicciScalar`, `Einstein`,
-`Kretschmann`, and `CovariantDerivative` run from notebook cells, and
+`Kretschmann`, `Weyl`, `WeylSquared`, `GeodesicAcceleration`, and
+`CovariantDerivative` run from notebook cells, and
 `tests/test_eval.c` reproduces the two-sphere invariants through them.
 
 Output:
 
-- Christoffel, Riemann, Ricci, Ricci scalar, Einstein tensor, geodesics, and
-  selected invariants;
+- Christoffel, Riemann, Ricci, Ricci scalar, Einstein tensor, the affine
+  geodesic equation's exact acceleration, and selected invariants;
 - Schwarzschild and Kerr-family example notebooks.
 
 Verification:

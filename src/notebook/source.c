@@ -173,7 +173,8 @@ static const char *canonical_function(const char *name)
  */
 static const char *const kObjectHeads[] = {
     "Manifold",     "DifferentialForm", "Metric",        "VectorField",
-    "ExteriorD",    "InteriorProduct",  "HodgeStar",     "Volume",
+    "ExteriorD",    "InteriorProduct",  "LieDerivative", "HodgeStar",
+    "Volume",
 
     "LieGroup",     "LieAlgebra",       "Generator",     "LieElement",
     "LieBracket",   "StructureConstant", "Killing",
@@ -184,7 +185,8 @@ static const char *const kObjectHeads[] = {
 
     "Curvature",    "InverseMetric",    "Christoffel",   "Riemann",
     "RiemannMixed", "Ricci",            "RicciScalar",   "Einstein",
-    "Kretschmann",  "CovariantDerivative",
+    "Kretschmann",  "Weyl",             "WeylSquared",
+    "GeodesicAcceleration",             "CovariantDerivative",
 
     "Component",    "Degree",           "Dimension",     "Rank",
     "ZeroQ",        "EquivalentQ",

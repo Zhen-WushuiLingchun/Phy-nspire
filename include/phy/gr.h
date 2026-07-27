@@ -51,6 +51,49 @@ phy_status phy_gr_kretschmann(phy_cas *cas, phy_gr_result *result,
 const phy_tensor *phy_gr_riemann_contravariant(const phy_gr_result *result);
 
 /*
+ * Covariant Weyl tensor C_abcd, cached in `result`.
+ *
+ * For n >= 3 this uses
+ *
+ *   C_abcd = R_abcd
+ *     - (g_ac R_db - g_ad R_cb - g_bc R_da + g_bd R_ca)/(n-2)
+ *     + R (g_ac g_db - g_ad g_cb)/((n-1)(n-2)).
+ *
+ * In dimensions below three the conformal curvature is identically zero and
+ * this API returns a zero rank-4 tensor rather than dividing by n-2.
+ * The returned tensor is borrowed from `result`.
+ */
+phy_status phy_gr_weyl(phy_cas *cas, phy_gr_result *result,
+                       const phy_tensor **out_tensor);
+
+/*
+ * Exact invariant C_abcd C^abcd, cached in `result`.
+ *
+ * It is evaluated through the contraction identity
+ *
+ *   C^2 = Riemann^2 - 4 Ricci^2/(n-2)
+ *                      + 2 R^2/((n-1)(n-2)),
+ *
+ * which is substantially cheaper on the calculator than raising all four
+ * Weyl slots. Dimensions below three return exact zero.
+ */
+phy_status phy_gr_weyl_squared(phy_cas *cas, phy_gr_result *result,
+                               phy_ir_ref *out_scalar);
+
+/*
+ * Right-hand side of the affinely parametrized geodesic equation:
+ *
+ *   d^2 x^mu/dlambda^2 = -Gamma^mu_nu_rho v^nu v^rho.
+ *
+ * `velocity` is a rank-1 contravariant tensor on the result's chart. The
+ * caller owns the returned rank-1 contravariant tensor.
+ */
+phy_status phy_gr_geodesic_acceleration(
+    phy_cas *cas, const phy_gr_result *result,
+    const phy_tensor *velocity, const char *name,
+    phy_tensor **out_tensor);
+
+/*
  * Covariant derivative against the Levi-Civita connection of `result`:
  *
  *   (nabla T)_{c a1..ar} = d_c T_{a1..ar}

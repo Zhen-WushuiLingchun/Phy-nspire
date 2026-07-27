@@ -435,6 +435,26 @@ phy_status phy_form_interior_product(phy_cas *cas, const phy_form *form,
                                      phy_form **out_form);
 
 /*
+ * Lie derivative of a differential form along a vector field, evaluated
+ * through Cartan's formula:
+ *
+ *     L_v alpha = d(iota_v alpha) + iota_v(d alpha).
+ *
+ * At degree zero the first term is identically absent; at top degree the
+ * second is identically absent. Handling those boundary degrees explicitly is
+ * important because this API represents no degree -1 or n+1 zero object.
+ *
+ * The vector contract is the same as phy_form_interior_product: a rank-1
+ * contravariant tensor on the form's chart. The result has the same degree as
+ * the input and is exact wherever the scalar CAS can differentiate the
+ * components. A deferred derivative stays deferred rather than being guessed
+ * to commute or vanish.
+ */
+phy_status phy_form_lie_derivative(phy_cas *cas, const phy_form *form,
+                                   const phy_tensor *vector,
+                                   phy_form **out_form);
+
+/*
  * Hodge dual, degree n - p, with respect to the declared signature and
  * orientation:
  *

@@ -206,19 +206,19 @@ symbol retention against the header and the no-floating-point rule in isolation.
 
 Measured on the pinned ARM toolchain on 2026-07-27:
 
-- geometry: 44/44 APIs retained, 8,577 bytes of layer text, 48,400-byte probe
+- geometry: 45/45 APIs retained, 8,957 bytes of layer text, 51,260-byte probe
   package;
 - Yang--Mills: 22/22 APIs retained, 4,524 bytes of layer text, 54,260-byte
   probe package;
 - SU(N) colour: 23/23 APIs retained, 4,924 bytes of layer text, 43,176-byte
   probe package;
 - evaluator plus complete backend stack: 15/15 public evaluator APIs retained
-  from 33 portable sources, 24,633 bytes of evaluator text, 120,472-byte
+  from 33 portable sources, 25,418 bytes of evaluator text, 125,276-byte
   isolated probe;
 - all four isolated probes contain no float formatter, libm call, or ARM
   soft-float helper.
 
-A clean product build from the same source is 1,100,648 bytes (17.5% of the
+A clean product build from the same source is 1,102,959 bytes (17.5% of the
 6 MiB ceiling). The product includes nMarkdown/FreeType/HarfBuzz and therefore
 has different retained dependencies from the exact isolated probes; the
 no-float statement above is specifically a property of those native symbolic

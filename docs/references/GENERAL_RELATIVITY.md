@@ -47,6 +47,29 @@ Kretschmann invariant, used as a post-MVP check:
 K = R_abcd R^abcd
 ```
 
+Covariant Weyl tensor in dimension `n >= 3`:
+
+```
+C_abcd = R_abcd
+       - (g_ac R_db - g_ad R_cb - g_bc R_da + g_bd R_ca)/(n-2)
+       + R (g_ac g_db - g_ad g_cb)/((n-1)(n-2))
+```
+
+The invariant is evaluated through the equivalent contraction identity
+
+```
+C_abcd C^abcd = R_abcd R^abcd
+              - 4 R_ab R^ab/(n-2)
+              + 2 R^2/((n-1)(n-2)).
+```
+
+The affine geodesic equation is exposed through its exact right-hand side:
+
+```
+d^2 x^mu/dlambda^2 = -Gamma^mu_nu_rho
+                       (dx^nu/dlambda) (dx^rho/dlambda).
+```
+
 Units are geometrized, `G = c = 1`.
 
 Two computed results in the corpus pin these signs down empirically, which is
@@ -81,6 +104,13 @@ SymPy 1.14.0.
 | `schwarzschild` | 4 | 0 | `48*M**2/r**6` | yes |
 | `reissner_nordstrom` | 4 | 0 | `(48*M**2*r**2 - 96*M*Q**2*r + 56*Q**4)/r**8` | no |
 | `de_sitter_static` | 4 | `12/L**2` | `24/L**4` | no |
+
+The native Weyl acceptance extends this table without changing the corpus:
+Minkowski and de Sitter have `C_abcd = 0`, Schwarzschild has
+`C_abcd C^abcd = K`, and Reissner--Nordstrom has
+`C_abcd C^abcd = 48 (M r - Q^2)^2/r^8`. A separate non-vacuum
+three-dimensional `S^2 x R` case checks the dimension-three cancellation,
+where the Weyl tensor vanishes identically.
 
 Independent non-zero components emitted per metric:
 

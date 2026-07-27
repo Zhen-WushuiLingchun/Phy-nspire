@@ -298,6 +298,20 @@ static void test_exterior_calculus_identities(void)
     expect_decision(&f, "ZeroQ[InteriorProduct[InteriorProduct[s, v], v]]",
                     "True");
 
+    /* LieDerivative is Cartan's formula, including the degree-zero boundary. */
+    (void)run(&f, "radial = VectorField[M, {x, y, z}]");
+    expect_scalar(
+        &f, "Component[LieDerivative[w, radial], 0]", "(* 3 x y)");
+    expect_decision(
+        &f,
+        "EquivalentQ[LieDerivative[w, radial], "
+        "ExteriorD[InteriorProduct[w, radial]] + "
+        "InteriorProduct[ExteriorD[w], radial]]",
+        "True");
+    (void)run(&f, "f0 = DifferentialForm[M, 0, {x*y}]");
+    expect_scalar(
+        &f, "Component[LieDerivative[f0, radial]]", "(* 2 x y)");
+
     /* Linear structure: objects add and scale through ordinary arithmetic. */
     PHY_CHECK_EQ_STR(expansion(&f, run(&f, "a + 3*b")),
                      "(+ dx (* 3 dy))");
@@ -474,6 +488,19 @@ static void test_curvature_pipeline(void)
     expect_scalar(&f, "Component[InverseMetric[c], 0, 0]", "(^ a -2)");
     expect_scalar(&f, "Rank[Riemann[c]]", "4");
     expect_scalar(&f, "Kretschmann[c]", "(* 4 (^ a -4))");
+    expect_decision(&f, "ZeroQ[Weyl[c]]", "True");
+    expect_scalar(&f, "WeylSquared[c]", "0");
+    (void)run(&f, "v = VectorField[M, {vtheta, vphi}]");
+    expect_decision(
+        &f,
+        "EquivalentQ[Component[GeodesicAcceleration[c,v],0],"
+        "Sin[theta]*Cos[theta]*vphi^2]",
+        "True");
+    expect_decision(
+        &f,
+        "EquivalentQ[Component[GeodesicAcceleration[c,v],1],"
+        "-2*Cos[theta]/Sin[theta]*vtheta*vphi]",
+        "True");
     expect_decision(
         &f, "ZeroQ[CovariantDerivative[Ricci[c], c]]", "True");
     fixture_close(&f);
@@ -695,7 +722,8 @@ static void test_every_evaluated_head_rejects_empty_arguments(void)
     static const char *const kHeads[] = {
         "Manifold",     "DifferentialForm",    "Metric",
         "VectorField",  "ExteriorD",           "InteriorProduct",
-        "HodgeStar",    "Volume",              "LieGroup",
+        "LieDerivative",                       "HodgeStar",
+        "Volume",       "LieGroup",
         "LieAlgebra",   "Generator",           "LieElement",
         "LieBracket",   "StructureConstant",   "Killing",
         "LieForm",      "GaugeConnection",     "CovariantD",
@@ -704,6 +732,7 @@ static void test_every_evaluated_head_rejects_empty_arguments(void)
         "Curvature",    "InverseMetric",       "Christoffel",
         "Riemann",      "RiemannMixed",        "Ricci",
         "RicciScalar",  "Einstein",            "Kretschmann",
+        "Weyl",         "WeylSquared",          "GeodesicAcceleration",
         "CovariantDerivative",                 "Phi4Lagrangian",
         "Phi4EOM",      "Phi4Diagrams",         "Phi4Renormalization",
         "Phi4Counterterm",                      "MandelstamReduce",

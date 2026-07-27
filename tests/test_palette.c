@@ -29,6 +29,8 @@ static void test_catalog_bounds_and_representative_entries(void)
     PHY_CHECK(phy_palette_get(PHY_PALETTE_CAS, 4u, 0u, &entry));
     PHY_CHECK_EQ_STR(entry.snippet, "M = Manifold[{t,x,y,z},Lorentzian]");
     PHY_CHECK(phy_palette_get(PHY_PALETTE_CAS, 4u, 6u, &entry));
+    PHY_CHECK_EQ_STR(entry.snippet, "LieDerivative[a,v]");
+    PHY_CHECK(phy_palette_get(PHY_PALETTE_CAS, 4u, 7u, &entry));
     PHY_CHECK_EQ_STR(entry.snippet, "HodgeStar[a,g]");
     PHY_CHECK(phy_palette_get(PHY_PALETTE_CAS, 5u, 0u, &entry));
     PHY_CHECK_EQ_STR(entry.snippet, "G = LieGroup[SU2]");

@@ -376,6 +376,67 @@ phy_status phy_form_interior_product(phy_cas *cas, const phy_form *form,
     return PHY_OK;
 }
 
+phy_status phy_form_lie_derivative(phy_cas *cas, const phy_form *form,
+                                   const phy_tensor *vector,
+                                   phy_form **out_form)
+{
+    if (form == NULL || vector == NULL || out_form == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+
+    const unsigned degree = phy_form_degree(form);
+    const unsigned dimension = phy_form_dimension(form);
+    phy_form *contracted = NULL;
+    phy_form *d_contracted = NULL;
+    phy_form *derivative = NULL;
+    phy_form *contracted_derivative = NULL;
+    phy_form *result = NULL;
+    phy_status status = PHY_OK;
+
+    if (degree > 0u) {
+        status = phy_form_interior_product(
+            cas, form, vector, &contracted);
+        if (status == PHY_OK) {
+            status = phy_form_exterior_derivative(
+                cas, contracted, &d_contracted);
+        }
+    }
+
+    if (degree < dimension && status == PHY_OK) {
+        status = phy_form_exterior_derivative(cas, form, &derivative);
+        if (status == PHY_OK) {
+            status = phy_form_interior_product(
+                cas, derivative, vector, &contracted_derivative);
+        }
+    }
+
+    if (status == PHY_OK) {
+        if (d_contracted != NULL && contracted_derivative != NULL) {
+            status = phy_form_add(
+                cas, d_contracted, contracted_derivative, &result);
+        } else if (d_contracted != NULL) {
+            result = d_contracted;
+            d_contracted = NULL;
+        } else if (contracted_derivative != NULL) {
+            result = contracted_derivative;
+            contracted_derivative = NULL;
+        } else {
+            status = PHY_ERR_CORRUPT_DOCUMENT;
+        }
+    }
+
+    phy_form_destroy(contracted_derivative);
+    phy_form_destroy(derivative);
+    phy_form_destroy(d_contracted);
+    phy_form_destroy(contracted);
+    if (status != PHY_OK) {
+        phy_form_destroy(result);
+        return status;
+    }
+    *out_form = result;
+    return PHY_OK;
+}
+
 /* ------------------------------------------------------------ Hodge dual */
 
 /* +1 or -1 for a declared orientation, 0 for an unoriented manifold. */
