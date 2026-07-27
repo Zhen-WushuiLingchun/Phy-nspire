@@ -8,16 +8,20 @@ evidence.
 ## Executable notebook
 
 [`examples/phy-nspire-cas-tour.tns`](../examples/phy-nspire-cas-tour.tns) is a
-13,588-byte `PHYNB001` notebook with 175 cards:
+4,565-byte `PHYNB001` notebook with 91 source cards:
 
 - seven Markdown cells with nMarkdown LaTeX;
 - 84 editable Math inputs;
-- 84 successful typed outputs.
+- no eagerly persisted output/IR cache.
 
-The generator evaluates the complete document, serializes it, opens it in a new
-notebook with an empty environment, and runs every cell again. Generation fails
-on any parse, evaluation, serialization, reopen, or replay error. The inputs
-touch every currently implemented evaluator head at least once:
+The generator evaluates a validation copy of the complete document, serializes
+it, opens it in a new notebook with an empty environment, and runs every cell
+again. It separately serializes and reopens the source-only artifact before
+writing it. Generation fails on any parse, evaluation, serialization, reopen,
+or replay error. The source-only form avoids rebuilding 168 cached IR trees
+during `FILE > Open`; running all inputs produces the same 84 typed outputs and
+a 175-card session. The inputs touch every currently implemented evaluator head
+at least once:
 
 | Area | Successful reader-facing heads |
 | --- | --- |

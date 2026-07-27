@@ -4,11 +4,13 @@
 `phy-make-cas-tour` target. It is a versioned Phy-nspire notebook document,
 not an executable Ndless program.
 
-The tour is generated from reader-facing source, evaluated through the same
-stateful notebook backend as the calculator, checked so every output succeeds,
-serialized, reopened into a fresh environment, and replayed. Its seven
-Markdown/LaTeX sections and 84 executable examples reach every implemented
-evaluator head at least once. Rebuild it with:
+The tour is generated from reader-facing source. A validation copy is evaluated
+through the same stateful notebook backend as the calculator, checked so every
+output succeeds, serialized, reopened into a fresh environment, and replayed.
+The distributable file deliberately stores only its seven Markdown/LaTeX cells
+and 84 executable input cells, so opening it on a CX II does not eagerly rebuild
+84 cached input IR trees plus 84 output trees. The examples still reach every
+implemented evaluator head at least once. Rebuild it with:
 
 ```text
 cmake --build build --target phy-make-cas-tour --config Debug
@@ -17,5 +19,7 @@ build/Debug/phy-make-cas-tour.exe examples/phy-nspire-cas-tour.tns
 
 Copy it to `Documents/phy-nspire/notebooks/` and open it with the `FILE`
 picker. Every Math card remains editable and can be run again with its
-upper-right `RUN` badge. The 175-card tour leaves 17 of the notebook's 192
-bounded card slots free for additional calculations.
+upper-right `RUN` badge. The 91-card source document leaves 101 of the
+notebook's 192 bounded card slots free on open. Running all 84 Math cells
+top-to-bottom adds their output cards, reaches 175 cards, and leaves 17 slots
+for additional calculations.

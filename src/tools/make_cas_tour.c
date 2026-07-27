@@ -159,6 +159,79 @@ static int fail_status(const char *operation, phy_status status)
     return 1;
 }
 
+static size_t tour_source_cell_count(void)
+{
+    return sizeof kTour / sizeof kTour[0];
+}
+
+static size_t tour_input_count(void)
+{
+    size_t count = 0u;
+    for (size_t index = 0u; index < tour_source_cell_count(); ++index) {
+        if (kTour[index].kind == TOUR_INPUT) {
+            count++;
+        }
+    }
+    return count;
+}
+
+static phy_status populate_tour(phy_notebook *notebook)
+{
+    for (size_t index = 0u; index < tour_source_cell_count(); ++index) {
+        const phy_status status =
+            kTour[index].kind == TOUR_MARKDOWN
+                ? phy_notebook_add_markdown(
+                      notebook, kTour[index].primary,
+                      kTour[index].secondary, NULL)
+                : phy_notebook_add_input(
+                      notebook, kTour[index].primary, NULL);
+        if (status != PHY_OK) {
+            (void)fprintf(stderr, "tour cell %zu: ", index);
+            return status;
+        }
+    }
+    return PHY_OK;
+}
+
+static void report_failed_inputs(const phy_notebook *notebook)
+{
+    for (size_t index = 0u;
+         index < phy_notebook_cell_count(notebook); ++index) {
+        phy_notebook_cell_view view;
+        if (phy_notebook_cell(notebook, index, &view) &&
+            view.kind == PHY_NOTEBOOK_CELL_INPUT &&
+            view.status != PHY_OK) {
+            (void)fprintf(stderr, "  input %zu: %s -> %s\n", index,
+                          view.primary, phy_status_name(view.status));
+        }
+    }
+}
+
+static phy_status serialize_document(const phy_notebook *notebook,
+                                     uint8_t **out_document,
+                                     size_t *out_bytes)
+{
+    *out_document = NULL;
+    *out_bytes = 0u;
+    phy_status status =
+        phy_notebook_serialize(notebook, NULL, 0u, out_bytes);
+    if (status != PHY_ERR_INVALID_ARGUMENT || *out_bytes == 0u) {
+        return status == PHY_OK ? PHY_ERR_CORRUPT_DOCUMENT : status;
+    }
+    uint8_t *document = malloc(*out_bytes);
+    if (document == NULL) {
+        return PHY_ERR_OUT_OF_MEMORY;
+    }
+    status =
+        phy_notebook_serialize(notebook, document, *out_bytes, out_bytes);
+    if (status != PHY_OK) {
+        free(document);
+        return status;
+    }
+    *out_document = document;
+    return PHY_OK;
+}
+
 int main(int argc, char **argv)
 {
     const char *path =
@@ -173,57 +246,24 @@ int main(int argc, char **argv)
         (void)fail_status("notebook create", PHY_ERR_OUT_OF_MEMORY);
         goto done;
     }
-    for (size_t index = 0u;
-         index < sizeof kTour / sizeof kTour[0]; ++index) {
-        const phy_status status =
-            kTour[index].kind == TOUR_MARKDOWN
-                ? phy_notebook_add_markdown(
-                      notebook, kTour[index].primary,
-                      kTour[index].secondary, NULL)
-                : phy_notebook_add_input(
-                      notebook, kTour[index].primary, NULL);
-        if (status != PHY_OK) {
-            (void)fprintf(stderr, "tour cell %zu: ", index);
-            (void)fail_status("insert", status);
-            goto close_notebook;
-        }
+    phy_status status = populate_tour(notebook);
+    if (status != PHY_OK) {
+        (void)fail_status("insert validation tour", status);
+        goto close_notebook;
     }
 
-    {
-        const phy_status status = phy_notebook_evaluate_all(notebook);
-        if (status != PHY_OK) {
-            (void)fail_status("evaluate tour", status);
-            for (size_t index = 0u;
-                 index < phy_notebook_cell_count(notebook); ++index) {
-                phy_notebook_cell_view view;
-                if (phy_notebook_cell(notebook, index, &view) &&
-                    view.kind == PHY_NOTEBOOK_CELL_INPUT &&
-                    view.status != PHY_OK) {
-                    (void)fprintf(
-                        stderr, "  input %zu: %s -> %s\n", index,
-                        view.primary, phy_status_name(view.status));
-                }
-            }
-            goto close_notebook;
-        }
+    status = phy_notebook_evaluate_all(notebook);
+    if (status != PHY_OK) {
+        (void)fail_status("evaluate validation tour", status);
+        report_failed_inputs(notebook);
+        goto close_notebook;
     }
 
     size_t bytes = 0u;
-    phy_status status =
-        phy_notebook_serialize(notebook, NULL, 0u, &bytes);
-    if (status != PHY_ERR_INVALID_ARGUMENT || bytes == 0u) {
-        (void)fail_status("size notebook", status);
-        goto close_notebook;
-    }
-    uint8_t *document = malloc(bytes);
-    if (document == NULL) {
-        (void)fail_status("allocate document", PHY_ERR_OUT_OF_MEMORY);
-        goto close_notebook;
-    }
-    status = phy_notebook_serialize(notebook, document, bytes, &bytes);
+    uint8_t *document = NULL;
+    status = serialize_document(notebook, &document, &bytes);
     if (status != PHY_OK) {
-        free(document);
-        (void)fail_status("serialize notebook", status);
+        (void)fail_status("serialize validation tour", status);
         goto close_notebook;
     }
 
@@ -235,34 +275,92 @@ int main(int argc, char **argv)
         phy_notebook_destroy(reopened);
         free(document);
         (void)fail_status(
-            "reopen notebook",
+            "reopen validation tour",
             status != PHY_OK ? status : PHY_ERR_CORRUPT_DOCUMENT);
         goto close_notebook;
     }
     status = phy_notebook_evaluate_all(reopened);
     phy_notebook_destroy(reopened);
+    reopened = NULL;
+    free(document);
+    document = NULL;
+    if (status != PHY_OK) {
+        (void)fail_status("replay validation tour", status);
+        goto close_notebook;
+    }
+
+    /*
+     * The distributable document intentionally contains source cells only.
+     * Persisting all 84 cached input IR trees and all 84 output trees makes
+     * opening the 175-card validation document rebuild the entire physics
+     * session at once. The cached artifact round-trips on the host, but the
+     * byte-identical file was reported as corrupt by a CX II at open time. The
+     * eager IR/heap reconstruction is the platform-specific part of that path.
+     *
+     * Keeping the source cells gives the calculator a cheap, deterministic
+     * open path and makes the tour an honest device exercise: the reader runs
+     * the Math cells to produce their outputs. The fully evaluated round trip
+     * above remains the generation gate, so no CAS coverage is lost.
+     */
+    phy_notebook_destroy(notebook);
+    notebook = phy_notebook_create();
+    if (notebook == NULL) {
+        (void)fail_status("source notebook create", PHY_ERR_OUT_OF_MEMORY);
+        goto done;
+    }
+    status = populate_tour(notebook);
+    if (status != PHY_OK) {
+        (void)fail_status("insert source tour", status);
+        goto close_notebook;
+    }
+    status = serialize_document(notebook, &document, &bytes);
+    if (status != PHY_OK) {
+        (void)fail_status("serialize source tour", status);
+        goto close_notebook;
+    }
+    status = phy_notebook_deserialize(document, bytes, &reopened);
+    if (status != PHY_OK || reopened == NULL ||
+        phy_notebook_cell_count(reopened) != tour_source_cell_count()) {
+        phy_notebook_destroy(reopened);
+        reopened = NULL;
+        free(document);
+        document = NULL;
+        (void)fail_status(
+            "reopen source tour",
+            status != PHY_OK ? status : PHY_ERR_CORRUPT_DOCUMENT);
+        goto close_notebook;
+    }
+    status = phy_notebook_evaluate_all(reopened);
+    if (status != PHY_OK) {
+        report_failed_inputs(reopened);
+    }
+    phy_notebook_destroy(reopened);
+    reopened = NULL;
     if (status != PHY_OK) {
         free(document);
-        (void)fail_status("replay reopened notebook", status);
+        document = NULL;
+        (void)fail_status("run reopened source tour", status);
         goto close_notebook;
     }
 
     FILE *file = fopen(path, "wb");
     if (file == NULL) {
         free(document);
+        document = NULL;
         (void)fprintf(stderr, "open output: %s\n", path);
         goto close_notebook;
     }
     const size_t written = fwrite(document, 1u, bytes, file);
     const int closed = fclose(file);
     free(document);
+    document = NULL;
     if (written != bytes || closed != 0) {
         (void)fprintf(stderr, "write output: %s\n", path);
         goto close_notebook;
     }
     (void)printf(
-        "CAS tour: %zu cells, %zu bytes, all inputs passed -> %s\n",
-        phy_notebook_cell_count(notebook), bytes, path);
+        "CAS tour: %zu source cells, %zu inputs validated, %zu bytes -> %s\n",
+        tour_source_cell_count(), tour_input_count(), bytes, path);
     result = 0;
 
 close_notebook:

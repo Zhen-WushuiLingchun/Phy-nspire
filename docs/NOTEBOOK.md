@@ -112,18 +112,21 @@ braces. Both held modifiers and tap-then-key modifiers are accepted.
 ## Comprehensive CAS tour
 
 [`examples/phy-nspire-cas-tour.tns`](../examples/phy-nspire-cas-tour.tns) is a
-generated, executable notebook rather than a screenshot fixture. Its 175 cards
-contain seven Markdown/LaTeX explanations and 84 input/output pairs covering
-the implemented scalar CAS and calculus, generic component tensors, manifolds,
-forms and Hodge operations, coordinate GR, Lie algebra and Yang--Mills, phi4
-graph/renormalization operations, Dirac/Mandelstam/SU(N) colour, and
-`MemoryStatus[]`. Every implemented evaluator head is reached at least once;
-the 192-card ceiling still leaves 17 cards for edits and additional calculations.
+generated, executable notebook rather than a screenshot fixture. Its 91
+source cards contain seven Markdown/LaTeX explanations and 84 Math inputs
+covering the implemented scalar CAS and calculus, generic component tensors,
+manifolds, forms and Hodge operations, coordinate GR, Lie algebra and
+Yang--Mills, phi4 graph/renormalization operations,
+Dirac/Mandelstam/SU(N) colour, and `MemoryStatus[]`. Every implemented
+evaluator head is reached at least once.
 
-`phy-make-cas-tour` evaluates every input, serializes the notebook, deserializes
-it into a fresh empty environment, and replays all cells before writing the
-artifact. The file therefore checks both the examples and the exact workflow
-used by `FILE > Open` followed by `Run all cells`.
+`phy-make-cas-tour` first evaluates every input in a validation copy, serializes
+that fully evaluated notebook, deserializes it into a fresh empty environment,
+and replays all cells. It then writes a separately round-tripped source-only
+document. This keeps the CX II's `FILE > Open` path free of eager cached-tree
+reconstruction while preserving full generation-time CAS coverage. Running all
+84 Math cells top-to-bottom grows the document to 175 cards and leaves 17 of
+the 192 bounded slots free.
 
 ## Verification
 

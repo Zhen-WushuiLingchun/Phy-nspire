@@ -94,8 +94,9 @@ survived a round trip and nothing computed.
 The generated
 [`examples/phy-nspire-cas-tour.tns`](examples/phy-nspire-cas-tour.tns)
 notebook combines seven Markdown/LaTeX explanations with 84 executable examples
-that touch every implemented evaluator head, and is evaluated, serialized,
-reopened, and replayed during the test suite.
+that touch every implemented evaluator head. Its distributable form contains 91
+source cells so opening does not eagerly rebuild all cached results; a separate
+fully evaluated copy is serialized, reopened, and replayed during generation.
 
 The strict Windows host suite passes 30/30. The WSL ASan/UBSan/leak suite
 passes 32/32, and the assertion-bearing executables contain 94,814 explicit
@@ -109,11 +110,14 @@ no libm, floating-point formatter, or ARM soft-float helper.
 The native CAS smoke artifact has run on the target CX II and shown all seven
 exact symbolic checks passing. Returning from it restored Documents normally.
 The earlier notebook shell also passed its input and touchpad acceptance. The
-current 1,105,773-byte evaluator build and the 13,588-byte exhaustive CAS tour
+current 1,105,773-byte evaluator build and the earlier 13,588-byte cached CAS tour
 notebook were transferred through the repository-owned CLI on 2026-07-27 and
 verified byte-for-byte by calculator readback. The evaluator build still
 requires an explicit calculator acceptance run after transfer; an ARM link and
-byte-identical upload do not establish on-device runtime or performance. The
+byte-identical upload do not establish on-device runtime or performance. That
+cached tour exposed a CX II load-time failure consistent with eager IR/heap
+pressure and has since been replaced by the 4,565-byte source-only tour; the
+replacement still requires an explicit calculator open/run check. The
 separate baseline channel-order check remains tracked in
 [docs/BUILD.md](docs/BUILD.md).
 
