@@ -22,9 +22,9 @@ Verification:
 - host smoke test — done; the suite covers the platform, relative pointer,
   source language, drawing, notebook, the stateful evaluator, IR, tensor
   storage, differential forms, GR, Lie/QFT foundations, CAS, QFT oracle, and
-  full lifecycle: Windows 29/29, WSL ASan/UBSan/leak 31/31, and 94,457
+  full lifecycle: Windows 30/30, WSL ASan/UBSan/leak 32/32, and 94,814
   explicit checks;
-- generated `.tns` size report — 1,104,874 bytes, 17.6% of the 6 MiB ceiling,
+- generated `.tns` size report — 1,105,773 bytes, 17.6% of the 6 MiB ceiling,
   with the current evaluator and physics stack linked;
 - launch of a Phy-nspire artifact on the real CX II — done on 2026-07-26 with
   the observable CAS smoke screen;
@@ -107,7 +107,7 @@ Verification:
   stale outputs, Markdown selection, independent run-badge hit testing, 2D
   metrics, nMarkdown LaTeX integration, memory return, and the framebuffer
   fixture;
-- evaluator tests — done, `tests/test_eval.c`, 1,174 checks. The physics cases
+- evaluator tests — done, `tests/test_eval.c`, 1,506 checks. The physics cases
   reproduce, through reader-facing source, results the backend suites already
   certify directly: the U(1) and SU(2) curvature components and vanishing
   Bianchi residuals of `tests/test_yang_mills.c`, the round two-sphere
@@ -136,9 +136,9 @@ observable `phy-cas-smoke.tns` then ran seven symbolic cases on the physical
 CX II on 2026-07-26, displayed 7/7 PASS, and returned cleanly to Documents.
 
 The evaluator's real Ndless check now compiles 33 portable sources, retains
-15/15 public evaluator entry points, packages a 128,528-byte isolated probe,
+15/15 public evaluator entry points, packages a 130,176-byte isolated probe,
 and contains no float formatter, libm call, or ARM soft-float helper. The
-product is 1,104,874 bytes. The independent SU(N) colour probe retains 23/23
+product is 1,105,773 bytes. The independent SU(N) colour probe retains 23/23
 public APIs, 4,924 bytes of layer text, and packages to 43,176 bytes under the
 same no-float rule. These establish ARM link/package and size, not
 physical-device runtime or performance.
@@ -155,8 +155,8 @@ with
 dummy-index canonicalization, and higher-level covariant form operations remain
 open.
 
-The layer is now reachable from the notebook: `Manifold`, `DifferentialForm`,
-`Metric`, `VectorField`, `Wedge`, `ExteriorD`, `InteriorProduct`,
+The layer is now reachable from the notebook: `Manifold`, `ComponentTensor`,
+`DifferentialForm`, `Metric`, `VectorField`, `Wedge`, `ExteriorD`, `InteriorProduct`,
 `LieDerivative`, `HodgeStar` and `Volume` dispatch onto it through
 [`docs/EVALUATOR.md`](EVALUATOR.md) rather than surviving as operator heads.
 
@@ -167,6 +167,9 @@ Output:
   raise/lower, coordinate-metric GR, and component tensor covariant
   derivatives are done; abstract canonical dummy indices and transition-map
   syntax remain outstanding;
+- the component constructor covers ranks 0 through 4 and every slot-variance
+  pattern inside the dimension-4 native ceiling; unbounded rank remains
+  intentionally out of scope;
 - optional xPerm C integration after independent tests pass.
 
 Deferred with a named blocking dependency:

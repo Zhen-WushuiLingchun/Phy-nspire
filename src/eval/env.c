@@ -17,6 +17,7 @@
 
 static const char *const kEvalHeadNames[EVAL_HEAD_COUNT] = {
     "Manifold",     "DifferentialForm", "Metric",      "VectorField",
+    "ComponentTensor",
     "ExteriorD",    "InteriorProduct",  "LieDerivative",
     "HodgeStar",    "Volume",
 
@@ -43,7 +44,7 @@ static const char *const kEvalHeadNames[EVAL_HEAD_COUNT] = {
     "SUNAdjointCasimir",
 
     "Component",    "Degree",           "Dimension",   "Rank",
-    "ZeroQ",        "EquivalentQ",
+    "ZeroQ",        "EquivalentQ",      "MemoryStatus",
 };
 
 const char *phy_value_kind_name(phy_value_kind kind)

@@ -55,7 +55,7 @@ four, which is what "stateful" buys.
 | --- | --- | --- |
 | `Scalar` | arithmetic, components, decisions | its own typed IR |
 | `Manifold` | `Manifold[...]` | descriptor line |
-| `Tensor` | `Metric`, `VectorField`, curvature parts | components, `List` of rows at rank <= 2 |
+| `Tensor` | `ComponentTensor`, `Metric`, `VectorField`, curvature parts | components, `List` of rows at rank <= 2 |
 | `Form` | `DifferentialForm`, `Wedge`, `ExteriorD`, `HodgeStar`, `Volume`, `InteriorProduct`, `YangMillsLagrangian`, `ColorComponent` | coordinate-coframe expansion |
 | `LieGroup` | `LieGroup[...]` | descriptor line |
 | `LieAlgebra` | `LieAlgebra[G]` | descriptor line |
@@ -87,6 +87,7 @@ one character of lookahead. `Set[name, value]` is the FullForm spelling.
 | Spelling | Backend |
 | --- | --- |
 | `Manifold[{coords...}, signature, orientation?]` | `phy_chart_create` + `phy_manifold_create` |
+| `ComponentTensor[M, {Down,Up,...}, components]` | general rank-0 through rank-4 `phy_tensor` |
 | `DifferentialForm[M, degree, {components}?]` | `phy_form_create` |
 | `Metric[M, {{...},...}]` | rank-2 covariant `phy_tensor` |
 | `VectorField[M, {...}]` | rank-1 contravariant `phy_tensor` |
@@ -104,6 +105,11 @@ explicit list of `+1`/`-1`. `orientation` is `Positive` (the default),
 `Negative`, or `Unoriented`/`None`. A manifold carries exactly one chart:
 `geom.h` registers charts but does not relate them, so a second one buys nothing
 until a validated `phy_map` exists.
+
+`ComponentTensor` has one variance marker per slot and one nested `List` level
+per slot. A rank-0 tensor takes a scalar component. The native bound is
+dimension 1 through 4, rank 0 through 4, hence at most 256 dense components;
+this is intentionally not an unbounded abstract-index tensor language.
 
 ### Lie algebra
 
@@ -215,7 +221,7 @@ bounded to the textbook SU(2)/SU(3) tables; abstract `SUNF` works for symbolic
 ### Queries
 
 `Component[obj, indices...]`, `Degree[form]`, `Rank[tensor]`, `Dimension[obj]`,
-`ZeroQ[obj]`, `EquivalentQ[a, b]`.
+`ZeroQ[obj]`, `EquivalentQ[a, b]`, `MemoryStatus[]`.
 
 `Component` of a Lie form takes the colour index first, then the form indices;
 a degree-0 form takes none. `Dimension` reports the underlying space where there
@@ -224,6 +230,10 @@ is one, and the algebra or representation dimension otherwise.
 The two decisions return the symbols `True`, `False` and `Unknown`, following
 `phy_cas_is_zero`: an undecided question stays visibly undecided instead of
 collapsing to `False`.
+
+`MemoryStatus[]` returns exact rules for `IRNodes`, `IRBytes`, `CASBytes`,
+`LiveObjects`, and `Bindings`. It is a diagnostic snapshot, not a request to
+collect; normal command evaluation already performs the object sweep.
 
 ### Structural algebra
 
@@ -302,9 +312,19 @@ has no collection, so a document that computes one and then edits a cell has to
 be able to compute it again. They stay limits: an intentionally explosive
 expression still fails as a typed `PHY_ERR_NODE_LIMIT`.
 
+Object intermediates are mark-and-swept after every successful or failed
+command. `Clear[name]` and `ClearAll[]` release object graphs no longer reachable
+from bindings. CAS scratch memory is LIFO and the memo cache is bounded,
+discarding and rebuilding itself at its ceiling. Interned IR nodes are immutable
+and deliberately have no per-node collector: they live for the notebook
+context, deduplicate identical expressions, and stop at the node/byte ceilings
+above. New/Open destroys the old context and returns all of that memory. Thus a
+document can reach a typed memory or node-limit error, but cannot write beyond
+its configured arenas.
+
 ## Verification
 
-`tests/test_eval.c`, 1,174 checks. The physics cases deliberately reproduce,
+`tests/test_eval.c`, 1,506 checks. The physics cases deliberately reproduce,
 through reader-facing source, results the backend suites already certify
 directly:
 
@@ -345,11 +365,11 @@ The ARM link check is `make eval-link-check` and
 stack behind one dispatcher, and the same no-float/no-libm/no-soft-float
 standard the CAS and geometry layers are held to. It now links 33 portable
 sources, retains 15/15 public evaluator entry points, contains no forbidden
-float/libm/soft-float dependency, and packages as a 128,528-byte isolated
+float/libm/soft-float dependency, and packages as a 130,176-byte isolated
 probe. That probe size includes its dependencies and is not an incremental
 product-size measurement.
 
 One consequence of this phase that the earlier link-check reports called out as
 future work has now happened: the application genuinely calls the geometry,
 Lie, Yang--Mills, and QFT layers, so `--gc-sections` no longer drops them.
-`dist/phy-nspire.tns` is currently 1,104,874 bytes.
+`dist/phy-nspire.tns` is currently 1,105,773 bytes.

@@ -69,6 +69,10 @@ renormalization constants and the local phi4 counterterm density for
 `D = 4 - 2 epsilon`. A bounded connected phi4 multigraph command proves
 quartic degree/connectedness and returns exact Wick multiplicities, vertex
 automorphisms, `S`, `1/S`, loop order and `lambda^V/S` for a supplied topology.
+The notebook can construct a general dense component tensor at ranks 0 through
+4 with any per-slot `Up`/`Down` pattern. Generic tensor indices do not carry a
+Lorentz label; explicit Lorentz/colour/spinor spaces are retained only where
+the QFT type checker must prevent invalid contractions.
 The CAS answers "unknown" rather than guessing outside its decidable class, so
 the scalar operations needed by the tensor, geometry, and GR phases no longer depend on
 integrating Giac.
@@ -87,11 +91,17 @@ native QFT backends. Before this layer those heads were parsed into typed IR and
 by contract preserves an operator and simplifies only its operands: the head
 survived a round trip and nothing computed.
 
-The strict Windows host suite passes 29/29. The WSL ASan/UBSan/leak suite
-passes 31/31, and the assertion-bearing executables contain 94,457 explicit
+The generated
+[`examples/phy-nspire-cas-tour.tns`](examples/phy-nspire-cas-tour.tns)
+notebook combines seven Markdown/LaTeX explanations with 84 executable examples
+that touch every implemented evaluator head, and is evaluated, serialized,
+reopened, and replayed during the test suite.
+
+The strict Windows host suite passes 30/30. The WSL ASan/UBSan/leak suite
+passes 32/32, and the assertion-bearing executables contain 94,814 explicit
 checks.
 
-The current native build is measured at 1,104,874 bytes, 17.6% of the 6 MiB
+The current native build is measured at 1,105,773 bytes, 17.6% of the 6 MiB
 ceiling. Its evaluator ARM probe links the complete current physics stack,
 retains 15/15 public evaluator entry points, packages to a `.tns`, and imports
 no libm, floating-point formatter, or ARM soft-float helper.
@@ -122,6 +132,7 @@ Start here:
 - [Notebook shell and 2D layout](docs/NOTEBOOK.md)
 - [Reader-facing symbolic source language](docs/SOURCE_LANGUAGE.md)
 - [Stateful notebook evaluator](docs/EVALUATOR.md)
+- [CAS acceptance boundary and executable tour](docs/CAS_ACCEPTANCE.md)
 - [Manifolds and differential forms](docs/GEOMETRY.md)
 - [Roadmap](docs/ROADMAP.md)
 - [ADR-0001: native Ndless architecture](docs/adr/0001-native-ndless-architecture.md)

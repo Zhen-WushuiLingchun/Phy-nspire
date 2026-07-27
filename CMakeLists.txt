@@ -187,6 +187,14 @@ target_link_libraries(phy-host PRIVATE phy_core phy_platform_host phy_warnings)
 add_executable(phy-dump-font src/tools/dump_font.c)
 target_link_libraries(phy-dump-font PRIVATE phy_core phy_platform_host phy_warnings)
 
+add_executable(phy-make-cas-tour src/tools/make_cas_tour.c)
+target_link_libraries(phy-make-cas-tour PRIVATE
+    phy_core phy_platform_host phy_warnings)
+if(MSVC)
+    target_compile_definitions(
+        phy-make-cas-tour PRIVATE _CRT_SECURE_NO_WARNINGS)
+endif()
+
 include(CTest)
 if(BUILD_TESTING)
     set(PHY_FIXTURE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")
@@ -247,6 +255,8 @@ if(BUILD_TESTING)
 
     # End-to-end: the shipped entry point must run and exit 0 unattended.
     add_test(NAME host_app_runs COMMAND phy-host --frames 2)
+    add_test(NAME cas_tour_generation
+        COMMAND phy-make-cas-tour cas-tour-test.tns)
 
     # tools/symbol-report.sh used to exit 141 on any binary with more sized
     # symbols than the requested count. The test stubs nm, so it needs no

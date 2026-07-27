@@ -8,6 +8,14 @@ of the component tensor core ([`docs/TENSOR.md`](TENSOR.md)) and the scalar CAS
 This document covers the design decisions and the conventions. The header is
 the API reference and is not repeated here.
 
+The notebook surface is not Lorentz-only. `Manifold[{x,y},Riemannian]` and
+`Euclidean` select positive signature; `Lorentzian` and `Minkowski` select the
+documented mostly-plus convention; an explicit list such as `{-1,-1,1,1}`
+selects any supported pseudo-Riemannian signature. Orientation is independently
+`Positive`, `Negative`, or `Unoriented`. The current native scope is dimension
+1 through 4 and one coordinate chart per manifold; transition maps and
+pullbacks are not implemented.
+
 ## What has landed, and what has not
 
 | Landed | Deferred, with the blocking dependency named |

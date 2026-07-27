@@ -204,7 +204,7 @@ All tests must be exact and reproducible; no floating point, no tolerances.
 
 Status after the storage half. Tests 3 and 6 are done, and 7 is done for the
 allocation path; 1, 2, 4 and 5 all compare expressions and so wait on the zero
-decision. `tests/test_tensor.c` carries the four that landed, 12,377 checks.
+decision. `tests/test_tensor.c` carries the landed coverage, 12,462 checks.
 
 | test | state |
 | --- | --- |

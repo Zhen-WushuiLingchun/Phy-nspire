@@ -237,11 +237,18 @@ static void test_assignment_and_reserved_heads(void)
     command = parse(ir, "ColorComponent[F,0]");
     PHY_CHECK_EQ_STR(render(ir, command.expression),
                      "(op ColorComponent F 0)");
+    command = parse(ir, "componenttensor[M,{down,up},{{1,0},{0,1}}]");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(op ComponentTensor M (fn List down up) "
+        "(fn List (fn List 1 0) (fn List 0 1)))");
     command = parse(ir, "ZeroQ[Bianchi[A,g]]");
     PHY_CHECK_EQ_STR(render(ir, command.expression),
                      "(op ZeroQ (op Bianchi A g))");
     command = parse(ir, "RicciScalar[c]");
     PHY_CHECK_EQ_STR(render(ir, command.expression), "(op RicciScalar c)");
+    command = parse(ir, "memorystatus[]");
+    PHY_CHECK_EQ_STR(render(ir, command.expression), "(op MemoryStatus)");
     command = parse(ir, "sunf[a,b,c,N]");
     PHY_CHECK_EQ_STR(render(ir, command.expression),
                      "(op SUNF a b c N)");
@@ -262,6 +269,12 @@ static void test_assignment_and_reserved_heads(void)
                      PHY_ERR_TYPE);
     PHY_CHECK_EQ_INT(phy_source_parse(ir, "Ricci = 1", &command, &error),
                      PHY_ERR_TYPE);
+    PHY_CHECK_EQ_INT(
+        phy_source_parse(ir, "ComponentTensor = 1", &command, &error),
+        PHY_ERR_TYPE);
+    PHY_CHECK_EQ_INT(
+        phy_source_parse(ir, "MemoryStatus = 1", &command, &error),
+        PHY_ERR_TYPE);
     PHY_CHECK_EQ_INT(phy_source_parse(ir, "SUNCF = 1", &command, &error),
                      PHY_ERR_TYPE);
     PHY_CHECK_EQ_INT(

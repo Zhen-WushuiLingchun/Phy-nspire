@@ -57,7 +57,7 @@ The parser also maps useful FullForm constructors directly to IR:
 - `Plus`, `Times`, `Power`;
 - `Rational`, `Sqrt`;
 - `Equal`;
-- `Up[index,space]`, `Down[index,space]`;
+- `Up[index,space?]`, `Down[index,space?]`;
 - `Tensor[head,indices...]`, `Operator[head,args...]`;
 - `NonCommutativeMultiply`, `Wedge`;
 - `Commutator[A,B]` to the exact typed noncommutative difference `A.B-B.A`;
@@ -69,9 +69,17 @@ reader's. Name matching is case-insensitive, so `manifold[...]` and
 `Manifold[...]` must reach the same evaluator entry rather than intern two
 unrelated heads.
 
+The optional second argument of `Up`/`Down` is an index space, not part of
+ordinary variance. `Tensor[T,Down[mu],Up[nu]]` therefore uses generic indices;
+`Lorentz`, `ColorAdjoint`, and the spinor spaces are written only where a QFT
+operation must reject a cross-space contraction. A component tensor declares
+slot variance once with
+`ComponentTensor[M,{Down,Up,...},components]`; component lookup then takes
+integer coordinate positions rather than repeating abstract index labels.
+
 The evaluated object heads are:
 
-- geometry — `Manifold`, `DifferentialForm`, `Metric`, `VectorField`,
+- geometry — `Manifold`, `ComponentTensor`, `DifferentialForm`, `Metric`, `VectorField`,
   `ExteriorD`, `InteriorProduct`, `LieDerivative`, `HodgeStar`, `Volume`;
 - Lie — `LieGroup`, `LieAlgebra`, `Generator`, `LieElement`, `LieBracket`,
   `StructureConstant`, `Killing`;

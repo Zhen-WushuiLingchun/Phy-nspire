@@ -15,6 +15,7 @@ static const phy_palette_entry kCasAlgebra[] = {
     {"Together[...]", "Together[]", 9u},
     {"Numerator[...]", "Numerator[]", 10u},
     {"Denominator[...]", "Denominator[]", 12u},
+    {"Memory usage", "MemoryStatus[]", sizeof("MemoryStatus[") - 1u},
 };
 
 static const phy_palette_entry kCasFunctions[] = {
@@ -39,11 +40,15 @@ static const phy_palette_entry kCasCalculus[] = {
 };
 
 static const phy_palette_entry kCasPhysics[] = {
+    {"Upper generic index", "Up[]", 3u},
+    {"Lower generic index", "Down[]", 5u},
     {"Upper Lorentz index", "Up[,Lorentz]", 3u},
     {"Lower Lorentz index", "Down[,Lorentz]", 5u},
-    {"Rank-2 tensor",
-     "Tensor[g,Down[mu,Lorentz],Down[nu,Lorentz]]", 7u},
-    {"Indexed operator", "Operator[Gamma,Up[mu,Lorentz]]", 9u},
+    {"Rank-2 component tensor",
+     "T = ComponentTensor[M,{Down,Up},{{1,0},{0,1}}]",
+     sizeof("T = ComponentTensor[") - 1u},
+    {"Abstract indexed tensor", "Tensor[T,Down[mu],Up[nu]]", 7u},
+    {"Indexed Lorentz operator", "Operator[Gamma,Up[mu,Lorentz]]", 9u},
     {"Noncommutative product", "NonCommutativeMultiply[,]",
      sizeof("NonCommutativeMultiply[") - 1u},
     {"Exterior product", "Wedge[,]", sizeof("Wedge[") - 1u},

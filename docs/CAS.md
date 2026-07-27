@@ -242,6 +242,11 @@ introducing a logarithm of a base that may be negative, and the general
 
 ## Memory and budget
 
+The reader-facing `MemoryStatus[]` command reports current IR node/byte usage,
+CAS arena bytes, live evaluator objects, and bindings. The ownership and
+notebook-lifetime boundary are documented in
+[`EVALUATOR.md`](EVALUATOR.md#ownership).
+
 **The memo cache is keyed on interned refs**, which is sound only because the IR
 never mutates a published node. A ref names the same structure for the life of
 the context, so a cached answer stays true — with one exception. A few rewrites

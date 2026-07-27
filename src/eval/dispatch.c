@@ -553,6 +553,124 @@ static phy_status eval_component_tensor(phy_env *env, phy_ir_ref expr,
     return publish(env, PHY_VALUE_TENSOR, tensor, &manifold, NULL, out_value);
 }
 
+static phy_status read_tensor_component_tree(
+    phy_env *env, phy_ir_ref ref, unsigned remaining_rank,
+    unsigned dimension, phy_ir_ref *out_entries, size_t *in_out_offset)
+{
+    if (remaining_rank == 0u) {
+        phy_value value;
+        const phy_status status = eval_node(env, ref, &value);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (value.kind != PHY_VALUE_SCALAR) {
+            return PHY_ERR_TYPE;
+        }
+        if (*in_out_offset >= PHY_TENSOR_MAX_COMPONENTS) {
+            return PHY_ERR_TERM_LIMIT;
+        }
+        out_entries[(*in_out_offset)++] = value.as.scalar;
+        return PHY_OK;
+    }
+
+    phy_ir_ref children[PHY_TENSOR_MAX_DIM];
+    size_t count = 0u;
+    phy_status status = list_refs(
+        env, ref, children, PHY_TENSOR_MAX_DIM, &count);
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (count != dimension) {
+        return PHY_ERR_PARSE;
+    }
+    for (size_t index = 0u; index < count; ++index) {
+        status = read_tensor_component_tree(
+            env, children[index], remaining_rank - 1u, dimension,
+            out_entries, in_out_offset);
+        if (status != PHY_OK) {
+            return status;
+        }
+    }
+    return PHY_OK;
+}
+
+static phy_status eval_general_component_tensor(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 3u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value manifold;
+    phy_status status =
+        arg_typed(env, expr, 0u, PHY_VALUE_MANIFOLD, &manifold);
+    if (status != PHY_OK) {
+        return status;
+    }
+
+    phy_ir_ref raw_valence[PHY_TENSOR_MAX_RANK + 1u];
+    size_t rank = 0u;
+    status = list_refs(
+        env, arg_ref(env, expr, 1u), raw_valence,
+        PHY_TENSOR_MAX_RANK + 1u, &rank);
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (rank > PHY_TENSOR_MAX_RANK) {
+        return PHY_ERR_UNSUPPORTED;
+    }
+    phy_ir_variance valence[PHY_TENSOR_MAX_RANK];
+    for (size_t slot = 0u; slot < rank; ++slot) {
+        if (phy_ir_kind_of(env->ir, raw_valence[slot]) != PHY_IR_SYMBOL) {
+            return PHY_ERR_TYPE;
+        }
+        const char *name = phy_ir_symbol_name(
+            env->ir, phy_ir_head(env->ir, raw_valence[slot]));
+        if (keyword_is(name, "Up") || keyword_is(name, "Upper") ||
+            keyword_is(name, "Contravariant")) {
+            valence[slot] = PHY_IR_INDEX_UPPER;
+        } else if (keyword_is(name, "Down") || keyword_is(name, "Lower") ||
+                   keyword_is(name, "Covariant")) {
+            valence[slot] = PHY_IR_INDEX_LOWER;
+        } else {
+            return PHY_ERR_DOMAIN;
+        }
+    }
+
+    const unsigned dimension =
+        phy_manifold_dimension(manifold.as.manifold);
+    phy_ir_ref entries[PHY_TENSOR_MAX_COMPONENTS];
+    size_t supplied = 0u;
+    status = read_tensor_component_tree(
+        env, arg_ref(env, expr, 2u), (unsigned)rank, dimension,
+        entries, &supplied);
+    phy_chart *chart =
+        phy_manifold_chart(manifold.as.manifold, 0u);
+    if (status == PHY_OK && chart == NULL) {
+        status = PHY_ERR_CORRUPT_DOCUMENT;
+    }
+
+    phy_tensor *tensor = NULL;
+    if (status == PHY_OK) {
+        status = phy_tensor_create(
+            chart, pending_name(env, "T"), (unsigned)rank,
+            rank == 0u ? NULL : valence, &tensor);
+    }
+    const size_t expected =
+        tensor != NULL ? phy_tensor_component_count(tensor) : 0u;
+    if (status == PHY_OK && supplied != expected) {
+        status = PHY_ERR_PARSE;
+    }
+    for (size_t index = 0u; status == PHY_OK && index < supplied; ++index) {
+        status = phy_tensor_set_flat(tensor, index, entries[index]);
+    }
+    if (status != PHY_OK) {
+        phy_tensor_destroy(tensor);
+        return status;
+    }
+    return publish(
+        env, PHY_VALUE_TENSOR, tensor, &manifold, NULL, out_value);
+}
+
 static phy_status eval_exterior_derivative(phy_env *env, phy_ir_ref expr,
                                            phy_value *out_value)
 {
@@ -2459,6 +2577,50 @@ static phy_status eval_equivalent_query(phy_env *env, phy_ir_ref expr,
                             : status;
 }
 
+static phy_status eval_memory_status(phy_env *env, phy_ir_ref expr,
+                                     phy_value *out_value)
+{
+    if (arg_count(env, expr) != 0u) {
+        return PHY_ERR_PARSE;
+    }
+    static const char *const labels[5] = {
+        "IRNodes", "IRBytes", "CASBytes", "LiveObjects", "Bindings"};
+    const uint64_t measurements[5] = {
+        phy_ir_node_count(env->ir),
+        phy_ir_bytes_used(env->ir),
+        phy_cas_bytes_used(env->cas),
+        phy_env_object_count(env),
+        phy_env_binding_count(env)};
+    const phy_ir_symbol rule_head = phy_ir_intern(env->ir, "Rule");
+    phy_ir_ref rules[5];
+    for (size_t index = 0u; index < 5u; ++index) {
+        if (measurements[index] > (uint64_t)INT64_MAX) {
+            return PHY_ERR_OVERFLOW;
+        }
+        const phy_ir_ref label = phy_ir_symbol_ref(
+            env->ir, phy_ir_intern(env->ir, labels[index]));
+        const phy_ir_ref value =
+            phy_ir_integer(env->ir, (int64_t)measurements[index]);
+        if (rule_head == PHY_IR_NO_SYMBOL || label == PHY_IR_NULL ||
+            value == PHY_IR_NULL) {
+            return phy_ir_last_error(env->ir);
+        }
+        const phy_ir_ref arguments[2] = {label, value};
+        rules[index] =
+            phy_ir_function(env->ir, rule_head, arguments, 2u);
+        if (rules[index] == PHY_IR_NULL) {
+            return phy_ir_last_error(env->ir);
+        }
+    }
+    const phy_ir_ref result =
+        phy_ir_function(env->ir, env->list_head, rules, 5u);
+    if (result == PHY_IR_NULL) {
+        return phy_ir_last_error(env->ir);
+    }
+    *out_value = scalar_value(result);
+    return PHY_OK;
+}
+
 /* ------------------------------------------------------------- dispatch */
 
 static phy_status eval_operator(phy_env *env, phy_ir_ref expr,
@@ -2489,6 +2651,8 @@ static phy_status eval_operator(phy_env *env, phy_ir_ref expr,
     case EVAL_HEAD_VECTOR_FIELD:
         return eval_component_tensor(env, expr, 1u, PHY_IR_INDEX_UPPER, "v",
                                      out_value);
+    case EVAL_HEAD_COMPONENT_TENSOR:
+        return eval_general_component_tensor(env, expr, out_value);
     case EVAL_HEAD_EXTERIOR_D:
         return eval_exterior_derivative(env, expr, out_value);
     case EVAL_HEAD_INTERIOR_PRODUCT:
@@ -2601,6 +2765,8 @@ static phy_status eval_operator(phy_env *env, phy_ir_ref expr,
         return eval_zero_query(env, expr, out_value);
     case EVAL_HEAD_EQUIVALENT_Q:
         return eval_equivalent_query(env, expr, out_value);
+    case EVAL_HEAD_MEMORY_STATUS:
+        return eval_memory_status(env, expr, out_value);
 
     default:
         break;

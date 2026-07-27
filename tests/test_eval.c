@@ -266,6 +266,137 @@ static void test_manifolds_and_forms(void)
     fixture_close(&f);
 }
 
+static void test_general_component_tensor_ranks(void)
+{
+    fixture f = fixture_open();
+    (void)run(&f, "M = Manifold[{x, y}, Riemannian]");
+
+    const phy_value scalar =
+        run(&f, "s0 = ComponentTensor[M,{},q]");
+    PHY_CHECK_EQ_INT(scalar.kind, PHY_VALUE_TENSOR);
+    PHY_CHECK_EQ_INT(phy_tensor_rank(scalar.as.tensor), 0);
+    expect_scalar(&f, "Component[s0]", "q");
+
+    const phy_value vector =
+        run(&f, "u = ComponentTensor[M,{Up},{10,20}]");
+    PHY_CHECK_EQ_INT(phy_tensor_rank(vector.as.tensor), 1);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_valence(vector.as.tensor, 0u), PHY_IR_INDEX_UPPER);
+    expect_scalar(&f, "Component[u,1]", "20");
+
+    const phy_value mixed =
+        run(&f, "T = ComponentTensor[M,{Down,Up},{{1,2},{3,4}}]");
+    PHY_CHECK_EQ_INT(phy_tensor_rank(mixed.as.tensor), 2);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_valence(mixed.as.tensor, 0u), PHY_IR_INDEX_LOWER);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_valence(mixed.as.tensor, 1u), PHY_IR_INDEX_UPPER);
+    expect_scalar(&f, "Component[T,1,0]", "3");
+
+    const phy_value rank_three = run(
+        &f,
+        "A = ComponentTensor[M,{Up,Down,Up},"
+        "{{{1,2},{3,4}},{{5,6},{7,8}}}]");
+    PHY_CHECK_EQ_INT(phy_tensor_rank(rank_three.as.tensor), 3);
+    expect_scalar(&f, "Component[A,1,0,1]", "6");
+
+    const phy_value rank_four = run(
+        &f,
+        "Q = ComponentTensor[M,{Down,Up,Down,Up},"
+        "{{{{1,2},{3,4}},{{5,6},{7,8}}},"
+        "{{{9,10},{11,12}},{{13,14},{15,16}}}}]");
+    PHY_CHECK_EQ_INT(phy_tensor_rank(rank_four.as.tensor), 4);
+    expect_scalar(&f, "Component[Q,1,0,1,0]", "11");
+    expect_scalar(&f, "Rank[Q]", "4");
+    expect_scalar(&f, "Dimension[Q]", "2");
+
+    /*
+     * A one-dimensional chart makes the component tree one leaf at every
+     * rank, so all 31 independent variance patterns can be exercised without
+     * hiding a shape failure behind a large literal.
+     */
+    (void)run(&f, "P = Manifold[{z}, Euclidean]");
+    static const char *const components[PHY_TENSOR_MAX_RANK + 1u] = {
+        "q", "{q}", "{{q}}", "{{{q}}}", "{{{{q}}}}"};
+    for (unsigned rank = 0u; rank <= PHY_TENSOR_MAX_RANK; ++rank) {
+        const unsigned pattern_count = 1u << rank;
+        for (unsigned pattern = 0u; pattern < pattern_count; ++pattern) {
+            char source[96];
+            size_t used = (size_t)snprintf(
+                source, sizeof source, "ComponentTensor[P,{");
+            for (unsigned slot = 0u; slot < rank; ++slot) {
+                used += (size_t)snprintf(
+                    source + used, sizeof source - used, "%s%s",
+                    slot == 0u ? "" : ",",
+                    (pattern & (1u << slot)) != 0u ? "Up" : "Down");
+            }
+            (void)snprintf(
+                source + used, sizeof source - used, "},%s]",
+                components[rank]);
+            const phy_value arbitrary = run(&f, source);
+            PHY_CHECK_EQ_INT(arbitrary.kind, PHY_VALUE_TENSOR);
+            PHY_CHECK_EQ_INT(phy_tensor_rank(arbitrary.as.tensor), rank);
+            for (unsigned slot = 0u; slot < rank; ++slot) {
+                PHY_CHECK_EQ_INT(
+                    phy_tensor_valence(arbitrary.as.tensor, slot),
+                    (pattern & (1u << slot)) != 0u
+                        ? PHY_IR_INDEX_UPPER
+                        : PHY_IR_INDEX_LOWER);
+            }
+        }
+    }
+
+    expect_status(
+        &f, "ComponentTensor[M,{Up,Up},{{1,2}}]", PHY_ERR_PARSE);
+    expect_status(
+        &f, "ComponentTensor[M,{Sideways},{1,2}]", PHY_ERR_DOMAIN);
+    expect_status(
+        &f, "ComponentTensor[M,{Up,Up,Up,Up,Up},0]",
+        PHY_ERR_UNSUPPORTED);
+    fixture_close(&f);
+}
+
+static void test_memory_status_reports_live_bounded_state(void)
+{
+    fixture f = fixture_open();
+    (void)run(&f, "M = Manifold[{x,y},Euclidean]");
+    const phy_value memory = run(&f, "MemoryStatus[]");
+    PHY_CHECK_EQ_INT(memory.kind, PHY_VALUE_SCALAR);
+    PHY_CHECK_EQ_INT(
+        phy_ir_child_count(f.ir, memory.as.scalar), 5);
+    static const char *const labels[5] = {
+        "IRNodes", "IRBytes", "CASBytes", "LiveObjects", "Bindings"};
+    int64_t values[5] = {0, 0, 0, 0, 0};
+    for (size_t index = 0u; index < 5u; ++index) {
+        const phy_ir_ref rule =
+            phy_ir_child(f.ir, memory.as.scalar, index);
+        PHY_CHECK_EQ_STR(
+            phy_ir_symbol_name(
+                f.ir, phy_ir_head(f.ir, phy_ir_child(f.ir, rule, 0u))),
+            labels[index]);
+        PHY_CHECK(phy_ir_integer_value(
+            f.ir, phy_ir_child(f.ir, rule, 1u), &values[index]));
+    }
+    PHY_CHECK(values[0] > 0);
+    PHY_CHECK(values[1] > 0);
+    PHY_CHECK(values[2] > 0);
+    PHY_CHECK_EQ_INT(values[3], 2);
+    PHY_CHECK_EQ_INT(values[4], 1);
+
+    (void)run(&f, "ClearAll[]");
+    const phy_value cleared = run(&f, "MemoryStatus[]");
+    const phy_ir_ref objects =
+        phy_ir_child(f.ir, phy_ir_child(f.ir, cleared.as.scalar, 3u), 1u);
+    const phy_ir_ref bindings =
+        phy_ir_child(f.ir, phy_ir_child(f.ir, cleared.as.scalar, 4u), 1u);
+    int64_t count = -1;
+    PHY_CHECK(phy_ir_integer_value(f.ir, objects, &count));
+    PHY_CHECK_EQ_INT(count, 0);
+    PHY_CHECK(phy_ir_integer_value(f.ir, bindings, &count));
+    PHY_CHECK_EQ_INT(count, 0);
+    fixture_close(&f);
+}
+
 static void test_exterior_calculus_identities(void)
 {
     fixture f = fixture_open();
@@ -781,7 +912,8 @@ static void test_every_evaluated_head_rejects_empty_arguments(void)
 {
     static const char *const kHeads[] = {
         "Manifold",     "DifferentialForm",    "Metric",
-        "VectorField",  "ExteriorD",           "InteriorProduct",
+        "VectorField",  "ComponentTensor",     "ExteriorD",
+        "InteriorProduct",
         "LieDerivative",                       "HodgeStar",
         "Volume",       "LieGroup",
         "LieAlgebra",   "Generator",           "LieElement",
@@ -989,6 +1121,8 @@ int main(void)
     PHY_TEST_CASE(test_clear_and_reset);
     PHY_TEST_CASE(test_binding_rejects_reserved_and_captured_names);
     PHY_TEST_CASE(test_manifolds_and_forms);
+    PHY_TEST_CASE(test_general_component_tensor_ranks);
+    PHY_TEST_CASE(test_memory_status_reports_live_bounded_state);
     PHY_TEST_CASE(test_exterior_calculus_identities);
     PHY_TEST_CASE(test_general_metric_hodge);
     PHY_TEST_CASE(test_lie_groups_and_brackets);

@@ -8,26 +8,40 @@ The substrate the Phase 3 curvature pipeline computes on. It is defined by
 This document covers the design decisions. The header is the API reference and
 is not repeated here.
 
+## Notebook construction surface
+
+The reader-facing evaluator can construct every supported dense component
+shape:
+
+```text
+scalar = ComponentTensor[M, {}, s]
+vector = ComponentTensor[M, {Up}, {v0,v1}]
+mixed  = ComponentTensor[M, {Down,Up}, {{a,b},{c,d}}]
+rank4  = ComponentTensor[M, {Down,Down,Up,Up}, components]
+```
+
+The component list has one nesting level per slot and every extent equals the
+manifold dimension. Rank and variance are independent: any `Up`/`Down` pattern
+is valid at ranks 0 through 4. The compiled scope remains dimensions 1 through
+4 and ranks 0 through 4 (at most 256 dense components), so “arbitrary” means
+every combination inside that explicit device bound, not unbounded tensor rank.
+
 ## What has landed, and what has not
 
-This is the **component-independent half** of the task: everything that can be
-built and tested without forming an expression.
+The original storage slice and its scalar-dependent operations now share one
+native tensor API.
 
-| Landed | Deferred to the scalar layer |
+| Landed | Deliberately deferred |
 | --- | --- |
-| charts and coordinate symbols | raise and lower a slot against a metric |
-| rank, per-slot valence, head metadata | contract two slots |
-| dense `n^r` storage | componentwise partial derivative |
-| flat-index encode and decode | inverse metric via adjugate |
-| declared symmetry group with signs | |
-| canonical component lookup | |
-| fill and assignment validation | |
-| allocation-failure unwind | |
+| charts, coordinate symbols, rank, valence, head metadata | dimensions above 4 or ranks above 4 |
+| dense `n^r` storage, encode/decode, signed slot symmetries | abstract dummy-index canonicalization |
+| exact contraction, inverse metric, raise/lower, component derivatives | first-Bianchi orbit canonicalization |
+| canonical lookup, fill validation, allocation-failure unwind | optional xPerm integration |
 
-The deferred column is not a matter of effort. Each entry needs at least one of
-three capabilities — simplification, a decidable zero test, exact
-differentiation — and none of them exists in any shipped header. See the
-correction recorded in `docs/agent-tasks/TENSOR_CORE.md`.
+The scalar-dependent entries use the native exact CAS and its three-valued zero
+decision; they are not numerical fallbacks. The deferred abstract-index work is
+different from dense component arithmetic and is left absent rather than
+represented by a misleading no-op head.
 
 ## The scalar boundary, and why it falls on negation
 
@@ -210,7 +224,7 @@ no chart or tensor is leaked and no half-built one is ever returned.
 
 ## Testing
 
-`tests/test_tensor.c`, 12,377 checks.
+`tests/test_tensor.c`, 12,462 checks.
 
 Structural coverage: chart construction and rejection; rank 0 through 4 at
 dimensions 1 through 4; exhaustive flat-index round trips over every component
