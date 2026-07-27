@@ -28,6 +28,53 @@ const phy_tensor *phy_gr_ricci(const phy_gr_result *result);
 phy_ir_ref phy_gr_scalar_curvature(const phy_gr_result *result);
 const phy_tensor *phy_gr_einstein(const phy_gr_result *result);
 
+/*
+ * Kretschmann invariant K = R_abcd R^abcd.
+ *
+ * Deliberately NOT part of phy_gr_compute(). It raises three indices over the
+ * whole Riemann tensor -- n^4 components each summing over n at every raise --
+ * and every caller that only wants the six curvature quantities would pay for
+ * it. Ask for it when it is wanted.
+ *
+ * Computed on the first call and cached in `result`, so repeated calls are
+ * free and the fully contravariant Riemann tensor stays available through
+ * phy_gr_riemann_contravariant(). A failed call leaves `result` exactly as it
+ * was, with no partial contravariant tensor to observe.
+ *
+ * `cas` must be the CAS the result was computed with, or at least one over the
+ * same IR context; anything else is PHY_ERR_INVALID_ARGUMENT.
+ */
+phy_status phy_gr_kretschmann(phy_cas *cas, phy_gr_result *result,
+                              phy_ir_ref *out_scalar);
+
+/* R^abcd, or NULL until phy_gr_kretschmann() has succeeded on `result`. */
+const phy_tensor *phy_gr_riemann_contravariant(const phy_gr_result *result);
+
+/*
+ * Covariant derivative against the Levi-Civita connection of `result`:
+ *
+ *   (nabla T)_{c a1..ar} = d_c T_{a1..ar}
+ *                          + sum over upper slots  Gamma^{as}_{ce} T_{..e..}
+ *                          - sum over lower slots  Gamma^{e}_{c as} T_{..e..}
+ *
+ * The derivative slot is prepended, so the output has rank r+1 with slot 0
+ * lower. Rank r+1 above PHY_TENSOR_MAX_RANK is PHY_ERR_UNSUPPORTED, which
+ * bounds the input at rank 3.
+ *
+ * The output carries no declared slot symmetry even when the input does. The
+ * symmetries of a covariant derivative are not the symmetries of its argument,
+ * and asserting a group this layer has not proved is how a fill discipline
+ * turns into a fill bug; a caller that knows better may check the components.
+ *
+ * `tensor` must live on the same chart as the metric the result came from. The
+ * caller owns the output and destroys it with phy_tensor_destroy().
+ */
+phy_status phy_gr_covariant_derivative(phy_cas *cas,
+                                       const phy_gr_result *result,
+                                       const phy_tensor *tensor,
+                                       const char *name,
+                                       phy_tensor **out_tensor);
+
 #ifdef __cplusplus
 }
 #endif

@@ -399,6 +399,45 @@ phy_status phy_tensor_partial(phy_cas *cas, const phy_tensor *tensor,
                               unsigned coordinate_axis, const char *name,
                               phy_tensor **out_tensor);
 
+/*
+ * Put every component in normal form for the next stage to read, and report
+ * how many were proved zero through `out_zeroed` (which may be NULL).
+ *
+ * Two exact steps per component, in order:
+ *
+ *   1. phy_cas_expand_factored() -- distribute, collect, and leave the
+ *      denominators factored, so the stored form is a sum of products of
+ *      powers rather than the nest of quotients the arithmetic built;
+ *   2. phy_cas_is_zero() -- a component PROVED zero is replaced by the
+ *      canonical zero handle. This is a proof, not a heuristic: a component
+ *      the decision answers UNKNOWN or NONZERO on keeps its expanded value.
+ *
+ * Neither step changes what a component denotes. Both are what
+ * docs/agent-tasks/GR_CURVATURE.md means by simplifying after each stage
+ * rather than at the end, and between them they are the difference between
+ * the golden corpus reproducing and the pipeline overflowing on it:
+ *
+ *   - a component that EQUALS zero is not the same as one that IS the zero
+ *     handle. The inverse of a diagonal metric has off-diagonal cofactors that
+ *     reduce to zero but arrive as sizeable rational expressions, and every
+ *     later contraction sums and multiplies them;
+ *   - a component carried as an unexpanded nest re-derives that nest at every
+ *     later stage. Reissner-Nordström, the corpus's sizing case, does not
+ *     complete without step 1.
+ *
+ * Deliberately NOT folded into raise/lower/contract/partial: it costs an
+ * expansion and a zero decision per component, and a caller doing one
+ * operation should not pay for it silently. The curvature pipeline calls it
+ * explicitly after every stage.
+ *
+ * A failed decision -- budget, overflow, memory -- is returned unchanged.
+ * Components normalized before the failure keep their normalized value, which
+ * denotes what it did before; there is no partial state that means something
+ * else.
+ */
+phy_status phy_tensor_normalize(phy_cas *cas, phy_tensor *tensor,
+                                size_t *out_zeroed);
+
 #ifdef __cplusplus
 }
 #endif

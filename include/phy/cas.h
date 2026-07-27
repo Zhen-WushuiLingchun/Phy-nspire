@@ -213,6 +213,28 @@ phy_status phy_cas_simplify(phy_cas *cas, phy_ir_ref expr,
  */
 phy_status phy_cas_expand(phy_cas *cas, phy_ir_ref expr, phy_ir_ref *out_ref);
 
+/*
+ * The same, except that a negative integer power of a sum is left alone:
+ * (x+1)^(-2) stays a power of (x+1) instead of becoming 1/(x^2+2*x+1). Bases
+ * are still expanded, so two denominators that are equal are the same ref and
+ * collect against each other and against matching numerator factors.
+ *
+ * This is the form to carry BETWEEN stages of a long computation, and
+ * phy_cas_expand() is the form to hand the zero decision at the end. The
+ * difference is not stylistic. Expanding a denominator destroys the only
+ * structure the product collector can use: once (r - 2*M)^(-2) has become
+ * (4*M^2 - 4*M*r + r^2)^(-1) it no longer cancels against the (r - 2*M)
+ * factors that the next contraction multiplies in, so the denominators
+ * accumulate instead of collapsing. In the curvature pipeline that is the
+ * difference between a Riemann component of a few dozen nodes and one whose
+ * rational form reaches degree 33 with coefficients past the int64 ceiling --
+ * which is PHY_ERR_OVERFLOW deciding something that was small four stages ago.
+ *
+ * Both are exact and both are bounded by the IR's term limit.
+ */
+phy_status phy_cas_expand_factored(phy_cas *cas, phy_ir_ref expr,
+                                   phy_ir_ref *out_ref);
+
 /* One replacement. `from` may be any subexpression, not only a symbol. */
 typedef struct {
     phy_ir_ref from;

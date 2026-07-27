@@ -107,8 +107,11 @@ static phy_status recollect(phy_cas *cas, size_t offset, size_t count,
     return PHY_OK;
 }
 
+static phy_status expand_walk(phy_cas *cas, phy_ir_ref expr,
+                              bool denominators, phy_ir_ref *out_ref);
+
 static phy_status expand_product(phy_cas *cas, phy_ir_ref expr,
-                                 phy_ir_ref *out_ref)
+                                 bool denominators, phy_ir_ref *out_ref)
 {
     phy_ir_context *ir = cas->ir;
     const size_t count = phy_ir_child_count(ir, expr);
@@ -124,7 +127,8 @@ static phy_status expand_product(phy_cas *cas, phy_ir_ref expr,
 
     for (size_t i = 0u; i < count; i++) {
         phy_ir_ref factor;
-        status = phy_cas_expand_node(cas, phy_ir_child(ir, expr, i), &factor);
+        status = expand_walk(cas, phy_ir_child(ir, expr, i), denominators,
+                             &factor);
         if (status != PHY_OK) {
             goto done;
         }
@@ -191,17 +195,19 @@ done:
     return status;
 }
 
-phy_status phy_cas_expand_node(phy_cas *cas, phy_ir_ref expr,
-                               phy_ir_ref *out_ref)
+static phy_status expand_walk(phy_cas *cas, phy_ir_ref expr,
+                              bool denominators, phy_ir_ref *out_ref)
 {
     phy_ir_context *ir = cas->ir;
     const phy_ir_kind kind = phy_ir_kind_of(ir, expr);
+    const phy_cas_memo tag = denominators
+                                 ? PHY_CAS_MEMO_EXPAND
+                                 : PHY_CAS_MEMO_EXPAND_FACTORED;
 
     if (kind == PHY_IR_KIND_INVALID) {
         return PHY_ERR_INVALID_ARGUMENT;
     }
-    if (phy_cas_cache_get(cas, PHY_CAS_MEMO_EXPAND, expr, PHY_IR_NULL, out_ref,
-                          NULL)) {
+    if (phy_cas_cache_get(cas, tag, expr, PHY_IR_NULL, out_ref, NULL)) {
         return PHY_OK;
     }
     phy_status status = phy_cas_step(cas);
@@ -210,18 +216,18 @@ phy_status phy_cas_expand_node(phy_cas *cas, phy_ir_ref expr,
     }
     if ((phy_ir_kind_flags(kind) & PHY_IR_KIND_ATOM) != 0u) {
         *out_ref = expr;
-        phy_cas_cache_put(cas, PHY_CAS_MEMO_EXPAND, expr, PHY_IR_NULL, expr,
-                          PHY_IR_NULL);
+        phy_cas_cache_put(cas, tag, expr, PHY_IR_NULL, expr, PHY_IR_NULL);
         return PHY_OK;
     }
 
     phy_ir_ref result = PHY_IR_NULL;
 
     if (kind == PHY_IR_MUL) {
-        status = expand_product(cas, expr, &result);
+        status = expand_product(cas, expr, denominators, &result);
     } else if (kind == PHY_IR_POW) {
         phy_ir_ref base;
-        status = phy_cas_expand_node(cas, phy_ir_child(ir, expr, 0u), &base);
+        status = expand_walk(cas, phy_ir_child(ir, expr, 0u), denominators,
+                             &base);
         if (status != PHY_OK) {
             return status;
         }
@@ -229,7 +235,7 @@ phy_status phy_cas_expand_node(phy_cas *cas, phy_ir_ref expr,
         if (phy_ir_kind_of(ir, base) == PHY_IR_ADD &&
             phy_ir_integer_value(ir, phy_ir_child(ir, expr, 1u), &exponent) &&
             exponent != INT64_MIN &&
-            (exponent >= 2 || exponent <= -2)) {
+            (exponent >= 2 || (denominators && exponent <= -2))) {
             /*
              * A negative power expands its magnitude and then inverts, so
              * (x+1)^(-2) becomes 1/(x^2 + 2*x + 1): the rational form wants an
@@ -262,8 +268,8 @@ phy_status phy_cas_expand_node(phy_cas *cas, phy_ir_ref expr,
         if (status == PHY_OK) {
             for (size_t i = 0u; i < count && status == PHY_OK; i++) {
                 phy_ir_ref child;
-                status = phy_cas_expand_node(cas, phy_ir_child(ir, expr, i),
-                                             &child);
+                status = expand_walk(cas, phy_ir_child(ir, expr, i),
+                                     denominators, &child);
                 if (status == PHY_OK) {
                     phy_cas_scratch_at(cas, offset)[i] = child;
                 }
@@ -279,10 +285,21 @@ phy_status phy_cas_expand_node(phy_cas *cas, phy_ir_ref expr,
     if (status != PHY_OK) {
         return status;
     }
-    phy_cas_cache_put(cas, PHY_CAS_MEMO_EXPAND, expr, PHY_IR_NULL, result,
-                      PHY_IR_NULL);
+    phy_cas_cache_put(cas, tag, expr, PHY_IR_NULL, result, PHY_IR_NULL);
     *out_ref = result;
     return PHY_OK;
+}
+
+phy_status phy_cas_expand_node(phy_cas *cas, phy_ir_ref expr,
+                               phy_ir_ref *out_ref)
+{
+    return expand_walk(cas, expr, true, out_ref);
+}
+
+phy_status phy_cas_expand_factored_node(phy_cas *cas, phy_ir_ref expr,
+                                        phy_ir_ref *out_ref)
+{
+    return expand_walk(cas, expr, false, out_ref);
 }
 
 /* -------------------------------------------------------- trigonometry */
@@ -609,6 +626,31 @@ static phy_status combine(phy_cas *cas, bool sum, phy_ir_ref n1, phy_ir_ref d1,
     phy_status status;
     phy_ir_ref numerator;
 
+    if (sum && d1 == d2) {
+        /*
+         * Already over a common denominator, so use it rather than its square.
+         *
+         * Not an optimization. A curvature component is a sum of many terms
+         * that came from the same metric and therefore carry the same
+         * denominator; multiplying it in once per term raises the degree by a
+         * factor of the term count and the coefficients with it, and the exact
+         * int64 arithmetic then overflows deciding an expression whose real
+         * denominator never grew at all. Interning makes "the same
+         * denominator" a ref comparison, so this costs nothing to ask.
+         */
+        const phy_ir_ref terms[2] = {n1, n2};
+        status = phy_cas_add_node(cas, terms, 2u, &numerator);
+        if (status != PHY_OK) {
+            return status;
+        }
+        status = phy_cas_expand_node(cas, numerator, out_num);
+        if (status != PHY_OK) {
+            return status;
+        }
+        *out_den = d1;
+        return PHY_OK;
+    }
+
     if (sum) {
         const phy_ir_ref left[2] = {n1, d2};
         const phy_ir_ref right[2] = {n2, d1};
@@ -637,7 +679,7 @@ static phy_status combine(phy_cas *cas, bool sum, phy_ir_ref n1, phy_ir_ref d1,
     if (status != PHY_OK) {
         return status;
     }
-    return phy_cas_expand_node(cas, denominator, out_den);
+    return phy_cas_expand_factored_node(cas, denominator, out_den);
 }
 
 static phy_status rational_walk(phy_cas *cas, phy_ir_ref expr,
@@ -716,8 +758,8 @@ static phy_status rational_walk(phy_cas *cas, phy_ir_ref expr,
             }
             if ((status = phy_cas_expand_node(cas, raised_num, &numerator)) !=
                     PHY_OK ||
-                (status = phy_cas_expand_node(cas, raised_den, &denominator)) !=
-                    PHY_OK) {
+                (status = phy_cas_expand_factored_node(
+                     cas, raised_den, &denominator)) != PHY_OK) {
                 return status;
             }
         }
@@ -779,14 +821,274 @@ phy_status phy_cas_rational_node(phy_cas *cas, phy_ir_ref expr,
 
 /* ------------------------------------------------------------- decisions */
 
+/*
+ * Rational zero testing needs to know whether a denominator is identically
+ * zero, not to expand every positive power in that denominator.  Walk the
+ * product structure and polish only an irreducible base.  This preserves the
+ * 1/(sin(x)^2+cos(x)^2-1) domain check while avoiding degree explosions such
+ * as (r^2-2 M r+Q^2)^16 in a curvature calculation.
+ */
+static phy_status denominator_zero(phy_cas *cas, phy_ir_ref expr,
+                                   bool *out_zero)
+{
+    phy_ir_context *ir = cas->ir;
+    phy_ir_ref reduced = PHY_IR_NULL;
+    phy_status status = phy_cas_simplify_node(cas, expr, &reduced);
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (phy_cas_is_integer(cas, reduced, 0)) {
+        *out_zero = true;
+        return PHY_OK;
+    }
+    const phy_ir_kind kind = phy_ir_kind_of(ir, reduced);
+    if (kind == PHY_IR_MUL) {
+        const size_t count = phy_ir_child_count(ir, reduced);
+        for (size_t index = 0u; index < count; ++index) {
+            bool child_zero = false;
+            status = denominator_zero(cas, phy_ir_child(ir, reduced, index),
+                                      &child_zero);
+            if (status != PHY_OK || child_zero) {
+                *out_zero = child_zero;
+                return status;
+            }
+        }
+        *out_zero = false;
+        return PHY_OK;
+    }
+    if (kind == PHY_IR_POW) {
+        int64_t exponent = 0;
+        if (phy_ir_integer_value(ir, phy_ir_child(ir, reduced, 1u),
+                                 &exponent) &&
+            exponent > 0) {
+            return denominator_zero(cas, phy_ir_child(ir, reduced, 0u),
+                                    out_zero);
+        }
+    }
+
+    phy_ir_ref polished = PHY_IR_NULL;
+    status = polish(cas, reduced, &polished);
+    if (status == PHY_OK) {
+        *out_zero = phy_cas_is_integer(cas, polished, 0);
+    }
+    return status;
+}
+
+static bool first_negative_power(const phy_ir_context *ir, phy_ir_ref expr,
+                                 phy_ir_ref *out_base)
+{
+    const phy_ir_kind kind = phy_ir_kind_of(ir, expr);
+    if (kind == PHY_IR_POW) {
+        int64_t exponent = 0;
+        if (phy_ir_integer_value(ir, phy_ir_child(ir, expr, 1u), &exponent) &&
+            exponent < 0 && exponent != INT64_MIN) {
+            *out_base = phy_ir_child(ir, expr, 0u);
+            return true;
+        }
+        return false;
+    }
+    if (kind != PHY_IR_ADD && kind != PHY_IR_MUL) {
+        return false;
+    }
+    const size_t count = phy_ir_child_count(ir, expr);
+    for (size_t index = 0u; index < count; ++index) {
+        if (first_negative_power(ir, phy_ir_child(ir, expr, index),
+                                 out_base)) {
+            return true;
+        }
+    }
+    return false;
+}
+
+static void minimum_power_of(const phy_ir_context *ir, phy_ir_ref expr,
+                             phy_ir_ref base, int64_t *minimum)
+{
+    const phy_ir_kind kind = phy_ir_kind_of(ir, expr);
+    if (kind == PHY_IR_POW &&
+        phy_ir_child(ir, expr, 0u) == base) {
+        int64_t exponent = 0;
+        if (phy_ir_integer_value(ir, phy_ir_child(ir, expr, 1u), &exponent) &&
+            exponent < *minimum) {
+            *minimum = exponent;
+        }
+        return;
+    }
+    if (kind != PHY_IR_ADD && kind != PHY_IR_MUL) {
+        return;
+    }
+    const size_t count = phy_ir_child_count(ir, expr);
+    for (size_t index = 0u; index < count; ++index) {
+        minimum_power_of(ir, phy_ir_child(ir, expr, index), base, minimum);
+    }
+}
+
+/*
+ * Multiply a sum by one exact factor without expanding the factor itself.
+ *
+ * This is deliberately narrower than expand_factored().  The latter expands
+ * positive powers, so using it to clear B^-k with B^k first turns the
+ * clearing factor into an expanded polynomial and loses the structural base
+ * equality needed by the product collector.  Distributing only over the
+ * outer sum lets B^-k * B^k cancel before any polynomial expansion.
+ */
+static phy_status multiply_sum_factored(phy_cas *cas, phy_ir_ref expr,
+                                        phy_ir_ref factor,
+                                        phy_ir_ref *out_ref)
+{
+    const bool sum = phy_ir_kind_of(cas->ir, expr) == PHY_IR_ADD;
+    if (!sum) {
+        const phy_ir_ref factors[2] = {expr, factor};
+        return phy_cas_mul_node(cas, factors, 2u, out_ref);
+    }
+
+    const size_t count = phy_ir_child_count(cas->ir, expr);
+    const size_t mark = phy_cas_scratch_mark(cas);
+    size_t terms = 0u;
+    phy_status status = phy_cas_scratch_alloc(cas, count, &terms);
+    for (size_t index = 0u; index < count && status == PHY_OK; ++index) {
+        const phy_ir_ref factors[2] = {
+            phy_ir_child(cas->ir, expr, index), factor};
+        phy_ir_ref product = PHY_IR_NULL;
+        status = phy_cas_mul_node(cas, factors, 2u, &product);
+        if (status == PHY_OK) {
+            phy_cas_scratch_at(cas, terms)[index] = product;
+        }
+    }
+    if (status == PHY_OK) {
+        status = phy_cas_add_at(cas, terms, count, out_ref);
+    }
+    phy_cas_scratch_release(cas, mark);
+    return status;
+}
+
+/*
+ * Resource-bounded fallback for rational identities.
+ *
+ * Instead of constructing one enormous common denominator, clear one
+ * denominator base at a time.  expand_factored distributes the positive
+ * clearing factor while retaining every unrelated negative power, so each
+ * intermediate is collected before the next base is introduced.
+ */
+static phy_status decide_by_clearing_denominators(
+    phy_cas *cas, phy_ir_ref expr, phy_cas_decision *out_decision)
+{
+    phy_ir_ref current = PHY_IR_NULL;
+    phy_status status =
+        phy_cas_expand_factored_node(cas, expr, &current);
+    if (status != PHY_OK) {
+        return status;
+    }
+    for (unsigned pass = 0u; pass < 32u; ++pass) {
+        phy_ir_ref base = PHY_IR_NULL;
+        if (!first_negative_power(cas->ir, current, &base)) {
+            phy_ir_ref expanded = PHY_IR_NULL;
+            status = polish(cas, current, &expanded);
+            if (status != PHY_OK) {
+                return status;
+            }
+            if (phy_cas_is_integer(cas, expanded, 0)) {
+                *out_decision = PHY_CAS_ZERO;
+            } else if (phy_cas_known_nonzero(cas, expanded)) {
+                *out_decision = PHY_CAS_NONZERO;
+            } else {
+                *out_decision = PHY_CAS_UNKNOWN;
+            }
+            return PHY_OK;
+        }
+        bool base_zero = false;
+        status = denominator_zero(cas, base, &base_zero);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (base_zero) {
+            return PHY_ERR_DOMAIN;
+        }
+
+        int64_t minimum = 0;
+        minimum_power_of(cas->ir, current, base, &minimum);
+        if (minimum >= 0 || minimum == INT64_MIN) {
+            return PHY_ERR_CORRUPT_DOCUMENT;
+        }
+        phy_ir_ref exponent = PHY_IR_NULL;
+        status = phy_cas_number_node(
+            cas, (phy_cas_rat){-minimum, 1}, &exponent);
+        if (status != PHY_OK) {
+            return status;
+        }
+        phy_ir_ref clearing = PHY_IR_NULL;
+        status = phy_cas_pow_node(cas, base, exponent, &clearing);
+        if (status != PHY_OK) {
+            return status;
+        }
+        status = multiply_sum_factored(cas, current, clearing, &current);
+        if (status != PHY_OK) {
+            return status;
+        }
+    }
+    return PHY_ERR_TERM_LIMIT;
+}
+
+static bool decision_resource_failure(phy_status status)
+{
+    return status == PHY_ERR_OVERFLOW ||
+           status == PHY_ERR_TIMEOUT ||
+           status == PHY_ERR_NODE_LIMIT ||
+           status == PHY_ERR_DEPTH_LIMIT ||
+           status == PHY_ERR_TERM_LIMIT ||
+           status == PHY_ERR_MEMORY_LIMIT ||
+           status == PHY_ERR_OUT_OF_MEMORY;
+}
+
 static phy_status decide(phy_cas *cas, phy_ir_ref expr,
                          phy_cas_decision *out_decision)
 {
-    phy_ir_ref numerator, denominator;
-    const phy_status status =
-        phy_cas_rational_node(cas, expr, &numerator, &denominator);
+    phy_ir_ref reduced = PHY_IR_NULL;
+    phy_ir_ref based = PHY_IR_NULL;
+    phy_ir_ref numerator = PHY_IR_NULL;
+    phy_ir_ref denominator = PHY_IR_NULL;
+    phy_status status = phy_cas_simplify_node(cas, expr, &reduced);
+    if (status == PHY_OK) {
+        status = trig_reduce(cas, reduced, &based);
+    }
+    /*
+     * A factored quotient is already in the best representation for the
+     * denominator-clearing proof.  Taking it through rational_walk first can
+     * allocate a large common numerator that is immediately discarded on a
+     * resource failure; an immutable IR cannot reclaim those nodes inside the
+     * current context.  Clear the visible denominator factors directly.
+     */
+    phy_ir_ref negative_base = PHY_IR_NULL;
+    if (status == PHY_OK &&
+        first_negative_power(cas->ir, based, &negative_base)) {
+        return decide_by_clearing_denominators(cas, based, out_decision);
+    }
+    if (status == PHY_OK) {
+        status = rational_walk(cas, based, &numerator, &denominator);
+    }
+    if (status == PHY_OK) {
+        status = polish(cas, numerator, &numerator);
+    }
     if (status != PHY_OK) {
+        if (!decision_resource_failure(status)) {
+            return status;
+        }
+        if (based == PHY_IR_NULL) {
+            return status;
+        }
+        phy_cas_cache_clear(cas);
+        return decide_by_clearing_denominators(cas, based, out_decision);
+    }
+    bool denominator_is_zero = false;
+    status = denominator_zero(cas, denominator, &denominator_is_zero);
+    if (status != PHY_OK) {
+        if (decision_resource_failure(status) && based != PHY_IR_NULL) {
+            phy_cas_cache_clear(cas);
+            return decide_by_clearing_denominators(cas, based, out_decision);
+        }
         return status;
+    }
+    if (denominator_is_zero) {
+        return PHY_ERR_DOMAIN;
     }
 
     if (phy_cas_is_integer(cas, numerator, 0)) {
@@ -815,6 +1117,22 @@ phy_status phy_cas_expand(phy_cas *cas, phy_ir_ref expr, phy_ir_ref *out_ref)
     const phy_status status = phy_cas_simplify_node(cas, expr, &reduced);
     return (status != PHY_OK) ? status
                               : phy_cas_expand_node(cas, reduced, out_ref);
+}
+
+phy_status phy_cas_expand_factored(phy_cas *cas, phy_ir_ref expr,
+                                   phy_ir_ref *out_ref)
+{
+    if (cas == NULL || out_ref == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    *out_ref = PHY_IR_NULL;
+    phy_cas_begin(cas);
+
+    phy_ir_ref reduced;
+    const phy_status status = phy_cas_simplify_node(cas, expr, &reduced);
+    return (status != PHY_OK)
+               ? status
+               : phy_cas_expand_factored_node(cas, reduced, out_ref);
 }
 
 phy_status phy_cas_rational_form(phy_cas *cas, phy_ir_ref expr,

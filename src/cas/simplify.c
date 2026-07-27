@@ -317,6 +317,103 @@ static phy_status add_exponents(phy_cas *cas, phy_ir_ref left, phy_ir_ref right,
 }
 
 /*
+ * Distribute -1 over a simplified sum, structurally.
+ *
+ * The IR has no negation node, so `2*M - r` and `r - 2*M` are two unrelated
+ * sums and nothing below relates them. This builds the second from the first
+ * so that the collector can.
+ *
+ * Non-recursive at this level -- it negates the sum's terms, which are not
+ * themselves sums, because a simplified ADD is flat -- and independent of
+ * where it is called from, so the normal form it feeds stays canonical.
+ */
+static phy_status negate_sum(phy_cas *cas, phy_ir_ref sum, phy_ir_ref *out_ref)
+{
+    phy_ir_context *ir = cas->ir;
+    const size_t count = phy_ir_child_count(ir, sum);
+    const size_t mark = phy_cas_scratch_mark(cas);
+    size_t terms;
+    phy_status status = phy_cas_scratch_alloc(cas, count, &terms);
+
+    for (size_t i = 0u; i < count && status == PHY_OK; i++) {
+        phy_ir_ref negated;
+        status = phy_cas_neg_node(cas, phy_ir_child(ir, sum, i), &negated);
+        if (status == PHY_OK) {
+            phy_cas_scratch_at(cas, terms)[i] = negated;
+        }
+    }
+    if (status == PHY_OK) {
+        status = phy_cas_add_at(cas, terms, count, out_ref);
+    }
+    phy_cas_scratch_release(cas, mark);
+    return status;
+}
+
+/*
+ * Collect a base against the negation of another base: A^m * (-A)^n is
+ * (-1)^n * A^(m+n) for integer n, on every branch and without an assumption.
+ *
+ * `pairs` holds `count` (base, exponent) entries in canonical base order, with
+ * equal bases already merged. A consumed entry has its base set to
+ * PHY_IR_NULL; the surviving one is whichever sorts first, so the outcome does
+ * not depend on the order the factors arrived in.
+ *
+ * This is not cosmetic. A coordinate metric whose g_tt and g_rr are negatives
+ * of each other -- Schwarzschild and Reissner-Nordström both are -- puts an
+ * uncancelled A * (-A)^-1 into its determinant, and without this rule every
+ * inverse-metric component, every Christoffel symbol and every curvature
+ * component inherits it. The exact int64 arithmetic then overflows deciding
+ * whether a component is zero, on expressions that would have collapsed to a
+ * single sign here. Restricted to integer exponents because (-A)^(1/2) is not
+ * (-1)^(1/2) * A^(1/2).
+ */
+static phy_status merge_negated_bases(phy_cas *cas, size_t pairs, size_t count,
+                                      phy_cas_rat *coefficient)
+{
+    phy_ir_context *ir = cas->ir;
+
+    for (size_t i = 0u; i + 1u < count; i++) {
+        const phy_ir_ref base = phy_cas_scratch_at(cas, pairs)[2u * i];
+        if (base == PHY_IR_NULL || phy_ir_kind_of(ir, base) != PHY_IR_ADD) {
+            continue;
+        }
+        phy_ir_ref negated;
+        phy_status status = negate_sum(cas, base, &negated);
+        if (status != PHY_OK) {
+            return status;
+        }
+        for (size_t j = i + 1u; j < count; j++) {
+            phy_ir_ref *slot = phy_cas_scratch_at(cas, pairs);
+            if (slot[2u * j] != negated) {
+                continue;
+            }
+            phy_cas_rat exponent;
+            if (!phy_cas_exact_value(cas, slot[2u * j + 1u], &exponent) ||
+                exponent.den != 1) {
+                break;
+            }
+            phy_cas_rat sign;
+            const phy_cas_rat minus_one = {-1, 1};
+            if (!phy_cas_rat_pow(minus_one, exponent.num, &sign) ||
+                !phy_cas_rat_mul(*coefficient, sign, coefficient)) {
+                return PHY_ERR_OVERFLOW;
+            }
+            phy_ir_ref combined;
+            status = add_exponents(cas, slot[2u * i + 1u],
+                                   slot[2u * j + 1u], &combined);
+            if (status != PHY_OK) {
+                return status;
+            }
+            slot = phy_cas_scratch_at(cas, pairs);
+            slot[2u * i + 1u] = combined;
+            slot[2u * j] = PHY_IR_NULL;
+            break;
+        }
+    }
+    return PHY_OK;
+}
+
+/*
  * One collection pass over a factor list.
  *
  * `out_dirty` reports that a rebuilt factor was itself a product, which happens
@@ -388,6 +485,11 @@ static phy_status collect_product_pass(phy_cas *cas, size_t factors, size_t coun
         merged++;
     }
 
+    status = merge_negated_bases(cas, pairs, merged, &coefficient);
+    if (status != PHY_OK) {
+        return status;
+    }
+
     size_t built;
     status = phy_cas_scratch_alloc(cas, merged + 1u, &built);
     if (status != PHY_OK) {
@@ -398,6 +500,9 @@ static phy_status collect_product_pass(phy_cas *cas, size_t factors, size_t coun
     for (size_t i = 0u; i < merged; i++) {
         const phy_ir_ref base = phy_cas_scratch_at(cas, pairs)[2u * i];
         const phy_ir_ref exponent = phy_cas_scratch_at(cas, pairs)[2u * i + 1u];
+        if (base == PHY_IR_NULL) {
+            continue; /* absorbed into its negation above */
+        }
 
         phy_ir_ref power;
         status = phy_cas_pow_node(cas, base, exponent, &power);

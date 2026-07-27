@@ -290,6 +290,28 @@ static void test_products_collect(void)
        in the factor list as a number. */
     PHY_CHECK_EQ_STR(normal(&f, "(* (^ 2 3) (^ 2 4))"), "128");
 
+    /*
+     * Integer powers of opposite polynomial bases collect exactly.  Both
+     * parity directions are pinned because the canonical sort may retain
+     * either A or -A; the coefficient must compensate for that choice.
+     */
+    PHY_CHECK_EQ_STR(
+        normal(&f,
+               "(* (^ (+ x y) 2) (^ (+ (* -1 x) (* -1 y)) 3))"),
+        "(* -1 (^ (+ x y) 5))");
+    PHY_CHECK_EQ_STR(
+        normal(&f,
+               "(* (^ (+ x y) 3) (^ (+ (* -1 x) (* -1 y)) 2))"),
+        "(^ (+ x y) 5)");
+    PHY_CHECK_EQ_STR(
+        normal(&f,
+               "(* (^ (+ x y) -1) (+ (* -1 x) (* -1 y)))"),
+        "-1");
+    PHY_CHECK_EQ_STR(
+        normal(&f,
+               "(* (+ x y) (^ (+ (* -1 x) (* -1 y)) -1))"),
+        "-1");
+
     close_fixture(&f);
 }
 

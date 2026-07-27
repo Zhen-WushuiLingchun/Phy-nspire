@@ -192,6 +192,14 @@ if(BUILD_TESTING)
     configure_file("${PHY_FIXTURE_DIR}/notebook_frame.digest"
                    "${CMAKE_CURRENT_BINARY_DIR}/notebook_frame.digest"
                    COPYONLY)
+    # The golden curvature corpus is read by test_gr_corpus at run time rather
+    # than transcribed into C, so the committed artifact is what is compared
+    # against. Copied here for the same reason as the frame digests: MSVC's
+    # narrow fopen cannot open the absolute source path when the checkout
+    # contains non-ASCII characters.
+    configure_file("${CMAKE_CURRENT_SOURCE_DIR}/research/corpus/gr_golden.json"
+                   "${CMAKE_CURRENT_BINARY_DIR}/gr_golden.json"
+                   COPYONLY)
 
     foreach(suite test_gfx test_formula test_modifier test_pointer test_source test_palette test_platform
                   test_smoke test_document test_storage test_workspace
@@ -210,6 +218,19 @@ if(BUILD_TESTING)
             PHY_ARTIFACT_DIR=".")
         add_test(NAME ${suite} COMMAND ${suite})
     endforeach()
+
+    # The general-relativity corpus suite. It has its own reader for
+    # research/corpus/gr_golden.json and for the SymPy subset the corpus is
+    # written in; both are test-only and are kept out of phy_core.
+    add_executable(test_gr_corpus
+        tests/test_gr_corpus.c
+        tests/corpus/corpus_json.c
+        tests/corpus/corpus_expr.c)
+    target_link_libraries(test_gr_corpus
+        PRIVATE phy_core phy_platform_host phy_warnings)
+    target_include_directories(test_gr_corpus PRIVATE tests)
+    target_compile_definitions(test_gr_corpus PRIVATE PHY_FIXTURE_DIR=".")
+    add_test(NAME test_gr_corpus COMMAND test_gr_corpus)
 
     # End-to-end: the shipped entry point must run and exit 0 unattended.
     add_test(NAME host_app_runs COMMAND phy-host --frames 2)

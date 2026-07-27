@@ -400,6 +400,75 @@ phy_status phy_tensor_contract(phy_cas *cas, const phy_tensor *tensor,
     return PHY_OK;
 }
 
+phy_status phy_tensor_normalize(phy_cas *cas, phy_tensor *tensor,
+                                size_t *out_zeroed)
+{
+    if (cas == NULL || tensor == NULL ||
+        phy_cas_ir(cas) != tensor->chart->ir) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    size_t zeroed = 0u;
+    for (size_t flat = 0u; flat < tensor->count; ++flat) {
+        /*
+         * Already the zero handle, or forced to vanish by the declared
+         * symmetries: nothing to do. Both steps below are memoized on the ref,
+         * so the members of one orbit -- which share a handle -- pay once
+         * between them.
+         */
+        if (tensor->signs[flat] == 0 || tensor->values[flat] == tensor->zero) {
+            continue;
+        }
+
+        phy_ir_ref normalized = PHY_IR_NULL;
+        phy_status status = phy_cas_expand_factored(
+            cas, tensor->values[flat], &normalized);
+        if (status != PHY_OK) {
+            if (status == PHY_ERR_OVERFLOW ||
+                status == PHY_ERR_TIMEOUT ||
+                status == PHY_ERR_NODE_LIMIT ||
+                status == PHY_ERR_DEPTH_LIMIT ||
+                status == PHY_ERR_TERM_LIMIT ||
+                status == PHY_ERR_MEMORY_LIMIT ||
+                status == PHY_ERR_OUT_OF_MEMORY) {
+                continue;
+            }
+            return status;
+        }
+        tensor->values[flat] = normalized;
+
+        phy_cas_decision decision = PHY_CAS_UNKNOWN;
+        status = phy_cas_is_zero(cas, normalized, &decision);
+        if (status != PHY_OK) {
+            /*
+             * Normalization may prove a component zero, but inability to make
+             * that optional decision does not change the component's exact
+             * value.  Preserve it and let the caller continue; structural
+             * construction errors still propagate.
+             */
+            if (status == PHY_ERR_OVERFLOW ||
+                status == PHY_ERR_TIMEOUT ||
+                status == PHY_ERR_NODE_LIMIT ||
+                status == PHY_ERR_DEPTH_LIMIT ||
+                status == PHY_ERR_TERM_LIMIT ||
+                status == PHY_ERR_MEMORY_LIMIT ||
+                status == PHY_ERR_OUT_OF_MEMORY) {
+                continue;
+            }
+            return status;
+        }
+
+        if (decision != PHY_CAS_ZERO) {
+            continue;
+        }
+        tensor->values[flat] = tensor->zero;
+        zeroed++;
+    }
+    if (out_zeroed != NULL) {
+        *out_zeroed = zeroed;
+    }
+    return PHY_OK;
+}
+
 phy_status phy_tensor_partial(phy_cas *cas, const phy_tensor *tensor,
                               unsigned coordinate_axis, const char *name,
                               phy_tensor **out_tensor)

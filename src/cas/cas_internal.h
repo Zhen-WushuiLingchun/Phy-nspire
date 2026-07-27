@@ -67,7 +67,8 @@ typedef enum {
     PHY_CAS_MEMO_DEPENDS,  /* (expr, var)     -> 0 or 1 */
     PHY_CAS_MEMO_SUBST,    /* (expr, epoch)   -> substituted */
     PHY_CAS_MEMO_TRIG,     /* (expr)          -> on one trigonometric basis */
-    PHY_CAS_MEMO_RATIONAL  /* (expr)          -> numerator, denominator */
+    PHY_CAS_MEMO_RATIONAL, /* (expr)          -> numerator, denominator */
+    PHY_CAS_MEMO_EXPAND_FACTORED /* (expr)    -> expanded, denominators kept */
 } phy_cas_memo;
 
 typedef struct {
@@ -252,6 +253,8 @@ phy_status phy_cas_may_depend(phy_cas *cas, phy_ir_ref expr, phy_ir_ref var,
 
 phy_status phy_cas_expand_node(phy_cas *cas, phy_ir_ref expr,
                                phy_ir_ref *out_ref);
+phy_status phy_cas_expand_factored_node(phy_cas *cas, phy_ir_ref expr,
+                                        phy_ir_ref *out_ref);
 phy_status phy_cas_rational_node(phy_cas *cas, phy_ir_ref expr,
                                  phy_ir_ref *out_numerator,
                                  phy_ir_ref *out_denominator);

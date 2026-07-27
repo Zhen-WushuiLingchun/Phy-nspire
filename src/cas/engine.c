@@ -310,8 +310,11 @@ void phy_cas_cache_clear(phy_cas *cas)
         return;
     }
     if (cas->cache.data != NULL) {
-        memset(cas->cache.data, 0, cas->cache.capacity * sizeof(phy_cas_entry));
+        const size_t bytes = cas->cache.capacity * sizeof(phy_cas_entry);
+        phy_free(cas->cache.data, bytes);
+        discharge(cas, bytes);
     }
+    memset(&cas->cache, 0, sizeof cas->cache);
     cas->cache_live = 0u;
 }
 
@@ -621,7 +624,7 @@ phy_status phy_cas_validate(const phy_cas *cas)
         if (entry->tag == (uint32_t)PHY_CAS_MEMO_NONE) {
             continue;
         }
-        if (entry->tag > (uint32_t)PHY_CAS_MEMO_RATIONAL) {
+        if (entry->tag > (uint32_t)PHY_CAS_MEMO_EXPAND_FACTORED) {
             return PHY_ERR_CORRUPT_DOCUMENT;
         }
         /* Keys and answers are nodes of the borrowed context. `b` is exempt:
