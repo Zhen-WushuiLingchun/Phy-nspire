@@ -149,7 +149,7 @@ installed.
    ```
 
    Under `usbipd`/WSL, run the binary through `wsl.exe -u root` so libusb can
-   open the forwarded device node. The default 1024-byte CX II packets, bounded
+   open the forwarded device node. The default 1280-byte CX II packets, bounded
    ACK retransmission, SHA-256 readback, and rollback rename avoid the
    multi-minute hang and in-place corruption possible with the upstream
    libnspire defaults. See [`tools/nlinkctl/README.md`](../tools/nlinkctl/README.md).

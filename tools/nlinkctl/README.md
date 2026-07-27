@@ -9,13 +9,14 @@ TI-Nspire CX II development. It vendors the small C transport layer from
   a longer, separately configurable handshake/response timeout;
 - fragmented NNSE reads validate the checksum over the complete packet.
 
-The packet payload is also configurable. Uploads default to 1024 bytes: on the
-project's `usbipd`/WSL CX II path, a 1.05 MB application completed its verified
-round trip in about 30 seconds, while 512-byte uploads repeatedly reached a
-LibUSB failure at about 55 seconds. Reads retain the calculator's native
+The packet payload is also configurable. Uploads default to 1280 bytes. On the
+project's `usbipd`/WSL CX II path, two 1024-byte attempts at the current
+1,095,275-byte application reached a LibUSB failure at about 55 seconds; after
+reattaching the device, a 1280-byte upload plus full SHA-256 readback and atomic
+promotion completed in 18.4 seconds. Reads retain the calculator's native
 1440-byte framing: requesting a smaller read truncates each inbound CSP frame
-because upstream libnspire has no remainder buffer. Direct Linux USB can opt
-back into 1440-byte uploads with `--cx2-packet-size 1440`.
+because upstream libnspire has no remainder buffer. Direct Linux USB can still
+opt into 1440-byte uploads with `--cx2-packet-size 1440`.
 
 ## Build in WSL
 

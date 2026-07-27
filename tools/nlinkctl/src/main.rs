@@ -25,9 +25,10 @@ type Result<T> = std::result::Result<T, Box<dyn Error>>;
     about = "Reliable TI-Nspire CX II file transfer and Phy-nspire deployment"
 )]
 struct Cli {
-    /// CX II CSP payload size. 1024 completes before usbipd's long-transfer
-    /// failure window while retaining margin below the native 1440-byte frame.
-    #[arg(long, default_value_t = 1024, global = true)]
+    /// CX II CSP payload size. 1280 keeps margin below the native 1440-byte
+    /// frame and completes a verified 1.1 MB usbipd deployment before the
+    /// observed long-transfer failure window.
+    #[arg(long, default_value_t = 1280, global = true)]
     cx2_packet_size: u32,
 
     /// CX II payload expected while reading files from the calculator.
