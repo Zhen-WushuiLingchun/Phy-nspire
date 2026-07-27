@@ -26,3 +26,4 @@ Thumbs.db
 
 # Reviewer and sanitizer scratch trees alongside build/
 build-*/
+tools/nlinkctl/target/

@@ -23,3 +23,13 @@ derived from KaTeX, DejaVu Sans/Mono, Latin Modern Math, and Unicode data.
 Their exact versions, provenance, and license texts are retained in
 [`third_party/nmarkdown/THIRD_PARTY_NOTICES.md`](third_party/nmarkdown/THIRD_PARTY_NOTICES.md)
 and the files linked from that notice.
+
+## libnspire host transfer tool
+
+The host-only `tools/nlinkctl` utility uses `libnspire 0.2.3` and vendors the
+`libnspire-sys 0.3.4` C transport from
+[lights0123/libnspire-rs](https://github.com/lights0123/libnspire-rs).
+Phy-nspire carries local CX II reliability changes for bounded ACK retries,
+configurable packet size and timeout, and complete-packet checksum validation.
+The upstream GPL-3.0 license is retained at
+[`tools/nlinkctl/vendor/libnspire-sys/libnspire/COPYING`](tools/nlinkctl/vendor/libnspire-sys/libnspire/COPYING).

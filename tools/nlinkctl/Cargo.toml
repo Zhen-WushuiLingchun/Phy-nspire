@@ -1,0 +1,16 @@
+[package]
+name = "phy-nlinkctl"
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-only"
+description = "Reliable CLI deployment tool for Phy-nspire on TI-Nspire CX II"
+publish = false
+
+[dependencies]
+clap = { version = "4.5", features = ["derive"] }
+libnspire = { version = "=0.2.3", default-features = false }
+rusb = "=0.6.5"
+sha2 = "0.10"
+
+[patch.crates-io]
+libnspire-sys = { path = "vendor/libnspire-sys" }

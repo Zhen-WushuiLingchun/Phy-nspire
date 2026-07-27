@@ -61,8 +61,9 @@ leak detection; the current run includes the C++ rendering slice.
 The native CAS smoke artifact has run on the target CX II and shown all seven
 exact symbolic checks passing. Returning from it restored Documents normally.
 The earlier notebook shell also passed its input and touchpad acceptance. The
-new 1.0 MiB build containing persistence and nMarkdown LaTeX rendering is
-ARM-built but has not yet been transferred and accepted on the calculator.
+new 1.0 MiB build containing persistence and nMarkdown LaTeX rendering has
+been transferred through the repository-owned CLI and verified byte-for-byte
+on the calculator; its physical UI acceptance run is still pending.
 Full Markdown blocks, palettes, and direct typed-IR-to-nMarkdown layout remain
 open Phase 1 work. The separate baseline channel-order check remains tracked
 in [docs/BUILD.md](docs/BUILD.md).

@@ -133,8 +133,20 @@ installed.
    └── examples/
    ```
 
-2. Copy `dist/phy-nspire.tns` to `phy-nspire/phy-nspire.tns` with TI-Nspire
-   Computer Link, `n-link`, or another libnspire client.
+2. Build the repository-owned CLI and deploy through its verified temporary
+   file:
+
+   ```sh
+   cd tools/nlinkctl
+   cargo build --release
+   target/release/phy-nlinkctl deploy ../../dist/phy-nspire.tns
+   ```
+
+   Under `usbipd`/WSL, run the binary through `wsl.exe -u root` so libusb can
+   open the forwarded device node. The default 512-byte CX II packets, bounded
+   ACK retransmission, SHA-256 readback, and rollback rename avoid the
+   multi-minute hang and in-place corruption possible with the upstream
+   libnspire defaults. See [`tools/nlinkctl/README.md`](../tools/nlinkctl/README.md).
 3. Open it from the Documents browser.
 4. Confirm startup shows an empty `Untitled` notebook.
 5. Use `+MD`, put `LaTeX` in the heading, press `TAB`, and enter
