@@ -26,7 +26,7 @@ typedef struct {
 
 static const command_descriptor kCommands[] = {
     {"Simplify", PHY_SOURCE_SIMPLIFY, true, false},
-    {"FullSimplify", PHY_SOURCE_SIMPLIFY, true, false},
+    {"FullSimplify", PHY_SOURCE_FULL_SIMPLIFY, true, false},
     {"Expand", PHY_SOURCE_EXPAND, true, false},
     {"Together", PHY_SOURCE_TOGETHER, true, false},
     {"Numerator", PHY_SOURCE_NUMERATOR, true, false},

@@ -1208,6 +1208,63 @@ phy_status phy_cas_rational_form(phy_cas *cas, phy_ir_ref expr,
     return phy_cas_rational_node(cas, expr, out_numerator, out_denominator);
 }
 
+phy_status phy_cas_full_simplify(phy_cas *cas, phy_ir_ref expr,
+                                 phy_ir_ref *out_ref)
+{
+    if (cas == NULL || out_ref == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    *out_ref = PHY_IR_NULL;
+    phy_cas_begin(cas);
+
+    phy_ir_ref gentle = PHY_IR_NULL;
+    phy_status status = phy_cas_simplify_node(cas, expr, &gentle);
+    if (status != PHY_OK) {
+        return status;
+    }
+    *out_ref = gentle;
+
+    /*
+     * Let the decision-grade normal form compete. The trig basis and
+     * rational walk that prove sin(u)^2 + cos(u)^2 - 1 zero also collapse
+     * the same sum to 1 here. The stronger form only wins when it prints
+     * shorter: 1/tan(theta) stays 1/tan(theta) rather than becoming its
+     * sin/cos quotient, which is the file-header promise that display
+     * simplification never forces the decision basis on the reader.
+     */
+    phy_ir_ref numerator = PHY_IR_NULL;
+    phy_ir_ref denominator = PHY_IR_NULL;
+    status = phy_cas_rational_node(cas, gentle, &numerator, &denominator);
+    if (status == PHY_OK && !phy_cas_is_integer(cas, denominator, 1)) {
+        phy_ir_ref inverse = PHY_IR_NULL;
+        status = phy_cas_pow_node(cas, denominator, cas->minus_one,
+                                  &inverse);
+        if (status == PHY_OK) {
+            const phy_ir_ref factors[2] = {numerator, inverse};
+            status = phy_cas_mul_node(cas, factors, 2u, &numerator);
+        }
+    }
+    if (status != PHY_OK) {
+        /* The aggressive pass ran out of road; the gentle form stands. A
+           zero denominator lands here too -- FullSimplify answers about the
+           expression as written, not about where it fails to exist. */
+        return decision_resource_failure(status) || status == PHY_ERR_DOMAIN
+                   ? PHY_OK
+                   : status;
+    }
+
+    char probe[1];
+    size_t gentle_length = 0u;
+    size_t candidate_length = 0u;
+    (void)phy_ir_write(cas->ir, gentle, probe, sizeof probe, &gentle_length);
+    (void)phy_ir_write(cas->ir, numerator, probe, sizeof probe,
+                       &candidate_length);
+    if (candidate_length < gentle_length) {
+        *out_ref = numerator;
+    }
+    return PHY_OK;
+}
+
 phy_status phy_cas_is_zero(phy_cas *cas, phy_ir_ref expr,
                            phy_cas_decision *out_decision)
 {

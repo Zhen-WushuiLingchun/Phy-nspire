@@ -80,7 +80,7 @@ static void test_commands_and_functions(void)
     command = parse(ir, "Denominator[x/y]");
     PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_DENOMINATOR);
     command = parse(ir, "FullSimplify[x+x]");
-    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_SIMPLIFY);
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_FULL_SIMPLIFY);
 
     command = parse(ir, "D[x y, x, y]");
     PHY_CHECK_EQ_INT(command.variable_count, 2);

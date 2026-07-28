@@ -55,7 +55,7 @@ four, which is what "stateful" buys.
 | --- | --- | --- |
 | `Scalar` | arithmetic, components, decisions | its own typed IR |
 | `Manifold` | `Manifold[...]` | descriptor line |
-| `Tensor` | `ComponentTensor`, `Metric`, `VectorField`, curvature parts | components, `List` of rows at rank <= 2 |
+| `Tensor` | `ComponentTensor`, `Metric`, `VectorField`, curvature parts | components: `List` of rows at rank <= 2; at rank 3 and 4 the `List` of nonvanishing components as `Gamma(theta,phi,phi) = ...` equations, up to 64 of them, named by the chart's coordinates |
 | `Form` | `DifferentialForm`, `Wedge`, `ExteriorD`, `HodgeStar`, `Volume`, `InteriorProduct`, `YangMillsLagrangian`, `ColorComponent` | coordinate-coframe expansion |
 | `LieGroup` | `LieGroup[...]` | descriptor line |
 | `LieAlgebra` | `LieAlgebra[G]` | descriptor line |
@@ -92,7 +92,7 @@ one character of lookahead. `Set[name, value]` is the FullForm spelling.
 | `Metric[M, {{...},...}]` | rank-2 covariant `phy_tensor` |
 | `VectorField[M, {...}]` | rank-1 contravariant `phy_tensor` |
 | `Wedge[a, b, ...]` | `phy_form_wedge` |
-| `ExteriorD[a]` | `phy_form_exterior_derivative` / `phy_lie_form_exterior_derivative` |
+| `ExteriorD[a]` | `phy_form_exterior_derivative` / `phy_lie_form_exterior_derivative`; on a top-degree form the scalar `0`, so `d(d a)` is an answer on every manifold |
 | `InteriorProduct[a, v]` | `phy_form_interior_product` |
 | `LieDerivative[a, v]` | `phy_form_lie_derivative` (Cartan formula) |
 | `HodgeStar[a]`, `HodgeStar[a, g]` | `phy_form_hodge` / `phy_form_hodge_metric` |

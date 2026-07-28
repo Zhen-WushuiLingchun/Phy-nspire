@@ -239,6 +239,90 @@ static phy_status element_expansion(phy_env *env,
     return phy_cas_simplify(env->cas, sum, out_ref);
 }
 
+/*
+ * A rank-3 or rank-4 tensor as the list of its nonvanishing components,
+ * GRTensor-style: List(Gamma(theta,phi,phi) = -cos(theta)*sin(theta), ...).
+ * A nested list would bury eight zeros around every interesting entry; the
+ * reader of a Christoffel symbol wants the entries that exist, named by the
+ * coordinates they carry. Falls back to the descriptor (a NULL expansion)
+ * when the tensor is anonymous or the list would not fit a cell.
+ */
+static phy_status tensor_component_equations(phy_env *env,
+                                             const phy_tensor *tensor,
+                                             phy_ir_ref *out_ref)
+{
+    const unsigned rank = phy_tensor_rank(tensor);
+    const phy_chart *chart = phy_tensor_chart(tensor);
+    const phy_ir_symbol head = phy_tensor_head(tensor);
+    *out_ref = PHY_IR_NULL;
+    if (chart == NULL || head == PHY_IR_NO_SYMBOL) {
+        return PHY_OK;
+    }
+
+    phy_ir_ref equations[DISPLAY_MAX_TERMS];
+    size_t equation_count = 0u;
+    const size_t positions = phy_tensor_component_count(tensor);
+    for (size_t flat = 0u; flat < positions; ++flat) {
+        unsigned indices[PHY_TENSOR_MAX_RANK];
+        phy_status status = phy_tensor_unflatten(tensor, flat, indices);
+        if (status != PHY_OK) {
+            return status;
+        }
+        phy_ir_ref component = PHY_IR_NULL;
+        status = phy_tensor_component_expression(env->cas, tensor, indices,
+                                                 &component);
+        if (status != PHY_OK) {
+            return status;
+        }
+        phy_cas_decision decision = PHY_CAS_UNKNOWN;
+        status = phy_cas_is_zero(env->cas, component, &decision);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (decision == PHY_CAS_ZERO) {
+            continue;
+        }
+        if (equation_count >= DISPLAY_MAX_TERMS) {
+            *out_ref = PHY_IR_NULL; /* too many entries: stay a descriptor */
+            return PHY_OK;
+        }
+
+        phy_ir_ref labels[PHY_TENSOR_MAX_RANK];
+        for (unsigned slot = 0u; slot < rank; ++slot) {
+            const char *name =
+                phy_chart_coordinate_name(chart, indices[slot]);
+            const phy_ir_symbol label =
+                name == NULL ? PHY_IR_NO_SYMBOL
+                             : phy_ir_intern(env->ir, name);
+            labels[slot] = label == PHY_IR_NO_SYMBOL
+                               ? PHY_IR_NULL
+                               : phy_ir_symbol_ref(env->ir, label);
+            if (labels[slot] == PHY_IR_NULL) {
+                return PHY_ERR_TERM_LIMIT;
+            }
+        }
+        const phy_ir_ref lhs =
+            phy_ir_function(env->ir, head, labels, rank);
+        if (lhs == PHY_IR_NULL) {
+            return phy_ir_last_error(env->ir);
+        }
+        const phy_ir_ref equation =
+            phy_ir_equation(env->ir, lhs, component);
+        if (equation == PHY_IR_NULL) {
+            return phy_ir_last_error(env->ir);
+        }
+        equations[equation_count++] = equation;
+    }
+
+    if (equation_count == 0u) {
+        *out_ref = phy_ir_integer(env->ir, 0);
+        return *out_ref == PHY_IR_NULL ? phy_ir_last_error(env->ir) : PHY_OK;
+    }
+    *out_ref = phy_ir_function(env->ir, env->list_head, equations,
+                               equation_count);
+    return *out_ref == PHY_IR_NULL ? phy_ir_last_error(env->ir) : PHY_OK;
+}
+
 static phy_status tensor_expansion(phy_env *env, const phy_tensor *tensor,
                                    phy_ir_ref *out_ref)
 {
@@ -250,8 +334,7 @@ static phy_status tensor_expansion(phy_env *env, const phy_tensor *tensor,
                                                out_ref);
     }
     if (rank > 2u) {
-        *out_ref = PHY_IR_NULL;
-        return PHY_OK;
+        return tensor_component_equations(env, tensor, out_ref);
     }
     const phy_ir_symbol list = env->list_head;
     phy_ir_ref rows[PHY_TENSOR_MAX_DIM];
@@ -431,6 +514,8 @@ static phy_status apply_scalar_operation(phy_env *env,
     case PHY_SOURCE_SIMPLIFY:
         *out_ref = value;
         return PHY_OK;
+    case PHY_SOURCE_FULL_SIMPLIFY:
+        return phy_cas_full_simplify(env->cas, value, out_ref);
     case PHY_SOURCE_EXPAND:
         return phy_cas_expand(env->cas, value, out_ref);
     case PHY_SOURCE_TOGETHER:
@@ -516,8 +601,16 @@ phy_status phy_eval_command(phy_env *env, const phy_source_command *command,
     phy_status status = eval_node(env, command->expression, &value);
     env->pending_name = PHY_IR_NO_SYMBOL;
 
+    /*
+     * FullSimplify of a typed object passes it through like Simplify does:
+     * the object's components are already in normal form, and refusing
+     * FullSimplify[Ricci[c]] with a type error would punish the reader for
+     * asking politely.
+     */
     if (status == PHY_OK && command->operation != PHY_SOURCE_ASSIGN &&
-        command->operation != PHY_SOURCE_SIMPLIFY) {
+        command->operation != PHY_SOURCE_SIMPLIFY &&
+        !(command->operation == PHY_SOURCE_FULL_SIMPLIFY &&
+          value.kind != PHY_VALUE_SCALAR)) {
         /*
          * Every remaining operation is scalar algebra. `Expand[M]` on a
          * manifold is a type error rather than a silently ignored request.

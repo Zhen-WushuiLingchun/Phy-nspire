@@ -177,6 +177,226 @@ phy_status phy_cas_split_coefficient(phy_cas *cas, phy_ir_ref term,
     return PHY_OK;
 }
 
+/* True when `ref` is head(u)^2 for the given known function head. */
+static bool trig_squared_argument(phy_cas *cas, phy_ir_ref ref,
+                                  phy_ir_symbol head,
+                                  phy_ir_ref *out_argument)
+{
+    phy_ir_context *ir = cas->ir;
+    if (phy_ir_kind_of(ir, ref) != PHY_IR_POW) {
+        return false;
+    }
+    if (!phy_cas_is_integer(cas, phy_ir_child(ir, ref, 1u), 2)) {
+        return false;
+    }
+    const phy_ir_ref base = phy_ir_child(ir, ref, 0u);
+    if (phy_cas_known_function(cas, base) != head) {
+        return false;
+    }
+    *out_argument = phy_ir_child(ir, base, 0u);
+    return true;
+}
+
+/* head(u)^2 as an interned node, byte-identical to what collection stores. */
+static phy_ir_ref trig_squared(phy_cas *cas, phy_ir_symbol head,
+                               phy_ir_ref argument)
+{
+    phy_ir_context *ir = cas->ir;
+    const phy_ir_ref call = phy_ir_function(ir, head, &argument, 1u);
+    const phy_ir_ref two = phy_ir_integer(ir, 2);
+    if (call == PHY_IR_NULL || two == PHY_IR_NULL) {
+        return PHY_IR_NULL;
+    }
+    return phy_ir_pow(ir, call, two);
+}
+
+/*
+ * For a merged key holding a sin(u)^2 factor, the same key with cos(u)^2 in
+ * its place, and what remains once the trig factor is dropped entirely.
+ * `*out_base` is PHY_IR_NULL when the key was exactly the squared sine, in
+ * which case the collapsed pair is a pure number. `occurrence` selects which
+ * squared sine to swap when the key carries several -- sin(u)^2 * sin(v)^2
+ * has two candidate partners and the caller tries each; no more candidates
+ * leaves *out_partner NULL.
+ */
+static phy_status pythagorean_partner(phy_cas *cas, phy_ir_ref key,
+                                      size_t occurrence,
+                                      phy_ir_ref *out_partner,
+                                      phy_ir_ref *out_base)
+{
+    phy_ir_context *ir = cas->ir;
+    phy_ir_ref argument = PHY_IR_NULL;
+
+    *out_partner = PHY_IR_NULL;
+    *out_base = PHY_IR_NULL;
+    if (trig_squared_argument(cas, key, cas->fn_sin, &argument)) {
+        if (occurrence != 0u) {
+            return PHY_OK;
+        }
+        *out_partner = trig_squared(cas, cas->fn_cos, argument);
+        return *out_partner == PHY_IR_NULL ? phy_cas_ir_failure(cas) : PHY_OK;
+    }
+    if (phy_ir_kind_of(ir, key) != PHY_IR_MUL) {
+        return PHY_OK;
+    }
+
+    const size_t count = phy_ir_child_count(ir, key);
+    size_t seen = 0u;
+    for (size_t swap = 0u; swap < count; ++swap) {
+        if (!trig_squared_argument(cas, phy_ir_child(ir, key, swap),
+                                   cas->fn_sin, &argument)) {
+            continue;
+        }
+        if (seen++ != occurrence) {
+            continue;
+        }
+        const phy_ir_ref cosine = trig_squared(cas, cas->fn_cos, argument);
+        if (cosine == PHY_IR_NULL) {
+            return phy_cas_ir_failure(cas);
+        }
+
+        /* Front half: the key with cos^2 swapped in. Back half: the key
+           with the trig factor dropped. Both built before the release. */
+        const size_t mark = phy_cas_scratch_mark(cas);
+        size_t offset;
+        const phy_status status =
+            phy_cas_scratch_alloc(cas, 2u * count, &offset);
+        if (status != PHY_OK) {
+            return status;
+        }
+        size_t rest = 0u;
+        for (size_t i = 0u; i < count; ++i) {
+            const phy_ir_ref child = phy_ir_child(ir, key, i);
+            phy_cas_scratch_at(cas, offset)[i] = i == swap ? cosine : child;
+            if (i != swap) {
+                phy_cas_scratch_at(cas, offset)[count + rest] = child;
+                rest++;
+            }
+        }
+        const phy_ir_ref partner =
+            phy_ir_mul(ir, phy_cas_scratch_at(cas, offset), count);
+        const phy_ir_ref base =
+            rest == 1u
+                ? phy_cas_scratch_at(cas, offset)[count]
+                : phy_ir_mul(ir, phy_cas_scratch_at(cas, offset) + count,
+                             rest);
+        phy_cas_scratch_release(cas, mark);
+        if (partner == PHY_IR_NULL || base == PHY_IR_NULL) {
+            return phy_cas_ir_failure(cas);
+        }
+        *out_partner = partner;
+        *out_base = base;
+        return PHY_OK;
+    }
+    return PHY_OK;
+}
+
+/*
+ * The one trig identity the display normal form applies:
+ *
+ *     c*sin(u)^2*K + c*cos(u)^2*K  ->  c*K
+ *
+ * for a shared factor K -- possibly none -- and one exact coefficient c.
+ * Restricted to an exactly matching pair because that move strictly removes
+ * a term: it cannot ping-pong, and a sum with no such pair is left exactly
+ * as written, so 1 - sin(u)^2 still reads back as entered. Anything subtler
+ * belongs to the decision pipeline in normal.c, which owns the full basis.
+ *
+ * Runs on the merged (key, coefficient) pairs. A collapsed entry has its key
+ * set to PHY_IR_NULL and the build loop skips it; a pair whose key was
+ * exactly the squared sine collapses into `total`. The loop repeats because
+ * a collapse can expose the next pair -- sin^2(v)*sin^2(u) + sin^2(v)*cos^2(u)
+ * leaves sin^2(v), which may now meet a waiting cos^2(v) -- and it
+ * terminates because every collapse removes one term.
+ */
+static phy_status collapse_pythagorean(phy_cas *cas, size_t pairs,
+                                       size_t count, phy_cas_rat *total)
+{
+    bool changed = true;
+    while (changed) {
+        changed = false;
+        for (size_t i = 0u; i < count; i++) {
+            const phy_ir_ref key = phy_cas_scratch_at(cas, pairs)[2u * i];
+            if (key == PHY_IR_NULL) {
+                continue;
+            }
+            for (size_t occurrence = 0u;; occurrence++) {
+                phy_ir_ref partner = PHY_IR_NULL;
+                phy_ir_ref base = PHY_IR_NULL;
+                phy_status status = pythagorean_partner(
+                    cas, key, occurrence, &partner, &base);
+                if (status != PHY_OK) {
+                    return status;
+                }
+                if (partner == PHY_IR_NULL) {
+                    break; /* no more squared sines in this key */
+                }
+
+                bool applied = false;
+                for (size_t j = 0u; j < count; j++) {
+                    phy_ir_ref *slot = phy_cas_scratch_at(cas, pairs);
+                    if (j == i || slot[2u * j] != partner) {
+                        continue;
+                    }
+                    phy_cas_rat mine, theirs;
+                    if (!phy_cas_exact_value(cas, slot[2u * i + 1u],
+                                             &mine) ||
+                        !phy_cas_exact_value(cas, slot[2u * j + 1u],
+                                             &theirs) ||
+                        mine.num != theirs.num || mine.den != theirs.den) {
+                        break;
+                    }
+                    slot[2u * j] = PHY_IR_NULL;
+                    if (base == PHY_IR_NULL) {
+                        if (!phy_cas_rat_add(*total, mine, total)) {
+                            return PHY_ERR_OVERFLOW;
+                        }
+                        slot[2u * i] = PHY_IR_NULL;
+                    } else {
+                        /* The freed key may already be in the sum; fold the
+                           coefficient there rather than duplicating the
+                           term. */
+                        size_t existing = count;
+                        for (size_t k = 0u; k < count; k++) {
+                            if (k != i && slot[2u * k] == base) {
+                                existing = k;
+                                break;
+                            }
+                        }
+                        if (existing < count) {
+                            phy_cas_rat other, sum;
+                            if (!phy_cas_exact_value(
+                                    cas, slot[2u * existing + 1u],
+                                    &other) ||
+                                !phy_cas_rat_add(mine, other, &sum)) {
+                                return PHY_ERR_OVERFLOW;
+                            }
+                            phy_ir_ref coefficient;
+                            status =
+                                phy_cas_number_node(cas, sum, &coefficient);
+                            if (status != PHY_OK) {
+                                return status;
+                            }
+                            slot = phy_cas_scratch_at(cas, pairs);
+                            slot[2u * existing + 1u] = coefficient;
+                            slot[2u * i] = PHY_IR_NULL;
+                        } else {
+                            slot[2u * i] = base;
+                        }
+                    }
+                    changed = true;
+                    applied = true;
+                    break;
+                }
+                if (applied) {
+                    break;
+                }
+            }
+        }
+    }
+    return PHY_OK;
+}
+
 static phy_status collect_sum(phy_cas *cas, size_t terms, size_t count,
                               phy_ir_ref *out_ref)
 {
@@ -241,6 +461,11 @@ static phy_status collect_sum(phy_cas *cas, size_t terms, size_t count,
         merged++;
     }
 
+    status = collapse_pythagorean(cas, pairs, merged, &total);
+    if (status != PHY_OK) {
+        goto done;
+    }
+
     size_t built;
     status = phy_cas_scratch_alloc(cas, merged + 1u, &built);
     if (status != PHY_OK) {
@@ -252,6 +477,9 @@ static phy_status collect_sum(phy_cas *cas, size_t terms, size_t count,
         const phy_ir_ref rest = phy_cas_scratch_at(cas, pairs)[2u * i];
         const phy_ir_ref coeff = phy_cas_scratch_at(cas, pairs)[2u * i + 1u];
 
+        if (rest == PHY_IR_NULL) {
+            continue; /* collapsed by the Pythagorean pair above */
+        }
         if (phy_cas_is_integer(cas, coeff, 0)) {
             continue; /* the terms cancelled */
         }

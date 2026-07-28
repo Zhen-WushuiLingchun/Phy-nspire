@@ -682,6 +682,26 @@ static phy_status eval_exterior_derivative(phy_env *env, phy_ir_ref expr,
     if (status != PHY_OK) {
         return status;
     }
+    /*
+     * d of a top-degree form is the zero (n+1)-form, and Lambda^(n+1) has no
+     * object in this system. The scalar zero is the honest spelling -- it is
+     * exactly what a vanishing form displays as -- and it is what makes
+     * ExteriorD[ExteriorD[omega]] an answer instead of a domain error.
+     */
+    if ((operand.kind == PHY_VALUE_FORM &&
+         phy_form_degree(operand.as.form) ==
+             phy_form_dimension(operand.as.form)) ||
+        (operand.kind == PHY_VALUE_LIE_FORM &&
+         phy_lie_form_degree(operand.as.lie_form) ==
+             phy_manifold_dimension(
+                 phy_lie_form_manifold(operand.as.lie_form)))) {
+        const phy_ir_ref zero = phy_ir_integer(env->ir, 0);
+        if (zero == PHY_IR_NULL) {
+            return phy_ir_last_error(env->ir);
+        }
+        *out_value = scalar_value(zero);
+        return PHY_OK;
+    }
     if (operand.kind == PHY_VALUE_FORM) {
         phy_form *result = NULL;
         status = phy_form_exterior_derivative(env->cas, operand.as.form,

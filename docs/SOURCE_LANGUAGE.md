@@ -115,16 +115,17 @@ semantics implicitly.
 | bare expression | evaluate against the environment, then `Simplify` |
 | `name = value`, `Set[name,value]` | evaluate and bind in the notebook environment |
 | `Clear[name]`, `ClearAll[]` | unbind one name, or reset the environment |
-| `Simplify`, `FullSimplify` | exact native normal form |
+| `Simplify` | exact native normal form |
+| `FullSimplify` | normal form, then the decision-grade trig-basis rational form; the shorter of the two is returned, so `Sin[x]^2+Cos[x]^2` reaches `1` while `1/Tan[q]` keeps its spelling. On a typed object it passes through like `Simplify` |
 | `Expand` | bounded distributive expansion |
 | `Together` | native rational form reconstructed as one quotient |
 | `Numerator`, `Denominator` | selected part of native rational form |
 | `D[expr,x,...]` | repeated exact symbolic differentiation |
 | `Integrate[expr,x,...]` | exact symbolic antiderivative on the documented linear-inner class; otherwise an explicit unevaluated `Integrate` |
 
-Every command except assignment and a bare expression is scalar algebra, so
-`Expand[M]` on a manifold is `PHY_ERR_TYPE` rather than a silently ignored
-request.
+Every command except assignment, a bare expression, and the two simplifies is
+scalar algebra, so `Expand[M]` on a manifold is `PHY_ERR_TYPE` rather than a
+silently ignored request.
 
 Registered but not implemented commands include `Cancel`, `Factor`, `Apart`,
 `Limit`, `Series`, `Solve`, `NSolve`, `Reduce`, `Refine`, and the

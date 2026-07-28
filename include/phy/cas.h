@@ -325,6 +325,17 @@ phy_status phy_cas_rational_form(phy_cas *cas, phy_ir_ref expr,
                                  phy_ir_ref *out_denominator);
 
 /*
+ * Simplification with the zero decision's normal form behind it. Runs the
+ * plain simplifier first, then the trig-basis rational form, and returns
+ * whichever of the two prints shorter -- so sin(x)^2 + cos(x)^2 reaches 1,
+ * while 1/tan(theta) is not forcibly rewritten onto the sin/cos basis. A
+ * rational pass that exhausts a resource budget (or hits an identically
+ * zero denominator) falls back to the plain result rather than failing.
+ */
+phy_status phy_cas_full_simplify(phy_cas *cas, phy_ir_ref expr,
+                                 phy_ir_ref *out_ref);
+
+/*
  * `expr` as one reduced quotient: the cancelled numerator times the factored
  * denominator's inverse powers, 12*rs^2*rq^-6 rather than seventeen terms
  * over mixed denominators. The reduction class is the decision class below;

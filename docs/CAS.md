@@ -68,6 +68,22 @@ Heapsort, for the three reasons `src/ir/order.c` gives: unconditional
 of its own, which matters because the array being sorted already lives in the
 arena.
 
+After the merge, the sum collector applies its one trigonometric identity:
+
+```
+c*sin(u)^2*K + c*cos(u)^2*K  ->  c*K
+```
+
+for a shared factor `K` — possibly none — and one exact coefficient `c`.
+Restricted to an exactly matching pair because that move strictly removes a
+term, so it cannot ping-pong, and a sum with no such pair is left exactly as
+written: `1 - sin(u)^2` still reads back as entered, and
+`3*sin(u)^2 + 2*cos(u)^2` is not creatively rebalanced. The pass repeats while
+it fires, because a collapse can expose the next pair —
+`sin(v)^2 sin(u)^2 + sin(v)^2 cos(u)^2 + cos(v)^2` reaches `1` in two steps —
+and it terminates because every step removes a term. Anything subtler belongs
+to the decision pipeline below, which owns the full basis.
+
 ### Nested operands must be flattened
 
 A caller legitimately passes a nested operand of the same kind — negation is
@@ -151,6 +167,14 @@ No polynomial GCD is taken, so `phy_cas_rational_form` does not return lowest
 terms. Cancelling a common factor needs a GCD over the generators and the
 decision does not, so the expensive machinery is absent rather than
 half-present.
+
+`phy_cas_full_simplify` — the notebook's `FullSimplify` — is the one door from
+the display normal form into this machinery. It runs the plain simplifier,
+then the trig-basis rational form, and returns whichever of the two prints
+shorter, so `sin(2x) - 2 sin(x) cos(x)` reaches `0` and `1/(1 - cos(u)^2)`
+reaches `sin(u)^-2`, while `1/tan(q)` keeps the reader's spelling. A rational
+pass that exhausts a resource budget falls back to the plain result; an
+identically zero denominator is still `PHY_ERR_DOMAIN`.
 
 ### Why trigonometry is reduced, and to what
 

@@ -19,6 +19,12 @@ extern "C" {
 
 typedef enum {
     PHY_SOURCE_SIMPLIFY = 0,
+    /*
+     * Simplify with the decision-grade machinery behind it: the trig basis
+     * and rational normal form of the zero decision, kept only when the
+     * result is smaller than what plain simplification already shows.
+     */
+    PHY_SOURCE_FULL_SIMPLIFY,
     PHY_SOURCE_EXPAND,
     PHY_SOURCE_TOGETHER,
     PHY_SOURCE_NUMERATOR,

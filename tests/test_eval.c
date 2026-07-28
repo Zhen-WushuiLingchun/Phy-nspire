@@ -415,6 +415,16 @@ static void test_exterior_calculus_identities(void)
                      "(* -1 x (wedge dx dy))");
     expect_decision(&f, "ZeroQ[ExteriorD[ExteriorD[w]]]", "True");
 
+    /*
+     * d of a top-degree form is the scalar zero rather than a domain error:
+     * Lambda^(n+1) has no object here, and d^2 = 0 must hold even when the
+     * first d already landed on the top degree.
+     */
+    (void)run(&f, "top = DifferentialForm[M, 3, {x*y*z}]");
+    expect_scalar(&f, "ExteriorD[top]", "0");
+    (void)run(&f, "s2 = DifferentialForm[M, 2, {x*z, 0, 0}]");
+    expect_decision(&f, "ZeroQ[ExteriorD[ExteriorD[s2]]]", "True");
+
     /* The graded Leibniz rule d(a^w) = da^w - a^dw, with da = 0. */
     expect_decision(
         &f,
@@ -613,6 +623,25 @@ static void test_curvature_pipeline(void)
     expect_scalar(&f, "RicciScalar[c]", "(* 2 (^ a -2))");
     expect_scalar(&f, "Component[Christoffel[c], 0, 1, 1]",
                   "(* -1 (fn cos theta) (fn sin theta))");
+
+    /*
+     * A rank-3 tensor displays as its nonvanishing components, named by the
+     * coordinates -- the reader of a Christoffel symbol gets its entries,
+     * not a descriptor line and a shrug.
+     */
+    PHY_CHECK_EQ_STR(
+        expansion(&f, run(&f, "Christoffel[c]")),
+        "(fn List"
+        " (= (fn Gamma theta phi phi)"
+        " (* -1 (fn cos theta) (fn sin theta)))"
+        " (= (fn Gamma phi theta phi)"
+        " (* (^ (fn sin theta) -1) (fn cos theta)))"
+        " (= (fn Gamma phi phi theta)"
+        " (* (^ (fn sin theta) -1) (fn cos theta))))");
+
+    /* FullSimplify passes a typed object through, exactly like Simplify. */
+    PHY_CHECK_EQ_INT(run(&f, "FullSimplify[Ricci[c]]").kind,
+                     PHY_VALUE_TENSOR);
     expect_scalar(&f, "Component[Riemann[c], 0, 1, 0, 1]",
                   "(* (^ a 2) (^ (fn sin theta) 2))");
     expect_decision(&f, "ZeroQ[Einstein[c]]", "True");

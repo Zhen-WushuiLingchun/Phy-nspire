@@ -887,6 +887,72 @@ static void test_trigonometric_identities(void)
     PHY_CHECK_EQ_STR(normal(&f, "(fn sin (* 2 theta))"),
                      "(fn sin (* 2 theta))");
 
+    /*
+     * The one exception the display form does make: an exactly matching
+     * sin^2/cos^2 pair strictly removes a term, so the sum collector
+     * collapses it -- with a coefficient, with a shared factor, and in
+     * cascade when one collapse exposes the next.
+     */
+    PHY_CHECK_EQ_STR(normal(&f, "(+ (^ (fn sin u) 2) (^ (fn cos u) 2))"),
+                     "1");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(+ (* y (^ (fn sin u) 2)) (* y (^ (fn cos u) 2)))"),
+        "y");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(+ 2 (* -1 (^ (fn sin u) 2)) (* -1 (^ (fn cos u) 2)))"),
+        "1");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(+ (* (^ (fn sin x) 2) (^ (fn sin y) 2)) "
+                   "   (* (^ (fn sin x) 2) (^ (fn cos y) 2)) "
+                   "   (^ (fn cos x) 2))"),
+        "1");
+    /* No pair, or an unequal pair, stays exactly as written. */
+    PHY_CHECK_EQ_STR(normal(&f, "(+ 1 (* -1 (^ (fn sin u) 2)))"),
+                     "(+ 1 (* -1 (^ (fn sin u) 2)))");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(+ (* 3 (^ (fn sin u) 2)) (* 2 (^ (fn cos u) 2)))"),
+        "(+ (* 2 (^ (fn cos u) 2)) (* 3 (^ (fn sin u) 2)))");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(+ (^ (fn sin u) 2) (^ (fn cos w) 2))"),
+        "(+ (^ (fn cos w) 2) (^ (fn sin u) 2))");
+
+    close_fixture(&f);
+}
+
+/* FullSimplify: the decision-grade basis competes, the shorter form wins. */
+static const char *full(fixture *f, const char *text)
+{
+    phy_ir_ref out = PHY_IR_NULL;
+    const phy_status status =
+        phy_cas_full_simplify(f->cas, parse(f->ir, text), &out);
+    if (status != PHY_OK) {
+        return phy_status_name(status);
+    }
+    return render(f->ir, out);
+}
+
+static void test_full_simplify(void)
+{
+    fixture f = open_fixture();
+
+    /* The rational trig basis wins when it prints shorter. */
+    PHY_CHECK_EQ_STR(
+        full(&f, "(+ (fn sin (* 2 x)) (* -2 (fn sin x) (fn cos x)))"), "0");
+    PHY_CHECK_EQ_STR(
+        full(&f, "(+ (^ (fn sin x) 4) (* -1 (^ (fn cos x) 4)))"),
+        "(+ -1 (* 2 (^ (fn sin x) 2)))");
+    PHY_CHECK_EQ_STR(full(&f, "(^ (+ 1 (* -1 (^ (fn cos u) 2))) -1)"),
+                     "(^ (fn sin u) -2)");
+
+    /* The reader's spelling stands when the basis would only be longer. */
+    PHY_CHECK_EQ_STR(full(&f, "(^ (fn tan q) -1)"), "(^ (fn tan q) -1)");
+    PHY_CHECK_EQ_STR(full(&f, "(+ x y)"), "(+ x y)");
+
+    /* 1/0, however spelled, is still a domain error and not a fallback. */
+    PHY_CHECK_EQ_STR(
+        full(&f, "(^ (+ (^ (fn sin u) 2) (^ (fn cos u) 2) -1) -1)"),
+        "PHY_ERR_DOMAIN");
+
     close_fixture(&f);
 }
 
@@ -1200,6 +1266,7 @@ int main(void)
     PHY_TEST_CASE(test_rational_form);
     PHY_TEST_CASE(test_reduce_cancels_known_factors);
     PHY_TEST_CASE(test_trigonometric_identities);
+    PHY_TEST_CASE(test_full_simplify);
     PHY_TEST_CASE(test_gr_corpus_sphere_2d);
     PHY_TEST_CASE(test_flat_space_curvature_vanishes);
     PHY_TEST_CASE(test_step_budget);
