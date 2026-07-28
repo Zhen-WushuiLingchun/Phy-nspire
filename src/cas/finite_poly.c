@@ -201,6 +201,54 @@ static phy_status multiply_internal(const phy_fpoly *left,
     return PHY_OK;
 }
 
+static phy_status subtract_internal(const phy_fpoly *left,
+                                    const phy_fpoly *right,
+                                    phy_fpoly *out_difference)
+{
+    phy_fpoly result;
+    zero(left->context, &result);
+    result.length =
+        left->length > right->length ? left->length : right->length;
+    for (size_t index = 0u; index < result.length; ++index) {
+        phy_status status = step(left->context, 1u);
+        if (status != PHY_OK) {
+            return status;
+        }
+        result.coefficients[index] = subtract_mod(
+            phy_fpoly_coefficient(left, index),
+            phy_fpoly_coefficient(right, index), left->context->prime);
+    }
+    trim(&result);
+    *out_difference = result;
+    return PHY_OK;
+}
+
+static phy_status scale_internal(const phy_fpoly *polynomial,
+                                 uint32_t scalar,
+                                 phy_fpoly *out_scaled)
+{
+    phy_fpoly result;
+    zero(polynomial->context, &result);
+    scalar %= polynomial->context->prime;
+    if (scalar == 0u || polynomial->length == 0u) {
+        *out_scaled = result;
+        return PHY_OK;
+    }
+    result.length = polynomial->length;
+    for (size_t index = 0u; index < polynomial->length; ++index) {
+        phy_status status = step(polynomial->context, 1u);
+        if (status != PHY_OK) {
+            return status;
+        }
+        result.coefficients[index] = multiply_mod(
+            polynomial->coefficients[index], scalar,
+            polynomial->context->prime);
+    }
+    trim(&result);
+    *out_scaled = result;
+    return PHY_OK;
+}
+
 static phy_status divrem_internal(const phy_fpoly *dividend,
                                   const phy_fpoly *divisor,
                                   phy_fpoly *out_quotient,
@@ -343,6 +391,95 @@ static phy_status gcd_internal(const phy_fpoly *left,
     }
     if (status == PHY_OK) {
         *out_gcd = a;
+    }
+    return status;
+}
+
+static phy_status xgcd_internal(const phy_fpoly *left,
+                                const phy_fpoly *right,
+                                phy_fpoly *out_gcd,
+                                phy_fpoly *out_left_cofactor,
+                                phy_fpoly *out_right_cofactor)
+{
+    if (left->length == 0u && right->length == 0u) {
+        phy_fpoly zero_polynomial;
+        zero(left->context, &zero_polynomial);
+        *out_gcd = zero_polynomial;
+        *out_left_cofactor = zero_polynomial;
+        *out_right_cofactor = zero_polynomial;
+        return PHY_OK;
+    }
+    phy_fpoly old_remainder = *left;
+    phy_fpoly remainder = *right;
+    phy_fpoly old_left;
+    phy_fpoly left_cofactor;
+    phy_fpoly old_right;
+    phy_fpoly right_cofactor;
+    zero(left->context, &old_left);
+    zero(left->context, &left_cofactor);
+    zero(left->context, &old_right);
+    zero(left->context, &right_cofactor);
+    old_left.length = 1u;
+    old_left.coefficients[0] = 1u;
+    right_cofactor.length = 1u;
+    right_cofactor.coefficients[0] = 1u;
+
+    phy_status status = PHY_OK;
+    while (status == PHY_OK && remainder.length != 0u) {
+        phy_fpoly quotient;
+        phy_fpoly next_remainder;
+        phy_fpoly product;
+        phy_fpoly next_left;
+        phy_fpoly next_right;
+        zero(left->context, &quotient);
+        zero(left->context, &next_remainder);
+        zero(left->context, &product);
+        zero(left->context, &next_left);
+        zero(left->context, &next_right);
+        status = divrem_internal(
+            &old_remainder, &remainder, &quotient, &next_remainder);
+        if (status == PHY_OK) {
+            status = multiply_internal(
+                &quotient, &left_cofactor, &product);
+        }
+        if (status == PHY_OK) {
+            status = subtract_internal(&old_left, &product, &next_left);
+        }
+        if (status == PHY_OK) {
+            status = multiply_internal(
+                &quotient, &right_cofactor, &product);
+        }
+        if (status == PHY_OK) {
+            status =
+                subtract_internal(&old_right, &product, &next_right);
+        }
+        if (status != PHY_OK) {
+            return status;
+        }
+        old_remainder = remainder;
+        remainder = next_remainder;
+        old_left = left_cofactor;
+        left_cofactor = next_left;
+        old_right = right_cofactor;
+        right_cofactor = next_right;
+    }
+
+    if (old_remainder.length != 0u) {
+        const uint32_t inverse = inverse_mod(
+            old_remainder.coefficients[old_remainder.length - 1u],
+            left->context->prime);
+        status = scale_internal(&old_remainder, inverse, &old_remainder);
+        if (status == PHY_OK) {
+            status = scale_internal(&old_left, inverse, &old_left);
+        }
+        if (status == PHY_OK) {
+            status = scale_internal(&old_right, inverse, &old_right);
+        }
+    }
+    if (status == PHY_OK) {
+        *out_gcd = old_remainder;
+        *out_left_cofactor = old_left;
+        *out_right_cofactor = old_right;
     }
     return status;
 }
@@ -581,6 +718,27 @@ phy_status phy_fpoly_multiply(const phy_fpoly *left,
     return status;
 }
 
+phy_status phy_fpoly_mulmod(const phy_fpoly *left,
+                            const phy_fpoly *right,
+                            const phy_fpoly *modulus,
+                            phy_fpoly *out_remainder)
+{
+    if (!compatible(left, right, out_remainder) ||
+        !polynomial_valid(modulus) ||
+        left->context != modulus->context) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    if (modulus->length == 0u) {
+        return PHY_ERR_DOMAIN;
+    }
+    phy_status status = begin(left->context);
+    if (status == PHY_OK) {
+        status = multiply_remainder_internal(
+            left, right, modulus, out_remainder);
+    }
+    return status;
+}
+
 phy_status phy_fpoly_derivative(const phy_fpoly *polynomial,
                                 phy_fpoly *out_derivative)
 {
@@ -640,6 +798,30 @@ phy_status phy_fpoly_gcd(const phy_fpoly *left, const phy_fpoly *right,
     phy_status status = begin(left->context);
     if (status == PHY_OK) {
         status = gcd_internal(left, right, out_gcd);
+    }
+    return status;
+}
+
+phy_status phy_fpoly_xgcd(const phy_fpoly *left, const phy_fpoly *right,
+                          phy_fpoly *out_gcd,
+                          phy_fpoly *out_left_cofactor,
+                          phy_fpoly *out_right_cofactor)
+{
+    if (!compatible(left, right, out_gcd) ||
+        !polynomial_valid(out_left_cofactor) ||
+        !polynomial_valid(out_right_cofactor) ||
+        left->context != out_left_cofactor->context ||
+        left->context != out_right_cofactor->context ||
+        out_gcd == out_left_cofactor ||
+        out_gcd == out_right_cofactor ||
+        out_left_cofactor == out_right_cofactor) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    phy_status status = begin(left->context);
+    if (status == PHY_OK) {
+        status = xgcd_internal(
+            left, right, out_gcd, out_left_cofactor,
+            out_right_cofactor);
     }
     return status;
 }

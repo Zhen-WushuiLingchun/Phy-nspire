@@ -81,7 +81,7 @@ Riemann)列出**非零分量方程**,指标用坐标名标注,如
 ```sh
 cmake -S . -B build-review -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build build-review -j
-ctest --test-dir build-review          # 当前 Windows 33 个套件,193,903 条断言
+ctest --test-dir build-review          # 当前 Windows 33 个套件,199,204 条断言
 ```
 
 设备端(需要 Ndless SDK 与 arm-none-eabi 工具链,当前在 WSL 下验证):
@@ -148,7 +148,7 @@ Mathematica / Maple / SymPy / TI 自带 CAS 这一档的通用系统。这份清
 
 | 能力 | 现状 | 主流 CAS 的做法 |
 | --- | --- | --- |
-| 多项式因式分解 / GCD | `Cancel` 已有最高 48 次幂的 `Q[x]` GCD;`Factor` 完整覆盖可由有理线性因子和至多三次不可约余因子组成的有界类;多元 GCD、一般高次因式分解和 `Apart` 尚缺 | 模素数 Zassenhaus/LLL 因式分解、子结果式 GCD、部分分式 |
+| 多项式因式分解 / GCD | `Cancel` 有最高 48 次的 `Q[x]` GCD 与带精确重构的有界多元消因子；`Factor` 已接通模导数 GCD/CRT、Berlekamp、Hensel 和精确 Zassenhaus 重组，支持任意精度系数的有界一般高次一元分解；完整稀疏多元 GCD 和 `Apart` 尚缺 | 更快的 van-Hoeij/LLL 重组、Brown/Zippel/子结果式多元 GCD、部分分式 |
 | 方程求解 | `Solve` 未实现 | 多项式求根、有理化、Gröbner 基、超越方程分支 |
 | 极限与级数 | `Limit`、`Series` 未实现 | Gruntz 算法、渐近级数环 |
 | 积分覆盖面 | 已覆盖反三角核、双曲线性核和高斯/误差函数;分部积分、一般有理函数/Risch 尚缺 | Risch 结构定理、Meijer-G 表驱动 |
@@ -180,7 +180,7 @@ Mathematica / Maple / SymPy / TI 自带 CAS 这一档的通用系统。这份清
 ## 测试与验收
 
 - Windows 严格配置 33/33，WSL ASan/UBSan/Leak 配置 35/35，
-  断言型测试合计 193,903 条检查;
+  断言型测试合计 199,204 条检查;
 - GR 金标语料(`research/corpus/gr_golden.json`)由 SymPy 独立生成,
   设备管线的每个曲率分量与之精确判等;
 - 像素级回归:笔记本首帧渲染有 64 位指纹固定;

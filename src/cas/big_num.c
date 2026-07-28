@@ -239,6 +239,44 @@ phy_status phy_cas_exact_pow_ref(phy_cas *cas, phy_ir_ref base,
     return status;
 }
 
+phy_status phy_cas_exact_mod_u32_ref(phy_cas *cas, phy_ir_ref integer,
+                                     uint32_t modulus,
+                                     uint32_t *out_remainder)
+{
+    if (cas == NULL || out_remainder == NULL || modulus == 0u ||
+        phy_ir_kind_of(cas->ir, integer) != PHY_IR_INTEGER) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    int64_t small = 0;
+    if (phy_ir_integer_value(cas->ir, integer, &small)) {
+        const int64_t signed_modulus = (int64_t)modulus;
+        int64_t remainder = small % signed_modulus;
+        if (remainder < 0) {
+            remainder += signed_modulus;
+        }
+        *out_remainder = (uint32_t)remainder;
+        return PHY_OK;
+    }
+
+    phy_exact_context *exact = operation_context(cas);
+    if (exact == NULL) {
+        return PHY_ERR_OUT_OF_MEMORY;
+    }
+    phy_bigrat value;
+    memset(&value, 0, sizeof value);
+    phy_status status = phy_bigrat_init(exact, &value);
+    if (status == PHY_OK) {
+        status = load_ref(cas, exact, integer, &value);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigint_mod_u32(
+            phy_bigrat_numerator(&value), modulus, out_remainder);
+    }
+    phy_bigrat_destroy(&value);
+    phy_exact_context_destroy(exact);
+    return status;
+}
+
 int phy_cas_exact_sign_ref(const phy_cas *cas, phy_ir_ref ref)
 {
     phy_ir_exact_view view;

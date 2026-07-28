@@ -73,6 +73,10 @@ phy_status phy_fpoly_subtract(const phy_fpoly *left,
 phy_status phy_fpoly_multiply(const phy_fpoly *left,
                               const phy_fpoly *right,
                               phy_fpoly *out_product);
+phy_status phy_fpoly_mulmod(const phy_fpoly *left,
+                            const phy_fpoly *right,
+                            const phy_fpoly *modulus,
+                            phy_fpoly *out_remainder);
 phy_status phy_fpoly_derivative(const phy_fpoly *polynomial,
                                 phy_fpoly *out_derivative);
 
@@ -88,6 +92,19 @@ phy_status phy_fpoly_divrem(const phy_fpoly *dividend,
 /* Monic GCD, including gcd(0,0)=0. */
 phy_status phy_fpoly_gcd(const phy_fpoly *left, const phy_fpoly *right,
                          phy_fpoly *out_gcd);
+
+/*
+ * Extended Euclidean algorithm with a monic certificate:
+ *
+ *   out_gcd = out_left_cofactor * left + out_right_cofactor * right.
+ *
+ * gcd(0,0)=0 with both cofactors zero. Outputs may alias inputs but must be
+ * pairwise distinct.
+ */
+phy_status phy_fpoly_xgcd(const phy_fpoly *left, const phy_fpoly *right,
+                          phy_fpoly *out_gcd,
+                          phy_fpoly *out_left_cofactor,
+                          phy_fpoly *out_right_cofactor);
 
 /* Binary exponentiation followed by reduction after every multiply. */
 phy_status phy_fpoly_powmod(const phy_fpoly *base, uint64_t exponent,

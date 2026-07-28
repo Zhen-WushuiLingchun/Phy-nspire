@@ -21,7 +21,10 @@
  * an exact number, so coefficient division is exact rational arithmetic and
  * never recurses into polynomial division of coefficients.
  */
+#include <string.h>
+
 #include "cas_internal.h"
+#include "finite_poly.h"
 
 #define REDUCE_MAX_FACTORS 24u
 #define REDUCE_MAX_DEGREE 48u
@@ -970,6 +973,11 @@ typedef struct {
     phy_ir_ref coefficients[REDUCE_MAX_FACTOR_COEFFICIENTS];
 } factor_workspace;
 
+static phy_status poly_multiply_exact(phy_cas *cas,
+                                      const rational_poly *left,
+                                      const rational_poly *right,
+                                      rational_poly *out_product);
+
 static bool poly_is_one(const phy_cas *cas, const rational_poly *poly)
 {
     return poly->degree == 0 &&
@@ -1293,11 +1301,932 @@ static phy_status factor_record_push(phy_cas *cas,
     return PHY_OK;
 }
 
+static phy_status coefficient_denominator_ref(
+    phy_cas *cas, phy_ir_ref coefficient, phy_ir_ref *out_denominator)
+{
+    phy_ir_exact_view view;
+    if (!phy_ir_exact_decimal_view(cas->ir, coefficient, &view) ||
+        view.denominator_length == 0u) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    const size_t bytes = view.denominator_length + 1u;
+    if (bytes <= view.denominator_length) {
+        return PHY_ERR_MEMORY_LIMIT;
+    }
+    char *text = NULL;
+    phy_status status =
+        phy_cas_temp_alloc(cas, bytes, (void **)&text);
+    if (status != PHY_OK) {
+        return status;
+    }
+    memcpy(text, view.denominator, view.denominator_length);
+    text[view.denominator_length] = '\0';
+    const phy_ir_ref denominator =
+        phy_ir_integer_text_n(cas->ir, text, view.denominator_length);
+    phy_cas_temp_free(cas, text, bytes);
+    if (denominator == PHY_IR_NULL) {
+        return phy_cas_ir_failure(cas);
+    }
+    *out_denominator = denominator;
+    return PHY_OK;
+}
+
 /*
- * A square-free polynomial over Q is completely factorable here when repeated
- * rational-root extraction leaves degree at most three. A quadratic or cubic
- * over Q with no rational root is irreducible; the same statement is false in
- * degree four, which is why that boundary returns UNSUPPORTED.
+ * Turn monic P(x) in Q[x] into the monic integer polynomial
+ *
+ *   F(y) = D^n P(y / D),
+ *
+ * where D is a positive common multiple of every coefficient denominator.
+ * A product of denominators is intentionally used instead of an LCM: it keeps
+ * this bridge entirely in the already-certified exact coefficient domain.
+ */
+static phy_status poly_monic_integer_transform(
+    phy_cas *cas, const rational_poly *monic, rational_poly *out_integer,
+    phy_ir_ref *out_scale)
+{
+    if (monic->degree <= 0 ||
+        !phy_cas_is_integer(
+            cas, monic->coefficients[monic->degree], 1)) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    phy_ir_ref scale = cas->one;
+    for (int64_t degree = 0; degree < monic->degree; ++degree) {
+        phy_ir_ref denominator = PHY_IR_NULL;
+        phy_status status = coefficient_denominator_ref(
+            cas, monic->coefficients[degree], &denominator);
+        if (status == PHY_OK) {
+            status = coefficient_multiply(
+                cas, scale, denominator, &scale);
+        }
+        if (status != PHY_OK) {
+            return status;
+        }
+    }
+
+    poly_zero(cas, out_integer);
+    out_integer->degree = monic->degree;
+    out_integer->coefficients[monic->degree] = cas->one;
+    for (int64_t degree = 0; degree < monic->degree; ++degree) {
+        phy_ir_ref power = PHY_IR_NULL;
+        phy_ir_ref coefficient = PHY_IR_NULL;
+        phy_status status = phy_cas_exact_pow_ref(
+            cas, scale, monic->degree - degree, &power);
+        if (status == PHY_OK) {
+            status = coefficient_multiply(
+                cas, monic->coefficients[degree], power, &coefficient);
+        }
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (phy_ir_kind_of(cas->ir, coefficient) != PHY_IR_INTEGER) {
+            return PHY_ERR_CORRUPT_DOCUMENT;
+        }
+        out_integer->coefficients[degree] = coefficient;
+    }
+    poly_trim(cas, out_integer);
+    *out_scale = scale;
+    return PHY_OK;
+}
+
+static phy_status poly_inverse_integer_transform(
+    phy_cas *cas, const rational_poly *integer_factor, phy_ir_ref scale,
+    rational_poly *out_factor)
+{
+    poly_zero(cas, out_factor);
+    out_factor->degree = integer_factor->degree;
+    for (int64_t degree = 0; degree <= integer_factor->degree; ++degree) {
+        phy_ir_ref divisor = PHY_IR_NULL;
+        phy_status status = phy_cas_exact_pow_ref(
+            cas, scale, integer_factor->degree - degree, &divisor);
+        if (status == PHY_OK) {
+            status = coefficient_divide(
+                cas, integer_factor->coefficients[degree], divisor,
+                &out_factor->coefficients[degree]);
+        }
+        if (status != PHY_OK) {
+            return status;
+        }
+    }
+    poly_trim(cas, out_factor);
+    return PHY_OK;
+}
+
+static phy_status poly_integer_mod_prime(
+    phy_cas *cas, const rational_poly *integer,
+    phy_fpoly *out_polynomial)
+{
+    uint32_t coefficients[REDUCE_MAX_DEGREE + 1u] = {0u};
+    for (int64_t degree = 0; degree <= integer->degree; ++degree) {
+        phy_status status = phy_cas_step(cas);
+        if (status == PHY_OK) {
+            status = phy_cas_exact_mod_u32_ref(
+                cas, integer->coefficients[degree],
+                out_polynomial->context->prime,
+                &coefficients[degree]);
+        }
+        if (status != PHY_OK) {
+            return status;
+        }
+    }
+    return phy_fpoly_set(
+        out_polynomial, coefficients, (size_t)integer->degree + 1u);
+}
+
+static phy_status poly_integer_factor_bound(
+    phy_cas *cas, const rational_poly *integer,
+    phy_ir_ref *out_twice_bound)
+{
+    phy_ir_ref maximum = cas->zero;
+    for (int64_t degree = 0; degree <= integer->degree; ++degree) {
+        phy_ir_ref magnitude = integer->coefficients[degree];
+        if (phy_cas_exact_sign_ref(cas, magnitude) < 0) {
+            phy_status status = coefficient_multiply(
+                cas, cas->minus_one, magnitude, &magnitude);
+            if (status != PHY_OK) {
+                return status;
+            }
+        }
+        if (phy_ir_compare(cas->ir, magnitude, maximum) > 0) {
+            maximum = magnitude;
+        }
+    }
+    phy_ir_ref two = PHY_IR_NULL;
+    phy_ir_ref power = PHY_IR_NULL;
+    phy_ir_ref count = PHY_IR_NULL;
+    phy_ir_ref bound = PHY_IR_NULL;
+    phy_status status =
+        phy_cas_number_node(cas, (phy_cas_rat){2, 1}, &two);
+    if (status == PHY_OK) {
+        status = phy_cas_exact_pow_ref(
+            cas, two, integer->degree, &power);
+    }
+    if (status == PHY_OK) {
+        status = phy_cas_number_node(
+            cas, (phy_cas_rat){integer->degree + 1, 1}, &count);
+    }
+    if (status == PHY_OK) {
+        status = coefficient_multiply(cas, maximum, power, &bound);
+    }
+    if (status == PHY_OK) {
+        status = coefficient_multiply(cas, bound, count, &bound);
+    }
+    if (status == PHY_OK) {
+        status = coefficient_multiply(cas, bound, two, out_twice_bound);
+    }
+    return status;
+}
+
+static phy_status finite_factor_product(
+    phy_fpoly_context *context,
+    const phy_fpoly_factorization *factorization, uint64_t subset,
+    bool selected, phy_fpoly *out_product)
+{
+    const uint32_t one[] = {1u};
+    phy_status status = phy_fpoly_set(out_product, one, 1u);
+    for (size_t index = 0u;
+         status == PHY_OK && index < factorization->count; ++index) {
+        const bool in_subset =
+            index == 0u || ((subset >> (index - 1u)) & UINT64_C(1)) != 0u;
+        if (in_subset == selected) {
+            status = phy_fpoly_multiply(
+                out_product, &factorization->factors[index], out_product);
+        }
+    }
+    (void)context;
+    return status;
+}
+
+static phy_status poly_from_finite(
+    phy_cas *cas, const phy_fpoly *finite, rational_poly *out_integer)
+{
+    poly_zero(cas, out_integer);
+    const int degree = phy_fpoly_degree(finite);
+    if (degree < 0) {
+        return PHY_OK;
+    }
+    out_integer->degree = degree;
+    for (int index = 0; index <= degree; ++index) {
+        phy_status status = phy_cas_number_node(
+            cas,
+            (phy_cas_rat){
+                (int64_t)phy_fpoly_coefficient(finite, (size_t)index), 1},
+            &out_integer->coefficients[index]);
+        if (status != PHY_OK) {
+            return status;
+        }
+    }
+    poly_trim(cas, out_integer);
+    return PHY_OK;
+}
+
+static phy_status hensel_pair_step(
+    phy_cas *cas, const rational_poly *integer_polynomial,
+    const phy_fpoly *modular_left, const phy_fpoly *modular_right,
+    const phy_fpoly *right_bezout, phy_ir_ref modulus,
+    rational_poly *in_out_left, rational_poly *in_out_right,
+    phy_ir_ref *out_modulus)
+{
+    rational_poly product;
+    poly_zero(cas, &product);
+    phy_status status = poly_multiply_exact(
+        cas, in_out_left, in_out_right, &product);
+    if (status != PHY_OK) {
+        return status;
+    }
+
+    phy_fpoly error;
+    phy_fpoly delta_left;
+    phy_fpoly delta_product;
+    phy_fpoly residual;
+    phy_fpoly delta_right;
+    phy_fpoly remainder;
+    phy_fpoly quotient;
+    memset(&error, 0, sizeof error);
+    memset(&delta_left, 0, sizeof delta_left);
+    memset(&delta_product, 0, sizeof delta_product);
+    memset(&residual, 0, sizeof residual);
+    memset(&delta_right, 0, sizeof delta_right);
+    memset(&remainder, 0, sizeof remainder);
+    memset(&quotient, 0, sizeof quotient);
+    status = phy_fpoly_init(modular_left->context, &error);
+    if (status == PHY_OK) {
+        status = phy_fpoly_init(modular_left->context, &delta_left);
+    }
+    if (status == PHY_OK) {
+        status = phy_fpoly_init(modular_left->context, &delta_product);
+    }
+    if (status == PHY_OK) {
+        status = phy_fpoly_init(modular_left->context, &residual);
+    }
+    if (status == PHY_OK) {
+        status = phy_fpoly_init(modular_left->context, &delta_right);
+    }
+    if (status == PHY_OK) {
+        status = phy_fpoly_init(modular_left->context, &remainder);
+    }
+    if (status == PHY_OK) {
+        status = phy_fpoly_init(modular_left->context, &quotient);
+    }
+    uint32_t error_coefficients[REDUCE_MAX_DEGREE + 1u] = {0u};
+    for (int64_t degree = 0;
+         status == PHY_OK && degree <= integer_polynomial->degree; ++degree) {
+        status = phy_cas_step(cas);
+        phy_ir_ref difference = PHY_IR_NULL;
+        phy_ir_ref digit = PHY_IR_NULL;
+        if (status == PHY_OK) {
+            status = coefficient_subtract(
+                cas, integer_polynomial->coefficients[degree],
+                product.coefficients[degree], &difference);
+        }
+        if (status == PHY_OK) {
+            status = coefficient_divide(
+                cas, difference, modulus, &digit);
+        }
+        if (status == PHY_OK &&
+            phy_ir_kind_of(cas->ir, digit) != PHY_IR_INTEGER) {
+            status = PHY_ERR_CORRUPT_DOCUMENT;
+        }
+        if (status == PHY_OK) {
+            status = phy_cas_exact_mod_u32_ref(
+                cas, digit, modular_left->context->prime,
+                &error_coefficients[degree]);
+        }
+    }
+    if (status == PHY_OK) {
+        status = phy_fpoly_set(
+            &error, error_coefficients,
+            (size_t)integer_polynomial->degree + 1u);
+    }
+    if (status == PHY_OK) {
+        status = phy_fpoly_mulmod(
+            right_bezout, &error, modular_left, &delta_left);
+    }
+    if (status == PHY_OK) {
+        status = phy_fpoly_multiply(
+            &delta_left, modular_right, &delta_product);
+    }
+    if (status == PHY_OK) {
+        status = phy_fpoly_subtract(
+            &error, &delta_product, &residual);
+    }
+    if (status == PHY_OK) {
+        status = phy_fpoly_divrem(
+            &residual, modular_left, &quotient, &remainder);
+    }
+    if (status == PHY_OK && !phy_fpoly_is_zero(&remainder)) {
+        status = PHY_ERR_CORRUPT_DOCUMENT;
+    }
+    if (status == PHY_OK) {
+        delta_right = quotient;
+    }
+
+    for (int side = 0; status == PHY_OK && side < 2; ++side) {
+        rational_poly *lifted =
+            side == 0 ? in_out_left : in_out_right;
+        const phy_fpoly *correction =
+            side == 0 ? &delta_left : &delta_right;
+        const int correction_degree = phy_fpoly_degree(correction);
+        for (int degree = 0; degree <= correction_degree; ++degree) {
+            const uint32_t digit =
+                phy_fpoly_coefficient(correction, (size_t)degree);
+            if (digit == 0u) {
+                continue;
+            }
+            phy_ir_ref digit_ref = PHY_IR_NULL;
+            phy_ir_ref increment = PHY_IR_NULL;
+            status = phy_cas_number_node(
+                cas, (phy_cas_rat){(int64_t)digit, 1}, &digit_ref);
+            if (status == PHY_OK) {
+                status = coefficient_multiply(
+                    cas, modulus, digit_ref, &increment);
+            }
+            if (status == PHY_OK) {
+                status = coefficient_add(
+                    cas, lifted->coefficients[degree], increment,
+                    &lifted->coefficients[degree]);
+            }
+        }
+    }
+    if (status == PHY_OK) {
+        phy_ir_ref prime = PHY_IR_NULL;
+        status = phy_cas_number_node(
+            cas,
+            (phy_cas_rat){(int64_t)modular_left->context->prime, 1},
+            &prime);
+        if (status == PHY_OK) {
+            status = coefficient_multiply(
+                cas, modulus, prime, out_modulus);
+        }
+    }
+    return status;
+}
+
+static phy_status poly_center_modulus(
+    phy_cas *cas, const rational_poly *lifted, phy_ir_ref modulus,
+    rational_poly *out_centered)
+{
+    phy_ir_ref two = PHY_IR_NULL;
+    phy_status status =
+        phy_cas_number_node(cas, (phy_cas_rat){2, 1}, &two);
+    poly_zero(cas, out_centered);
+    out_centered->degree = lifted->degree;
+    for (int64_t degree = 0;
+         status == PHY_OK && degree <= lifted->degree; ++degree) {
+        phy_ir_ref coefficient = lifted->coefficients[degree];
+        phy_ir_ref doubled = PHY_IR_NULL;
+        status = coefficient_multiply(cas, coefficient, two, &doubled);
+        if (status == PHY_OK &&
+            phy_ir_compare(cas->ir, doubled, modulus) > 0) {
+            status = coefficient_subtract(
+                cas, coefficient, modulus, &coefficient);
+        }
+        if (status == PHY_OK) {
+            out_centered->coefficients[degree] = coefficient;
+        }
+    }
+    if (status == PHY_OK) {
+        poly_trim(cas, out_centered);
+    }
+    return status;
+}
+
+static phy_status modular_partition_candidate(
+    phy_cas *cas, const rational_poly *monic,
+    const rational_poly *integer_polynomial, phy_ir_ref scale,
+    const phy_fpoly_factorization *modular_factors, uint64_t subset,
+    phy_ir_ref twice_bound, rational_poly *out_factor,
+    rational_poly *out_quotient, bool *out_found)
+{
+    *out_found = false;
+    phy_fpoly modular_left;
+    phy_fpoly modular_right;
+    phy_fpoly gcd;
+    phy_fpoly left_bezout;
+    phy_fpoly right_bezout;
+    phy_status status =
+        phy_fpoly_init(modular_factors->context, &modular_left);
+    if (status == PHY_OK) {
+        status = phy_fpoly_init(
+            modular_factors->context, &modular_right);
+    }
+    if (status == PHY_OK) {
+        status = phy_fpoly_init(modular_factors->context, &gcd);
+    }
+    if (status == PHY_OK) {
+        status = phy_fpoly_init(
+            modular_factors->context, &left_bezout);
+    }
+    if (status == PHY_OK) {
+        status = phy_fpoly_init(
+            modular_factors->context, &right_bezout);
+    }
+    if (status == PHY_OK) {
+        status = finite_factor_product(
+            modular_factors->context, modular_factors, subset, true,
+            &modular_left);
+    }
+    if (status == PHY_OK) {
+        status = finite_factor_product(
+            modular_factors->context, modular_factors, subset, false,
+            &modular_right);
+    }
+    if (status == PHY_OK) {
+        status = phy_fpoly_xgcd(
+            &modular_left, &modular_right, &gcd, &left_bezout,
+            &right_bezout);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (!phy_fpoly_is_one(&gcd)) {
+        return PHY_ERR_CORRUPT_DOCUMENT;
+    }
+
+    rational_poly lifted_left;
+    rational_poly lifted_right;
+    status = poly_from_finite(cas, &modular_left, &lifted_left);
+    if (status == PHY_OK) {
+        status = poly_from_finite(cas, &modular_right, &lifted_right);
+    }
+    phy_ir_ref modulus = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = phy_cas_number_node(
+            cas,
+            (phy_cas_rat){(int64_t)modular_factors->context->prime, 1},
+            &modulus);
+    }
+    while (status == PHY_OK &&
+           phy_ir_compare(cas->ir, modulus, twice_bound) <= 0) {
+        phy_ir_ref next_modulus = PHY_IR_NULL;
+        status = hensel_pair_step(
+            cas, integer_polynomial, &modular_left, &modular_right,
+            &right_bezout, modulus, &lifted_left, &lifted_right,
+            &next_modulus);
+        if (status == PHY_OK) {
+            modulus = next_modulus;
+        }
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+
+    rational_poly centered[2];
+    status = poly_center_modulus(
+        cas, &lifted_left, modulus, &centered[0]);
+    if (status == PHY_OK) {
+        status = poly_center_modulus(
+            cas, &lifted_right, modulus, &centered[1]);
+    }
+    for (size_t side = 0u; status == PHY_OK && side < 2u; ++side) {
+        if (centered[side].degree <= 0 ||
+            centered[side].degree >= integer_polynomial->degree) {
+            continue;
+        }
+        rational_poly factor;
+        rational_poly quotient;
+        poly_zero(cas, &factor);
+        poly_zero(cas, &quotient);
+        bool exact = false;
+        status = poly_inverse_integer_transform(
+            cas, &centered[side], scale, &factor);
+        if (status == PHY_OK) {
+            status = poly_divide_exact(
+                cas, monic, &factor, &quotient, &exact);
+        }
+        if (status == PHY_OK && exact) {
+            *out_factor = factor;
+            *out_quotient = quotient;
+            *out_found = true;
+            return PHY_OK;
+        }
+    }
+    return status;
+}
+
+static phy_status factor_square_free(
+    phy_cas *cas, const rational_poly *poly, unsigned multiplicity,
+    factor_workspace *workspace);
+
+static phy_status factor_square_free_modular(
+    phy_cas *cas, const rational_poly *monic, unsigned multiplicity,
+    factor_workspace *workspace)
+{
+    rational_poly integer_polynomial;
+    phy_ir_ref scale = PHY_IR_NULL;
+    phy_status status = poly_monic_integer_transform(
+        cas, monic, &integer_polynomial, &scale);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_ir_ref twice_bound = PHY_IR_NULL;
+    status = poly_integer_factor_bound(
+        cas, &integer_polynomial, &twice_bound);
+    if (status != PHY_OK) {
+        return status;
+    }
+
+    static const uint32_t primes[] = {
+        2u, 3u, 5u, 7u, 11u, 13u, 17u, 19u,
+        23u, 29u, 31u, 37u, 41u, 43u, 47u,
+    };
+    phy_fpoly_context finite_context;
+    phy_fpoly image;
+    memset(&finite_context, 0, sizeof finite_context);
+    memset(&image, 0, sizeof image);
+    const size_t factorization_bytes = sizeof(phy_fpoly_factorization);
+    phy_fpoly_factorization *modular_factors = NULL;
+    status = phy_cas_temp_alloc(
+        cas, factorization_bytes, (void **)&modular_factors);
+    if (status != PHY_OK) {
+        return status;
+    }
+    bool irreducible = false;
+    bool split_found = false;
+    rational_poly split_factor;
+    rational_poly split_quotient;
+    poly_zero(cas, &split_factor);
+    poly_zero(cas, &split_quotient);
+    uint32_t selected_prime = 0u;
+    size_t selected_count = (size_t)-1;
+    for (size_t index = 0u;
+         index < sizeof(primes) / sizeof(primes[0]); ++index) {
+        phy_fpoly_limits limits;
+        phy_fpoly_limits_defaults(&limits);
+        limits.max_degree = REDUCE_MAX_DEGREE;
+        limits.max_steps = cas->limits.max_steps;
+        status = phy_fpoly_context_init(
+            &finite_context, primes[index], &limits);
+        if (status == PHY_OK) {
+            phy_fpoly_context_set_cancel(
+                &finite_context, cas->cancelled, cas->cancel_user);
+            status = phy_fpoly_init(&finite_context, &image);
+        }
+        if (status == PHY_OK) {
+            status = phy_fpoly_factorization_init(
+                &finite_context, modular_factors);
+        }
+        if (status == PHY_OK) {
+            status = poly_integer_mod_prime(cas, &integer_polynomial, &image);
+        }
+        bool square_free = false;
+        if (status == PHY_OK) {
+            status = phy_fpoly_is_square_free(&image, &square_free);
+        }
+        if (status == PHY_ERR_TIMEOUT || status == PHY_ERR_TERM_LIMIT) {
+            continue;
+        }
+        if (status != PHY_OK) {
+            goto cleanup;
+        }
+        if (!square_free) {
+            continue;
+        }
+        status =
+            phy_fpoly_factor_square_free(&image, modular_factors);
+        if (status == PHY_ERR_TIMEOUT || status == PHY_ERR_TERM_LIMIT) {
+            continue;
+        }
+        if (status != PHY_OK) {
+            goto cleanup;
+        }
+        if (modular_factors->count < selected_count) {
+            selected_prime = primes[index];
+            selected_count = modular_factors->count;
+            /*
+             * A reducible monic integer polynomial has at least two modular
+             * factors at every square-free good prime. Thus count 2 is already
+             * optimal for recombination; count 1 certifies irreducibility.
+             */
+            if (selected_count <= 2u) {
+                break;
+            }
+        }
+    }
+    if (selected_prime == 0u || selected_count > 13u) {
+        status = PHY_ERR_TERM_LIMIT;
+        goto cleanup;
+    }
+    phy_fpoly_limits selected_limits;
+    phy_fpoly_limits_defaults(&selected_limits);
+    selected_limits.max_degree = REDUCE_MAX_DEGREE;
+    selected_limits.max_steps = cas->limits.max_steps;
+    status = phy_fpoly_context_init(
+        &finite_context, selected_prime, &selected_limits);
+    if (status == PHY_OK) {
+        phy_fpoly_context_set_cancel(
+            &finite_context, cas->cancelled, cas->cancel_user);
+        status = phy_fpoly_init(&finite_context, &image);
+    }
+    if (status == PHY_OK) {
+        status = phy_fpoly_factorization_init(
+            &finite_context, modular_factors);
+    }
+    if (status == PHY_OK) {
+        status =
+            poly_integer_mod_prime(cas, &integer_polynomial, &image);
+    }
+    if (status == PHY_OK) {
+        status = phy_fpoly_factor_square_free(
+            &image, modular_factors);
+    }
+    if (status != PHY_OK ||
+        modular_factors->count != selected_count) {
+        status = status != PHY_OK ? status : PHY_ERR_CORRUPT_DOCUMENT;
+        goto cleanup;
+    }
+    if (modular_factors->count == 1u) {
+        irreducible = true;
+        goto cleanup;
+    }
+
+    const uint64_t combinations =
+        UINT64_C(1) << (modular_factors->count - 1u);
+    for (uint64_t subset = 0u; subset + 1u < combinations; ++subset) {
+        status = phy_cas_step(cas);
+        if (status != PHY_OK) {
+            goto cleanup;
+        }
+        rational_poly factor;
+        rational_poly quotient;
+        bool found = false;
+        status = modular_partition_candidate(
+            cas, monic, &integer_polynomial, scale, modular_factors,
+            subset, twice_bound, &factor, &quotient, &found);
+        if (status != PHY_OK) {
+            goto cleanup;
+        }
+        if (found) {
+            split_factor = factor;
+            split_quotient = quotient;
+            split_found = true;
+            goto cleanup;
+        }
+    }
+    /*
+     * Every bipartition of the square-free modular factors was lifted beyond
+     * twice the Landau-Mignotte coefficient bound and rejected by exact
+     * division. The monic Q[x] polynomial is therefore irreducible.
+     */
+    irreducible = true;
+
+cleanup:
+    phy_cas_temp_free(
+        cas, modular_factors, factorization_bytes);
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (split_found) {
+        status = factor_square_free(
+            cas, &split_factor, multiplicity, workspace);
+        if (status == PHY_OK) {
+            status = factor_square_free(
+                cas, &split_quotient, multiplicity, workspace);
+        }
+        return status;
+    }
+    return irreducible
+               ? factor_record_push(cas, workspace, monic, multiplicity)
+               : PHY_ERR_CORRUPT_DOCUMENT;
+}
+
+static uint32_t word_inverse_mod(uint32_t value, uint32_t prime)
+{
+    uint32_t result = 1u;
+    uint32_t factor = value;
+    uint32_t exponent = prime - 2u;
+    while (exponent != 0u) {
+        if ((exponent & 1u) != 0u) {
+            result = (uint32_t)(
+                ((uint64_t)result * (uint64_t)factor) % prime);
+        }
+        exponent >>= 1u;
+        if (exponent != 0u) {
+            factor = (uint32_t)(
+                ((uint64_t)factor * (uint64_t)factor) % prime);
+        }
+    }
+    return result;
+}
+
+/*
+ * Reconstruct gcd(F,F') for monic F in Z[x] from monic modular GCDs.
+ * Minimal modular degree plus exact division is the certificate; CRT
+ * continues until the modulus exceeds twice a Landau-Mignotte bound.
+ */
+static phy_status poly_derivative_gcd_modular(
+    phy_cas *cas, const rational_poly *monic,
+    rational_poly *out_gcd)
+{
+    rational_poly integer_polynomial;
+    rational_poly derivative;
+    phy_ir_ref scale = PHY_IR_NULL;
+    phy_status status = poly_monic_integer_transform(
+        cas, monic, &integer_polynomial, &scale);
+    if (status == PHY_OK) {
+        status = poly_derivative(cas, &integer_polynomial, &derivative);
+    }
+    phy_ir_ref twice_bound = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = poly_integer_factor_bound(
+            cas, &integer_polynomial, &twice_bound);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+
+    phy_ir_ref residues[REDUCE_MAX_DEGREE + 1u];
+    for (size_t index = 0u; index <= REDUCE_MAX_DEGREE; ++index) {
+        residues[index] = cas->zero;
+    }
+    phy_ir_ref modulus = cas->one;
+    int best_degree = (int)REDUCE_MAX_DEGREE + 1;
+    size_t prime_count = 0u;
+
+    for (uint32_t candidate = PHY_FPOLY_MAX_PRIME;
+         candidate >= 3u && prime_count < 256u; candidate -= 2u) {
+        phy_fpoly_limits limits;
+        phy_fpoly_limits_defaults(&limits);
+        limits.max_degree = REDUCE_MAX_DEGREE;
+        limits.max_steps = cas->limits.max_steps;
+        phy_fpoly_context context;
+        status = phy_fpoly_context_init(&context, candidate, &limits);
+        if (status == PHY_ERR_INVALID_ARGUMENT) {
+            continue; /* composite candidate */
+        }
+        if (status != PHY_OK) {
+            return status;
+        }
+        prime_count++;
+        phy_fpoly_context_set_cancel(
+            &context, cas->cancelled, cas->cancel_user);
+        phy_fpoly image;
+        phy_fpoly derivative_image;
+        phy_fpoly modular_gcd;
+        status = phy_fpoly_init(&context, &image);
+        if (status == PHY_OK) {
+            status = phy_fpoly_init(&context, &derivative_image);
+        }
+        if (status == PHY_OK) {
+            status = phy_fpoly_init(&context, &modular_gcd);
+        }
+        if (status == PHY_OK) {
+            status =
+                poly_integer_mod_prime(cas, &integer_polynomial, &image);
+        }
+        if (status == PHY_OK) {
+            status =
+                poly_integer_mod_prime(cas, &derivative, &derivative_image);
+        }
+        if (status == PHY_OK) {
+            status =
+                phy_fpoly_gcd(&image, &derivative_image, &modular_gcd);
+        }
+        if (status == PHY_ERR_TIMEOUT || status == PHY_ERR_TERM_LIMIT) {
+            continue;
+        }
+        if (status != PHY_OK) {
+            return status;
+        }
+        const int modular_degree = phy_fpoly_degree(&modular_gcd);
+        if (modular_degree < 0) {
+            return PHY_ERR_CORRUPT_DOCUMENT;
+        }
+        if (modular_degree == 0) {
+            poly_zero(cas, out_gcd);
+            out_gcd->coefficients[0] = cas->one;
+            return PHY_OK;
+        }
+        if (modular_degree > best_degree) {
+            continue;
+        }
+
+        phy_ir_ref prime_ref = PHY_IR_NULL;
+        status = phy_cas_number_node(
+            cas, (phy_cas_rat){(int64_t)candidate, 1}, &prime_ref);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (modular_degree < best_degree) {
+            best_degree = modular_degree;
+            modulus = prime_ref;
+            for (int degree = 0; degree <= modular_degree; ++degree) {
+                status = phy_cas_number_node(
+                    cas,
+                    (phy_cas_rat){
+                        (int64_t)phy_fpoly_coefficient(
+                            &modular_gcd, (size_t)degree),
+                        1},
+                    &residues[degree]);
+                if (status != PHY_OK) {
+                    return status;
+                }
+            }
+        } else {
+            uint32_t modulus_mod_prime = 0u;
+            status = phy_cas_exact_mod_u32_ref(
+                cas, modulus, candidate, &modulus_mod_prime);
+            if (status != PHY_OK || modulus_mod_prime == 0u) {
+                return status != PHY_OK ? status
+                                        : PHY_ERR_CORRUPT_DOCUMENT;
+            }
+            const uint32_t inverse =
+                word_inverse_mod(modulus_mod_prime, candidate);
+            for (int degree = 0; degree <= best_degree; ++degree) {
+                uint32_t old_residue = 0u;
+                status = phy_cas_exact_mod_u32_ref(
+                    cas, residues[degree], candidate, &old_residue);
+                if (status != PHY_OK) {
+                    return status;
+                }
+                const uint32_t next_residue =
+                    phy_fpoly_coefficient(
+                        &modular_gcd, (size_t)degree);
+                const uint32_t difference =
+                    next_residue >= old_residue
+                        ? next_residue - old_residue
+                        : candidate - (old_residue - next_residue);
+                const uint32_t digit = (uint32_t)(
+                    ((uint64_t)difference * (uint64_t)inverse) %
+                    candidate);
+                if (digit != 0u) {
+                    phy_ir_ref digit_ref = PHY_IR_NULL;
+                    phy_ir_ref increment = PHY_IR_NULL;
+                    status = phy_cas_number_node(
+                        cas, (phy_cas_rat){(int64_t)digit, 1},
+                        &digit_ref);
+                    if (status == PHY_OK) {
+                        status = coefficient_multiply(
+                            cas, modulus, digit_ref, &increment);
+                    }
+                    if (status == PHY_OK) {
+                        status = coefficient_add(
+                            cas, residues[degree], increment,
+                            &residues[degree]);
+                    }
+                    if (status != PHY_OK) {
+                        return status;
+                    }
+                }
+            }
+            status = coefficient_multiply(
+                cas, modulus, prime_ref, &modulus);
+            if (status != PHY_OK) {
+                return status;
+            }
+        }
+
+        if (phy_ir_compare(cas->ir, modulus, twice_bound) <= 0) {
+            continue;
+        }
+        rational_poly lifted;
+        poly_zero(cas, &lifted);
+        lifted.degree = best_degree;
+        phy_ir_ref two = PHY_IR_NULL;
+        status =
+            phy_cas_number_node(cas, (phy_cas_rat){2, 1}, &two);
+        for (int degree = 0;
+             status == PHY_OK && degree <= best_degree; ++degree) {
+            phy_ir_ref coefficient = residues[degree];
+            phy_ir_ref doubled = PHY_IR_NULL;
+            status =
+                coefficient_multiply(cas, coefficient, two, &doubled);
+            if (status == PHY_OK &&
+                phy_ir_compare(cas->ir, doubled, modulus) > 0) {
+                status = coefficient_subtract(
+                    cas, coefficient, modulus, &coefficient);
+            }
+            if (status == PHY_OK) {
+                lifted.coefficients[degree] = coefficient;
+            }
+        }
+        if (status != PHY_OK) {
+            return status;
+        }
+        rational_poly quotient_f;
+        rational_poly quotient_d;
+        bool divides_f = false;
+        bool divides_d = false;
+        status = poly_divide_exact(
+            cas, &integer_polynomial, &lifted, &quotient_f, &divides_f);
+        if (status == PHY_OK) {
+            status = poly_divide_exact(
+                cas, &derivative, &lifted, &quotient_d, &divides_d);
+        }
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (divides_f && divides_d) {
+            return poly_inverse_integer_transform(
+                cas, &lifted, scale, out_gcd);
+        }
+    }
+    return PHY_ERR_TERM_LIMIT;
+}
+
+/*
+ * Rational roots are the cheap path. A residual of degree at most three is
+ * irreducible when that exhaustive search finds none; higher degrees continue
+ * through the certified modular/Hensel/Zassenhaus path.
  */
 static phy_status factor_square_free(
     phy_cas *cas, const rational_poly *poly, unsigned multiplicity,
@@ -1309,6 +2238,12 @@ static phy_status factor_square_free(
         bool found = false;
         phy_status status =
             poly_rational_root(cas, &remaining, &root, &found);
+        if (status == PHY_ERR_UNSUPPORTED ||
+            status == PHY_ERR_TERM_LIMIT ||
+            status == PHY_ERR_OVERFLOW) {
+            return factor_square_free_modular(
+                cas, &remaining, multiplicity, workspace);
+        }
         if (status != PHY_OK) {
             return status;
         }
@@ -1316,7 +2251,8 @@ static phy_status factor_square_free(
             return remaining.degree <= 3
                        ? factor_record_push(
                              cas, workspace, &remaining, multiplicity)
-                       : PHY_ERR_UNSUPPORTED;
+                       : factor_square_free_modular(
+                             cas, &remaining, multiplicity, workspace);
         }
 
         rational_poly linear;
@@ -1345,9 +2281,10 @@ static phy_status factor_square_free(
 }
 
 /*
- * Yun's characteristic-zero square-free decomposition. It separates repeated
- * irreducible factors before the rational-root pass, so (x^2+1)^2 is proved
- * and displayed as such even though x^2+1 has no rational root.
+ * Yun's characteristic-zero square-free decomposition. The load-bearing
+ * gcd(f,f') is reconstructed by modular GCD plus CRT and exact division, which
+ * avoids rational-coefficient swell on promoted inputs. It separates repeated
+ * irreducible factors before the complete square-free factor pass.
  */
 static phy_status factor_complete(
     phy_cas *cas, const rational_poly *monic,
@@ -1355,15 +2292,14 @@ static phy_status factor_complete(
 {
     workspace->count = 0u;
     workspace->coefficient_count = 0u;
-    rational_poly derivative;
     rational_poly repeated;
     rational_poly square_free_product;
-    poly_zero(cas, &derivative);
     poly_zero(cas, &repeated);
     poly_zero(cas, &square_free_product);
-    phy_status status = poly_derivative(cas, monic, &derivative);
-    if (status == PHY_OK) {
-        status = poly_gcd(cas, monic, &derivative, &repeated);
+    phy_status status =
+        poly_derivative_gcd_modular(cas, monic, &repeated);
+    if (status == PHY_OK && poly_is_one(cas, &repeated)) {
+        return factor_square_free(cas, monic, 1u, workspace);
     }
     bool exact = false;
     if (status == PHY_OK) {

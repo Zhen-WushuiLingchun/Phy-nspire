@@ -101,10 +101,10 @@ source cells so opening does not eagerly rebuild all cached results; a separate
 fully evaluated copy is serialized, reopened, and replayed during generation.
 
 The strict Windows host suite passes 33/33. The WSL ASan/UBSan/leak suite
-passes 35/35, and the assertion-bearing executables contain 193,903 explicit
+passes 35/35, and the assertion-bearing executables contain 199,204 explicit
 checks.
 
-The current native build is measured at 1,134,215 bytes, 18.0% of the 6 MiB
+The current native build is measured at 1,143,011 bytes, 18.2% of the 6 MiB
 ceiling. Its evaluator ARM probe links the complete current physics stack,
 retains 15/15 public evaluator entry points, packages to a `.tns`, and imports
 no libm, floating-point formatter, or ARM soft-float helper.
@@ -119,7 +119,7 @@ requires an explicit calculator acceptance run after transfer; an ARM link and
 byte-identical upload do not establish on-device runtime or performance. That
 cached tour exposed a CX II load-time failure consistent with eager IR/heap
 pressure and has since been replaced by the 6,066-byte source-only tour; the
-replacement and the current 1,134,215-byte program have not been uploaded in
+replacement and the current 1,143,011-byte program have not been uploaded in
 this build and still require explicit calculator open/run checks. The
 separate baseline channel-order check remains tracked in
 [docs/BUILD.md](docs/BUILD.md).

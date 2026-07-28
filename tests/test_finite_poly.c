@@ -86,6 +86,7 @@ static void test_arithmetic_division_and_gcd(void)
     PHY_CHECK_EQ_INT(
         phy_fpoly_context_init(&context, 5u, NULL), PHY_OK);
     phy_fpoly a, b, product, quotient, remainder, recomposed, gcd;
+    phy_fpoly bezout_left, bezout_right, left_term, right_term;
     PHY_CHECK_EQ_INT(phy_fpoly_init(&context, &a), PHY_OK);
     PHY_CHECK_EQ_INT(phy_fpoly_init(&context, &b), PHY_OK);
     PHY_CHECK_EQ_INT(phy_fpoly_init(&context, &product), PHY_OK);
@@ -93,6 +94,10 @@ static void test_arithmetic_division_and_gcd(void)
     PHY_CHECK_EQ_INT(phy_fpoly_init(&context, &remainder), PHY_OK);
     PHY_CHECK_EQ_INT(phy_fpoly_init(&context, &recomposed), PHY_OK);
     PHY_CHECK_EQ_INT(phy_fpoly_init(&context, &gcd), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_fpoly_init(&context, &bezout_left), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_fpoly_init(&context, &bezout_right), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_fpoly_init(&context, &left_term), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_fpoly_init(&context, &right_term), PHY_OK);
 
     const uint32_t a_coefficients[] = {1u, 0u, 1u};
     const uint32_t b_coefficients[] = {1u, 1u};
@@ -114,6 +119,22 @@ static void test_arithmetic_division_and_gcd(void)
     PHY_CHECK_EQ_INT(phy_fpoly_gcd(&a, &b, &gcd), PHY_OK);
     const uint32_t x_minus_one[] = {4u, 1u};
     check_coefficients(&gcd, x_minus_one, 2u);
+    PHY_CHECK_EQ_INT(
+        phy_fpoly_xgcd(
+            &a, &b, &gcd, &bezout_left, &bezout_right),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_fpoly_multiply(&bezout_left, &a, &left_term), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_fpoly_multiply(&bezout_right, &b, &right_term), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_fpoly_add(&left_term, &right_term, &recomposed), PHY_OK);
+    PHY_CHECK(phy_fpoly_equal(&recomposed, &gcd));
+    check_coefficients(&gcd, x_minus_one, 2u);
+    PHY_CHECK_EQ_INT(
+        phy_fpoly_xgcd(
+            &a, &b, &gcd, &gcd, &bezout_right),
+        PHY_ERR_INVALID_ARGUMENT);
 
     PHY_CHECK_EQ_INT(phy_fpoly_derivative(&a, &remainder), PHY_OK);
     const uint32_t derivative[] = {0u, 0u, 0u, 4u};
@@ -134,6 +155,13 @@ static void test_arithmetic_division_and_gcd(void)
         PHY_ERR_DOMAIN);
     PHY_CHECK_EQ_INT(phy_fpoly_gcd(&b, &b, &gcd), PHY_OK);
     PHY_CHECK(phy_fpoly_is_zero(&gcd));
+    PHY_CHECK_EQ_INT(
+        phy_fpoly_xgcd(
+            &b, &b, &gcd, &bezout_left, &bezout_right),
+        PHY_OK);
+    PHY_CHECK(phy_fpoly_is_zero(&gcd));
+    PHY_CHECK(phy_fpoly_is_zero(&bezout_left));
+    PHY_CHECK(phy_fpoly_is_zero(&bezout_right));
 
     PHY_CHECK_EQ_INT(
         phy_fpoly_add(&a, &a, &recomposed), PHY_OK);
@@ -143,6 +171,59 @@ static void test_arithmetic_division_and_gcd(void)
         phy_fpoly_subtract(&recomposed, &a, &recomposed), PHY_OK);
     PHY_CHECK(phy_fpoly_equal(&recomposed, &a));
 
+    phy_platform_shutdown();
+}
+
+static void test_exhaustive_small_xgcd_identity(void)
+{
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    phy_fpoly_context context;
+    PHY_CHECK_EQ_INT(
+        phy_fpoly_context_init(&context, 3u, NULL), PHY_OK);
+    phy_fpoly a, b, gcd, left, right, left_term, right_term, sum;
+    PHY_CHECK_EQ_INT(phy_fpoly_init(&context, &a), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_fpoly_init(&context, &b), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_fpoly_init(&context, &gcd), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_fpoly_init(&context, &left), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_fpoly_init(&context, &right), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_fpoly_init(&context, &left_term), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_fpoly_init(&context, &right_term), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_fpoly_init(&context, &sum), PHY_OK);
+
+    for (uint32_t encoded_a = 0u; encoded_a < 27u; ++encoded_a) {
+        uint32_t value = encoded_a;
+        uint32_t a_coefficients[3];
+        for (size_t index = 0u; index < 3u; ++index) {
+            a_coefficients[index] = value % 3u;
+            value /= 3u;
+        }
+        set_poly(&a, a_coefficients, 3u);
+        for (uint32_t encoded_b = 0u; encoded_b < 27u; ++encoded_b) {
+            value = encoded_b;
+            uint32_t b_coefficients[3];
+            for (size_t index = 0u; index < 3u; ++index) {
+                b_coefficients[index] = value % 3u;
+                value /= 3u;
+            }
+            set_poly(&b, b_coefficients, 3u);
+            PHY_CHECK_EQ_INT(
+                phy_fpoly_xgcd(&a, &b, &gcd, &left, &right),
+                PHY_OK);
+            PHY_CHECK_EQ_INT(
+                phy_fpoly_multiply(&left, &a, &left_term), PHY_OK);
+            PHY_CHECK_EQ_INT(
+                phy_fpoly_multiply(&right, &b, &right_term), PHY_OK);
+            PHY_CHECK_EQ_INT(
+                phy_fpoly_add(&left_term, &right_term, &sum), PHY_OK);
+            PHY_CHECK(phy_fpoly_equal(&sum, &gcd));
+            if (!phy_fpoly_is_zero(&gcd)) {
+                PHY_CHECK_EQ_INT(
+                    phy_fpoly_coefficient(
+                        &gcd, (size_t)phy_fpoly_degree(&gcd)),
+                    1);
+            }
+        }
+    }
     phy_platform_shutdown();
 }
 
@@ -167,6 +248,10 @@ static void test_powmod_and_characteristic(void)
         phy_fpoly_powmod(&x, 0u, &modulus, &result), PHY_OK);
     const uint32_t one[] = {1u};
     check_coefficients(&result, one, 1u);
+    PHY_CHECK_EQ_INT(
+        phy_fpoly_mulmod(&x, &x, &modulus, &result), PHY_OK);
+    const uint32_t minus_one[] = {4u};
+    check_coefficients(&result, minus_one, 1u);
 
     phy_fpoly_context characteristic_two;
     PHY_CHECK_EQ_INT(
@@ -451,6 +536,7 @@ int main(void)
 {
     PHY_TEST_CASE(test_context_and_canonical_storage);
     PHY_TEST_CASE(test_arithmetic_division_and_gcd);
+    PHY_TEST_CASE(test_exhaustive_small_xgcd_identity);
     PHY_TEST_CASE(test_powmod_and_characteristic);
     PHY_TEST_CASE(test_exhaustive_small_division_identity);
     PHY_TEST_CASE(test_berlekamp_square_free_factorization);

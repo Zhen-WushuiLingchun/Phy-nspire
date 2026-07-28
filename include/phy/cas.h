@@ -27,7 +27,7 @@
  *
  * Every entry point returns a phy_status and writes its result through an out
  * parameter. Failure is ordinary here -- a budget runs out, a denominator is
- * zero, or a still-int64-only polynomial algorithm reaches its coefficient
+ * zero, or a bounded polynomial algorithm reaches its degree/recombination
  * ceiling -- and a caller that must distinguish those cases should not have to
  * consult a sticky flag to do it.
  *
@@ -357,11 +357,12 @@ phy_status phy_cas_reduce(phy_cas *cas, phy_ir_ref expr, phy_ir_ref *out_ref);
 
 /*
  * Complete exact factorization over Q[x] on the bounded class documented in
- * docs/CAS.md. The current kernel extracts rational linear factors, performs
- * square-free decomposition, and proves irreducibility of residual factors of
- * degree two or three. A higher-degree square-free residual that cannot yet be
- * split is PHY_ERR_UNSUPPORTED; returning a merely partial product as a
- * successful Factor result would be misleading.
+ * docs/CAS.md. The degree-48 kernel uses modular derivative GCD/CRT for
+ * square-free structure, deterministic Berlekamp factors over a selected
+ * prime, pairwise Hensel lifting beyond a certified coefficient bound, and
+ * exact Zassenhaus recombination. Rational roots remain a fast path. Resource
+ * ceilings return a typed error; a partial product is never published as a
+ * successful Factor result.
  */
 phy_status phy_cas_factor(phy_cas *cas, phy_ir_ref expr,
                           phy_ir_ref *out_ref);

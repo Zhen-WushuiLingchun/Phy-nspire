@@ -200,31 +200,39 @@ yet a complete sparse multivariate GCD implementation.
 
 `phy_cas_factor` and reader-facing `Factor[...]` reuse the same degree-48
 `Q[x]` view. They first extract the exact leading coefficient, make the
-polynomial monic, and run Yun's characteristic-zero square-free
-decomposition. This proves repeated irreducible factors such as
+polynomial monic, and run Yun's characteristic-zero square-free decomposition.
+The load-bearing derivative GCD is reconstructed from monic modular GCDs by
+CRT; it is accepted only after exact division of both the integer transform and
+its derivative. This avoids the coefficient swell of a direct Euclidean walk
+on promoted rational coefficients and proves repeated irreducible factors such
+as
 
 ```
 x^4 + 2 x^2 + 1  ->  (x^2 + 1)^2.
 ```
 
-Each square-free layer is converted to a primitive integer polynomial and
-searched with the rational-root theorem. Integerized coefficient magnitudes
-are bounded at 1,000,000 and one root search is bounded at 4,096 candidates;
-exceeding either bound is a typed resource error, never a truncated search
-reported as root-free. Rational linear factors are extracted exactly. A
-remaining quadratic or cubic with no rational root is proved irreducible over
-`Q`, so examples such as
+Rational-root enumeration remains a fast path, including exact tests of
+`0`, `-1`, and `1` before its small-integer divisor search. A residual beyond
+that fast path is mapped exactly to a monic integer polynomial by
+`F(y)=D^n P(y/D)`, where `D` is a positive common denominator. The complete
+bounded path then:
 
-```
-x^4 - 1  ->  (x - 1) (x + 1) (x^2 + 1)
-```
+1. selects a square-free prime image;
+2. factors it deterministically with Berlekamp;
+3. obtains Bézout corrections with finite-field extended GCD;
+4. Hensel-lifts every candidate bipartition until the modulus exceeds twice a
+   Landau--Mignotte coefficient bound;
+5. centers the lifted coefficients, maps them back to `Q[x]`, and requires
+   exact division before accepting a factor.
 
-are complete factorizations. A square-free residual of degree four or more
-with no rational root is `PHY_ERR_UNSUPPORTED`: absence of rational roots does
-not prove such a polynomial irreducible or split it into higher-degree
-factors. Thus `Factor[(x^2+1)(x^2+4)]` deliberately refuses until the modular
-factorization milestone, rather than returning the expanded polynomial as a
-misleading success.
+If every modular bipartition is lifted past the bound and rejected by exact
+division, the residual is certified irreducible over `Q`; absence of rational
+roots alone is never used for a degree above three. The recombination lattice
+is bounded at 13 modular factors (4,096 bipartitions), the degree at 48, and
+the modular derivative-GCD CRT at 256 primes. Exceeding a degree, work, memory,
+or recombination ceiling is a typed resource error, never a partial
+factorization reported as complete. This covers non-monic rational inputs,
+repeated high-degree factors, and promoted coefficients such as `2^100`.
 
 The factor-record workspace is charged to `phy_cas_limits.max_bytes` and
 released on success and every failure path. The public result is not built
@@ -423,8 +431,7 @@ answers `UNKNOWN` rather than deciding anything about it.
 ## Not in this layer
 
 General integration, limits, series, and solving. Complete general
-multivariate polynomial GCD, general high-degree polynomial factorization, and
-partial fractions. Matrices.
+multivariate polynomial GCD and partial fractions. Matrices.
 Dummy-index canonicalization,
 contraction, and anything
 that consumes declared slot symmetries — this layer simplifies the operands of
@@ -469,14 +476,14 @@ counts are recorded in `CAS_ACCEPTANCE.md` after each clean build.
 
 Built with the pinned Ndless r2022 SDK and ARM GNU 14.3 toolchain using
 `-Os -marm`. The isolated link check compiles the complete scalar layer to
-63,927 bytes of ARM text; its dependency-complete probe packages to 90,248
+72,207 bytes of ARM text; its dependency-complete probe packages to 105,616
 bytes. These figures are deliberately measured by the link-check target rather
 than maintained as a hand-summed per-object table.
 
 The application now calls the CAS and the typed physics backends through
 editable notebook cells. The current product, including persistence,
-nMarkdown's math typesetter, and the reachable evaluator stack, is 1,134,215
-bytes (18.0% of the 6 MiB ceiling).
+nMarkdown's math typesetter, and the reachable evaluator stack, is 1,143,011
+bytes (18.2% of the 6 MiB ceiling).
 
 `make cas-link-check` closes the gap that leaves. It is the same guard as
 `make ir-link-check`, and `tools/link-check.sh` now serves both layers from one
@@ -494,7 +501,7 @@ not the check itself.
 
 `make cas-link-check` has been run with the real Ndless linker and packager:
 all **29/29** public entry points derived from `include/phy/cas.h` survive
-`--gc-sections`; the CAS+IR+platform probe packages to a **90,248-byte `.tns`**;
+`--gc-sections`; the CAS+IR+platform probe packages to a **105,616-byte `.tns`**;
 and no `_dtoa`, `_strtod`, `_printf_float`, libm, `stdio` formatting, or ARM
 soft-float helper reaches the image. Real IR atoms are ordered by their
 IEEE-754 bit keys rather than by executing a floating-point comparison. The

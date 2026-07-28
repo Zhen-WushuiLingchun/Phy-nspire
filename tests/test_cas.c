@@ -1190,23 +1190,63 @@ static void test_exact_univariate_factorization(void)
                      "(+ 1 x (^ x 3))");
 
     /*
-     * No rational root does not prove a square-free quartic irreducible.
-     * The current bounded kernel refuses rather than returning a partial
-     * factorization as though it were complete.
+     * The modular path now proves high-degree partitions through Berlekamp,
+     * bounded Hensel lifting past a coefficient bound, and exact division.
      */
-    PHY_CHECK_EQ_INT(
-        factor_status(
-            &f, "(* (+ 1 (^ x 2)) (+ 4 (^ x 2)))"),
-        PHY_ERR_UNSUPPORTED);
+    PHY_CHECK_EQ_STR(
+        factored(&f, "(* (+ 1 (^ x 2)) (+ 4 (^ x 2)))"),
+        "(* (+ 1 (^ x 2)) (+ 4 (^ x 2)))");
     PHY_CHECK_EQ_INT(factor_status(&f, "(+ (* x y) x)"),
                      PHY_ERR_UNSUPPORTED);
-    PHY_CHECK_EQ_INT(factor_status(&f, "(+ 1000001 (^ x 2))"),
-                     PHY_ERR_TERM_LIMIT);
-    PHY_CHECK_EQ_INT(
-        factor_status(
+    PHY_CHECK_EQ_STR(factored(&f, "(+ 1000001 (^ x 2))"),
+                     "(+ 1000001 (^ x 2))");
+    PHY_CHECK_EQ_STR(
+        factored(
             &f,
             "(+ 1267650600228229401496703205376 (^ x 4))"),
-        PHY_ERR_UNSUPPORTED);
+        "(+ 1267650600228229401496703205376 (^ x 4))");
+
+    PHY_CHECK_EQ_STR(
+        factored(
+            &f,
+            "(* (+ (^ x 4) (* 2 x) 2) "
+            "   (+ (^ x 5) (* 2 x) 2))"),
+        "(* (+ 2 (* 2 x) (^ x 4)) (+ 2 (* 2 x) (^ x 5)))");
+    PHY_CHECK_EQ_STR(
+        factored(
+            &f,
+            "(* (+ (* 2 (^ x 4)) (* 3 x) 3) "
+            "   (+ (* 3 (^ x 5)) (* 2 x) 2))"),
+        "(* 6 (+ (rat 2 3) (* (rat 2 3) x) (^ x 5)) "
+        "(+ (rat 3 2) (* (rat 3 2) x) (^ x 4)))");
+    PHY_CHECK_EQ_STR(
+        factored(
+            &f,
+            "(* (+ (^ x 4) "
+            "       (* 1267650600228229401496703205376 x) 2) "
+            "   (+ (^ x 5) (* 2 x) 2))"),
+        "(* (+ 2 (* 2 x) (^ x 5)) "
+        "(+ 2 (* 1267650600228229401496703205376 x) (^ x 4)))");
+    PHY_CHECK_EQ_STR(
+        factored(&f, "(^ (+ (^ x 4) (* 2 x) 2) 3)"),
+        "(^ (+ 2 (* 2 x) (^ x 4)) 3)");
+    PHY_CHECK_EQ_STR(
+        factored(
+            &f,
+            "(^ (+ (^ x 4) "
+            "       (* 1267650600228229401496703205376 x) 2) 2)"),
+        "(^ (+ 2 (* 1267650600228229401496703205376 x) (^ x 4)) 2)");
+    PHY_CHECK_EQ_STR(
+        factored(
+            &f,
+            "(* (^ (+ (^ x 4) "
+            "          (* 1267650600228229401496703205376 x) 2) 2) "
+            "   (^ (+ (^ x 5) (* 2 x) 2) 3))"),
+        "(* (^ (+ 2 (* 2 x) (^ x 5)) 3) "
+        "(^ (+ 2 (* 1267650600228229401496703205376 x) (^ x 4)) 2))");
+    PHY_CHECK_EQ_STR(
+        factored(&f, "(+ 1 (^ x 8))"),
+        "(+ 1 (^ x 8))");
     PHY_CHECK_EQ_INT(factor_status(&f, "(^ x 49)"),
                      PHY_ERR_UNSUPPORTED);
 
@@ -1605,7 +1645,7 @@ static void test_allocation_failure_unwinds_scratch(void)
 {
     PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
 
-    for (unsigned countdown = 1u; countdown <= 60u; countdown++) {
+    for (unsigned countdown = 1u; countdown <= 120u; countdown++) {
         phy_ir_context *ir = phy_ir_context_create(NULL);
         if (ir == NULL) {
             continue;
@@ -1621,7 +1661,9 @@ static void test_allocation_failure_unwinds_scratch(void)
         size_t offset = 0u;
         if (phy_ir_read(ir, "(+ (* 2 x (^ y 2)) (* 3 x (^ y 2)) (fn sin x))",
                         &expr, &offset) == PHY_OK &&
-            phy_ir_read(ir, "(+ (^ x 6) (* -1 (^ x 2)))",
+            phy_ir_read(ir,
+                        "(* (+ (^ x 4) (* 2 x) 2) "
+                        "   (+ (^ x 5) (* 2 x) 2))",
                         &factor_expr, &offset) == PHY_OK) {
             phy_host_fail_alloc_after(countdown);
             phy_ir_ref out = PHY_IR_NULL;

@@ -61,6 +61,9 @@ phy_status phy_cas_exact_div_refs(phy_cas *cas, phy_ir_ref left,
                                   phy_ir_ref right, phy_ir_ref *out_ref);
 phy_status phy_cas_exact_pow_ref(phy_cas *cas, phy_ir_ref base,
                                  int64_t exponent, phy_ir_ref *out_ref);
+phy_status phy_cas_exact_mod_u32_ref(phy_cas *cas, phy_ir_ref integer,
+                                     uint32_t modulus,
+                                     uint32_t *out_remainder);
 int phy_cas_exact_sign_ref(const phy_cas *cas, phy_ir_ref ref);
 
 /* ------------------------------------------------------------ memo cache */

@@ -31,17 +31,17 @@ from the still-open complete sparse multivariate GCD layer.
 - no heap allocation or floating-point operation is used.
 
 The implemented kernel contains addition, subtraction, multiplication,
-derivative, Euclidean division, monic GCD, modular exponentiation,
-square-free testing, and deterministic Berlekamp factorization of monic
-square-free inputs. Berlekamp's nullspace is row-reduced exactly in `F_p`;
-candidate splits are accepted only through exact polynomial GCD, and the final
-factor product is recomputed before publication.
+modular multiplication, derivative, Euclidean division, monic GCD with Bézout
+certificate, modular exponentiation, square-free testing, and deterministic
+Berlekamp factorization of monic square-free inputs. Berlekamp's nullspace is
+row-reduced exactly in `F_p`; candidate splits are accepted only through exact
+polynomial GCD, and the final factor product is recomputed before publication.
 
 `phy_bigint_mod_u32` bridges an arbitrary-precision signed integer to a
 Euclidean word remainder without first truncating it. This is the coefficient
 map that later modular algorithms will use.
 
-## Why this layer precedes general `Factor`
+## General `Factor` architecture
 
 The existing rational-root theorem path is complete only for its documented
 small candidate set. General factorization over `Z[x]` requires:
@@ -51,9 +51,18 @@ small candidate set. General factorization over `Z[x]` requires:
 3. Hensel lifting to a certified coefficient bound;
 4. exact Zassenhaus/van-Hoeij-style recombination and division checks.
 
-Only step 2 is closed here. Reader-facing `Factor` is not widened until lifting
-and recombination exist; returning a modular factor as though it were an
-integer factor would be mathematically wrong.
+All four steps are now connected for reader-facing univariate `Factor` through
+degree 48. Rational inputs use the exact monic integer transform
+`F(y)=D^n P(y/D)`. Candidate bipartitions receive a finite-field Bézout
+certificate, are pair-Hensel-lifted until the modulus is beyond twice a
+Landau--Mignotte coefficient bound, and are published only after exact
+division in `Q[x]`. Recombination is complete within the documented
+13-modular-factor/4,096-bipartition ceiling.
+
+The square-free front end uses modular `gcd(F,F')`, multi-prime CRT
+reconstruction, the same coefficient bound, and exact division of both `F`
+and `F'`. Thus promoted coefficients do not force the algorithm back through
+a coefficient-swelling rational Euclidean sequence.
 
 This dependency order follows the mature separation visible in FLINT:
 integer-polynomial factorization documents square-free decomposition,
@@ -69,9 +78,10 @@ References:
 
 ## Remaining polynomial milestones
 
-- map arbitrary-precision primitive integer coefficients into good prime
-  images;
-- bounded Hensel lifting and exact recombination;
+- faster van-Hoeij/LLL-style recombination beyond the bounded exhaustive
+  4,096-partition lattice;
+- a coefficient-generic subresultant path for arbitrary auxiliary GCDs, beyond
+  the certified modular derivative-GCD and bounded cancellation paths;
 - sparse multivariate representation with explicit monomial order;
 - content/primitive-part and a complete validated multivariate GCD algorithm
   beyond the bounded verified Kronecker cancellation subset;

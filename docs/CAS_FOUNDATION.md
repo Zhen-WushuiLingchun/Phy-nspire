@@ -59,11 +59,11 @@ semantics.
 ### F2 — polynomial and rational algebra
 
 Status: the bounded univariate `Q[x]` GCD, reader-facing `Cancel`, Yun
-square-free decomposition, and a complete-on-success bounded `Factor` class
-are implemented. Their coefficient containers now use the F3 arbitrary-
-precision exact domain. A bounded mixed-radix multivariate cancellation subset
-is implemented with exact reconstruction checks. Complete general multivariate
-GCD, general high-degree irreducible factorization, and `Apart` remain open.
+square-free decomposition, and degree-48 modular
+Berlekamp/Hensel/Zassenhaus `Factor` are implemented. Their coefficient
+containers use the F3 arbitrary-precision exact domain. A bounded mixed-radix
+multivariate cancellation subset is implemented with exact reconstruction
+checks. Complete general multivariate GCD and `Apart` remain open.
 
 - A bounded polynomial view with explicit variable order.
 - Content/primitive-part extraction and exact coefficient division.
@@ -75,10 +75,12 @@ GCD, general high-degree irreducible factorization, and `Apart` remain open.
 Polynomial Euclidean division, GCD, square-free decomposition, factor
 reconstruction, denominator LCDs, and univariate cancellation use exact IR
 coefficients with a checked `int64` fast path and arbitrary-precision fallback.
-The rational-root candidate enumerator remains bounded to small primitive
-integer coefficients; promoted inputs outside that search return
-`PHY_ERR_UNSUPPORTED`. General factorization must replace that enumerator,
-not silently widen its trial count.
+The rational-root candidate enumerator remains a bounded fast path. Inputs
+outside it now continue through an exact monic-integer transform, good-prime
+selection, deterministic Berlekamp factorization, pair Hensel lifting beyond a
+Landau--Mignotte bound, and exact recombination. Modular derivative GCD plus CRT
+prevents the initial square-free decomposition from falling back onto
+coefficient-swelling rational Euclid for promoted inputs.
 
 For expanded multivariate inputs whose Kronecker image has degree at most 48,
 the reducer computes an image GCD, decodes candidate divisors, and accepts one
@@ -89,12 +91,12 @@ real common factors. A sparse polynomial representation plus a complete
 validated Brown/Zippel/subresultant-style algorithm is still required for the
 general milestone.
 
-The next modular layer is now present: a fixed-footprint exact `F_p[x]` kernel
-with verified-prime contexts, Euclidean division/GCD, modular powers,
-square-free decisions, and deterministic Berlekamp factorization. The bigint
-domain exposes a non-truncating Euclidean `mod_u32` bridge. See
-[`POLYNOMIAL.md`](POLYNOMIAL.md). Hensel lifting and certified recombination
-remain open, so this foundation does not yet widen reader-facing `Factor`.
+The modular layer is now present end to end: a fixed-footprint exact `F_p[x]`
+kernel with verified-prime contexts, Euclidean and extended GCD, modular
+products/powers, square-free decisions, and deterministic Berlekamp
+factorization; a non-truncating bigint-to-word residue bridge; CRT derivative
+GCD reconstruction; bounded pair Hensel lifting; and exact Zassenhaus
+recombination. See [`POLYNOMIAL.md`](POLYNOMIAL.md).
 
 ### F3 — exact number domains
 
