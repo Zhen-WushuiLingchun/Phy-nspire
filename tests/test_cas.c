@@ -112,6 +112,12 @@ static phy_status factor_status(fixture *f, const char *text)
     return phy_cas_factor(f->cas, parse(f->ir, text), &out);
 }
 
+static phy_status apart_status(fixture *f, const char *text,
+                               phy_ir_ref *out)
+{
+    return phy_cas_apart(f->cas, parse(f->ir, text), out);
+}
+
 static phy_status simplify_status(fixture *f, const char *text)
 {
     phy_ir_ref out = PHY_IR_NULL;
@@ -1267,6 +1273,76 @@ static void test_exact_univariate_factorization(void)
     close_fixture(&f);
 }
 
+static void test_exact_univariate_partial_fractions(void)
+{
+    fixture f = open_fixture();
+    phy_ir_ref result = PHY_IR_NULL;
+    phy_cas_decision decision = PHY_CAS_UNKNOWN;
+
+    static const char *const cases[] = {
+        "(rat 1 2)",
+        "(* (rat 1 2) x)",
+        "(* (+ (^ x 2) -1) (^ (+ -1 x) -1))",
+        "(* (^ (+ (^ x 2) -1) -1))",
+        "(* (+ (^ x 3) 1) (^ (+ (^ x 2) -1) -1))",
+        "(* (^ x -2) (^ (+ 1 x) -1))",
+        "(* x (^ (+ 1 (^ x 2)) -1))",
+        "(* (+ 1 x) (^ (+ 1 (* 2 (^ x 2)) (^ x 4)) -1))",
+        "(* 1267650600228229401496703205376 "
+        "   (^ (* 3 (+ -1 x) (+ 1 x)) -1))",
+    };
+    for (size_t index = 0u;
+        index < sizeof cases / sizeof cases[0]; ++index) {
+        const phy_ir_ref input = parse(f.ir, cases[index]);
+        const phy_status status =
+            phy_cas_apart(f.cas, input, &result);
+        if (status != PHY_OK) {
+            fprintf(stderr, "  Apart failed for %s: %s\n", cases[index],
+                    phy_status_name(status));
+        }
+        PHY_CHECK_EQ_INT(status, PHY_OK);
+        if (status != PHY_OK) {
+            continue;
+        }
+        PHY_CHECK_EQ_INT(
+            phy_cas_equivalent(f.cas, input, result, &decision),
+            PHY_OK);
+        PHY_CHECK_EQ_INT(decision, PHY_CAS_ZERO);
+    }
+
+    PHY_CHECK_EQ_INT(
+        apart_status(
+            &f, "(^ (+ (^ x 2) -1) -1)", &result),
+        PHY_OK);
+    const char *linear_text = render(f.ir, result);
+    PHY_CHECK(strstr(linear_text, "(^ (+ -1 x) -1)") != NULL);
+    PHY_CHECK(strstr(linear_text, "(^ (+ 1 x) -1)") != NULL);
+
+    PHY_CHECK_EQ_INT(
+        apart_status(
+            &f, "(* (^ x -2) (^ (+ 1 x) -1))", &result),
+        PHY_OK);
+    const char *repeated_text = render(f.ir, result);
+    PHY_CHECK(strstr(repeated_text, "(^ x -2)") != NULL);
+    PHY_CHECK(strstr(repeated_text, "(^ x -1)") != NULL);
+    PHY_CHECK(strstr(repeated_text, "(^ (+ 1 x) -1)") != NULL);
+
+    PHY_CHECK_EQ_INT(
+        apart_status(&f, "(* (^ (+ x y) -1) (^ x -1))", &result),
+        PHY_ERR_UNSUPPORTED);
+    PHY_CHECK_EQ_INT(
+        phy_cas_apart(NULL, parse(f.ir, "x"), &result),
+        PHY_ERR_INVALID_ARGUMENT);
+    PHY_CHECK_EQ_INT(
+        phy_cas_apart(f.cas, PHY_IR_NULL, &result),
+        PHY_ERR_INVALID_ARGUMENT);
+    PHY_CHECK_EQ_INT(
+        phy_cas_apart(f.cas, parse(f.ir, "x"), NULL),
+        PHY_ERR_INVALID_ARGUMENT);
+
+    close_fixture(&f);
+}
+
 static void test_trigonometric_identities(void)
 {
     fixture f = open_fixture();
@@ -1658,19 +1734,29 @@ static void test_allocation_failure_unwinds_scratch(void)
 
         phy_ir_ref expr = PHY_IR_NULL;
         phy_ir_ref factor_expr = PHY_IR_NULL;
+        phy_ir_ref apart_expr = PHY_IR_NULL;
         size_t offset = 0u;
         if (phy_ir_read(ir, "(+ (* 2 x (^ y 2)) (* 3 x (^ y 2)) (fn sin x))",
                         &expr, &offset) == PHY_OK &&
             phy_ir_read(ir,
                         "(* (+ (^ x 4) (* 2 x) 2) "
                         "   (+ (^ x 5) (* 2 x) 2))",
-                        &factor_expr, &offset) == PHY_OK) {
+                        &factor_expr, &offset) == PHY_OK &&
+            phy_ir_read(ir,
+                        "(* (^ x -2) (^ (+ 1 x) -1))",
+                        &apart_expr, &offset) == PHY_OK) {
             phy_host_fail_alloc_after(countdown);
             phy_ir_ref out = PHY_IR_NULL;
             (void)phy_cas_expand(cas, expr, &out);
             (void)phy_cas_factor(cas, factor_expr, &out);
             phy_host_fail_alloc_after(0u);
 
+            PHY_CHECK_EQ_INT(phy_cas_validate(cas), PHY_OK);
+            PHY_CHECK_EQ_INT(phy_ir_validate(ir), PHY_OK);
+
+            phy_host_fail_alloc_after(countdown);
+            (void)phy_cas_apart(cas, apart_expr, &out);
+            phy_host_fail_alloc_after(0u);
             PHY_CHECK_EQ_INT(phy_cas_validate(cas), PHY_OK);
             PHY_CHECK_EQ_INT(phy_ir_validate(ir), PHY_OK);
         }
@@ -1790,6 +1876,7 @@ int main(void)
     PHY_TEST_CASE(test_rational_form);
     PHY_TEST_CASE(test_reduce_cancels_known_factors);
     PHY_TEST_CASE(test_exact_univariate_factorization);
+    PHY_TEST_CASE(test_exact_univariate_partial_fractions);
     PHY_TEST_CASE(test_trigonometric_identities);
     PHY_TEST_CASE(test_full_simplify);
     PHY_TEST_CASE(test_gr_corpus_sphere_2d);

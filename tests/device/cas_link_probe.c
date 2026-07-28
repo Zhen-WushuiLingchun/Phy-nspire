@@ -92,6 +92,7 @@ static void probe_rewrites(phy_cas *cas, phy_ir_context *ir)
     sink((unsigned)phy_cas_full_simplify(cas, expr, &out));
     sink((unsigned)phy_cas_reduce(cas, expr, &out));
     sink((unsigned)phy_cas_factor(cas, expr, &out));
+    sink((unsigned)phy_cas_apart(cas, expr, &out));
     sink((unsigned)phy_cas_diff(cas, expr,
                                 phy_ir_symbol_ref(ir, phy_ir_intern(ir, "x")),
                                 &out));

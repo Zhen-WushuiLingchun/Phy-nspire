@@ -112,6 +112,8 @@ static void test_commands_and_functions(void)
     PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_CANCEL);
     command = parse(ir, "Factor[x^4-1]");
     PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_FACTOR);
+    command = parse(ir, "Apart[1/(x^2-1)]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_APART);
     command = parse(ir, "Numerator[x/y]");
     PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_NUMERATOR);
     command = parse(ir, "Denominator[x/y]");
@@ -228,7 +230,7 @@ static void test_diagnostics_and_bounds(void)
         phy_source_parse(ir, "Sin[Factor[x]]", &command, &error),
         PHY_ERR_UNSUPPORTED);
     PHY_CHECK_EQ_INT(
-        phy_source_parse(ir, "Apart[1/(x^2-1)]", &command, &error),
+        phy_source_parse(ir, "Limit[1/x]", &command, &error),
         PHY_ERR_UNSUPPORTED);
     PHY_CHECK_EQ_INT(
         phy_source_parse(ir, "Commutator[A]", &command, &error),

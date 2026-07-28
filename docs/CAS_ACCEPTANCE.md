@@ -8,24 +8,24 @@ evidence.
 ## Executable notebook
 
 [`examples/phy-nspire-cas-tour.tns`](../examples/phy-nspire-cas-tour.tns) is a
-6,066-byte `PHYNB001` notebook with 111 source cards:
+6,102-byte `PHYNB001` notebook with 112 source cards:
 
 - nine Markdown cells with nMarkdown LaTeX;
-- 102 editable Math inputs;
+- 103 editable Math inputs;
 - no eagerly persisted output/IR cache.
 
 The generator evaluates a validation copy of the complete document, serializes
 it, opens it in a new notebook with an empty environment, and runs every cell
 again. It separately serializes and reopens the source-only artifact before
 writing it. Generation fails on any parse, evaluation, serialization, reopen,
-or replay error. The source-only form avoids rebuilding 204 cached IR trees
-during `FILE > Open`; running all inputs produces the same 102 typed outputs and
-a 213-card session. The inputs touch every currently implemented evaluator head
+or replay error. The source-only form avoids rebuilding 206 cached IR trees
+during `FILE > Open`; running all inputs produces the same 103 typed outputs and
+a 215-card session. The inputs touch every currently implemented evaluator head
 at least once:
 
 | Area | Successful reader-facing heads |
 | --- | --- |
-| scalar | bare exact expressions, protected constants and special values, assignment, `Simplify`, `FullSimplify`, `Expand`, `Together`, `Cancel`, bounded exact `Factor`, `Numerator`, `Denominator`, `D`, `Integrate`, inverse/hyperbolic/Gamma/error functions |
+| scalar | bare exact expressions, protected constants and special values, assignment, `Simplify`, `FullSimplify`, `Expand`, `Together`, `Cancel`, bounded exact `Factor` and `Apart`, `Numerator`, `Denominator`, `D`, `Integrate`, inverse/hyperbolic/Gamma/error functions |
 | tensor/manifold | `Manifold`, `ComponentTensor`, `Metric`, `VectorField`, `Component`, `Rank`, `Dimension` |
 | exterior geometry | `DifferentialForm`, `Wedge`, `ExteriorD`, `InteriorProduct`, `LieDerivative`, `HodgeStar`, `Volume`, `Degree` |
 | Lie/Yang--Mills | `LieGroup`, `LieAlgebra`, `Generator`, `LieElement`, `LieBracket`, `StructureConstant`, `Killing`, `LieForm`, `GaugeConnection`, `CovariantD`, `FieldStrength`, `GaugeVariation`, `Bianchi`, `YangMillsLagrangian`, `ColorComponent` |
@@ -54,10 +54,10 @@ where the QFT type checker must reject a cross-space operation.
 
 - Windows strict build and CTest: 33/33.
 - WSL ASan, UBSan, and leak detection: 35/35.
-- Assertion-bearing tests: 199,204 checks.
-- Ndless r2022 ARM product: 1,143,011 bytes, 18.2% of the 6 MiB ceiling.
-- Isolated CAS ARM probe: 29/29 public APIs, 72,207 bytes of CAS text,
-  105,616-byte package, and no float formatter, libm call, or ARM soft-float
+- Assertion-bearing tests: 199,526 checks.
+- Ndless r2022 ARM product: 1,145,490 bytes, 18.2% of the 6 MiB ceiling.
+- Isolated CAS ARM probe: 30/30 public APIs, 76,155 bytes of CAS text,
+  109,588-byte package, and no float formatter, libm call, or ARM soft-float
   helper.
 - Isolated evaluator ARM probe: 15/15 public APIs, 28,954 bytes of evaluator
   text, 156,328-byte package, and no float formatter, libm call, or ARM
@@ -69,8 +69,8 @@ exact artifacts are opened and exercised on the physical CX II.
 
 ## Explicit non-features
 
-`Apart`, `Limit`, `Series`, `Solve`, `NSolve`, `Reduce`,
-`Refine`, and the `Trig*` family are registered but return
+`Limit`, `Series`, `Solve`, `NSolve`, `Reduce`, `Refine`, and the `Trig*`
+family are registered but return
 `PHY_ERR_UNSUPPORTED`. There is no multi-chart transition map or pullback, no
 global-topology or named-manifold catalogue, no unbounded tensor rank, no
 abstract dummy-index canonicalizer, no gamma-five, and no general loop-integral

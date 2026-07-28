@@ -15,6 +15,7 @@ static const phy_palette_entry kCasAlgebra[] = {
     {"Together[...]", "Together[]", 9u},
     {"Cancel[...]", "Cancel[]", 7u},
     {"Factor[...]", "Factor[]", 7u},
+    {"Apart[...]", "Apart[]", 7u},
     {"Numerator[...]", "Numerator[]", 10u},
     {"Denominator[...]", "Denominator[]", 12u},
     {"Memory usage", "MemoryStatus[]", sizeof("MemoryStatus[") - 1u},

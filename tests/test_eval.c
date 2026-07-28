@@ -221,6 +221,13 @@ static void test_scalar_elementary_foundation(void)
     expect_scalar(
         &f, "Factor[x^4+2x^2+1]",
         "(^ (+ 1 (^ x 2)) 2)");
+    expect_scalar(
+        &f, "Apart[1/(x^2-1)]",
+        "(+ (* (rat -1 2) (^ (+ 1 x) -1)) "
+        "   (* (rat 1 2) (^ (+ -1 x) -1)))");
+    expect_scalar(
+        &f, "Apart[1/(x^2(x+1))]",
+        "(+ (* -1 (^ x -1)) (^ x -2) (^ (+ 1 x) -1))");
 
     expect_status(&f, "Tan[Pi/2]", PHY_ERR_DOMAIN);
     expect_status(&f, "D[x,Pi]", PHY_ERR_TYPE);

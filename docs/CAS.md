@@ -144,13 +144,12 @@ construction, and the univariate polynomial view used by reduction and
 bounded bigint/rational bridge. Thus Euclidean division and GCD do not fail
 merely because a coefficient exceeds 64 bits.
 
-The current rational-root enumeration used by `Factor` is intentionally
-narrower. It converts a primitive polynomial to bounded `int64` coefficients
-before enumerating divisors; a promoted coefficient outside that enumerator
-returns `PHY_ERR_UNSUPPORTED`, rather than claiming that no rational root
-exists. Roots `0`, `-1`, and `1` are tested in the exact coefficient domain
-before that conversion. General modular factorization is the layer that will
-remove the remaining boundary.
+The rational-root enumerator inside `Factor` is only a fast path. It converts a
+primitive polynomial to bounded `int64` coefficients before enumerating
+divisors, with roots `0`, `-1`, and `1` tested directly in the exact
+coefficient domain. Inputs outside that small enumerator continue through the
+exact monic-integer transform and certified modular factorization below; a
+failed fast path is never treated as proof of irreducibility.
 
 ## The zero decision
 
@@ -237,6 +236,30 @@ repeated high-degree factors, and promoted coefficients such as `2^100`.
 The factor-record workspace is charged to `phy_cas_limits.max_bytes` and
 released on success and every failure path. The public result is not built
 until the complete bounded factorization has succeeded.
+
+### Exact univariate `Apart`
+
+`phy_cas_apart` and reader-facing `Apart[...]` operate on the same bounded
+univariate `Q[x]` class. The rational expression is reduced first and its
+unique non-constant symbol is selected. The numerator and denominator are
+expanded into exact polynomials, the denominator is made monic without
+changing the quotient, and polynomial division separates the improper part.
+
+The proper denominator is factored by the complete-on-success kernel above.
+For each irreducible factor `f_i` and exponent `k`, the unknown numerator has
+degree below `deg(f_i)`. Multiplying all proposed terms by the common
+denominator gives a square coefficient system with exactly `deg(D)` unknowns.
+Forward elimination and back substitution run entirely over exact rational IR
+atoms; every pivot and row operation therefore remains symbolic.
+
+Before constructing the display sum, the solution is substituted into the
+original, unmodified coefficient matrix and every row is proved equal. This is
+the partial-fraction analogue of Factor's exact product check. A singular
+system, resource ceiling, factorization failure, second variable, or
+algebraic-extension coefficient returns a typed error and publishes no partial
+result. The result supports improper fractions, repeated factors, irreducible
+quadratic and higher factors, rational leading coefficients, and promoted
+integer coefficients.
 
 `phy_cas_full_simplify` — the notebook's `FullSimplify` — is the one door from
 the display normal form into this machinery. It runs the plain simplifier,
@@ -431,7 +454,8 @@ answers `UNKNOWN` rather than deciding anything about it.
 ## Not in this layer
 
 General integration, limits, series, and solving. Complete general
-multivariate polynomial GCD and partial fractions. Matrices.
+multivariate polynomial GCD and multivariate/algebraic-extension partial
+fractions. Matrices.
 Dummy-index canonicalization,
 contraction, and anything
 that consumes declared slot symmetries — this layer simplifies the operands of
@@ -459,8 +483,10 @@ functions, assumptions, and each documented limit; the rational form and its
 identically-zero denominator; the trigonometric identities; **the four
 `sphere_2d` corpus entries above, with a negative control**; flat-space
 curvature vanishing; `INT64_MIN` exponent handling without signed overflow;
-Yun square-free layers, rational-root extraction, repeated and zero roots,
-factorization round trips, and the explicit unsupported high-degree boundary;
+Yun square-free layers, modular derivative GCD/CRT, deterministic Berlekamp,
+Hensel lifting, repeated and zero roots, exact high-degree factorization round
+trips, partial fractions with improper/repeated/irreducible denominators, and
+explicit unsupported boundaries;
 empty sum/product identities; error-value propagation through differentiation;
 the step budget, cancellation, and the term limit;
 memoization measured in steps; a byte ceiling too small for a cache; and an
@@ -476,13 +502,13 @@ counts are recorded in `CAS_ACCEPTANCE.md` after each clean build.
 
 Built with the pinned Ndless r2022 SDK and ARM GNU 14.3 toolchain using
 `-Os -marm`. The isolated link check compiles the complete scalar layer to
-72,207 bytes of ARM text; its dependency-complete probe packages to 105,616
+76,155 bytes of ARM text; its dependency-complete probe packages to 109,588
 bytes. These figures are deliberately measured by the link-check target rather
 than maintained as a hand-summed per-object table.
 
 The application now calls the CAS and the typed physics backends through
 editable notebook cells. The current product, including persistence,
-nMarkdown's math typesetter, and the reachable evaluator stack, is 1,143,011
+nMarkdown's math typesetter, and the reachable evaluator stack, is 1,145,490
 bytes (18.2% of the 6 MiB ceiling).
 
 `make cas-link-check` closes the gap that leaves. It is the same guard as
@@ -500,8 +526,8 @@ dependency through its own gcd and its check passes, which is good evidence but
 not the check itself.
 
 `make cas-link-check` has been run with the real Ndless linker and packager:
-all **29/29** public entry points derived from `include/phy/cas.h` survive
-`--gc-sections`; the CAS+IR+platform probe packages to a **105,616-byte `.tns`**;
+all **30/30** public entry points derived from `include/phy/cas.h` survive
+`--gc-sections`; the CAS+IR+platform probe packages to a **109,588-byte `.tns`**;
 and no `_dtoa`, `_strtod`, `_printf_float`, libm, `stdio` formatting, or ARM
 soft-float helper reaches the image. Real IR atoms are ordered by their
 IEEE-754 bit keys rather than by executing a floating-point comparison. The

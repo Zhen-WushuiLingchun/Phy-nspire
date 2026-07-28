@@ -918,6 +918,59 @@ static phy_status poly_divide_exact(phy_cas *cas,
     return PHY_OK;
 }
 
+static phy_status poly_divide_with_remainder(
+    phy_cas *cas, const rational_poly *dividend,
+    const rational_poly *divisor, rational_poly *out_quotient,
+    rational_poly *out_remainder)
+{
+    if (poly_is_zero(cas, divisor)) {
+        return PHY_ERR_DOMAIN;
+    }
+    *out_remainder = *dividend;
+    poly_zero(cas, out_quotient);
+    if (out_remainder->degree >= divisor->degree) {
+        out_quotient->degree =
+            out_remainder->degree - divisor->degree;
+    }
+    while (!poly_is_zero(cas, out_remainder) &&
+           out_remainder->degree >= divisor->degree) {
+        phy_status status = phy_cas_step(cas);
+        if (status != PHY_OK) {
+            return status;
+        }
+        const int64_t shift =
+            out_remainder->degree - divisor->degree;
+        phy_ir_ref factor = PHY_IR_NULL;
+        status = coefficient_divide(
+            cas,
+            out_remainder->coefficients[out_remainder->degree],
+            divisor->coefficients[divisor->degree], &factor);
+        if (status != PHY_OK) {
+            return status;
+        }
+        out_quotient->coefficients[shift] = factor;
+        for (int64_t degree = 0; degree <= divisor->degree; ++degree) {
+            phy_ir_ref product = PHY_IR_NULL;
+            phy_ir_ref difference = PHY_IR_NULL;
+            status = coefficient_multiply(
+                cas, factor, divisor->coefficients[degree], &product);
+            if (status == PHY_OK) {
+                status = coefficient_subtract(
+                    cas,
+                    out_remainder->coefficients[degree + shift],
+                    product, &difference);
+            }
+            if (status != PHY_OK) {
+                return status;
+            }
+            out_remainder->coefficients[degree + shift] = difference;
+        }
+        poly_trim(cas, out_remainder);
+    }
+    poly_trim(cas, out_quotient);
+    return PHY_OK;
+}
+
 static phy_status poly_to_ir(phy_cas *cas, const rational_poly *poly,
                              phy_ir_ref variable, phy_ir_ref *out_ref)
 {
@@ -3315,6 +3368,320 @@ phy_status phy_cas_cancel_known_factors(phy_cas *cas, phy_ir_ref numerator,
                                  out_num, out_den);
 }
 
+/* ------------------------------------------------ partial fractions */
+
+static phy_status apart_build_system(
+    phy_cas *cas, const rational_poly *denominator,
+    const rational_poly *remainder, const factor_workspace *workspace,
+    phy_ir_ref *matrix, size_t order)
+{
+    const size_t stride = order + 1u;
+    for (size_t index = 0u; index < order * stride; ++index) {
+        matrix[index] = cas->zero;
+    }
+    for (size_t row = 0u; row < order; ++row) {
+        matrix[row * stride + order] =
+            row <= (size_t)remainder->degree
+                ? remainder->coefficients[row]
+                : cas->zero;
+    }
+
+    size_t column = 0u;
+    for (size_t record_index = 0u;
+         record_index < workspace->count; ++record_index) {
+        rational_poly factor;
+        rational_poly power;
+        factor_record_polynomial(
+            cas, workspace, record_index, &factor);
+        poly_zero(cas, &power);
+        power.coefficients[0] = cas->one;
+
+        const factor_record *record =
+            &workspace->records[record_index];
+        for (unsigned exponent = 1u;
+             exponent <= record->multiplicity; ++exponent) {
+            rational_poly next_power;
+            rational_poly complementary;
+            poly_zero(cas, &next_power);
+            poly_zero(cas, &complementary);
+            phy_status status =
+                poly_multiply_exact(cas, &power, &factor, &next_power);
+            if (status != PHY_OK) {
+                return status;
+            }
+            power = next_power;
+
+            bool exact = false;
+            status = poly_divide_exact(
+                cas, denominator, &power, &complementary, &exact);
+            if (status != PHY_OK) {
+                return status;
+            }
+            if (!exact) {
+                return PHY_ERR_CORRUPT_DOCUMENT;
+            }
+
+            for (int64_t numerator_degree = 0;
+                 numerator_degree < factor.degree;
+                 ++numerator_degree) {
+                if (column >= order) {
+                    return PHY_ERR_CORRUPT_DOCUMENT;
+                }
+                for (int64_t degree = 0;
+                     degree <= complementary.degree; ++degree) {
+                    const size_t row =
+                        (size_t)(degree + numerator_degree);
+                    if (row >= order) {
+                        return PHY_ERR_CORRUPT_DOCUMENT;
+                    }
+                    matrix[row * stride + column] =
+                        complementary.coefficients[degree];
+                }
+                column++;
+            }
+        }
+    }
+    return column == order ? PHY_OK : PHY_ERR_CORRUPT_DOCUMENT;
+}
+
+static phy_status apart_solve_system(
+    phy_cas *cas, const phy_ir_ref *source, phy_ir_ref *work,
+    size_t order, phy_ir_ref out_solution[REDUCE_MAX_DEGREE])
+{
+    const size_t stride = order + 1u;
+    memcpy(work, source, order * stride * sizeof *work);
+
+    for (size_t column = 0u; column < order; ++column) {
+        size_t pivot = column;
+        while (pivot < order &&
+               coefficient_is_zero(
+                   cas, work[pivot * stride + column])) {
+            pivot++;
+        }
+        if (pivot == order) {
+            return PHY_ERR_CORRUPT_DOCUMENT;
+        }
+        if (pivot != column) {
+            for (size_t entry = column; entry <= order; ++entry) {
+                const size_t a = column * stride + entry;
+                const size_t b = pivot * stride + entry;
+                const phy_ir_ref temporary = work[a];
+                work[a] = work[b];
+                work[b] = temporary;
+            }
+        }
+
+        const phy_ir_ref pivot_value =
+            work[column * stride + column];
+        for (size_t entry = column; entry <= order; ++entry) {
+            phy_status status = phy_cas_step(cas);
+            if (status == PHY_OK) {
+                status = coefficient_divide(
+                    cas, work[column * stride + entry],
+                    pivot_value,
+                    &work[column * stride + entry]);
+            }
+            if (status != PHY_OK) {
+                return status;
+            }
+        }
+
+        for (size_t row = column + 1u; row < order; ++row) {
+            const phy_ir_ref multiplier =
+                work[row * stride + column];
+            if (coefficient_is_zero(cas, multiplier)) {
+                continue;
+            }
+            for (size_t entry = column; entry <= order; ++entry) {
+                phy_status status = phy_cas_step(cas);
+                phy_ir_ref product = PHY_IR_NULL;
+                phy_ir_ref difference = PHY_IR_NULL;
+                if (status == PHY_OK) {
+                    status = coefficient_multiply(
+                        cas, multiplier,
+                        work[column * stride + entry], &product);
+                }
+                if (status == PHY_OK) {
+                    status = coefficient_subtract(
+                        cas, work[row * stride + entry], product,
+                        &difference);
+                }
+                if (status != PHY_OK) {
+                    return status;
+                }
+                work[row * stride + entry] = difference;
+            }
+        }
+    }
+
+    for (size_t descending = order; descending > 0u; --descending) {
+        const size_t row = descending - 1u;
+        phy_ir_ref value = work[row * stride + order];
+        for (size_t column = row + 1u; column < order; ++column) {
+            phy_status status = phy_cas_step(cas);
+            phy_ir_ref product = PHY_IR_NULL;
+            phy_ir_ref difference = PHY_IR_NULL;
+            if (status == PHY_OK) {
+                status = coefficient_multiply(
+                    cas, work[row * stride + column],
+                    out_solution[column], &product);
+            }
+            if (status == PHY_OK) {
+                status = coefficient_subtract(
+                    cas, value, product, &difference);
+            }
+            if (status != PHY_OK) {
+                return status;
+            }
+            value = difference;
+        }
+        out_solution[row] = value;
+    }
+    return PHY_OK;
+}
+
+static phy_status apart_verify_solution(
+    phy_cas *cas, const phy_ir_ref *system, size_t order,
+    const phy_ir_ref solution[REDUCE_MAX_DEGREE])
+{
+    const size_t stride = order + 1u;
+    for (size_t row = 0u; row < order; ++row) {
+        phy_ir_ref sum = cas->zero;
+        for (size_t column = 0u; column < order; ++column) {
+            phy_status status = phy_cas_step(cas);
+            phy_ir_ref product = PHY_IR_NULL;
+            phy_ir_ref next = PHY_IR_NULL;
+            if (status == PHY_OK) {
+                status = coefficient_multiply(
+                    cas, system[row * stride + column],
+                    solution[column], &product);
+            }
+            if (status == PHY_OK) {
+                status = coefficient_add(cas, sum, product, &next);
+            }
+            if (status != PHY_OK) {
+                return status;
+            }
+            sum = next;
+        }
+        phy_ir_ref difference = PHY_IR_NULL;
+        phy_status status = coefficient_subtract(
+            cas, sum, system[row * stride + order], &difference);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (!coefficient_is_zero(cas, difference)) {
+            return PHY_ERR_CORRUPT_DOCUMENT;
+        }
+    }
+    return PHY_OK;
+}
+
+static phy_status apart_build_result(
+    phy_cas *cas, phy_ir_ref variable, const rational_poly *quotient,
+    const factor_workspace *workspace,
+    const phy_ir_ref solution[REDUCE_MAX_DEGREE], size_t order,
+    phy_ir_ref *out_ref)
+{
+    const size_t mark = phy_cas_scratch_mark(cas);
+    size_t offset = 0u;
+    phy_status status = phy_cas_scratch_alloc(
+        cas, REDUCE_MAX_DEGREE + 1u, &offset);
+    if (status != PHY_OK) {
+        return status;
+    }
+    size_t term_count = 0u;
+    if (!poly_is_zero(cas, quotient)) {
+        phy_ir_ref quotient_ref = PHY_IR_NULL;
+        status = poly_to_ir(cas, quotient, variable, &quotient_ref);
+        if (status == PHY_OK) {
+            phy_cas_scratch_at(cas, offset)[term_count++] =
+                quotient_ref;
+        }
+    }
+
+    size_t column = 0u;
+    for (size_t record_index = 0u;
+         record_index < workspace->count && status == PHY_OK;
+         ++record_index) {
+        rational_poly factor;
+        factor_record_polynomial(
+            cas, workspace, record_index, &factor);
+        phy_ir_ref factor_ref = PHY_IR_NULL;
+        status = poly_to_ir(cas, &factor, variable, &factor_ref);
+        const factor_record *record =
+            &workspace->records[record_index];
+        for (unsigned exponent = 1u;
+             exponent <= record->multiplicity && status == PHY_OK;
+             ++exponent) {
+            rational_poly numerator;
+            poly_zero(cas, &numerator);
+            numerator.degree = record->degree - 1;
+            for (int64_t degree = 0; degree < record->degree; ++degree) {
+                numerator.coefficients[degree] = solution[column++];
+            }
+            poly_trim(cas, &numerator);
+            if (poly_is_zero(cas, &numerator)) {
+                continue;
+            }
+
+            phy_ir_ref numerator_ref = PHY_IR_NULL;
+            phy_ir_ref inverse_exponent = PHY_IR_NULL;
+            phy_ir_ref inverse = PHY_IR_NULL;
+            phy_ir_ref term = PHY_IR_NULL;
+            status =
+                poly_to_ir(cas, &numerator, variable, &numerator_ref);
+            if (status == PHY_OK) {
+                status = phy_cas_number_node(
+                    cas, (phy_cas_rat){-(int64_t)exponent, 1},
+                    &inverse_exponent);
+            }
+            if (status == PHY_OK) {
+                status = phy_cas_pow_node(
+                    cas, factor_ref, inverse_exponent, &inverse);
+            }
+            if (status == PHY_OK) {
+                const phy_ir_ref pair[2] = {numerator_ref, inverse};
+                status = phy_cas_mul_node(cas, pair, 2u, &term);
+            }
+            if (status == PHY_OK) {
+                phy_cas_scratch_at(cas, offset)[term_count++] = term;
+            }
+        }
+    }
+    if (status == PHY_OK && column != order) {
+        status = PHY_ERR_CORRUPT_DOCUMENT;
+    }
+    if (status == PHY_OK) {
+        status = phy_cas_add_at(cas, offset, term_count, out_ref);
+    }
+    phy_cas_scratch_release(cas, mark);
+    return status;
+}
+
+static phy_status apart_rebuild_quotient(
+    phy_cas *cas, phy_ir_ref numerator, phy_ir_ref denominator,
+    phy_ir_ref *out_ref)
+{
+    if (phy_cas_is_integer(cas, denominator, 1)) {
+        *out_ref = numerator;
+        return PHY_OK;
+    }
+    phy_ir_ref minus_one = PHY_IR_NULL;
+    phy_ir_ref inverse = PHY_IR_NULL;
+    phy_status status = phy_cas_number_node(
+        cas, (phy_cas_rat){-1, 1}, &minus_one);
+    if (status == PHY_OK) {
+        status =
+            phy_cas_pow_node(cas, denominator, minus_one, &inverse);
+    }
+    if (status == PHY_OK) {
+        const phy_ir_ref pair[2] = {numerator, inverse};
+        status = phy_cas_mul_node(cas, pair, 2u, out_ref);
+    }
+    return status;
+}
+
 /* --------------------------------------------------------- public surface */
 
 phy_status phy_cas_reduce(phy_cas *cas, phy_ir_ref expr, phy_ir_ref *out_ref)
@@ -3429,5 +3796,180 @@ phy_status phy_cas_factor(phy_cas *cas, phy_ir_ref expr,
             cas, variables[0], leading, workspace, out_ref);
     }
     phy_cas_temp_free(cas, workspace, bytes);
+    return status;
+}
+
+phy_status phy_cas_apart(phy_cas *cas, phy_ir_ref expr,
+                         phy_ir_ref *out_ref)
+{
+    if (cas == NULL || out_ref == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    *out_ref = PHY_IR_NULL;
+    phy_cas_begin(cas);
+    if (phy_ir_kind_of(cas->ir, expr) == PHY_IR_KIND_INVALID) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+
+    phy_ir_ref numerator = PHY_IR_NULL;
+    phy_ir_ref denominator = PHY_IR_NULL;
+    phy_status status = phy_cas_rational_reduced_node(
+        cas, expr, &numerator, &denominator);
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (phy_cas_is_integer(cas, denominator, 1)) {
+        *out_ref = numerator;
+        return PHY_OK;
+    }
+    phy_ir_ref expanded_numerator = PHY_IR_NULL;
+    phy_ir_ref expanded_denominator = PHY_IR_NULL;
+    status =
+        phy_cas_expand_node(cas, numerator, &expanded_numerator);
+    if (status == PHY_OK) {
+        status = phy_cas_expand_node(
+            cas, denominator, &expanded_denominator);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    numerator = expanded_numerator;
+    denominator = expanded_denominator;
+
+    phy_ir_ref variables[REDUCE_MAX_CANDIDATES];
+    size_t variable_count = 0u;
+    status = collect_factor_variables(
+        cas, numerator, variables, &variable_count);
+    if (status == PHY_OK) {
+        status = collect_factor_variables(
+            cas, denominator, variables, &variable_count);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (variable_count == 0u) {
+        return apart_rebuild_quotient(
+            cas, numerator, denominator, out_ref);
+    }
+    if (variable_count != 1u) {
+        return PHY_ERR_UNSUPPORTED;
+    }
+
+    rational_poly numerator_poly;
+    rational_poly denominator_poly;
+    poly_zero(cas, &numerator_poly);
+    poly_zero(cas, &denominator_poly);
+    bool numerator_fits = false;
+    bool denominator_fits = false;
+    status = poly_from_ir(
+        cas, numerator, variables[0], &numerator_poly,
+        &numerator_fits);
+    if (status == PHY_OK) {
+        status = poly_from_ir(
+            cas, denominator, variables[0], &denominator_poly,
+            &denominator_fits);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (!numerator_fits || !denominator_fits) {
+        return PHY_ERR_UNSUPPORTED;
+    }
+    if (denominator_poly.degree == 0) {
+        return apart_rebuild_quotient(
+            cas, numerator, denominator, out_ref);
+    }
+    if (poly_is_zero(cas, &numerator_poly)) {
+        *out_ref = cas->zero;
+        return PHY_OK;
+    }
+
+    /*
+     * Factor works on a monic denominator. Move its leading coefficient into
+     * the numerator first so the rational function itself does not change.
+     */
+    const phy_ir_ref leading =
+        denominator_poly.coefficients[denominator_poly.degree];
+    for (int64_t degree = 0; degree <= numerator_poly.degree; ++degree) {
+        phy_ir_ref normalized = PHY_IR_NULL;
+        status = coefficient_divide(
+            cas, numerator_poly.coefficients[degree], leading,
+            &normalized);
+        if (status != PHY_OK) {
+            return status;
+        }
+        numerator_poly.coefficients[degree] = normalized;
+    }
+    status = poly_make_monic(cas, &denominator_poly);
+    if (status != PHY_OK) {
+        return status;
+    }
+
+    rational_poly quotient;
+    rational_poly remainder;
+    poly_zero(cas, &quotient);
+    poly_zero(cas, &remainder);
+    status = poly_divide_with_remainder(
+        cas, &numerator_poly, &denominator_poly, &quotient,
+        &remainder);
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (poly_is_zero(cas, &remainder)) {
+        return poly_to_ir(cas, &quotient, variables[0], out_ref);
+    }
+
+    const size_t workspace_bytes = sizeof(factor_workspace);
+    factor_workspace *workspace = NULL;
+    status = phy_cas_temp_alloc(
+        cas, workspace_bytes, (void **)&workspace);
+    if (status != PHY_OK) {
+        return status;
+    }
+    status = factor_complete(cas, &denominator_poly, workspace);
+
+    const size_t order = (size_t)denominator_poly.degree;
+    const size_t matrix_count = order * (order + 1u);
+    const size_t matrix_bytes = matrix_count * sizeof(phy_ir_ref);
+    phy_ir_ref *system = NULL;
+    phy_ir_ref *work = NULL;
+    if (status == PHY_OK) {
+        status =
+            phy_cas_temp_alloc(cas, matrix_bytes, (void **)&system);
+    }
+    if (status == PHY_OK) {
+        status = phy_cas_temp_alloc(cas, matrix_bytes, (void **)&work);
+    }
+    if (status == PHY_OK) {
+        status = apart_build_system(
+            cas, &denominator_poly, &remainder, workspace, system,
+            order);
+    }
+
+    phy_ir_ref solution[REDUCE_MAX_DEGREE];
+    for (size_t index = 0u; index < REDUCE_MAX_DEGREE; ++index) {
+        solution[index] = cas->zero;
+    }
+    if (status == PHY_OK) {
+        status =
+            apart_solve_system(cas, system, work, order, solution);
+    }
+    if (status == PHY_OK) {
+        status =
+            apart_verify_solution(cas, system, order, solution);
+    }
+    if (status == PHY_OK) {
+        status = apart_build_result(
+            cas, variables[0], &quotient, workspace, solution,
+            order, out_ref);
+    }
+
+    if (work != NULL) {
+        phy_cas_temp_free(cas, work, matrix_bytes);
+    }
+    if (system != NULL) {
+        phy_cas_temp_free(cas, system, matrix_bytes);
+    }
+    phy_cas_temp_free(cas, workspace, workspace_bytes);
     return status;
 }

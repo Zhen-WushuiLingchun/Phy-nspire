@@ -63,7 +63,8 @@ square-free decomposition, and degree-48 modular
 Berlekamp/Hensel/Zassenhaus `Factor` are implemented. Their coefficient
 containers use the F3 arbitrary-precision exact domain. A bounded mixed-radix
 multivariate cancellation subset is implemented with exact reconstruction
-checks. Complete general multivariate GCD and `Apart` remain open.
+checks. Reader-facing univariate `Apart` is implemented over the same bounded
+`Q[x]` domain; complete general multivariate GCD remains open.
 
 - A bounded polynomial view with explicit variable order.
 - Content/primitive-part extraction and exact coefficient division.
@@ -97,6 +98,13 @@ products/powers, square-free decisions, and deterministic Berlekamp
 factorization; a non-truncating bigint-to-word residue bridge; CRT derivative
 GCD reconstruction; bounded pair Hensel lifting; and exact Zassenhaus
 recombination. See [`POLYNOMIAL.md`](POLYNOMIAL.md).
+
+`Apart` first extracts the polynomial quotient, then factors the monic
+denominator with that kernel. Numerators over every irreducible factor power
+are obtained from an exact rational linear system. The solved coefficients are
+substituted back into the original coefficient matrix before any reader-facing
+sum is published. Multivariate and algebraic-extension partial fractions remain
+typed unsupported cases.
 
 ### F3 — exact number domains
 

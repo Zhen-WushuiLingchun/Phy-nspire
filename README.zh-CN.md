@@ -8,16 +8,17 @@ Phy-nspire 是运行在 TI-Nspire CX II CAS 计算器上的**原生符号物理�
 计算器,并以二维数学排版 + Markdown 笔记的形式呈现。
 
 - **目标设备**:TI-Nspire CX II CAS,OS 6.4.0.74,Ndless r2022
-- **程序体积**:约 1.11 MB(6 MiB 上限的 17.7%)
+- **程序体积**:1,145,490 字节(约 1.09 MiB，6 MiB 上限的 18.2%)
 - **实现语言**:C11 内核 + C++17 公式排版桥;同一份可移植内核同时构建
   主机测试二进制与设备 ARM 程序
 - **许可证**:GPL-3.0
 
 ## 亮点
 
-- **精确到像素的有理算术。** 全程 int64 精确有理数,没有浮点、没有容差、
-  没有采样:`RicciScalar` 等于 0 是被*证明*的,不是"数值上接近 0"。
-  超出 int64 的幂(如 `2^100`)保持符号形式而不是悄悄溢出。
+- **精确到像素的有理算术。** 小整数走 int64 快路径，溢出后自动提升到
+  受步数、limb 与内存预算约束的原生任意精度整数/有理数；没有浮点、
+  没有容差、没有采样。`2^200` 会精确折叠，`RicciScalar == 0` 是被
+  *证明*的，而不是“数值上接近 0”。
 - **类型化的物理对象。** 流形、微分形式、张量、李代数、规范联络、曲率丛
   是评估器里的一等值,不是字符串约定。`ExteriorD[ExteriorD[a]]` 返回 0,
   `Wedge[a,a]` 判零,`Einstein[c]` 的分量逐个可证。
@@ -34,12 +35,12 @@ Phy-nspire 是运行在 TI-Nspire CX II CAS 计算器上的**原生符号物理�
 
 ## 屏幕上能做什么
 
-打开 `examples/phy-nspire-cas-tour.tns`(111 个源 cell、102 个已验证输入,
+打开 `examples/phy-nspire-cas-tour.tns`(112 个源 cell、103 个已验证输入,
 随版本持续再生成)可以完整走一遍当前能力:
 
 | 领域 | 可执行的输入 |
 | --- | --- |
-| 标量 CAS | 精确表达式、赋值、`Simplify`、`FullSimplify`、`Expand`、`Together`、`Cancel`、`Factor`、`Numerator`、`Denominator`、`D`、`Integrate` |
+| 标量 CAS | 精确表达式、赋值、`Simplify`、`FullSimplify`、`Expand`、`Together`、`Cancel`、`Factor`、`Apart`、`Numerator`、`Denominator`、`D`、`Integrate` |
 | 张量/流形 | `Manifold`、`ComponentTensor`(0–4 阶、全 Up/Down 价态)、`Metric`、`VectorField`、`Component`、`Rank`、`Dimension` |
 | 外微分几何 | `DifferentialForm`、`Wedge`、`ExteriorD`、`InteriorProduct`、`LieDerivative`(Cartan 公式)、`HodgeStar`、`Volume`、`Degree` |
 | 李代数 / Yang–Mills | `LieGroup[SU2]`、`LieAlgebra`、`Generator`、`LieBracket`、`StructureConstant`、`Killing`、`GaugeConnection`、`FieldStrength`、`CovariantD`、`GaugeVariation`、`Bianchi`、`YangMillsLagrangian` |
@@ -81,7 +82,7 @@ Riemann)列出**非零分量方程**,指标用坐标名标注,如
 ```sh
 cmake -S . -B build-review -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build build-review -j
-ctest --test-dir build-review          # 当前 Windows 33 个套件,199,204 条断言
+ctest --test-dir build-review          # 当前 Windows 33 个套件,199,526 条断言
 ```
 
 设备端(需要 Ndless SDK 与 arm-none-eabi 工具链,当前在 WSL 下验证):
@@ -127,9 +128,12 @@ Mathematica / Maple / SymPy / TI 自带 CAS 这一档的通用系统。这份清
 - `Together` / `Cancel` 先做 LCD 与可见因子精确除法,再用有界
   `Q[x]` 欧几里得 GCD(最高 48 次幂)消去隐藏的一元多项式公因子:
   `(x²−1)/(x²−2x+1) → (x+1)/(x−1)`;
-- `Factor` 先做 Yun 平方自由分解,再用有理根定理提取全部有理线性
-  因子;二/三次无有理根余因子可证明为 `Q[x]` 上不可约,无法完整判定
-  的高次平方自由余因子明确返回 `UNSUPPORTED`;
+- `Factor` 先做模导数 GCD/CRT 与 Yun 平方自由分解，再经有限域
+  Berlekamp、Hensel 提升和精确 Zassenhaus 重组完成有界高次分解；
+  有理根只是快路径，任何候选都要通过 `Q[x]` 精确整除；
+- `Apart` 对唯一变量的 `Q[x]` 有理函数先做多项式除法，再复用同一
+  因式分解内核，并用精确高斯消元求出不可约因子各次幂上的部分分式；
+  发布前逐系数验证原方程组；
 - `FullSimplify` 接入判零级三角基:`cos²x − sin²x − cos2x → 0`、
   `tan x·cos x − sin x → 0`、`sin²+cos² → 1`(后者在普通正规形中即成立);
 - `D` 覆盖多项式、初等/反三角/双曲函数及
@@ -148,7 +152,7 @@ Mathematica / Maple / SymPy / TI 自带 CAS 这一档的通用系统。这份清
 
 | 能力 | 现状 | 主流 CAS 的做法 |
 | --- | --- | --- |
-| 多项式因式分解 / GCD | `Cancel` 有最高 48 次的 `Q[x]` GCD 与带精确重构的有界多元消因子；`Factor` 已接通模导数 GCD/CRT、Berlekamp、Hensel 和精确 Zassenhaus 重组，支持任意精度系数的有界一般高次一元分解；完整稀疏多元 GCD 和 `Apart` 尚缺 | 更快的 van-Hoeij/LLL 重组、Brown/Zippel/子结果式多元 GCD、部分分式 |
+| 多项式因式分解 / GCD | `Cancel` 有最高 48 次的 `Q[x]` GCD 与带精确重构的有界多元消因子；`Factor` 已接通模导数 GCD/CRT、Berlekamp、Hensel 和精确 Zassenhaus 重组；`Apart` 已支持同一有界一元 `Q[x]` 域；完整稀疏多元 GCD 尚缺 | 更快的 van-Hoeij/LLL 重组、Brown/Zippel/子结果式多元 GCD、多元部分分式 |
 | 方程求解 | `Solve` 未实现 | 多项式求根、有理化、Gröbner 基、超越方程分支 |
 | 极限与级数 | `Limit`、`Series` 未实现 | Gruntz 算法、渐近级数环 |
 | 积分覆盖面 | 已覆盖反三角核、双曲线性核和高斯/误差函数;分部积分、一般有理函数/Risch 尚缺 | Risch 结构定理、Meijer-G 表驱动 |
@@ -158,7 +162,7 @@ Mathematica / Maple / SymPy / TI 自带 CAS 这一档的通用系统。这份清
 | 对称参数三角恒等式 | `sin(x+y)` 不展开(倍角 `sin(kx)` 已覆盖) | 完整 TrigExpand/TrigReduce 重写族 |
 | 复数 | `I` 只是符号,`I² ≠ −1`;无 `Conjugate/Re/Im/Abs` | 高斯有理域 + 复域假设 |
 | 数值层 | 完全没有浮点:`N[]` 不求值,小数字面量精确化为有理数 | 任意精度球算术 / 机器浮点双轨 |
-| 大整数 | int64 之外保持符号(精确但不可折叠) | GMP 任意精度 |
+| 大整数 | 原生受限任意精度整数/有理数已贯通 IR、CAS、序列化和二维排版；尚无快速乘法与代数扩域 | GMP/FLINT 的渐近快速算法与成熟代数数域 |
 | 模式匹配语言 | 仅结构替换,无 `x_` 通配/条件规则 | 完整规则重写语言 |
 | 特殊函数 | 首批 Γ/LogGamma/erf/erfc 已实现;Bessel/多对数与数值算法尚缺 | 大规模特殊函数库 |
 | Kerr 级表达式膨胀 | 稠密 Riemann 展开超设备预算一个量级(实测 190 万节点/144 MiB),Kerr 曲率暂缓 | 不透明标量(Σ、Δ)+ 边关系的定向归约;见 `docs/references/GENERAL_RELATIVITY.md` |
@@ -180,7 +184,7 @@ Mathematica / Maple / SymPy / TI 自带 CAS 这一档的通用系统。这份清
 ## 测试与验收
 
 - Windows 严格配置 33/33，WSL ASan/UBSan/Leak 配置 35/35，
-  断言型测试合计 199,204 条检查;
+  断言型测试合计 199,526 条检查;
 - GR 金标语料(`research/corpus/gr_golden.json`)由 SymPy 独立生成,
   设备管线的每个曲率分量与之精确判等;
 - 像素级回归:笔记本首帧渲染有 64 位指纹固定;

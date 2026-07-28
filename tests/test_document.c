@@ -102,12 +102,11 @@ static phy_notebook *make_sample(void)
     phy_notebook_end_edit(notebook);
     PHY_CHECK(phy_notebook_is_dirty(notebook));
 
-    size_t unsupported = 0u;
+    size_t apart = 0u;
     PHY_CHECK_EQ_INT(
-        phy_notebook_add_input(notebook, "Apart[1/(x^2-1)]", &unsupported),
+        phy_notebook_add_input(notebook, "Apart[1/(x^2-1)]", &apart),
         PHY_OK);
-    PHY_CHECK_EQ_INT(phy_notebook_evaluate(notebook, unsupported),
-                     PHY_ERR_UNSUPPORTED);
+    PHY_CHECK_EQ_INT(phy_notebook_evaluate(notebook, apart), PHY_OK);
     return notebook;
 }
 

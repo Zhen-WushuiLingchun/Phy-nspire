@@ -85,4 +85,5 @@ References:
 - sparse multivariate representation with explicit monomial order;
 - content/primitive-part and a complete validated multivariate GCD algorithm
   beyond the bounded verified Kronecker cancellation subset;
-- `Apart` after denominator factorization is complete.
+- multivariate and algebraic-extension partial fractions beyond the current
+  exact univariate `Q[x]` `Apart`.

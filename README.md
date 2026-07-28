@@ -48,7 +48,9 @@ nMarkdown OpenType MATH engine.
 The native foundations now in place behind that shell include the typed
 expression IR; a symbolic scalar computer algebra layer over it with
 exact rational arithmetic, a normal form, expansion, substitution,
-differentiation, bounded exact antiderivatives, and an exact zero decision;
+differentiation, bounded exact antiderivatives, arbitrary-precision exact
+integer/rational promotion, bounded univariate factorization and partial
+fractions, and an exact zero decision;
 the component tensor core with charts, dense storage, valence, signed slot
 symmetries, contraction, metric inversion, index raising/lowering, and
 component derivatives; and the differential-geometry layer with oriented
@@ -95,16 +97,16 @@ survived a round trip and nothing computed.
 
 The generated
 [`examples/phy-nspire-cas-tour.tns`](examples/phy-nspire-cas-tour.tns)
-notebook combines nine Markdown/LaTeX explanations with 102 executable examples
-that touch every implemented evaluator head. Its distributable form contains 111
+notebook combines nine Markdown/LaTeX explanations with 103 executable examples
+that touch every implemented evaluator head. Its distributable form contains 112
 source cells so opening does not eagerly rebuild all cached results; a separate
 fully evaluated copy is serialized, reopened, and replayed during generation.
 
 The strict Windows host suite passes 33/33. The WSL ASan/UBSan/leak suite
-passes 35/35, and the assertion-bearing executables contain 199,204 explicit
+passes 35/35, and the assertion-bearing executables contain 199,526 explicit
 checks.
 
-The current native build is measured at 1,143,011 bytes, 18.2% of the 6 MiB
+The current native build is measured at 1,145,490 bytes, 18.2% of the 6 MiB
 ceiling. Its evaluator ARM probe links the complete current physics stack,
 retains 15/15 public evaluator entry points, packages to a `.tns`, and imports
 no libm, floating-point formatter, or ARM soft-float helper.
@@ -118,8 +120,8 @@ verified byte-for-byte by calculator readback. The evaluator build still
 requires an explicit calculator acceptance run after transfer; an ARM link and
 byte-identical upload do not establish on-device runtime or performance. That
 cached tour exposed a CX II load-time failure consistent with eager IR/heap
-pressure and has since been replaced by the 6,066-byte source-only tour; the
-replacement and the current 1,143,011-byte program have not been uploaded in
+pressure and has since been replaced by the 6,102-byte source-only tour; the
+replacement and the current 1,145,490-byte program have not been uploaded in
 this build and still require explicit calculator open/run checks. The
 separate baseline channel-order check remains tracked in
 [docs/BUILD.md](docs/BUILD.md).

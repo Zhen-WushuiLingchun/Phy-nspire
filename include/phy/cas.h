@@ -368,6 +368,18 @@ phy_status phy_cas_factor(phy_cas *cas, phy_ir_ref expr,
                           phy_ir_ref *out_ref);
 
 /*
+ * Exact univariate partial fractions over Q[x]. The reader-facing Apart[expr]
+ * selects the expression's unique non-constant symbol, performs polynomial
+ * division, factors the monic denominator with the certified Factor kernel,
+ * and solves the proper-fraction coefficients by exact Gaussian elimination.
+ * The result is verified against the original coefficient system before it is
+ * published. Multivariate and algebraic-extension decompositions return a
+ * typed unsupported error.
+ */
+phy_status phy_cas_apart(phy_cas *cas, phy_ir_ref expr,
+                         phy_ir_ref *out_ref);
+
+/*
  * Decide whether `expr` is zero.
  *
  * PHY_CAS_ZERO means identically zero as a rational function, wherever the

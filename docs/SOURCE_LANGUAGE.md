@@ -44,7 +44,8 @@ command, object head, or known scalar function is not a bindable name, because
 depending on cell order.
 
 There is no silent floating-point fallback in this grammar. Decimal literals
-are exact rationals while their numerator/denominator fit `int64`.
+are exact rationals and promote to the bounded arbitrary-precision domain when
+their numerator or denominator leaves `int64`.
 
 ### Function and FullForm heads
 
@@ -121,6 +122,7 @@ semantics implicitly.
 | `Together` | native rational form reconstructed as one quotient |
 | `Cancel` | exact known-factor and bounded univariate Q[x] GCD cancellation |
 | `Factor` | complete exact factorization on the documented bounded Q[x] class; unsupported rather than partial outside it |
+| `Apart` | exact polynomial division and partial fractions over the unique variable on the documented bounded Q[x] class |
 | `Numerator`, `Denominator` | selected part of native rational form |
 | `D[expr,x,...]` | repeated exact symbolic differentiation |
 | `Integrate[expr,x,...]` | exact symbolic antiderivative on the documented linear-inner class; otherwise an explicit unevaluated `Integrate` |
@@ -129,8 +131,8 @@ Every command except assignment, a bare expression, and the two simplifies is
 scalar algebra, so `Expand[M]` on a manifold is `PHY_ERR_TYPE` rather than a
 silently ignored request.
 
-Registered but not implemented commands include `Apart`,
-`Limit`, `Series`, `Solve`, `NSolve`, `Reduce`, `Refine`, and the
+Registered but not implemented commands include `Limit`, `Series`, `Solve`,
+`NSolve`, `Reduce`, `Refine`, and the
 `Trig*` family. They return `PHY_ERR_UNSUPPORTED`. They are never accepted as
 opaque ordinary functions, because that would present a no-op as successful
 computer algebra.
@@ -144,7 +146,8 @@ scheduling is future work; until then it fails explicitly.
   arguments, replacement rules, patterns, or scoping;
 - binding a name a live chart uses as a coordinate is `PHY_ERR_ASSUMPTION`, in
   both directions — see [`EVALUATOR.md`](EVALUATOR.md);
-- no arbitrary-precision integers beyond the exact `int64` core;
+- no complex arbitrary-precision numeric approximation layer; exact integers
+  and rationals do promote natively under explicit resource ceilings;
 - no complex literals or numeric approximation command;
 - no implicit function application beyond bracket/parenthesis calls;
 - no shorthand Einstein syntax yet; explicit `Up`/`Down` indices retain their

@@ -326,7 +326,7 @@ At the original IR landing, none of it was in `dist/phy-nspire.tns`: the
 13,440-byte Phase 0 shell referenced no IR symbol and `--gc-sections` removed
 it. That historical link-risk is why the probe below exists. The current
 notebook does call the IR, CAS, reader-facing parser, and 2D layout; the full
-product is now 1,143,011 bytes after persistence, the nMarkdown math slice,
+product is now 1,145,490 bytes after persistence, the nMarkdown math slice,
 and the reachable evaluator stack were added.
 
 Because link-time garbage collection hides the IR, the device build alone does
