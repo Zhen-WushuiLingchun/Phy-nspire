@@ -118,6 +118,19 @@ static phy_status apart_status(fixture *f, const char *text,
     return phy_cas_apart(f->cas, parse(f->ir, text), out);
 }
 
+static const char *solved(fixture *f, const char *equation)
+{
+    phy_ir_ref out = PHY_IR_NULL;
+    const phy_ir_ref x =
+        phy_ir_symbol_ref(f->ir, phy_ir_intern(f->ir, "x"));
+    const phy_status status =
+        phy_cas_solve(f->cas, parse(f->ir, equation), x, &out);
+    if (status != PHY_OK) {
+        return phy_status_name(status);
+    }
+    return render(f->ir, out);
+}
+
 static phy_status simplify_status(fixture *f, const char *text)
 {
     phy_ir_ref out = PHY_IR_NULL;
@@ -1343,6 +1356,41 @@ static void test_exact_univariate_partial_fractions(void)
     close_fixture(&f);
 }
 
+static void test_exact_polynomial_solve(void)
+{
+    fixture f = open_fixture();
+
+    PHY_CHECK_EQ_STR(
+        solved(&f, "(= (+ (* 3 x) -2) 0)"),
+        "(fn List (fn List (fn Rule x (rat 2 3))))");
+    PHY_CHECK_EQ_STR(
+        solved(&f, "(= (+ (^ x 2) -2) 0)"),
+        "(fn List "
+        "(fn List (fn Rule x (* -1 (^ 2 (rat 1 2))))) "
+        "(fn List (fn Rule x (^ 2 (rat 1 2)))))");
+    PHY_CHECK_EQ_STR(
+        solved(
+            &f,
+            "(= (* (^ (+ -1 x) 3) (^ (+ 2 x) 2)) 0)"),
+        "(fn List (fn List (fn Rule x -2)) "
+        "(fn List (fn Rule x 1)))");
+    PHY_CHECK_EQ_STR(
+        solved(
+            &f,
+            "(= (* (+ (^ x 2) -1) (^ (+ -1 x) -1)) 0)"),
+        "(fn List (fn List (fn Rule x -1)))");
+    PHY_CHECK_EQ_STR(solved(&f, "(= 1 0)"), "(fn List)");
+    PHY_CHECK_EQ_STR(
+        solved(&f, "(= (+ (^ x 2) 1) 0)"),
+        "PHY_ERR_UNSUPPORTED");
+    PHY_CHECK_EQ_STR(
+        solved(&f, "(= (+ (^ x 3) -2) 0)"),
+        "PHY_ERR_UNSUPPORTED");
+    PHY_CHECK_EQ_STR(solved(&f, "(= x x)"), "PHY_ERR_UNSUPPORTED");
+
+    close_fixture(&f);
+}
+
 static void test_trigonometric_identities(void)
 {
     fixture f = open_fixture();
@@ -1596,6 +1644,11 @@ static void test_step_budget(void)
         PHY_ERR_TIMEOUT);
     PHY_CHECK_EQ_INT(
         phy_cas_factor(cas, parse(ir, "(+ (^ x 12) -1)"), &out),
+        PHY_ERR_TIMEOUT);
+    PHY_CHECK_EQ_INT(
+        phy_cas_solve(
+            cas, parse(ir, "(= (+ (^ x 12) -1) 0)"),
+            phy_ir_symbol_ref(ir, phy_ir_intern(ir, "x")), &out),
         PHY_ERR_TIMEOUT);
     /* A refused operation must leave the layer usable, not wedged. */
     PHY_CHECK_EQ_INT(phy_cas_validate(cas), PHY_OK);
@@ -1877,6 +1930,7 @@ int main(void)
     PHY_TEST_CASE(test_reduce_cancels_known_factors);
     PHY_TEST_CASE(test_exact_univariate_factorization);
     PHY_TEST_CASE(test_exact_univariate_partial_fractions);
+    PHY_TEST_CASE(test_exact_polynomial_solve);
     PHY_TEST_CASE(test_trigonometric_identities);
     PHY_TEST_CASE(test_full_simplify);
     PHY_TEST_CASE(test_gr_corpus_sphere_2d);

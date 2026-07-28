@@ -131,12 +131,13 @@ semantics implicitly.
 | `Limit[expr,{x,a}]` | exact finite two-sided limit when both directions agree |
 | `Limit[expr,{x,a,FromAbove}]`, `Limit[expr,{x,a,FromBelow}]` | exact directed finite limit; `Direction->"FromAbove"` and `Direction->"FromBelow"` are equivalent spellings |
 | `Limit[expr,{x,Infinity}]`, `Limit[expr,{x,-Infinity}]` | exact rational/Laurent infinity limit through the certified `t=1/x` transform |
+| `Solve[equation,x]` | exact distinct real roots for reduced Q[x] equations whose factors are linear or quadratic; results are `{{x -> root},...}`, denominator roots are excluded |
 
 Every command except assignment, a bare expression, and the two simplifies is
 scalar algebra, so `Expand[M]` on a manifold is `PHY_ERR_TYPE` rather than a
 silently ignored request.
 
-Registered but not implemented commands include `Solve`, `NSolve`, `Reduce`,
+Registered but not implemented commands include `NSolve`, `Reduce`,
 `Refine`, and the
 `Trig*` family. They return `PHY_ERR_UNSUPPORTED`. They are never accepted as
 opaque ordinary functions, because that would present a no-op as successful
@@ -158,6 +159,11 @@ scheduling is future work; the explicitly implemented
   both directions — see [`EVALUATOR.md`](EVALUATOR.md);
 - no complex arbitrary-precision numeric approximation layer; exact integers
   and rationals do promote natively under explicit resource ceilings;
+- `Solve` is deliberately narrower than the factorizer: it publishes exact
+  rational and real quadratic-radical roots only. A non-real quadratic,
+  irreducible factor of degree three or more, identity with infinitely many
+  solutions, multivariate equation, or transcendental equation returns
+  `PHY_ERR_UNSUPPORTED`; it never returns a partial root list;
 - no complex literals or numeric approximation command;
 - no implicit function application beyond bracket/parenthesis calls;
 - no shorthand Einstein syntax yet; explicit `Up`/`Down` indices retain their

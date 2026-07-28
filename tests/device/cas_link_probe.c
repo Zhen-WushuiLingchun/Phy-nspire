@@ -105,6 +105,11 @@ static void probe_rewrites(phy_cas *cas, phy_ir_context *ir)
     sink((unsigned)phy_cas_limit(
         cas, expr, phy_ir_symbol_ref(ir, phy_ir_intern(ir, "x")),
         phy_ir_integer(ir, 0), PHY_CAS_LIMIT_TWO_SIDED, &out));
+    const phy_ir_ref equation =
+        phy_ir_equation(ir, expr, phy_ir_integer(ir, 0));
+    sink((unsigned)phy_cas_solve(
+        cas, equation, phy_ir_symbol_ref(ir, phy_ir_intern(ir, "x")),
+        &out));
 
     const phy_cas_rule rule = {phy_ir_symbol_ref(ir, phy_ir_intern(ir, "x")),
                                phy_ir_integer(ir, 3)};

@@ -159,6 +159,7 @@ add_library(phy_core STATIC
     src/cas/finite_poly.c
     src/cas/series.c
     src/cas/limit.c
+    src/cas/solve.c
     src/cas/engine.c
     src/cas/simplify.c
     src/cas/diff.c

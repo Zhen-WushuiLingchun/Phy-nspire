@@ -51,7 +51,8 @@ exact rational arithmetic, a normal form, expansion, substitution,
 differentiation, bounded exact antiderivatives, arbitrary-precision exact
 integer/rational promotion, bounded univariate factorization and partial
 fractions, exact Taylor/Laurent `Series`/`Normal`, proof-producing finite,
-directed and rational-infinity `Limit`, and an exact zero decision;
+directed and rational-infinity `Limit`, exact bounded real-polynomial `Solve`,
+and an exact zero decision;
 the component tensor core with charts, dense storage, valence, signed slot
 symmetries, contraction, metric inversion, index raising/lowering, and
 component derivatives; and the differential-geometry layer with oriented
@@ -98,16 +99,16 @@ survived a round trip and nothing computed.
 
 The generated
 [`examples/phy-nspire-cas-tour.tns`](examples/phy-nspire-cas-tour.tns)
-notebook combines eleven Markdown/LaTeX explanations with 112 executable examples
-that touch every implemented evaluator head. Its distributable form contains 123
+notebook combines twelve Markdown/LaTeX explanations with 115 executable examples
+that touch every implemented evaluator head. Its distributable form contains 127
 source cells so opening does not eagerly rebuild all cached results; a separate
 fully evaluated copy is serialized, reopened, and replayed during generation.
 
 The strict Windows host suite passes 34/34. The WSL ASan/UBSan/leak suite
-passes 36/36, and the assertion-bearing executables contain 213,505 explicit
+passes 36/36, and the assertion-bearing executables contain 213,591 explicit
 checks.
 
-The current native build is measured at 1,154,912 bytes, 18.4% of the 6 MiB
+The current native build is measured at 1,156,629 bytes, 18.4% of the 6 MiB
 ceiling. Its evaluator ARM probe links the complete current physics stack,
 retains 15/15 public evaluator entry points, packages to a `.tns`, and imports
 no libm, floating-point formatter, or ARM soft-float helper.
@@ -121,8 +122,8 @@ verified byte-for-byte by calculator readback. The evaluator build still
 requires an explicit calculator acceptance run after transfer; an ARM link and
 byte-identical upload do not establish on-device runtime or performance. That
 cached tour exposed a CX II load-time failure consistent with eager IR/heap
-pressure and has since been replaced by the 6,750-byte source-only tour; the
-replacement and the current 1,154,912-byte program have not been uploaded in
+pressure and has since been replaced by the 6,978-byte source-only tour; the
+replacement and the current 1,156,629-byte program have not been uploaded in
 this build and still require explicit calculator open/run checks. The
 separate baseline channel-order check remains tracked in
 [docs/BUILD.md](docs/BUILD.md).

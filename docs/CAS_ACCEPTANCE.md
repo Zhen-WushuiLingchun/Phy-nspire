@@ -8,24 +8,24 @@ evidence.
 ## Executable notebook
 
 [`examples/phy-nspire-cas-tour.tns`](../examples/phy-nspire-cas-tour.tns) is a
-6,750-byte `PHYNB001` notebook with 123 source cards:
+6,978-byte `PHYNB001` notebook with 127 source cards:
 
-- eleven Markdown cells with nMarkdown LaTeX;
-- 112 editable Math inputs;
+- twelve Markdown cells with nMarkdown LaTeX;
+- 115 editable Math inputs;
 - no eagerly persisted output/IR cache.
 
 The generator evaluates a validation copy of the complete document, serializes
 it, opens it in a new notebook with an empty environment, and runs every cell
 again. It separately serializes and reopens the source-only artifact before
 writing it. Generation fails on any parse, evaluation, serialization, reopen,
-or replay error. The source-only form avoids rebuilding 224 cached IR trees
-during `FILE > Open`; running all inputs produces the same 112 typed outputs and
-a 235-card session. The inputs touch every currently implemented evaluator head
+or replay error. The source-only form avoids rebuilding 230 cached IR trees
+during `FILE > Open`; running all inputs produces the same 115 typed outputs and
+a 242-card session. The inputs touch every currently implemented evaluator head
 at least once:
 
 | Area | Successful reader-facing heads |
 | --- | --- |
-| scalar | bare exact expressions, protected constants and special values, assignment, `Simplify`, `FullSimplify`, `Expand`, `Together`, `Cancel`, bounded exact `Factor`, `Apart`, `Series`, `Normal`, exact finite/directed/infinity `Limit`, `Numerator`, `Denominator`, `D`, `Integrate`, inverse/hyperbolic/Gamma/error functions |
+| scalar | bare exact expressions, protected constants and special values, assignment, `Simplify`, `FullSimplify`, `Expand`, `Together`, `Cancel`, bounded exact `Factor`, `Apart`, `Series`, `Normal`, exact finite/directed/infinity `Limit`, exact bounded real-polynomial `Solve`, `Numerator`, `Denominator`, `D`, `Integrate`, inverse/hyperbolic/Gamma/error functions |
 | tensor/manifold | `Manifold`, `ComponentTensor`, `Metric`, `VectorField`, `Component`, `Rank`, `Dimension` |
 | exterior geometry | `DifferentialForm`, `Wedge`, `ExteriorD`, `InteriorProduct`, `LieDerivative`, `HodgeStar`, `Volume`, `Degree` |
 | Lie/Yang--Mills | `LieGroup`, `LieAlgebra`, `Generator`, `LieElement`, `LieBracket`, `StructureConstant`, `Killing`, `LieForm`, `GaugeConnection`, `CovariantD`, `FieldStrength`, `GaugeVariation`, `Bianchi`, `YangMillsLagrangian`, `ColorComponent` |
@@ -54,10 +54,10 @@ where the QFT type checker must reject a cross-space operation.
 
 - Windows strict build and CTest: 34/34.
 - WSL ASan, UBSan, and leak detection: 36/36.
-- Assertion-bearing tests: 213,505 checks.
-- Ndless r2022 ARM product: 1,154,912 bytes, 18.4% of the 6 MiB ceiling.
-- Isolated CAS ARM probe: 33/33 public APIs, 87,815 bytes of CAS text,
-  121,640-byte package, and no float formatter, libm call, or ARM soft-float
+- Assertion-bearing tests: 213,591 checks.
+- Ndless r2022 ARM product: 1,156,629 bytes, 18.4% of the 6 MiB ceiling.
+- Isolated CAS ARM probe: 34/34 public APIs, 90,601 bytes of CAS text,
+  124,528-byte package, and no float formatter, libm call, or ARM soft-float
   helper.
 - Isolated evaluator ARM probe: 15/15 public APIs, 29,334 bytes of evaluator
   text, 209,232-byte package, and no float formatter, libm call, or ARM
@@ -69,9 +69,11 @@ exact artifacts are opened and exercised on the physical CX II.
 
 ## Explicit non-features
 
-`Solve`, `NSolve`, `Reduce`, `Refine`, and the `Trig*`
-family are registered but return
-`PHY_ERR_UNSUPPORTED`. There is no multi-chart transition map or pullback, no
+`NSolve`, `Reduce`, `Refine`, and the `Trig*` family are registered but return
+`PHY_ERR_UNSUPPORTED`. `Solve` is implemented only for the certified
+linear/real-quadratic factor class documented in `docs/CAS.md`; irreducible
+higher-degree and non-real factors remain typed unsupported. There is no
+multi-chart transition map or pullback, no
 global-topology or named-manifold catalogue, no unbounded tensor rank, no
 abstract dummy-index canonicalizer, no gamma-five, and no general loop-integral
 reduction engine. Calling those absences implemented would turn a typed failure

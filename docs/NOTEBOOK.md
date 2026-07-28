@@ -138,8 +138,8 @@ braces. Both held modifiers and tap-then-key modifiers are accepted.
 ## Comprehensive CAS tour
 
 [`examples/phy-nspire-cas-tour.tns`](../examples/phy-nspire-cas-tour.tns) is a
-generated, executable notebook rather than a screenshot fixture. Its 123
-source cards contain eleven Markdown/LaTeX explanations and 112 Math inputs
+generated, executable notebook rather than a screenshot fixture. Its 127
+source cards contain twelve Markdown/LaTeX explanations and 115 Math inputs
 covering the implemented scalar CAS and calculus, generic component tensors,
 manifolds, forms and Hodge operations, coordinate GR, Lie algebra and
 Yang--Mills, phi4 graph/renormalization operations,
@@ -151,7 +151,7 @@ that fully evaluated notebook, deserializes it into a fresh empty environment,
 and replays all cells. It then writes a separately round-tripped source-only
 document. This keeps the CX II's `FILE > Open` path free of eager cached-tree
 reconstruction while preserving full generation-time CAS coverage. Running all
-112 Math cells top-to-bottom grows the document to 235 cards and leaves 21 of
+115 Math cells top-to-bottom grows the document to 242 cards and leaves 14 of
 the 256 bounded slots free.
 
 ## Verification
@@ -159,21 +159,21 @@ the 256 bounded slots free.
 - `test_notebook`: 215 checks over exact results, editing, insertion, stale
   results, source/IR agreement, bounds, memory return, selection, `RUN` hit
   testing, Markdown LaTeX integration, 2D metrics, and deterministic pixels;
-- `test_eval`: 1,717 checks over the stateful evaluator, including the notebook
+- `test_eval`: 1,817 checks over the stateful evaluator, including the notebook
   integration — state flowing between cells, descriptor outputs, forward
   staleness, and a save/reopen that restores descriptors but not objects;
-- `test_palette`: 843 checks over every category, entry, snippet, and cursor
+- `test_palette`: 868 checks over every category, entry, snippet, and cursor
   bound, and over every CAS snippet actually parsing;
-- `test_formula`: 46 checks over lifecycle, metrics, matrices, RGB565 drawing,
+- `test_formula`: 53 checks over lifecycle, metrics, matrices, RGB565 drawing,
   and malformed-formula recovery;
-- `test_source`: 371 checks over the permanent reader-facing grammar, the
+- `test_source`: 410 checks over the permanent reader-facing grammar, the
   command registry, assignment, and reserved-head canonicalization;
 - `test_pointer`: 29 checks over relative contact/motion behavior;
 - `test_modifier`: 8 checks over tapped and held Shift/Ctrl behavior;
 - `tests/fixtures/notebook_frame.digest`: bit-exact 320 × 240 host fixture;
-- strict Windows suite: 34/34; WSL ASan/UBSan/leak suite: 36/36; 213,505
+- strict Windows suite: 34/34; WSL ASan/UBSan/leak suite: 36/36; 213,591
   explicit checks;
-- Ndless r2022 ARM build: 1,154,912 bytes. The evaluator probe retains 15/15
+- Ndless r2022 ARM build: 1,156,629 bytes. The evaluator probe retains 15/15
   public APIs behind the complete physics stack and imports no forbidden
   float/libm/soft-float helper.
 

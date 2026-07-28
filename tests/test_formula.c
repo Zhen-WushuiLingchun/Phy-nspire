@@ -152,6 +152,22 @@ static void test_typed_ir_uses_the_shared_math_tree_pipeline(void)
     PHY_CHECK(metrics.ascent > 0);
     PHY_CHECK(metrics.descent > 0);
 
+    phy_ir_ref equation = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_ir_read(ir, "(= (+ (^ x 2) -2) 0)", &equation, NULL),
+        PHY_OK);
+    phy_ir_ref solutions = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_solve(cas, equation, x, &solutions), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_formula_measure_ir(
+            ir, solutions, PHY_FORMULA_STYLE_DISPLAY, 16, 1000, &metrics),
+        PHY_OK);
+    PHY_CHECK(metrics.valid);
+    PHY_CHECK(metrics.width > 70);
+    PHY_CHECK(metrics.ascent > 0);
+    PHY_CHECK(metrics.descent > 0);
+
     memset(g_pixels, 0, sizeof g_pixels);
     const phy_surface surface = {g_pixels, 320, 240};
     PHY_CHECK_EQ_INT(

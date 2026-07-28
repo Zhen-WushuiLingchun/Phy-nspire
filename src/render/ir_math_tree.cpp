@@ -806,10 +806,43 @@ private:
             return row(items);
         }
         case PHY_IR_FUNCTION: {
-            MathNodeId head = function_head(expression);
-            std::vector<std::size_t> positions;
+            const char *raw_head = phy_ir_symbol_name(
+                context_, phy_ir_head(context_, expression));
+            const std::string_view head_name =
+                raw_head == nullptr ? std::string_view()
+                                    : std::string_view(raw_head);
             const std::size_t count =
                 phy_ir_child_count(context_, expression);
+            if (head_name == "List") {
+                std::vector<MathNodeId> items;
+                items.reserve(count == 0U ? 1U : count * 2U - 1U);
+                for (std::size_t index = 0U; index < count; ++index) {
+                    if (index != 0U) {
+                        items.push_back(text(
+                            MathNodeKind::Symbol, ",",
+                            AtomClass::Punctuation));
+                    }
+                    items.push_back(build(
+                        phy_ir_child(context_, expression, index),
+                        depth + 1U, 0));
+                }
+                return delimited(row(items), "{", "}");
+            }
+            if (head_name == "Rule" && count == 2U) {
+                return row({
+                    build(
+                        phy_ir_child(context_, expression, 0U),
+                        depth + 1U, 0),
+                    text(
+                        MathNodeKind::Symbol, u8"→",
+                        AtomClass::Relation),
+                    build(
+                        phy_ir_child(context_, expression, 1U),
+                        depth + 1U, 0),
+                });
+            }
+            MathNodeId head = function_head(expression);
+            std::vector<std::size_t> positions;
             positions.reserve(count);
             for (std::size_t index = 0; index < count; ++index) {
                 positions.push_back(index);

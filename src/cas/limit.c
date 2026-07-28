@@ -262,7 +262,7 @@ static phy_status limit_at_infinity(phy_cas *cas, phy_ir_ref expression,
     const phy_cas_rule rule = {variable, reciprocal};
     phy_ir_ref transformed = PHY_IR_NULL;
     status =
-        phy_cas_substitute(cas, expression, &rule, 1u, &transformed);
+        phy_cas_substitute_node(cas, expression, &rule, 1u, &transformed);
     if (status != PHY_OK) {
         return status;
     }
@@ -305,7 +305,7 @@ phy_status phy_cas_limit(phy_cas *cas, phy_ir_ref expression,
     if (safe) {
         const phy_cas_rule rule = {variable, point};
         phy_ir_ref substituted = PHY_IR_NULL;
-        status = phy_cas_substitute(
+        status = phy_cas_substitute_node(
             cas, expression, &rule, 1u, &substituted);
         if (status == PHY_OK &&
             denominators_certified(cas, substituted)) {

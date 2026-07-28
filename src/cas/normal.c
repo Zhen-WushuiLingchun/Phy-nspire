@@ -1104,8 +1104,8 @@ static bool decision_resource_failure(phy_status status)
            status == PHY_ERR_OUT_OF_MEMORY;
 }
 
-static phy_status decide(phy_cas *cas, phy_ir_ref expr,
-                         phy_cas_decision *out_decision)
+phy_status phy_cas_decide_zero_node(phy_cas *cas, phy_ir_ref expr,
+                                    phy_cas_decision *out_decision)
 {
     phy_ir_ref reduced = PHY_IR_NULL;
     phy_ir_ref based = PHY_IR_NULL;
@@ -1300,7 +1300,7 @@ phy_status phy_cas_is_zero(phy_cas *cas, phy_ir_ref expr,
     }
     *out_decision = PHY_CAS_UNKNOWN;
     phy_cas_begin(cas);
-    return decide(cas, expr, out_decision);
+    return phy_cas_decide_zero_node(cas, expr, out_decision);
 }
 
 phy_status phy_cas_equivalent(phy_cas *cas, phy_ir_ref left, phy_ir_ref right,
@@ -1328,5 +1328,7 @@ phy_status phy_cas_equivalent(phy_cas *cas, phy_ir_ref left, phy_ir_ref right,
         return PHY_OK;
     }
     status = difference(cas, reduced_left, reduced_right, &gap);
-    return (status != PHY_OK) ? status : decide(cas, gap, out_decision);
+    return status != PHY_OK
+               ? status
+               : phy_cas_decide_zero_node(cas, gap, out_decision);
 }

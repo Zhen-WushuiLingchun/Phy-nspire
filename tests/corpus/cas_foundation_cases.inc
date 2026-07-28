@@ -4,8 +4,9 @@
  * Include with:
  *   PHY_FOUNDATION_CASE(id, area, source, expected_status, semantic_class)
  *
- * A command moves from PHY_ERR_UNSUPPORTED to PHY_OK only in the same commit
- * that supplies its CAS, evaluator, display and negative-control tests.
+ * This matrix pins reader admission. Once a head is admitted, individual
+ * semantic subclasses may still return a typed evaluator error; those
+ * positive and negative controls live in test_eval.c.
  */
 PHY_FOUNDATION_CASE(
     series_polynomial, "Series", "Series[(1+x)^5,{x,0,3}]",
@@ -28,13 +29,13 @@ PHY_FOUNDATION_CASE(
     PHY_OK, "rational_infinity_limit")
 PHY_FOUNDATION_CASE(
     solve_linear, "Solve", "Solve[3x-2==0,x]",
-    PHY_ERR_UNSUPPORTED, "exact_rational_solution")
+    PHY_OK, "exact_rational_solution")
 PHY_FOUNDATION_CASE(
     solve_algebraic, "Solve", "Solve[x^5-x-1==0,x]",
-    PHY_ERR_UNSUPPORTED, "certified_algebraic_roots")
+    PHY_OK, "certified_algebraic_roots")
 PHY_FOUNDATION_CASE(
     solve_denominator_exclusion, "Solve",
-    "Solve[(x^2-1)/(x-1)==0,x]", PHY_ERR_UNSUPPORTED,
+    "Solve[(x^2-1)/(x-1)==0,x]", PHY_OK,
     "conditional_exact_solution")
 PHY_FOUNDATION_CASE(
     nsolve_numeric_layer, "NSolve", "NSolve[x^5-x-1==0,x]",

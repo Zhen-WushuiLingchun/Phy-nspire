@@ -2498,6 +2498,255 @@ static phy_status build_factorization(
     return status;
 }
 
+static phy_status root_divide(phy_cas *cas, phy_ir_ref numerator,
+                              phy_ir_ref denominator,
+                              phy_ir_ref *out_ref)
+{
+    if (coefficient_is_zero(cas, denominator)) {
+        return PHY_ERR_CORRUPT_DOCUMENT;
+    }
+    phy_ir_ref inverse = PHY_IR_NULL;
+    phy_status status =
+        phy_cas_pow_node(cas, denominator, cas->minus_one, &inverse);
+    if (status != PHY_OK) {
+        return status;
+    }
+    const phy_ir_ref factors[2] = {numerator, inverse};
+    return phy_cas_mul_node(cas, factors, 2u, out_ref);
+}
+
+static phy_status linear_root(phy_cas *cas, const rational_poly *factor,
+                              phy_ir_ref *out_root)
+{
+    if (factor->degree != 1 ||
+        coefficient_is_zero(cas, factor->coefficients[1])) {
+        return PHY_ERR_CORRUPT_DOCUMENT;
+    }
+    phy_ir_ref numerator = PHY_IR_NULL;
+    phy_status status =
+        phy_cas_neg_node(cas, factor->coefficients[0], &numerator);
+    return status == PHY_OK
+               ? root_divide(
+                     cas, numerator, factor->coefficients[1], out_root)
+               : status;
+}
+
+static phy_status quadratic_roots(phy_cas *cas,
+                                  const rational_poly *factor,
+                                  phy_ir_ref out_roots[2],
+                                  size_t *out_count)
+{
+    *out_count = 0u;
+    if (factor->degree != 2 ||
+        coefficient_is_zero(cas, factor->coefficients[2])) {
+        return PHY_ERR_CORRUPT_DOCUMENT;
+    }
+
+    const phy_ir_ref a = factor->coefficients[2];
+    const phy_ir_ref b = factor->coefficients[1];
+    const phy_ir_ref c = factor->coefficients[0];
+    phy_ir_ref b_squared = PHY_IR_NULL;
+    phy_ir_ref ac = PHY_IR_NULL;
+    phy_ir_ref four = PHY_IR_NULL;
+    phy_ir_ref four_ac = PHY_IR_NULL;
+    phy_ir_ref discriminant = PHY_IR_NULL;
+    phy_ir_ref minus_b = PHY_IR_NULL;
+    phy_ir_ref two = PHY_IR_NULL;
+    phy_ir_ref two_a = PHY_IR_NULL;
+
+    phy_status status = coefficient_multiply(cas, b, b, &b_squared);
+    if (status == PHY_OK) {
+        status = coefficient_multiply(cas, a, c, &ac);
+    }
+    if (status == PHY_OK) {
+        status =
+            phy_cas_number_node(cas, (phy_cas_rat){4, 1}, &four);
+    }
+    if (status == PHY_OK) {
+        status = coefficient_multiply(cas, four, ac, &four_ac);
+    }
+    if (status == PHY_OK) {
+        status = coefficient_subtract(
+            cas, b_squared, four_ac, &discriminant);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (phy_cas_exact_sign_ref(cas, discriminant) < 0) {
+        /* The complex-number layer owns non-real roots. */
+        return PHY_ERR_UNSUPPORTED;
+    }
+    status = phy_cas_neg_node(cas, b, &minus_b);
+    if (status == PHY_OK) {
+        status = phy_cas_number_node(cas, (phy_cas_rat){2, 1}, &two);
+    }
+    if (status == PHY_OK) {
+        status = coefficient_multiply(cas, two, a, &two_a);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (coefficient_is_zero(cas, discriminant)) {
+        status = root_divide(cas, minus_b, two_a, &out_roots[0]);
+        if (status == PHY_OK) {
+            *out_count = 1u;
+        }
+        return status;
+    }
+
+    phy_ir_ref half = PHY_IR_NULL;
+    phy_ir_ref square_root = PHY_IR_NULL;
+    phy_ir_ref negative_square_root = PHY_IR_NULL;
+    phy_ir_ref numerators[2] = {PHY_IR_NULL, PHY_IR_NULL};
+    status =
+        phy_cas_number_node(cas, (phy_cas_rat){1, 2}, &half);
+    if (status == PHY_OK) {
+        status =
+            phy_cas_pow_node(cas, discriminant, half, &square_root);
+    }
+    if (status == PHY_OK) {
+        status =
+            phy_cas_neg_node(cas, square_root, &negative_square_root);
+    }
+    if (status == PHY_OK) {
+        const phy_ir_ref terms[2] = {minus_b, negative_square_root};
+        status = phy_cas_add_node(cas, terms, 2u, &numerators[0]);
+    }
+    if (status == PHY_OK) {
+        const phy_ir_ref terms[2] = {minus_b, square_root};
+        status = phy_cas_add_node(cas, terms, 2u, &numerators[1]);
+    }
+    for (size_t index = 0u; index < 2u && status == PHY_OK; ++index) {
+        status = root_divide(
+            cas, numerators[index], two_a, &out_roots[index]);
+    }
+    if (status == PHY_OK) {
+        *out_count = 2u;
+    }
+    return status;
+}
+
+static void sort_and_deduplicate_roots(phy_cas *cas,
+                                       phy_cas_root_set *roots)
+{
+    for (size_t index = 1u; index < roots->count; ++index) {
+        const phy_ir_ref key = roots->values[index];
+        size_t position = index;
+        while (position > 0u &&
+               phy_ir_compare(
+                   cas->ir, key, roots->values[position - 1u]) < 0) {
+            roots->values[position] = roots->values[position - 1u];
+            position--;
+        }
+        roots->values[position] = key;
+    }
+    size_t unique = 0u;
+    for (size_t index = 0u; index < roots->count; ++index) {
+        if (unique == 0u ||
+            roots->values[index] != roots->values[unique - 1u]) {
+            roots->values[unique++] = roots->values[index];
+        }
+    }
+    roots->count = unique;
+}
+
+phy_status phy_cas_polynomial_roots_node(phy_cas *cas,
+                                         phy_ir_ref polynomial,
+                                         phy_ir_ref variable,
+                                         phy_cas_root_set *out_roots)
+{
+    if (cas == NULL || out_roots == NULL ||
+        phy_ir_kind_of(cas->ir, variable) != PHY_IR_SYMBOL ||
+        phy_ir_kind_of(cas->ir, polynomial) == PHY_IR_KIND_INVALID) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    phy_cas_root_set roots = {0};
+    phy_ir_ref simplified = PHY_IR_NULL;
+    phy_ir_ref expanded = PHY_IR_NULL;
+    phy_status status =
+        phy_cas_simplify_node(cas, polynomial, &simplified);
+    if (status == PHY_OK) {
+        status = phy_cas_expand_node(cas, simplified, &expanded);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+
+    rational_poly parsed;
+    bool fits = false;
+    status = poly_from_ir(cas, expanded, variable, &parsed, &fits);
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (!fits) {
+        return PHY_ERR_UNSUPPORTED;
+    }
+    if (poly_is_zero(cas, &parsed)) {
+        /* An identity needs a solution-set/condition representation. */
+        return PHY_ERR_UNSUPPORTED;
+    }
+    if (parsed.degree == 0) {
+        *out_roots = roots;
+        return PHY_OK;
+    }
+    status = poly_make_monic(cas, &parsed);
+    if (status != PHY_OK) {
+        return status;
+    }
+
+    const size_t bytes = sizeof(factor_workspace);
+    factor_workspace *workspace = NULL;
+    status = phy_cas_temp_alloc(cas, bytes, (void **)&workspace);
+    if (status != PHY_OK) {
+        return status;
+    }
+    status = factor_complete(cas, &parsed, workspace);
+    for (size_t index = 0u;
+         index < workspace->count && status == PHY_OK; ++index) {
+        rational_poly factor;
+        poly_zero(cas, &factor);
+        const factor_record *record = &workspace->records[index];
+        factor.degree = record->degree;
+        for (int64_t degree = 0; degree <= record->degree; ++degree) {
+            factor.coefficients[degree] =
+                workspace->coefficients[
+                    record->coefficient_offset + (size_t)degree];
+        }
+        if (factor.degree == 1) {
+            if (roots.count >= PHY_CAS_POLYNOMIAL_MAX_ROOTS) {
+                status = PHY_ERR_TERM_LIMIT;
+                break;
+            }
+            status = linear_root(
+                cas, &factor, &roots.values[roots.count]);
+            if (status == PHY_OK) {
+                roots.count++;
+            }
+        } else if (factor.degree == 2) {
+            phy_ir_ref pair[2] = {PHY_IR_NULL, PHY_IR_NULL};
+            size_t count = 0u;
+            status = quadratic_roots(cas, &factor, pair, &count);
+            if (status == PHY_OK &&
+                count > PHY_CAS_POLYNOMIAL_MAX_ROOTS - roots.count) {
+                status = PHY_ERR_TERM_LIMIT;
+            }
+            for (size_t root = 0u;
+                 root < count && status == PHY_OK; ++root) {
+                roots.values[roots.count++] = pair[root];
+            }
+        } else {
+            status = PHY_ERR_UNSUPPORTED;
+        }
+    }
+    phy_cas_temp_free(cas, workspace, bytes);
+    if (status != PHY_OK) {
+        return status;
+    }
+    sort_and_deduplicate_roots(cas, &roots);
+    *out_roots = roots;
+    return PHY_OK;
+}
+
 static void sort_variables(phy_cas *cas, phy_ir_ref *variables, size_t count)
 {
     for (size_t index = 1u; index < count; ++index) {

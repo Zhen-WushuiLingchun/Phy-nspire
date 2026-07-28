@@ -1580,7 +1580,7 @@ done:
 
 /* ------------------------------------------------------------ substitution */
 
-static phy_status substitute_node(phy_cas *cas, phy_ir_ref expr,
+static phy_status substitute_walk(phy_cas *cas, phy_ir_ref expr,
                                   const phy_cas_rule *rules, size_t count,
                                   phy_ir_ref *out_ref)
 {
@@ -1630,7 +1630,7 @@ static phy_status substitute_node(phy_cas *cas, phy_ir_ref expr,
     phy_ir_ref result = PHY_IR_NULL;
     for (size_t i = 0u; i < children; i++) {
         phy_ir_ref child;
-        status = substitute_node(cas, phy_ir_child(ir, expr, i), rules, count,
+        status = substitute_walk(cas, phy_ir_child(ir, expr, i), rules, count,
                                  &child);
         if (status != PHY_OK) {
             goto done;
@@ -1887,9 +1887,16 @@ phy_status phy_cas_substitute(phy_cas *cas, phy_ir_ref expr,
                               phy_ir_ref *out_ref)
 {
     phy_status status = enter(cas, out_ref);
-    if (status != PHY_OK) {
-        return status;
-    }
+    return status == PHY_OK
+               ? phy_cas_substitute_node(cas, expr, rules, count, out_ref)
+               : status;
+}
+
+phy_status phy_cas_substitute_node(phy_cas *cas, phy_ir_ref expr,
+                                   const phy_cas_rule *rules, size_t count,
+                                   phy_ir_ref *out_ref)
+{
+    phy_status status = PHY_OK;
     if (rules == NULL && count != 0u) {
         return PHY_ERR_INVALID_ARGUMENT;
     }
@@ -1917,5 +1924,5 @@ phy_status phy_cas_substitute(phy_cas *cas, phy_ir_ref expr,
         phy_cas_cache_clear(cas);
         cas->subst_epoch = 1u;
     }
-    return substitute_node(cas, reduced, rules, count, out_ref);
+    return substitute_walk(cas, reduced, rules, count, out_ref);
 }

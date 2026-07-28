@@ -42,6 +42,7 @@ static const command_descriptor kCommands[] = {
     {"Series", PHY_SOURCE_SERIES, true, false},
     {"Normal", PHY_SOURCE_NORMAL, true, false},
     {"Limit", PHY_SOURCE_LIMIT, true, false},
+    {"Solve", PHY_SOURCE_SOLVE, true, false},
     {"Set", PHY_SOURCE_ASSIGN, true, false},
     {"Clear", PHY_SOURCE_CLEAR, true, false},
     {"ClearAll", PHY_SOURCE_CLEAR, true, false},
@@ -51,7 +52,6 @@ static const command_descriptor kCommands[] = {
      * exists. Treating Limit[x] as an opaque mathematical function would look
      * successful while doing no limit computation.
      */
-    {"Solve", PHY_SOURCE_SIMPLIFY, false, false},
     {"NSolve", PHY_SOURCE_SIMPLIFY, false, false},
     {"Reduce", PHY_SOURCE_SIMPLIFY, false, false},
     {"Refine", PHY_SOURCE_SIMPLIFY, false, false},
@@ -913,6 +913,30 @@ static void parse_limit_body(source_reader *reader, char closer,
     }
 }
 
+static void parse_solve_body(source_reader *reader, char closer,
+                             phy_source_command *command)
+{
+    command->expression = parse_expression(reader);
+    if (reader->status == PHY_OK && !take(reader, ',')) {
+        fail(reader, PHY_ERR_PARSE);
+    }
+    phy_ir_ref variable = PHY_IR_NULL;
+    if (reader->status == PHY_OK) {
+        variable = parse_expression(reader);
+    }
+    if (reader->status == PHY_OK &&
+        phy_ir_kind_of(reader->ir, variable) != PHY_IR_SYMBOL) {
+        fail(reader, PHY_ERR_TYPE);
+    }
+    if (reader->status == PHY_OK && !take(reader, closer)) {
+        fail(reader, PHY_ERR_PARSE);
+    }
+    if (reader->status == PHY_OK) {
+        command->variables[0] = variable;
+        command->variable_count = 1u;
+    }
+}
+
 phy_status phy_source_parse(phy_ir_context *ir, const char *source,
                             phy_source_command *out_command,
                             size_t *out_error_offset)
@@ -1001,6 +1025,10 @@ phy_status phy_source_parse(phy_ir_context *ir, const char *source,
                descriptor->operation == PHY_SOURCE_LIMIT) {
         command.operation = PHY_SOURCE_LIMIT;
         parse_limit_body(&reader, closer, &command);
+    } else if (descriptor != NULL && reader.status == PHY_OK &&
+               descriptor->operation == PHY_SOURCE_SOLVE) {
+        command.operation = PHY_SOURCE_SOLVE;
+        parse_solve_body(&reader, closer, &command);
     } else if (descriptor != NULL && reader.status == PHY_OK) {
         command.operation = descriptor->operation;
         if (descriptor->operation == PHY_SOURCE_SERIES) {

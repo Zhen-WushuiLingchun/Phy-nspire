@@ -309,6 +309,38 @@ static void test_limit_reader_and_evaluator(void)
     fixture_close(&f);
 }
 
+static void test_solve_reader_and_evaluator(void)
+{
+    fixture f = fixture_open();
+    phy_value value = run(&f, "Solve[3x-2==0,x]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_SCALAR);
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List (fn List (fn Rule x (rat 2 3))))");
+
+    value = run(&f, "Solve[x^2-2==0,x]");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List "
+        "(fn List (fn Rule x (* -1 (^ 2 (rat 1 2))))) "
+        "(fn List (fn Rule x (^ 2 (rat 1 2)))))");
+    value = run(&f, "Solve[(x^2-1)/(x-1)==0,x]");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List (fn List (fn Rule x -1)))");
+    value = run(&f, "Solve[1==0,x]");
+    PHY_CHECK_EQ_STR(expansion(&f, value), "(fn List)");
+
+    expect_status(&f, "Solve[x^2+1==0,x]", PHY_ERR_UNSUPPORTED);
+    expect_status(&f, "Solve[x^3-2==0,x]", PHY_ERR_UNSUPPORTED);
+    expect_status(&f, "Solve[x==x,x]", PHY_ERR_UNSUPPORTED);
+    expect_status(&f, "Solve[x,x]", PHY_ERR_TYPE);
+
+    expect_scalar(&f, "x = 4", "4");
+    expect_status(&f, "Solve[x==4,x]", PHY_ERR_TYPE);
+    fixture_close(&f);
+}
+
 static void test_clear_and_reset(void)
 {
     fixture f = fixture_open();
@@ -1330,6 +1362,7 @@ int main(void)
     PHY_TEST_CASE(test_scalar_elementary_foundation);
     PHY_TEST_CASE(test_series_reader_and_evaluator);
     PHY_TEST_CASE(test_limit_reader_and_evaluator);
+    PHY_TEST_CASE(test_solve_reader_and_evaluator);
     PHY_TEST_CASE(test_clear_and_reset);
     PHY_TEST_CASE(test_binding_rejects_reserved_and_captured_names);
     PHY_TEST_CASE(test_manifolds_and_forms);

@@ -69,6 +69,12 @@ static const tour_cell kTour[] = {
     {TOUR_INPUT, "Limit[1/x,{x,0,FromBelow}]", NULL},
     {TOUR_INPUT,
      "Limit[(3*x^4+1)/(2*x^4-x),{x,Infinity}]", NULL},
+    {TOUR_MARKDOWN, "Exact polynomial equations",
+     "$$3x-2=0\\quad x=\\frac{2}{3},\\qquad "
+     "x^2-2=0\\quad x=\\pm\\sqrt{2}$$"},
+    {TOUR_INPUT, "Solve[3*x-2==0,x]", NULL},
+    {TOUR_INPUT, "Solve[x^2-2==0,x]", NULL},
+    {TOUR_INPUT, "Solve[(x^2-1)/(x-1)==0,x]", NULL},
     {TOUR_INPUT, "Gamma[6]+LogGamma[2]+Erfc[0]", NULL},
     {TOUR_INPUT, "EquivalentQ[Sin[x]^2+Cos[x]^2,1]", NULL},
 

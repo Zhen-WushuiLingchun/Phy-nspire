@@ -38,6 +38,7 @@ typedef enum {
     PHY_SOURCE_SERIES,
     PHY_SOURCE_NORMAL,
     PHY_SOURCE_LIMIT,
+    PHY_SOURCE_SOLVE,
 
     /*
      * The two operations that read and write the notebook environment rather
@@ -60,7 +61,10 @@ typedef struct {
     phy_source_operation operation;
     phy_ir_ref expression;
     phy_ir_ref variables[PHY_SOURCE_MAX_VARIABLES];
-    /* DIFFERENTIATE / INTEGRATE, or one expansion symbol for SERIES. */
+    /*
+     * DIFFERENTIATE / INTEGRATE, one expansion symbol for SERIES/LIMIT, or
+     * the one unknown of SOLVE.
+     */
     size_t variable_count;
     /*
      * The name an ASSIGN binds or a CLEAR unbinds. PHY_IR_NO_SYMBOL for every

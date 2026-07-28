@@ -133,7 +133,8 @@ minimal-polynomial equality are still required before F3 can be closed.
 ### F4 — series, limits, and equations
 
 Status: the exact bounded Taylor/Laurent ring, reader-facing `Series` /
-`Normal` path, and a proof-producing exact `Limit` subset are implemented.
+`Normal` path, a proof-producing exact `Limit` subset, and the first exact
+polynomial `Solve` subset are implemented.
 Rational expressions expand about arbitrary
 exact rational centers; exact Maclaurin recurrence/composition covers
 `Exp`, `Sin`, `Cos`, `Tan`, `Sinh`, `Cosh`, `Tanh`, `ArcSin`, `ArcTan`,
@@ -147,19 +148,26 @@ certified continuous points and the Laurent leading term at singular points.
 come from coefficient sign and valuation parity; a two-sided pole with unequal
 directions is `PHY_ERR_DOMAIN`. Oscillatory, branch-sensitive, or otherwise
 undecidable cases remain typed unsupported rather than being sampled.
+`Solve[equation,x]` now reuses the bounded Q[x] factorizer and returns exact
+distinct rational or real quadratic-radical roots, excluding denominator
+zeros. An irreducible factor above degree two, non-real quadratic, identity,
+multivariate or transcendental equation fails transactionally with a typed
+unsupported result; no partial root list is published.
 
 The remaining implementation is governed by
 [`plans/2026-07-28-cas-foundation-f4-f5.md`](plans/2026-07-28-cas-foundation-f4-f5.md).
 The compiled reader matrix is `tests/corpus/cas_foundation_cases.inc`.
-`Solve`, `NSolve`, and `Reduce` remain typed unsupported until their
-corresponding exact backend, evaluator, display, and negative controls land
-together.
+`NSolve` and `Reduce` remain typed unsupported until their corresponding exact
+backend, evaluator, display, and negative controls land together. Certified
+`Root[p,k]` output for irreducible higher-degree real roots remains the next
+extension of `Solve`.
 
 - Truncated formal power-series arithmetic before reader-facing `Series`.
 - Extend the exact limit subset only alongside proof rules and negative
   controls; there is no numerical sampling fallback.
-- Polynomial `Solve` before transcendental solving; solutions carry conditions
-  rather than silently dropping branches.
+- Extend polynomial `Solve` with certified algebraic `Root[p,k]` values before
+  transcendental solving; solutions carry conditions rather than silently
+  dropping branches.
 
 ### F5 — special-function kernel
 

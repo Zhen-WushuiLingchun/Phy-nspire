@@ -166,6 +166,13 @@ static void test_commands_and_functions(void)
     command = parse(ir, "Limit[x,{x,-Infinity}]");
     PHY_CHECK_EQ_STR(render(ir, command.parameter), "(* -1 Infinity)");
 
+    command = parse(ir, "Solve[3x-2==0,x]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_SOLVE);
+    PHY_CHECK_EQ_INT(command.variable_count, 1);
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression), "(= (+ -2 (* 3 x)) 0)");
+    PHY_CHECK_EQ_STR(render(ir, command.variables[0]), "x");
+
     command = parse(ir, "ArcTan[Sinh[x]] + ArcSinh[TanH[y]]");
     PHY_CHECK_EQ_STR(
         render(ir, command.expression),
@@ -269,6 +276,12 @@ static void test_diagnostics_and_bounds(void)
     PHY_CHECK_EQ_INT(
         phy_source_parse(ir, "Limit[1/x]", &command, &error),
         PHY_ERR_PARSE);
+    PHY_CHECK_EQ_INT(
+        phy_source_parse(ir, "Solve[x==0]", &command, &error),
+        PHY_ERR_PARSE);
+    PHY_CHECK_EQ_INT(
+        phy_source_parse(ir, "Solve[x==0,2]", &command, &error),
+        PHY_ERR_TYPE);
     PHY_CHECK_EQ_INT(
         phy_source_parse(
             ir, "Limit[1/x,{x,0,Direction->Sideways}]",

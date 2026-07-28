@@ -277,6 +277,9 @@ phy_status phy_cas_mul_node(phy_cas *cas, const phy_ir_ref *factors,
                             size_t count, phy_ir_ref *out_ref);
 phy_status phy_cas_pow_node(phy_cas *cas, phy_ir_ref base, phy_ir_ref exponent,
                             phy_ir_ref *out_ref);
+phy_status phy_cas_substitute_node(phy_cas *cas, phy_ir_ref expr,
+                                   const phy_cas_rule *rules, size_t count,
+                                   phy_ir_ref *out_ref);
 
 /* -1 * value, simplified. The IR has no negation and no subtraction. */
 phy_status phy_cas_neg_node(phy_cas *cas, phy_ir_ref value, phy_ir_ref *out_ref);
@@ -319,6 +322,8 @@ phy_status phy_cas_rational_node(phy_cas *cas, phy_ir_ref expr,
 phy_status phy_cas_rational_reduced_node(phy_cas *cas, phy_ir_ref expr,
                                          phy_ir_ref *out_numerator,
                                          phy_ir_ref *out_denominator);
+phy_status phy_cas_decide_zero_node(phy_cas *cas, phy_ir_ref expr,
+                                    phy_cas_decision *out_decision);
 
 /* --------------------------------------------------------------- reduce.c */
 
@@ -339,6 +344,24 @@ phy_status phy_cas_cancel_known_factors(phy_cas *cas, phy_ir_ref numerator,
                                         phy_ir_ref denominator,
                                         phy_ir_ref *out_num,
                                         phy_ir_ref *out_den);
+
+/*
+ * Candidate roots of one exact polynomial. The implementation lives beside
+ * the Q[x] factorizer so Solve cannot drift into a second polynomial kernel.
+ * Roots are distinct and sorted structurally. The helper does not reset the
+ * public operation budget.
+ */
+#define PHY_CAS_POLYNOMIAL_MAX_ROOTS 48u
+
+typedef struct {
+    size_t count;
+    phy_ir_ref values[PHY_CAS_POLYNOMIAL_MAX_ROOTS];
+} phy_cas_root_set;
+
+phy_status phy_cas_polynomial_roots_node(phy_cas *cas,
+                                         phy_ir_ref polynomial,
+                                         phy_ir_ref variable,
+                                         phy_cas_root_set *out_roots);
 
 /*
  * Largest |k| for which sin(k*u) and cos(k*u) are expanded into polynomials in
