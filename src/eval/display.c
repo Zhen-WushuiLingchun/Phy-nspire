@@ -520,6 +520,8 @@ static phy_status apply_scalar_operation(phy_env *env,
         return phy_cas_expand(env->cas, value, out_ref);
     case PHY_SOURCE_CANCEL:
         return phy_cas_reduce(env->cas, value, out_ref);
+    case PHY_SOURCE_FACTOR:
+        return phy_cas_factor(env->cas, value, out_ref);
     case PHY_SOURCE_TOGETHER:
     case PHY_SOURCE_NUMERATOR:
     case PHY_SOURCE_DENOMINATOR: {

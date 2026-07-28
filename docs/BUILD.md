@@ -210,21 +210,21 @@ evaluator changed that for the geometry, Lie, tensor, GR and Yang--Mills layers,
 which the notebook now genuinely calls. The probes remain the only way to check
 symbol retention against the header and the no-floating-point rule in isolation.
 
-Measured on the pinned ARM toolchain on 2026-07-27:
+Measured on the pinned ARM toolchain on 2026-07-28:
 
-- geometry: 45/45 APIs retained, 8,957 bytes of layer text, 51,260-byte probe
+- geometry: 45/45 APIs retained, 8,957 bytes of layer text, 62,428-byte probe
   package;
-- Yang--Mills: 22/22 APIs retained, 4,524 bytes of layer text, 54,260-byte
+- Yang--Mills: 22/22 APIs retained, 4,524 bytes of layer text, 67,840-byte
   probe package;
-- SU(N) colour: 23/23 APIs retained, 4,924 bytes of layer text, 43,176-byte
+- SU(N) colour: 23/23 APIs retained, 4,924 bytes of layer text, 52,764-byte
   probe package;
 - evaluator plus complete backend stack: 15/15 public evaluator APIs retained
-  from 34 portable sources, 28,937 bytes of evaluator text, 151,396-byte
+  from 34 portable sources, 28,954 bytes of evaluator text, 156,328-byte
   isolated probe;
 - all four isolated probes contain no float formatter, libm call, or ARM
   soft-float helper.
 
-A clean product build from the same source is 1,121,131 bytes (17.8% of the
+A clean product build from the same source is 1,124,477 bytes (17.9% of the
 6 MiB ceiling). The product includes nMarkdown/FreeType/HarfBuzz and therefore
 has different retained dependencies from the exact isolated probes; the
 no-float statement above is specifically a property of those native symbolic

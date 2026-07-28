@@ -104,7 +104,7 @@ static phy_notebook *make_sample(void)
 
     size_t unsupported = 0u;
     PHY_CHECK_EQ_INT(
-        phy_notebook_add_input(notebook, "Factor[x^2-1]", &unsupported),
+        phy_notebook_add_input(notebook, "Apart[1/(x^2-1)]", &unsupported),
         PHY_OK);
     PHY_CHECK_EQ_INT(phy_notebook_evaluate(notebook, unsupported),
                      PHY_ERR_UNSUPPORTED);

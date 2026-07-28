@@ -258,22 +258,12 @@ and `-fsanitize-undefined-trap-on-error`) and under AddressSanitizer
 ## Device build
 
 In the device source list and compiles clean for ARM under
-`-Os -marm -ffunction-sections -fdata-sections`:
+`-Os -marm -ffunction-sections -fdata-sections`. The current isolated link
+check measures **8,834 bytes** of tensor-layer text and a **58,512-byte**
+dependency-complete probe package.
 
-| object | text bytes |
-| --- | --- |
-| `src/tensor/chart.o` | 552 |
-| `src/tensor/symmetry.o` | 1,116 |
-| `src/tensor/tensor.o` | 3,500 |
-| total | **5,168** |
-
-**None of it is in `dist/phy-nspire.tns`.** Nothing in the current application
-calls the tensor core, so `--gc-sections` discards every symbol, exactly as it
-does for the IR. The 5,168 bytes above is what the curvature pipeline will pay
-when it starts using this.
-
-Because link-time garbage collection hides the layer, the device build alone
-does not prove it *links*. `make tensor-link-check` closes that gap the same
+The application now reaches the tensor core through the stateful evaluator.
+`make tensor-link-check` still closes an independent API-retention gap the same
 way `make ir-link-check` does: it links `tests/device/tensor_link_probe.c`,
 which touches every public entry point, with the production flags —
 `--gc-sections` included, since the point is that these symbols survive
@@ -283,7 +273,7 @@ formatter was dragged in, and that the result packages to a real `.tns`.
 
 The expected symbol set is **derived from the header**, not listed in the
 script, so adding a public function without extending the probe fails the
-check instead of quietly going unlinked. All 37 public entry points are
+check instead of quietly going unlinked. All 45 public entry points are
 retained; no `_dtoa`, `_strtod`, or `_printf_float` reaches the image.
 
 The target is not a dependency of `all` and the probe is not in the Makefile's

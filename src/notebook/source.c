@@ -30,6 +30,7 @@ static const command_descriptor kCommands[] = {
     {"Expand", PHY_SOURCE_EXPAND, true, false},
     {"Together", PHY_SOURCE_TOGETHER, true, false},
     {"Cancel", PHY_SOURCE_CANCEL, true, false},
+    {"Factor", PHY_SOURCE_FACTOR, true, false},
     {"Numerator", PHY_SOURCE_NUMERATOR, true, false},
     {"Denominator", PHY_SOURCE_DENOMINATOR, true, false},
     {"D", PHY_SOURCE_DIFFERENTIATE, true, true},
@@ -40,10 +41,9 @@ static const command_descriptor kCommands[] = {
 
     /*
      * Reserved Wolfram-style commands must fail honestly until their algebra
-     * exists. Treating Factor[x] as an opaque mathematical function would look
-     * successful while doing no factorization.
+     * exists. Treating Apart[x] as an opaque mathematical function would look
+     * successful while doing no partial-fraction decomposition.
      */
-    {"Factor", PHY_SOURCE_SIMPLIFY, false, false},
     {"Apart", PHY_SOURCE_SIMPLIFY, false, false},
     {"Limit", PHY_SOURCE_SIMPLIFY, false, false},
     {"Series", PHY_SOURCE_SIMPLIFY, false, false},

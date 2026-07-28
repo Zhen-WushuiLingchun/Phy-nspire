@@ -95,6 +95,23 @@ static const char *expanded(fixture *f, const char *text)
     return render(f->ir, out);
 }
 
+static const char *factored(fixture *f, const char *text)
+{
+    phy_ir_ref out = PHY_IR_NULL;
+    const phy_status status =
+        phy_cas_factor(f->cas, parse(f->ir, text), &out);
+    if (status != PHY_OK) {
+        return phy_status_name(status);
+    }
+    return render(f->ir, out);
+}
+
+static phy_status factor_status(fixture *f, const char *text)
+{
+    phy_ir_ref out = PHY_IR_NULL;
+    return phy_cas_factor(f->cas, parse(f->ir, text), &out);
+}
+
 static phy_status simplify_status(fixture *f, const char *text)
 {
     phy_ir_ref out = PHY_IR_NULL;
@@ -171,6 +188,11 @@ static void test_all_memory_is_returned(void)
         phy_ir_ref out = PHY_IR_NULL;
         PHY_CHECK_EQ_INT(
             phy_cas_expand(f.cas, parse(f.ir, "(^ (+ x y z) 3)"), &out), PHY_OK);
+        PHY_CHECK_EQ_INT(
+            phy_cas_factor(
+                f.cas,
+                parse(f.ir, "(+ (^ x 6) (* -1 (^ x 2)))"), &out),
+            PHY_OK);
     }
     phy_telemetry during;
     phy_telemetry_get(&during);
@@ -993,6 +1015,91 @@ static void test_reduce_cancels_known_factors(void)
     close_fixture(&f);
 }
 
+static void test_exact_univariate_factorization(void)
+{
+    fixture f = open_fixture();
+
+    PHY_CHECK_EQ_STR(factored(&f, "(+ (^ x 2) -1)"),
+                     "(* (+ -1 x) (+ 1 x))");
+    PHY_CHECK_EQ_STR(
+        factored(&f, "(+ (^ x 3) 1)"),
+        "(* (+ 1 x) (+ 1 (* -1 x) (^ x 2)))");
+    PHY_CHECK_EQ_STR(factored(&f, "(+ (* 2 (^ x 2)) -2)"),
+                     "(* 2 (+ -1 x) (+ 1 x))");
+    PHY_CHECK_EQ_STR(
+        factored(&f, "(+ (^ x 4) (* 2 (^ x 2)) 1)"),
+        "(^ (+ 1 (^ x 2)) 2)");
+    PHY_CHECK_EQ_STR(
+        factored(&f, "(+ (^ x 4) -1)"),
+        "(* (+ -1 x) (+ 1 x) (+ 1 (^ x 2)))");
+    PHY_CHECK_EQ_STR(
+        factored(&f, "(+ (* 6 (^ x 2)) x -2)"),
+        "(* 6 (+ (rat -1 2) x) (+ (rat 2 3) x))");
+    PHY_CHECK_EQ_STR(
+        factored(&f, "(* (^ (+ x -1) 3) (^ (+ x 2) 2))"),
+        "(* (^ (+ -1 x) 3) (^ (+ 2 x) 2))");
+    PHY_CHECK_EQ_STR(
+        factored(&f, "(* (^ x 4) (+ x 1))"),
+        "(* (+ 1 x) (^ x 4))");
+
+    static const char *const round_trip[] = {
+        "(+ (^ x 2) -1)",
+        "(+ (^ x 3) 1)",
+        "(+ (* 2 (^ x 2)) -2)",
+        "(+ (^ x 4) (* 2 (^ x 2)) 1)",
+        "(+ (^ x 4) -1)",
+        "(+ (* 6 (^ x 2)) x -2)",
+        "(* (^ (+ x -1) 3) (^ (+ x 2) 2))",
+        "(* (^ x 4) (+ x 1))",
+    };
+    for (size_t index = 0u;
+         index < sizeof round_trip / sizeof round_trip[0]; ++index) {
+        phy_ir_ref result = PHY_IR_NULL;
+        phy_cas_decision decision = PHY_CAS_UNKNOWN;
+        const phy_ir_ref input = parse(f.ir, round_trip[index]);
+        PHY_CHECK_EQ_INT(phy_cas_factor(f.cas, input, &result), PHY_OK);
+        PHY_CHECK_EQ_INT(
+            phy_cas_equivalent(f.cas, input, result, &decision), PHY_OK);
+        PHY_CHECK_EQ_INT(decision, PHY_CAS_ZERO);
+    }
+
+    /* A quadratic/cubic with no rational root is irreducible over Q. */
+    PHY_CHECK_EQ_STR(factored(&f, "(+ 1 x (^ x 3))"),
+                     "(+ 1 x (^ x 3))");
+
+    /*
+     * No rational root does not prove a square-free quartic irreducible.
+     * The current bounded kernel refuses rather than returning a partial
+     * factorization as though it were complete.
+     */
+    PHY_CHECK_EQ_INT(
+        factor_status(
+            &f, "(* (+ 1 (^ x 2)) (+ 4 (^ x 2)))"),
+        PHY_ERR_UNSUPPORTED);
+    PHY_CHECK_EQ_INT(factor_status(&f, "(+ (* x y) x)"),
+                     PHY_ERR_UNSUPPORTED);
+    PHY_CHECK_EQ_INT(factor_status(&f, "(+ 1000001 (^ x 2))"),
+                     PHY_ERR_TERM_LIMIT);
+    PHY_CHECK_EQ_INT(factor_status(&f, "(^ x 49)"),
+                     PHY_ERR_UNSUPPORTED);
+
+    phy_ir_ref output = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(phy_cas_factor(NULL, parse(f.ir, "x"), &output),
+                     PHY_ERR_INVALID_ARGUMENT);
+    PHY_CHECK_EQ_INT(phy_cas_factor(f.cas, PHY_IR_NULL, &output),
+                     PHY_ERR_INVALID_ARGUMENT);
+    PHY_CHECK_EQ_INT(phy_cas_factor(f.cas, parse(f.ir, "x"), NULL),
+                     PHY_ERR_INVALID_ARGUMENT);
+    PHY_CHECK_EQ_STR(factored(&f, "(+ (^ x 2) -1)"),
+                     "(* (+ -1 x) (+ 1 x))");
+    const size_t stable_bytes = phy_cas_bytes_used(f.cas);
+    PHY_CHECK_EQ_STR(factored(&f, "(+ (^ x 2) -1)"),
+                     "(* (+ -1 x) (+ 1 x))");
+    PHY_CHECK_EQ_INT(phy_cas_bytes_used(f.cas), (long long)stable_bytes);
+
+    close_fixture(&f);
+}
+
 static void test_trigonometric_identities(void)
 {
     fixture f = open_fixture();
@@ -1244,6 +1351,9 @@ static void test_step_budget(void)
     PHY_CHECK_EQ_INT(
         phy_cas_expand(cas, parse(ir, "(^ (+ a b c d e) 4)"), &out),
         PHY_ERR_TIMEOUT);
+    PHY_CHECK_EQ_INT(
+        phy_cas_factor(cas, parse(ir, "(+ (^ x 12) -1)"), &out),
+        PHY_ERR_TIMEOUT);
     /* A refused operation must leave the layer usable, not wedged. */
     PHY_CHECK_EQ_INT(phy_cas_validate(cas), PHY_OK);
     PHY_CHECK_EQ_INT(phy_ir_validate(ir), PHY_OK);
@@ -1344,6 +1454,10 @@ static void test_cache_survives_a_tight_byte_ceiling(void)
         PHY_OK);
     PHY_CHECK_EQ_STR(render(ir, out), "(+ (* 4 y) (* 5 x))");
     PHY_CHECK(phy_cas_bytes_used(cas) <= 4096u);
+    PHY_CHECK_EQ_INT(
+        phy_cas_factor(cas, parse(ir, "(+ (^ x 2) -1)"), &out),
+        PHY_ERR_MEMORY_LIMIT);
+    PHY_CHECK(phy_cas_bytes_used(cas) <= 4096u);
     PHY_CHECK_EQ_INT(phy_cas_validate(cas), PHY_OK);
 
     phy_cas_destroy(cas);
@@ -1376,12 +1490,16 @@ static void test_allocation_failure_unwinds_scratch(void)
         }
 
         phy_ir_ref expr = PHY_IR_NULL;
+        phy_ir_ref factor_expr = PHY_IR_NULL;
         size_t offset = 0u;
         if (phy_ir_read(ir, "(+ (* 2 x (^ y 2)) (* 3 x (^ y 2)) (fn sin x))",
-                        &expr, &offset) == PHY_OK) {
+                        &expr, &offset) == PHY_OK &&
+            phy_ir_read(ir, "(+ (^ x 6) (* -1 (^ x 2)))",
+                        &factor_expr, &offset) == PHY_OK) {
             phy_host_fail_alloc_after(countdown);
             phy_ir_ref out = PHY_IR_NULL;
             (void)phy_cas_expand(cas, expr, &out);
+            (void)phy_cas_factor(cas, factor_expr, &out);
             phy_host_fail_alloc_after(0u);
 
             PHY_CHECK_EQ_INT(phy_cas_validate(cas), PHY_OK);
@@ -1420,6 +1538,7 @@ int main(void)
     PHY_TEST_CASE(test_zero_decision_stays_honest);
     PHY_TEST_CASE(test_rational_form);
     PHY_TEST_CASE(test_reduce_cancels_known_factors);
+    PHY_TEST_CASE(test_exact_univariate_factorization);
     PHY_TEST_CASE(test_trigonometric_identities);
     PHY_TEST_CASE(test_full_simplify);
     PHY_TEST_CASE(test_gr_corpus_sphere_2d);

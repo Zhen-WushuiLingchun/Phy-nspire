@@ -58,9 +58,10 @@ semantics.
 
 ### F2 — polynomial and rational algebra
 
-Status: the bounded univariate `Q[x]` GCD and reader-facing `Cancel` are
-implemented. Multivariate GCD, square-free decomposition, `Factor`, and `Apart`
-remain open.
+Status: the bounded univariate `Q[x]` GCD, reader-facing `Cancel`, Yun
+square-free decomposition, and a complete-on-success bounded `Factor` class
+are implemented. Multivariate GCD, general high-degree irreducible
+factorization, and `Apart` remain open.
 
 - A bounded polynomial view with explicit variable order.
 - Content/primitive-part extraction and exact coefficient division.

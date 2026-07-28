@@ -370,7 +370,7 @@ saying otherwise contradicts the storage. A value that merely cannot be
 
 ## Testing
 
-`tests/test_geom.c` has 4,640 checks in 33 cases. The separate
+`tests/test_geom.c` has 4,646 checks in 33 cases. The separate
 `tests/test_geom_metric.c` adds diagonal, non-diagonal, volume, singular, and
 orientation cases for the general-metric path.
 
@@ -403,12 +403,13 @@ back, `phy_ir_validate` and `phy_cas_validate` both passing, and
 
 ## Device build
 
-In the device source list, alongside the IR, the CAS and the tensor core. As
-with all three, **none of it will reach `dist/phy-nspire.tns`**: nothing in the
-current application calls it, so `--gc-sections` discards every symbol.
+The geometry layer is in the device source list alongside the IR, CAS, and
+tensor core. The application now reaches it through the stateful evaluator;
+the isolated probe remains useful because it checks the public API and
+no-floating-point boundary independently of the full product.
 
 The ARM compile and link check were run on the pinned Ndless r2022 toolchain on
-2026-07-27.
+2026-07-28.
 
 `make geom-link-check` closes the gap the same way `make cas-link-check` does.
 It links `tests/device/geom_link_probe.c`, which touches every public entry
@@ -424,7 +425,7 @@ operation that reached `libm` would defeat the reason the CAS computes only in
 exact rationals.
 
 The probe retained 45/45 public APIs, compiled the geometry translation units
-to 8,957 bytes of ARM text, packaged a 51,260-byte dependency-complete `.tns`,
+to 8,957 bytes of ARM text, packaged a 62,428-byte dependency-complete `.tns`,
 and retained no float formatter, libm call, or ARM soft-float helper.
 
 ## Not in this layer

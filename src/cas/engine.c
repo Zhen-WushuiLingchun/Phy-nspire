@@ -449,6 +449,33 @@ void phy_cas_scratch_release(phy_cas *cas, size_t mark)
     cas->scratch.count = mark;
 }
 
+phy_status phy_cas_temp_alloc(phy_cas *cas, size_t bytes, void **out_pointer)
+{
+    if (cas == NULL || out_pointer == NULL || bytes == 0u) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    *out_pointer = NULL;
+    if (!charge(cas, bytes)) {
+        return PHY_ERR_MEMORY_LIMIT;
+    }
+    void *pointer = phy_alloc(bytes);
+    if (pointer == NULL) {
+        discharge(cas, bytes);
+        return PHY_ERR_OUT_OF_MEMORY;
+    }
+    *out_pointer = pointer;
+    return PHY_OK;
+}
+
+void phy_cas_temp_free(phy_cas *cas, void *pointer, size_t bytes)
+{
+    if (cas == NULL || pointer == NULL || bytes == 0u) {
+        return;
+    }
+    phy_free(pointer, bytes);
+    discharge(cas, bytes);
+}
+
 /* ----------------------------------------------------------- pair sorting */
 
 /*

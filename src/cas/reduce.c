@@ -26,6 +26,10 @@
 #define REDUCE_MAX_FACTORS 24u
 #define REDUCE_MAX_DEGREE 48u
 #define REDUCE_MAX_CANDIDATES 8u
+#define REDUCE_MAX_INTEGER_COEFFICIENT 1000000
+#define REDUCE_MAX_DIVISORS 256u
+#define REDUCE_MAX_ROOT_TRIALS 4096u
+#define REDUCE_MAX_FACTOR_COEFFICIENTS (2u * REDUCE_MAX_DEGREE)
 
 typedef struct {
     phy_cas_rat coefficient;
@@ -819,6 +823,488 @@ static phy_status poly_to_ir(phy_cas *cas, const rational_poly *poly,
     return status;
 }
 
+/* ------------------------------------------------ exact Q[x] factorization */
+
+typedef struct {
+    int64_t degree;
+    unsigned multiplicity;
+    size_t coefficient_offset;
+} factor_record;
+
+typedef struct {
+    size_t count;
+    size_t coefficient_count;
+    factor_record records[REDUCE_MAX_DEGREE];
+    phy_cas_rat coefficients[REDUCE_MAX_FACTOR_COEFFICIENTS];
+} factor_workspace;
+
+static bool poly_is_one(const rational_poly *poly)
+{
+    return poly->degree == 0 && poly->coefficients[0].num == 1 &&
+           poly->coefficients[0].den == 1;
+}
+
+static phy_status poly_derivative(const rational_poly *poly,
+                                  rational_poly *out_derivative)
+{
+    poly_zero(out_derivative);
+    if (poly->degree == 0) {
+        return PHY_OK;
+    }
+    out_derivative->degree = poly->degree - 1;
+    for (int64_t degree = 1; degree <= poly->degree; ++degree) {
+        if (!phy_cas_rat_mul(poly->coefficients[degree],
+                             (phy_cas_rat){degree, 1},
+                             &out_derivative->coefficients[degree - 1])) {
+            return PHY_ERR_OVERFLOW;
+        }
+    }
+    poly_trim(out_derivative);
+    return PHY_OK;
+}
+
+/*
+ * Clear rational denominators and remove the integer content. The resulting
+ * primitive integer polynomial has exactly the same rational roots. Keeping
+ * this conversion bounded prevents the rational-root theorem from turning one
+ * calculator cell into billions of divisor trials.
+ */
+static phy_status poly_primitive_integers(
+    const rational_poly *poly,
+    int64_t out_coefficients[REDUCE_MAX_DEGREE + 1u])
+{
+    int64_t denominator_lcm = 1;
+    for (int64_t degree = 0; degree <= poly->degree; ++degree) {
+        if (!checked_gcd_lcm(denominator_lcm,
+                             poly->coefficients[degree].den,
+                             &denominator_lcm)) {
+            return PHY_ERR_OVERFLOW;
+        }
+    }
+
+    int64_t content = 0;
+    for (int64_t degree = 0; degree <= poly->degree; ++degree) {
+        const phy_cas_rat coefficient = poly->coefficients[degree];
+        const int64_t scale = denominator_lcm / coefficient.den;
+        if (coefficient.num > REDUCE_MAX_INTEGER_COEFFICIENT / scale ||
+            coefficient.num < -REDUCE_MAX_INTEGER_COEFFICIENT / scale) {
+            return PHY_ERR_TERM_LIMIT;
+        }
+        const int64_t integer = coefficient.num * scale;
+        out_coefficients[degree] = integer;
+        const int64_t magnitude = integer < 0 ? -integer : integer;
+        if (magnitude != 0) {
+            content =
+                content == 0 ? magnitude : positive_gcd(content, magnitude);
+        }
+    }
+    if (content == 0) {
+        return PHY_OK;
+    }
+    for (int64_t degree = 0; degree <= poly->degree; ++degree) {
+        out_coefficients[degree] /= content;
+    }
+    return PHY_OK;
+}
+
+static phy_status integer_divisors(phy_cas *cas, int64_t value,
+                                   int64_t out[REDUCE_MAX_DIVISORS],
+                                   size_t *out_count)
+{
+    *out_count = 0u;
+    if (value <= 0 || value > REDUCE_MAX_INTEGER_COEFFICIENT) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    for (int64_t divisor = 1; divisor <= value / divisor; ++divisor) {
+        phy_status status = phy_cas_step(cas);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (value % divisor != 0) {
+            continue;
+        }
+        if (*out_count >= REDUCE_MAX_DIVISORS) {
+            return PHY_ERR_TERM_LIMIT;
+        }
+        out[(*out_count)++] = divisor;
+        const int64_t paired = value / divisor;
+        if (paired != divisor) {
+            if (*out_count >= REDUCE_MAX_DIVISORS) {
+                return PHY_ERR_TERM_LIMIT;
+            }
+            out[(*out_count)++] = paired;
+        }
+    }
+    return PHY_OK;
+}
+
+static phy_status poly_has_value(phy_cas *cas, const rational_poly *poly,
+                                 phy_cas_rat value, bool *out_zero)
+{
+    phy_cas_rat accumulated = poly->coefficients[poly->degree];
+    for (int64_t degree = poly->degree; degree > 0; --degree) {
+        phy_status status = phy_cas_step(cas);
+        if (status != PHY_OK) {
+            return status;
+        }
+        phy_cas_rat product;
+        if (!phy_cas_rat_mul(accumulated, value, &product) ||
+            !phy_cas_rat_add(product, poly->coefficients[degree - 1],
+                             &accumulated)) {
+            return PHY_ERR_OVERFLOW;
+        }
+    }
+    *out_zero = accumulated.num == 0;
+    return PHY_OK;
+}
+
+/*
+ * Find one rational root, or prove that no rational root exists after
+ * exhausting the primitive integer polynomial's numerator/denominator
+ * divisors. If the bounded search cannot be exhausted, it returns a resource
+ * error rather than falsely declaring the polynomial root-free.
+ */
+static phy_status poly_rational_root(phy_cas *cas,
+                                     const rational_poly *poly,
+                                     phy_cas_rat *out_root,
+                                     bool *out_found)
+{
+    *out_found = false;
+    if (poly->degree == 0) {
+        return PHY_OK;
+    }
+    if (poly->degree == 1) {
+        phy_cas_rat negated;
+        if (!phy_cas_rat_mul(poly->coefficients[0],
+                             (phy_cas_rat){-1, 1}, &negated) ||
+            !rat_divide(negated, poly->coefficients[1], out_root)) {
+            return PHY_ERR_OVERFLOW;
+        }
+        *out_found = true;
+        return PHY_OK;
+    }
+
+    int64_t integers[REDUCE_MAX_DEGREE + 1u];
+    phy_status status = poly_primitive_integers(poly, integers);
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (integers[0] == 0) {
+        *out_root = (phy_cas_rat){0, 1};
+        *out_found = true;
+        return PHY_OK;
+    }
+
+    const int64_t constant =
+        integers[0] < 0 ? -integers[0] : integers[0];
+    const int64_t leading =
+        integers[poly->degree] < 0 ? -integers[poly->degree]
+                                  : integers[poly->degree];
+    int64_t numerators[REDUCE_MAX_DIVISORS];
+    int64_t denominators[REDUCE_MAX_DIVISORS];
+    size_t numerator_count = 0u;
+    size_t denominator_count = 0u;
+    status =
+        integer_divisors(cas, constant, numerators, &numerator_count);
+    if (status == PHY_OK) {
+        status = integer_divisors(
+            cas, leading, denominators, &denominator_count);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+
+    size_t trials = 0u;
+    for (size_t p = 0u; p < numerator_count; ++p) {
+        for (size_t q = 0u; q < denominator_count; ++q) {
+            phy_cas_rat positive;
+            if (!rat_divide((phy_cas_rat){numerators[p], 1},
+                            (phy_cas_rat){denominators[q], 1},
+                            &positive)) {
+                return PHY_ERR_OVERFLOW;
+            }
+            for (unsigned sign = 0u; sign < 2u; ++sign) {
+                if (++trials > REDUCE_MAX_ROOT_TRIALS) {
+                    return PHY_ERR_TERM_LIMIT;
+                }
+                phy_cas_rat candidate = positive;
+                if (sign != 0u) {
+                    candidate.num = -candidate.num;
+                }
+                bool zero = false;
+                status = poly_has_value(cas, poly, candidate, &zero);
+                if (status != PHY_OK) {
+                    return status;
+                }
+                if (zero) {
+                    *out_root = candidate;
+                    *out_found = true;
+                    return PHY_OK;
+                }
+            }
+        }
+    }
+    return PHY_OK;
+}
+
+static phy_status poly_divide_linear(const rational_poly *poly,
+                                     phy_cas_rat root,
+                                     rational_poly *out_quotient)
+{
+    rational_poly divisor;
+    poly_zero(&divisor);
+    divisor.degree = 1;
+    if (!phy_cas_rat_mul(root, (phy_cas_rat){-1, 1},
+                         &divisor.coefficients[0])) {
+        return PHY_ERR_OVERFLOW;
+    }
+    divisor.coefficients[1] = (phy_cas_rat){1, 1};
+    bool exact = false;
+    const phy_status status =
+        poly_divide_exact(poly, &divisor, out_quotient, &exact);
+    if (status != PHY_OK) {
+        return status;
+    }
+    return exact ? PHY_OK : PHY_ERR_CORRUPT_DOCUMENT;
+}
+
+static phy_status factor_record_push(factor_workspace *workspace,
+                                     const rational_poly *poly,
+                                     unsigned multiplicity)
+{
+    if (poly_is_one(poly)) {
+        return PHY_OK;
+    }
+    const size_t coefficient_count = (size_t)poly->degree + 1u;
+    if (workspace->count >= REDUCE_MAX_DEGREE || multiplicity == 0u ||
+        workspace->coefficient_count >
+            REDUCE_MAX_FACTOR_COEFFICIENTS - coefficient_count) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    factor_record *record = &workspace->records[workspace->count++];
+    record->degree = poly->degree;
+    record->multiplicity = multiplicity;
+    record->coefficient_offset = workspace->coefficient_count;
+    for (size_t index = 0u; index < coefficient_count; ++index) {
+        workspace->coefficients[workspace->coefficient_count++] =
+            poly->coefficients[index];
+    }
+    return PHY_OK;
+}
+
+/*
+ * A square-free polynomial over Q is completely factorable here when repeated
+ * rational-root extraction leaves degree at most three. A quadratic or cubic
+ * over Q with no rational root is irreducible; the same statement is false in
+ * degree four, which is why that boundary returns UNSUPPORTED.
+ */
+static phy_status factor_square_free(
+    phy_cas *cas, const rational_poly *poly, unsigned multiplicity,
+    factor_workspace *workspace)
+{
+    rational_poly remaining = *poly;
+    while (remaining.degree > 0) {
+        phy_cas_rat root;
+        bool found = false;
+        phy_status status =
+            poly_rational_root(cas, &remaining, &root, &found);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (!found) {
+            return remaining.degree <= 3
+                       ? factor_record_push(
+                             workspace, &remaining, multiplicity)
+                       : PHY_ERR_UNSUPPORTED;
+        }
+
+        rational_poly linear;
+        poly_zero(&linear);
+        linear.degree = 1;
+        if (!phy_cas_rat_mul(root, (phy_cas_rat){-1, 1},
+                             &linear.coefficients[0])) {
+            return PHY_ERR_OVERFLOW;
+        }
+        linear.coefficients[1] = (phy_cas_rat){1, 1};
+        status = factor_record_push(workspace, &linear, multiplicity);
+        if (status != PHY_OK) {
+            return status;
+        }
+        rational_poly quotient;
+        status = poly_divide_linear(&remaining, root, &quotient);
+        if (status != PHY_OK) {
+            return status;
+        }
+        remaining = quotient;
+    }
+    return PHY_OK;
+}
+
+/*
+ * Yun's characteristic-zero square-free decomposition. It separates repeated
+ * irreducible factors before the rational-root pass, so (x^2+1)^2 is proved
+ * and displayed as such even though x^2+1 has no rational root.
+ */
+static phy_status factor_complete(
+    phy_cas *cas, const rational_poly *monic,
+    factor_workspace *workspace)
+{
+    workspace->count = 0u;
+    workspace->coefficient_count = 0u;
+    rational_poly derivative;
+    rational_poly repeated;
+    rational_poly square_free_product;
+    poly_zero(&derivative);
+    poly_zero(&repeated);
+    poly_zero(&square_free_product);
+    phy_status status = poly_derivative(monic, &derivative);
+    if (status == PHY_OK) {
+        status = poly_gcd(cas, monic, &derivative, &repeated);
+    }
+    bool exact = false;
+    if (status == PHY_OK) {
+        status = poly_divide_exact(
+            monic, &repeated, &square_free_product, &exact);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (!exact) {
+        return PHY_ERR_CORRUPT_DOCUMENT;
+    }
+
+    rational_poly remaining_repeated = repeated;
+    rational_poly layer = square_free_product;
+    unsigned multiplicity = 1u;
+    while (!poly_is_one(&layer)) {
+        if (multiplicity > REDUCE_MAX_DEGREE) {
+            return PHY_ERR_CORRUPT_DOCUMENT;
+        }
+        rational_poly shared;
+        rational_poly component;
+        rational_poly next_repeated;
+        poly_zero(&shared);
+        poly_zero(&component);
+        poly_zero(&next_repeated);
+        status = poly_gcd(cas, &layer, &remaining_repeated, &shared);
+        if (status == PHY_OK) {
+            status =
+                poly_divide_exact(&layer, &shared, &component, &exact);
+        }
+        if (status == PHY_OK && exact) {
+            status = poly_divide_exact(
+                &remaining_repeated, &shared, &next_repeated, &exact);
+        }
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (!exact) {
+            return PHY_ERR_CORRUPT_DOCUMENT;
+        }
+        if (!poly_is_one(&component)) {
+            status = factor_square_free(
+                cas, &component, multiplicity, workspace);
+            if (status != PHY_OK) {
+                return status;
+            }
+        }
+        layer = shared;
+        remaining_repeated = next_repeated;
+        multiplicity++;
+    }
+    return poly_is_one(&remaining_repeated) ? PHY_OK
+                                            : PHY_ERR_CORRUPT_DOCUMENT;
+}
+
+static phy_status collect_factor_variables(
+    phy_cas *cas, phy_ir_ref expression,
+    phy_ir_ref out_variables[REDUCE_MAX_CANDIDATES], size_t *in_out_count)
+{
+    phy_status status = phy_cas_step(cas);
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (phy_ir_kind_of(cas->ir, expression) == PHY_IR_SYMBOL) {
+        const phy_ir_symbol symbol = phy_ir_head(cas->ir, expression);
+        if ((phy_ir_assumptions(cas->ir, symbol) &
+             (uint32_t)PHY_IR_ASSUME_CONSTANT) != 0u) {
+            return PHY_OK;
+        }
+        for (size_t index = 0u; index < *in_out_count; ++index) {
+            if (out_variables[index] == expression) {
+                return PHY_OK;
+            }
+        }
+        if (*in_out_count >= REDUCE_MAX_CANDIDATES) {
+            return PHY_ERR_UNSUPPORTED;
+        }
+        out_variables[(*in_out_count)++] = expression;
+        return PHY_OK;
+    }
+    const size_t children = phy_ir_child_count(cas->ir, expression);
+    for (size_t index = 0u; index < children; ++index) {
+        status = collect_factor_variables(
+            cas, phy_ir_child(cas->ir, expression, index), out_variables,
+            in_out_count);
+        if (status != PHY_OK) {
+            return status;
+        }
+    }
+    return PHY_OK;
+}
+
+static phy_status build_factorization(
+    phy_cas *cas, phy_ir_ref variable, phy_cas_rat leading,
+    const factor_workspace *workspace,
+    phy_ir_ref *out_ref)
+{
+    const size_t mark = phy_cas_scratch_mark(cas);
+    size_t offset = 0u;
+    phy_status status =
+        phy_cas_scratch_alloc(cas, workspace->count + 1u, &offset);
+    if (status != PHY_OK) {
+        return status;
+    }
+    size_t used = 0u;
+    phy_ir_ref coefficient = PHY_IR_NULL;
+    status = phy_cas_number_node(cas, leading, &coefficient);
+    if (status == PHY_OK && !phy_cas_is_integer(cas, coefficient, 1)) {
+        phy_cas_scratch_at(cas, offset)[used++] = coefficient;
+    }
+    for (size_t index = 0u;
+         index < workspace->count && status == PHY_OK; ++index) {
+        const factor_record *record = &workspace->records[index];
+        rational_poly polynomial;
+        poly_zero(&polynomial);
+        polynomial.degree = record->degree;
+        for (int64_t degree = 0; degree <= record->degree; ++degree) {
+            polynomial.coefficients[degree] =
+                workspace->coefficients[
+                    record->coefficient_offset + (size_t)degree];
+        }
+        phy_ir_ref factor = PHY_IR_NULL;
+        status = poly_to_ir(cas, &polynomial, variable, &factor);
+        if (status == PHY_OK && record->multiplicity > 1u) {
+            phy_ir_ref exponent = PHY_IR_NULL;
+            status = phy_cas_number_node(
+                cas,
+                (phy_cas_rat){(int64_t)record->multiplicity, 1},
+                &exponent);
+            if (status == PHY_OK) {
+                status = phy_cas_pow_node(cas, factor, exponent, &factor);
+            }
+        }
+        if (status == PHY_OK) {
+            phy_cas_scratch_at(cas, offset)[used++] = factor;
+        }
+    }
+    if (status == PHY_OK) {
+        status = phy_cas_mul_at(cas, offset, used, out_ref);
+    }
+    phy_cas_scratch_release(cas, mark);
+    return status;
+}
+
 /*
  * Cancel a hidden common factor when both sides are univariate polynomials
  * over Q.  Multivariate coefficients, non-symbol generators, and degree above
@@ -1040,4 +1526,86 @@ phy_status phy_cas_reduce(phy_cas *cas, phy_ir_ref expr, phy_ir_ref *out_ref)
     }
     const phy_ir_ref pair[2] = {numerator, inverse};
     return phy_cas_mul_node(cas, pair, 2u, out_ref);
+}
+
+phy_status phy_cas_factor(phy_cas *cas, phy_ir_ref expr,
+                          phy_ir_ref *out_ref)
+{
+    if (cas == NULL || out_ref == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    *out_ref = PHY_IR_NULL;
+    phy_cas_begin(cas);
+    if (phy_ir_kind_of(cas->ir, expr) == PHY_IR_KIND_INVALID) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+
+    phy_ir_ref simplified = PHY_IR_NULL;
+    phy_ir_ref expanded = PHY_IR_NULL;
+    phy_status status = phy_cas_simplify_node(cas, expr, &simplified);
+    if (status == PHY_OK) {
+        status = phy_cas_expand_node(cas, simplified, &expanded);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (phy_cas_is_exact(cas, expanded)) {
+        *out_ref = expanded;
+        return PHY_OK;
+    }
+
+    phy_ir_ref variables[REDUCE_MAX_CANDIDATES];
+    size_t variable_count = 0u;
+    status = collect_factor_variables(
+        cas, expanded, variables, &variable_count);
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (variable_count == 0u) {
+        *out_ref = expanded;
+        return PHY_OK;
+    }
+    if (variable_count != 1u) {
+        return PHY_ERR_UNSUPPORTED;
+    }
+
+    rational_poly polynomial;
+    bool fits = false;
+    status = poly_from_ir(
+        cas, expanded, variables[0], &polynomial, &fits);
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (!fits) {
+        return PHY_ERR_UNSUPPORTED;
+    }
+    if (poly_is_zero(&polynomial)) {
+        *out_ref = cas->zero;
+        return PHY_OK;
+    }
+    if (polynomial.degree == 0) {
+        *out_ref = expanded;
+        return PHY_OK;
+    }
+
+    const phy_cas_rat leading =
+        polynomial.coefficients[polynomial.degree];
+    status = poly_make_monic(&polynomial);
+    if (status != PHY_OK) {
+        return status;
+    }
+
+    const size_t bytes = sizeof(factor_workspace);
+    factor_workspace *workspace = NULL;
+    status = phy_cas_temp_alloc(cas, bytes, (void **)&workspace);
+    if (status != PHY_OK) {
+        return status;
+    }
+    status = factor_complete(cas, &polynomial, workspace);
+    if (status == PHY_OK) {
+        status = build_factorization(
+            cas, variables[0], leading, workspace, out_ref);
+    }
+    phy_cas_temp_free(cas, workspace, bytes);
+    return status;
 }

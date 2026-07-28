@@ -11,6 +11,7 @@
  *   simplify.c  the rewrite rules and the simplifying constructors;
  *   diff.c      differentiation and the dependence test it needs;
  *   normal.c    expansion, rational normal form, and the zero decision.
+ *   reduce.c    LCD cancellation and bounded Q[x] polynomial algorithms.
  *
  * The recursive walks here recurse once per expression level, exactly as the
  * IR's comparison, serialization, and parsing do, and are bounded by the same
@@ -180,6 +181,14 @@ phy_status phy_cas_scratch_alloc(phy_cas *cas, size_t count,
                                  size_t *out_offset);
 phy_ir_ref *phy_cas_scratch_at(phy_cas *cas, size_t offset);
 void phy_cas_scratch_release(phy_cas *cas, size_t mark);
+
+/*
+ * Bounded transient storage for algorithms whose work items are not IR refs.
+ * The allocation is charged to phy_cas_limits.max_bytes for its full lifetime;
+ * callers must release the exact byte count on every path.
+ */
+phy_status phy_cas_temp_alloc(phy_cas *cas, size_t bytes, void **out_pointer);
+void phy_cas_temp_free(phy_cas *cas, void *pointer, size_t bytes);
 
 /* Sorts `count` (key, value) ref pairs at `offset` by canonical key order. */
 void phy_cas_sort_pairs(phy_cas *cas, size_t offset, size_t count);

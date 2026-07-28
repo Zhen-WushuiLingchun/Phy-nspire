@@ -213,8 +213,8 @@ probe_tns=$(wc -c <"$BUILD_DIR/tensor_link_probe.tns")
 
 printf '\n  tensor core text as compiled %8d bytes\n' "$tensor_text"
 printf '  probe .tns (tensor + IR + platform) %6d bytes\n' "$probe_tns"
-printf '\n  Note: dist/phy-nspire.tns still contains none of this. The\n'
-printf '        application does not call the tensor core yet, so\n'
-printf '        --gc-sections drops it; the figure above is what the\n'
-printf '        curvature pipeline will pay when it does.\n\n'
+printf '\n  Note: the application now reaches the tensor core through the\n'
+printf '        evaluator. The isolated figure above measures this API\n'
+printf '        and its probe dependencies; it is not an incremental\n'
+printf '        product-size measurement.\n\n'
 printf '  OK\n'

@@ -34,12 +34,12 @@ Phy-nspire 是运行在 TI-Nspire CX II CAS 计算器上的**原生符号物理�
 
 ## 屏幕上能做什么
 
-打开 `examples/phy-nspire-cas-tour.tns`(110 个源 cell、101 个已验证输入,
+打开 `examples/phy-nspire-cas-tour.tns`(111 个源 cell、102 个已验证输入,
 随版本持续再生成)可以完整走一遍当前能力:
 
 | 领域 | 可执行的输入 |
 | --- | --- |
-| 标量 CAS | 精确表达式、赋值、`Simplify`、`FullSimplify`、`Expand`、`Together`、`Cancel`、`Numerator`、`Denominator`、`D`、`Integrate` |
+| 标量 CAS | 精确表达式、赋值、`Simplify`、`FullSimplify`、`Expand`、`Together`、`Cancel`、`Factor`、`Numerator`、`Denominator`、`D`、`Integrate` |
 | 张量/流形 | `Manifold`、`ComponentTensor`(0–4 阶、全 Up/Down 价态)、`Metric`、`VectorField`、`Component`、`Rank`、`Dimension` |
 | 外微分几何 | `DifferentialForm`、`Wedge`、`ExteriorD`、`InteriorProduct`、`LieDerivative`(Cartan 公式)、`HodgeStar`、`Volume`、`Degree` |
 | 李代数 / Yang–Mills | `LieGroup[SU2]`、`LieAlgebra`、`Generator`、`LieBracket`、`StructureConstant`、`Killing`、`GaugeConnection`、`FieldStrength`、`CovariantD`、`GaugeVariation`、`Bianchi`、`YangMillsLagrangian` |
@@ -127,6 +127,9 @@ Mathematica / Maple / SymPy / TI 自带 CAS 这一档的通用系统。这份清
 - `Together` / `Cancel` 先做 LCD 与可见因子精确除法,再用有界
   `Q[x]` 欧几里得 GCD(最高 48 次幂)消去隐藏的一元多项式公因子:
   `(x²−1)/(x²−2x+1) → (x+1)/(x−1)`;
+- `Factor` 先做 Yun 平方自由分解,再用有理根定理提取全部有理线性
+  因子;二/三次无有理根余因子可证明为 `Q[x]` 上不可约,无法完整判定
+  的高次平方自由余因子明确返回 `UNSUPPORTED`;
 - `FullSimplify` 接入判零级三角基:`cos²x − sin²x − cos2x → 0`、
   `tan x·cos x − sin x → 0`、`sin²+cos² → 1`(后者在普通正规形中即成立);
 - `D` 覆盖多项式、初等/反三角/双曲函数及
@@ -145,7 +148,7 @@ Mathematica / Maple / SymPy / TI 自带 CAS 这一档的通用系统。这份清
 
 | 能力 | 现状 | 主流 CAS 的做法 |
 | --- | --- | --- |
-| 多项式因式分解 / GCD | `Cancel` 已有最高 48 次幂的 `Q[x]` GCD;多元 GCD、`Factor`、`Apart` 尚未实现 | 模素数 Zassenhaus/LLL 因式分解、子结果式 GCD、部分分式 |
+| 多项式因式分解 / GCD | `Cancel` 已有最高 48 次幂的 `Q[x]` GCD;`Factor` 完整覆盖可由有理线性因子和至多三次不可约余因子组成的有界类;多元 GCD、一般高次因式分解和 `Apart` 尚缺 | 模素数 Zassenhaus/LLL 因式分解、子结果式 GCD、部分分式 |
 | 方程求解 | `Solve` 未实现 | 多项式求根、有理化、Gröbner 基、超越方程分支 |
 | 极限与级数 | `Limit`、`Series` 未实现 | Gruntz 算法、渐近级数环 |
 | 积分覆盖面 | 已覆盖反三角核、双曲线性核和高斯/误差函数;分部积分、一般有理函数/Risch 尚缺 | Risch 结构定理、Meijer-G 表驱动 |
@@ -161,7 +164,7 @@ Mathematica / Maple / SymPy / TI 自带 CAS 这一档的通用系统。这份清
 | Kerr 级表达式膨胀 | 稠密 Riemann 展开超设备预算一个量级(实测 190 万节点/144 MiB),Kerr 曲率暂缓 | 不透明标量(Σ、Δ)+ 边关系的定向归约;见 `docs/references/GENERAL_RELATIVITY.md` |
 
 设计立场需要说明:**没有浮点是刻意的**(精确性是整个判零体系的地基),
-但一个"求个数值看看"的受控数值层(区间或定点)在路线图上;`Factor/Apart` 一族
+但一个"求个数值看看"的受控数值层(区间或定点)在路线图上;类外 `Factor` 和 `Apart`
 返回 UNSUPPORTED 而不是伪装成不透明函数,也是刻意的——宁可诚实失败,
 不做看起来成功的空操作。
 

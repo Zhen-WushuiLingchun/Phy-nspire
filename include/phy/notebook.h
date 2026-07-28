@@ -34,7 +34,7 @@ extern "C" {
 #endif
 
 /*
- * The CAS tour carries about 110 source cells and evaluation owns one output
+ * The CAS tour carries about 111 source cells and evaluation owns one output
  * per input, so 192 total cells no longer held it.
  */
 #define PHY_NOTEBOOK_MAX_CELLS 256u

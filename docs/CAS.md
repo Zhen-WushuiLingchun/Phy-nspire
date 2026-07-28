@@ -170,6 +170,40 @@ whole denominator. It is deliberately univariate: a coefficient containing a
 second symbol does not get guessed to be a field element, and the pair stays
 explicit until the multivariate milestone in `CAS_FOUNDATION.md`.
 
+### Complete-on-success `Factor`
+
+`phy_cas_factor` and reader-facing `Factor[...]` reuse the same degree-48
+`Q[x]` view. They first extract the exact leading coefficient, make the
+polynomial monic, and run Yun's characteristic-zero square-free
+decomposition. This proves repeated irreducible factors such as
+
+```
+x^4 + 2 x^2 + 1  ->  (x^2 + 1)^2.
+```
+
+Each square-free layer is converted to a primitive integer polynomial and
+searched with the rational-root theorem. Integerized coefficient magnitudes
+are bounded at 1,000,000 and one root search is bounded at 4,096 candidates;
+exceeding either bound is a typed resource error, never a truncated search
+reported as root-free. Rational linear factors are extracted exactly. A
+remaining quadratic or cubic with no rational root is proved irreducible over
+`Q`, so examples such as
+
+```
+x^4 - 1  ->  (x - 1) (x + 1) (x^2 + 1)
+```
+
+are complete factorizations. A square-free residual of degree four or more
+with no rational root is `PHY_ERR_UNSUPPORTED`: absence of rational roots does
+not prove such a polynomial irreducible or split it into higher-degree
+factors. Thus `Factor[(x^2+1)(x^2+4)]` deliberately refuses until the modular
+factorization milestone, rather than returning the expanded polynomial as a
+misleading success.
+
+The factor-record workspace is charged to `phy_cas_limits.max_bytes` and
+released on success and every failure path. The public result is not built
+until the complete bounded factorization has succeeded.
+
 `phy_cas_full_simplify` — the notebook's `FullSimplify` — is the one door from
 the display normal form into this machinery. It runs the plain simplifier,
 then the trig-basis rational form, and returns whichever of the two prints
@@ -363,7 +397,8 @@ answers `UNKNOWN` rather than deciding anything about it.
 ## Not in this layer
 
 General integration, limits, series, and solving. Multivariate polynomial GCD,
-factoring, and partial fractions. Matrices. Dummy-index canonicalization,
+general high-degree polynomial factorization, and partial fractions. Matrices.
+Dummy-index canonicalization,
 contraction, and anything
 that consumes declared slot symmetries — this layer simplifies the operands of
 `PHY_IR_NCMUL`, `PHY_IR_TENSOR`, `PHY_IR_OPERATOR`, `PHY_IR_WEDGE` and
@@ -391,6 +426,8 @@ functions, assumptions, and each documented limit; the rational form and its
 identically-zero denominator; the trigonometric identities; **the four
 `sphere_2d` corpus entries above, with a negative control**; flat-space
 curvature vanishing; `INT64_MIN` exponent handling without signed overflow;
+Yun square-free layers, rational-root extraction, repeated and zero roots,
+factorization round trips, and the explicit unsupported high-degree boundary;
 empty sum/product identities; error-value propagation through differentiation;
 the step budget, cancellation, and the term limit;
 memoization measured in steps; a byte ceiling too small for a cache; and an
@@ -405,21 +442,15 @@ counts are recorded in `CAS_ACCEPTANCE.md` after each clean build.
 ## Device build
 
 Built with the pinned Ndless r2022 SDK and ARM GNU 14.3 toolchain using
-`-Os -marm`:
+`-Os -marm`. The isolated link check compiles the complete scalar layer to
+49,199 bytes of ARM text; its dependency-complete probe packages to 68,056
+bytes. These figures are deliberately measured by the link-check target rather
+than maintained as a hand-summed per-object table.
 
-| object                 | ARM text bytes |
-| ---------------------- | -------------- |
-| `src/cas/num.o`        | 1,828 |
-| `src/cas/engine.o`     | 3,209 |
-| `src/cas/simplify.o`   | 7,154 |
-| `src/cas/diff.o`       | 3,212 |
-| `src/cas/normal.o`     | 5,704 |
-| total                  | **21,107** |
-
-The application now calls the CAS through editable notebook cells. The current
-product, including persistence and nMarkdown's math typesetter, is 1,048,076
-bytes; `--gc-sections` still discards unreferenced tensor and future-physics
-modules.
+The application now calls the CAS and the typed physics backends through
+editable notebook cells. The current product, including persistence,
+nMarkdown's math typesetter, and the reachable evaluator stack, is 1,124,477
+bytes (17.9% of the 6 MiB ceiling).
 
 `make cas-link-check` closes the gap that leaves. It is the same guard as
 `make ir-link-check`, and `tools/link-check.sh` now serves both layers from one
@@ -436,12 +467,12 @@ dependency through its own gcd and its check passes, which is good evidence but
 not the check itself.
 
 `make cas-link-check` has been run with the real Ndless linker and packager:
-all **24/24** public entry points derived from `include/phy/cas.h` survive
-`--gc-sections`; the CAS+IR+platform probe packages to a **37,720-byte `.tns`**;
+all **29/29** public entry points derived from `include/phy/cas.h` survive
+`--gc-sections`; the CAS+IR+platform probe packages to a **68,056-byte `.tns`**;
 and no `_dtoa`, `_strtod`, `_printf_float`, libm, `stdio` formatting, or ARM
 soft-float helper reaches the image. Real IR atoms are ordered by their
 IEEE-754 bit keys rather than by executing a floating-point comparison. The
-corresponding IR check retains **50/50** entry points. Execution of the CAS
+corresponding IR check retains **53/53** entry points. Execution of the CAS
 probe on the physical CX II is also complete: on 2026-07-26,
 `phy-cas-smoke.tns` displayed **7/7 PASS** on the target OS 6.4.0.74 / Ndless
 r2022 calculator and `ESC` returned normally to Documents. That test is an

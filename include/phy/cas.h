@@ -349,6 +349,17 @@ phy_status phy_cas_full_simplify(phy_cas *cas, phy_ir_ref expr,
 phy_status phy_cas_reduce(phy_cas *cas, phy_ir_ref expr, phy_ir_ref *out_ref);
 
 /*
+ * Complete exact factorization over Q[x] on the bounded class documented in
+ * docs/CAS.md. The current kernel extracts rational linear factors, performs
+ * square-free decomposition, and proves irreducibility of residual factors of
+ * degree two or three. A higher-degree square-free residual that cannot yet be
+ * split is PHY_ERR_UNSUPPORTED; returning a merely partial product as a
+ * successful Factor result would be misleading.
+ */
+phy_status phy_cas_factor(phy_cas *cas, phy_ir_ref expr,
+                          phy_ir_ref *out_ref);
+
+/*
  * Decide whether `expr` is zero.
  *
  * PHY_CAS_ZERO means identically zero as a rational function, wherever the

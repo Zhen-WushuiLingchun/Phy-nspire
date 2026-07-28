@@ -313,21 +313,15 @@ life, so a leaked pool fails the suite.
 ## Device build
 
 The IR is in the device source list and compiles clean for ARM under the
-pinned toolchain. Measured with `-Os -marm`:
-
-| object            | text bytes |
-| ----------------- | ---------- |
-| `src/ir/ir.o`     | 8,008      |
-| `src/ir/order.o`  | 1,442      |
-| `src/ir/text.o`   | 5,442      |
-| total             | **14,892** |
+pinned toolchain. The current `make ir-link-check` measurement with
+`-Os -marm` is **15,363 bytes** of retained IR text.
 
 At the original IR landing, none of it was in `dist/phy-nspire.tns`: the
 13,440-byte Phase 0 shell referenced no IR symbol and `--gc-sections` removed
 it. That historical link-risk is why the probe below exists. The current
 notebook does call the IR, CAS, reader-facing parser, and 2D layout; the full
-product is now 1,048,076 bytes after persistence and the nMarkdown math slice
-were added.
+product is now 1,124,477 bytes after persistence, the nMarkdown math slice,
+and the reachable evaluator stack were added.
 
 Because link-time garbage collection hides the IR, the device build alone does
 not prove it *links*. A reference to a libc function Ndless newlib lacks would
@@ -339,9 +333,9 @@ go unnoticed until Phase 1 wired the notebook up.
 $ make ir-link-check
 == IR device link check ==
 
-  compiling 6 sources + probe
+  compiling 8 sources + probe
   linking
-  ok    50/50 public entry points retained
+  ok    53/53 public entry points retained
   ok    no _dtoa / _strtod / _printf_float in the image
   ok    packaged to a .tns
 ```
