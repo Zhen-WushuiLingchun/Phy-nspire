@@ -296,6 +296,26 @@ Maclaurin coefficient recurrences and exact composition currently cover
 that would introduce an unavailable transcendental coefficient is explicitly
 unsupported; it is never estimated with floating point.
 
+### Exact bounded `Limit`
+
+`phy_cas_limit` and reader-facing `Limit[expr,{x,a}]` reuse the formal-series
+valuation and leading coefficient above. A structurally certified continuous
+polynomial/rational or real-entire expression is substituted exactly.
+Removable singularities and supported analytic compositions fall through to a
+Laurent expansion. Positive and negative pole signs are proved from the exact
+leading coefficient, valuation parity, and the requested `FromAbove` or
+`FromBelow` direction. A two-sided request succeeds only when those directed
+answers agree.
+
+For `Infinity` and `-Infinity`, the implementation substitutes `x=1/t` or
+`x=-1/t` and takes the exact `t -> 0` limit from above. This proves polynomial
+and rational degree behavior without a separate floating-point heuristic.
+`Direction->"FromAbove"`/`"FromBelow"` and the shorter bare direction symbols
+are accepted at finite points. Oscillatory forms such as `Sin[1/x]`, unknown
+branch behavior, or a coefficient outside the current exact rational series
+domain return `PHY_ERR_UNSUPPORTED`; unequal finite directions return
+`PHY_ERR_DOMAIN`.
+
 ### Why trigonometry is reduced, and to what
 
 `research/corpus/gr_golden.json` forced this. Four `sphere_2d` entries — in the
@@ -408,7 +428,8 @@ have exact linear-inner antiderivatives. Every rule is tested by
 differentiating its result back to the input. Outside this class the result is
 the explicit typed head `Integrate[expr,var]`.
 
-`Pi`, `E`, `I`, and `EulerGamma` are protected constants. The first elementary
+`Pi`, `E`, `I`, `EulerGamma`, and directed-limit `Infinity` are protected
+constants. The first elementary
 table includes exact trigonometric values at supported multiples of `Pi`,
 positive exact square-factor extraction (`Sqrt[72] -> 6 Sqrt[2]`),
 `Gamma[n]` while `(n-1)!` fits `int64`, `Gamma[1/2]`, and the zero values of
@@ -480,7 +501,10 @@ answers `UNKNOWN` rather than deciding anything about it.
 
 ## Not in this layer
 
-General integration, limits, series, and solving. Complete general
+General integration, unrestricted asymptotic/branch limits, and solving.
+The exact bounded `Series`/`Normal` ring and the finite/directed/rational-
+infinity `Limit` subset live in `series.c` and `limit.c`; cases they cannot
+prove return a typed error rather than sampling. Complete general
 multivariate polynomial GCD and multivariate/algebraic-extension partial
 fractions. Matrices.
 Dummy-index canonicalization,
@@ -529,13 +553,13 @@ counts are recorded in `CAS_ACCEPTANCE.md` after each clean build.
 
 Built with the pinned Ndless r2022 SDK and ARM GNU 14.3 toolchain using
 `-Os -marm`. The isolated link check compiles the complete scalar layer to
-85,697 bytes of ARM text; its dependency-complete probe packages to 119,436
+87,815 bytes of ARM text; its dependency-complete probe packages to 121,640
 bytes. These figures are deliberately measured by the link-check target rather
 than maintained as a hand-summed per-object table.
 
 The application now calls the CAS and the typed physics backends through
 editable notebook cells. The current product, including persistence,
-nMarkdown's math typesetter, and the reachable evaluator stack, is 1,153,412
+nMarkdown's math typesetter, and the reachable evaluator stack, is 1,154,912
 bytes (18.3% of the 6 MiB ceiling).
 
 `make cas-link-check` closes the gap that leaves. It is the same guard as
@@ -553,8 +577,8 @@ dependency through its own gcd and its check passes, which is good evidence but
 not the check itself.
 
 `make cas-link-check` has been run with the real Ndless linker and packager:
-all **32/32** public entry points derived from `include/phy/cas.h` survive
-`--gc-sections`; the CAS+IR+platform probe packages to a **119,436-byte `.tns`**;
+all **33/33** public entry points derived from `include/phy/cas.h` survive
+`--gc-sections`; the CAS+IR+platform probe packages to a **121,640-byte `.tns`**;
 and no `_dtoa`, `_strtod`, `_printf_float`, libm, `stdio` formatting, or ARM
 soft-float helper reaches the image. Real IR atoms are ordered by their
 IEEE-754 bit keys rather than by executing a floating-point comparison. The

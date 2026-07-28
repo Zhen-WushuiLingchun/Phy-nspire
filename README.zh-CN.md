@@ -8,7 +8,7 @@ Phy-nspire 是运行在 TI-Nspire CX II CAS 计算器上的**原生符号物理�
 计算器,并以二维数学排版 + Markdown 笔记的形式呈现。
 
 - **目标设备**:TI-Nspire CX II CAS,OS 6.4.0.74,Ndless r2022
-- **程序体积**:1,145,490 字节(约 1.09 MiB，6 MiB 上限的 18.2%)
+- **程序体积**:1,154,912 字节(约 1.10 MiB，6 MiB 上限的 18.4%)
 - **实现语言**:C11 内核 + C++17 公式排版桥;同一份可移植内核同时构建
   主机测试二进制与设备 ARM 程序
 - **许可证**:GPL-3.0
@@ -35,12 +35,12 @@ Phy-nspire 是运行在 TI-Nspire CX II CAS 计算器上的**原生符号物理�
 
 ## 屏幕上能做什么
 
-打开 `examples/phy-nspire-cas-tour.tns`(112 个源 cell、103 个已验证输入,
+打开 `examples/phy-nspire-cas-tour.tns`(123 个源 cell、112 个已验证输入,
 随版本持续再生成)可以完整走一遍当前能力:
 
 | 领域 | 可执行的输入 |
 | --- | --- |
-| 标量 CAS | 精确表达式、赋值、`Simplify`、`FullSimplify`、`Expand`、`Together`、`Cancel`、`Factor`、`Apart`、`Numerator`、`Denominator`、`D`、`Integrate` |
+| 标量 CAS | 精确表达式、赋值、`Simplify`、`FullSimplify`、`Expand`、`Together`、`Cancel`、`Factor`、`Apart`、`Series`、`Normal`、有限/单侧/无穷远 `Limit`、`Numerator`、`Denominator`、`D`、`Integrate` |
 | 张量/流形 | `Manifold`、`ComponentTensor`(0–4 阶、全 Up/Down 价态)、`Metric`、`VectorField`、`Component`、`Rank`、`Dimension` |
 | 外微分几何 | `DifferentialForm`、`Wedge`、`ExteriorD`、`InteriorProduct`、`LieDerivative`(Cartan 公式)、`HodgeStar`、`Volume`、`Degree` |
 | 李代数 / Yang–Mills | `LieGroup[SU2]`、`LieAlgebra`、`Generator`、`LieBracket`、`StructureConstant`、`Killing`、`GaugeConnection`、`FieldStrength`、`CovariantD`、`GaugeVariation`、`Bianchi`、`YangMillsLagrangian` |
@@ -82,7 +82,7 @@ Riemann)列出**非零分量方程**,指标用坐标名标注,如
 ```sh
 cmake -S . -B build-review -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build build-review -j
-ctest --test-dir build-review          # 当前 Windows 33 个套件,199,526 条断言
+ctest --test-dir build-review          # 当前 Windows 34 个套件,213,505 条断言
 ```
 
 设备端(需要 Ndless SDK 与 arm-none-eabi 工具链,当前在 WSL 下验证):
@@ -93,7 +93,7 @@ make -j 8                              # 产物:dist/phy-nspire.tns
 ```
 
 另有 ASan/UBSan/Leak 全开的 `build-asan` 配置。当前合入门槛是
-Windows 严格配置 33/33、WSL ASan/UBSan/Leak 配置 35/35。
+Windows 严格配置 34/34、WSL ASan/UBSan/Leak 配置 36/36。
 
 ## 架构
 
@@ -141,7 +141,7 @@ Mathematica / Maple / SymPy / TI 自带 CAS 这一档的通用系统。这份清
 - `Integrate` 除线性内层类外,已覆盖
   `1/(1±u²)`、`1/√(1±u²)`、高斯 `exp(-u²)` 与 `Erf/Erfc`;
   每条新规则均以“再求导得到原式”验收,类外返回未求值的 `Integrate`;
-- `Pi/E/I/EulerGamma` 为受保护常量;支持常用三角特殊角、
+- `Pi/E/I/EulerGamma/Infinity` 为受保护常量;支持常用三角特殊角、
   `Sqrt[72] → 6√2`、`Gamma[n]`、`Gamma[1/2]` 与误差函数零值;
 - 判零/等价决策:多生成元有理函数域上的精确判定,带资源预算与
   增量降级策略;
@@ -154,7 +154,7 @@ Mathematica / Maple / SymPy / TI 自带 CAS 这一档的通用系统。这份清
 | --- | --- | --- |
 | 多项式因式分解 / GCD | `Cancel` 有最高 48 次的 `Q[x]` GCD 与带精确重构的有界多元消因子；`Factor` 已接通模导数 GCD/CRT、Berlekamp、Hensel 和精确 Zassenhaus 重组；`Apart` 已支持同一有界一元 `Q[x]` 域；完整稀疏多元 GCD 尚缺 | 更快的 van-Hoeij/LLL 重组、Brown/Zippel/子结果式多元 GCD、多元部分分式 |
 | 方程求解 | `Solve` 未实现 | 多项式求根、有理化、Gröbner 基、超越方程分支 |
-| 极限与级数 | `Limit`、`Series` 未实现 | Gruntz 算法、渐近级数环 |
+| 极限与级数 | 已有精确有界 Taylor/Laurent `Series`/`Normal`，以及有限点、显式单侧和有理无穷远 `Limit`；振荡、分支敏感和超出现有系数域的情形诚实返回类型化错误 | 更完整的渐近级数环、Gruntz 类比较与分支/条件系统 |
 | 积分覆盖面 | 已覆盖反三角核、双曲线性核和高斯/误差函数;分部积分、一般有理函数/Risch 尚缺 | Risch 结构定理、Meijer-G 表驱动 |
 | 根式化简 | 小型正有理根式可抽平方因子;`Sqrt[x²]` 仍保守保留(缺 `Abs`) | 根式正规形 + 分母有理化 + 假设驱动的 `|x|` |
 | 特殊值/常数表 | 常量和常见角已实现,尚无大规模恒等式/解析延拓表 | π/e 常数语义 + 大型特殊值表 |
@@ -183,8 +183,8 @@ Mathematica / Maple / SymPy / TI 自带 CAS 这一档的通用系统。这份清
 
 ## 测试与验收
 
-- Windows 严格配置 33/33，WSL ASan/UBSan/Leak 配置 35/35，
-  断言型测试合计 199,526 条检查;
+- Windows 严格配置 34/34，WSL ASan/UBSan/Leak 配置 36/36，
+  断言型测试合计 213,505 条检查;
 - GR 金标语料(`research/corpus/gr_golden.json`)由 SymPy 独立生成,
   设备管线的每个曲率分量与之精确判等;
 - 像素级回归:笔记本首帧渲染有 64 位指纹固定;

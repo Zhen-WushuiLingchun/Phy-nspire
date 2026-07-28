@@ -74,4 +74,13 @@ phy_status phy_series_compose_node(phy_cas *cas, const phy_series *outer,
                                    const phy_series *inner,
                                    phy_series *out_series);
 
+/*
+ * Expand one expression without resetting the public-operation budget.
+ * `order` is exclusive. This is shared by Series and Limit so the two
+ * commands cannot disagree about valuation or the leading coefficient.
+ */
+phy_status phy_series_expand_node(phy_cas *cas, phy_ir_ref expression,
+                                  phy_ir_ref variable, phy_ir_ref center,
+                                  int order, phy_series *out_series);
+
 #endif /* PHY_SERIES_INTERNAL_H */

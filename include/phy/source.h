@@ -37,6 +37,7 @@ typedef enum {
     PHY_SOURCE_INTEGRATE,
     PHY_SOURCE_SERIES,
     PHY_SOURCE_NORMAL,
+    PHY_SOURCE_LIMIT,
 
     /*
      * The two operations that read and write the notebook environment rather
@@ -48,6 +49,12 @@ typedef enum {
 } phy_source_operation;
 
 #define PHY_SOURCE_MAX_VARIABLES 8u
+
+typedef enum {
+    PHY_SOURCE_LIMIT_TWO_SIDED = 0,
+    PHY_SOURCE_LIMIT_FROM_ABOVE,
+    PHY_SOURCE_LIMIT_FROM_BELOW
+} phy_source_limit_direction;
 
 typedef struct {
     phy_source_operation operation;
@@ -69,6 +76,7 @@ typedef struct {
     phy_ir_ref parameter;
     unsigned series_order;
     bool normal_series; /* Normal[Series[...]] combined reader action */
+    phy_source_limit_direction limit_direction;
 } phy_source_command;
 
 /*

@@ -128,13 +128,16 @@ semantics implicitly.
 | `Integrate[expr,x,...]` | exact symbolic antiderivative on the documented linear-inner class; otherwise an explicit unevaluated `Integrate` |
 | `Series[expr,{x,a,n}]` | exact bounded Taylor/Laurent expansion through power `n`, retaining `O((x-a)^(n+1))` in typed `SeriesData` |
 | `Normal[series]` | remove a well-formed series order term; `Normal[Series[...]]` is supported as one combined reader action |
+| `Limit[expr,{x,a}]` | exact finite two-sided limit when both directions agree |
+| `Limit[expr,{x,a,FromAbove}]`, `Limit[expr,{x,a,FromBelow}]` | exact directed finite limit; `Direction->"FromAbove"` and `Direction->"FromBelow"` are equivalent spellings |
+| `Limit[expr,{x,Infinity}]`, `Limit[expr,{x,-Infinity}]` | exact rational/Laurent infinity limit through the certified `t=1/x` transform |
 
 Every command except assignment, a bare expression, and the two simplifies is
 scalar algebra, so `Expand[M]` on a manifold is `PHY_ERR_TYPE` rather than a
 silently ignored request.
 
-Registered but not implemented commands include `Limit`, `Solve`,
-`NSolve`, `Reduce`, `Refine`, and the
+Registered but not implemented commands include `Solve`, `NSolve`, `Reduce`,
+`Refine`, and the
 `Trig*` family. They return `PHY_ERR_UNSUPPORTED`. They are never accepted as
 opaque ordinary functions, because that would present a no-op as successful
 computer algebra.

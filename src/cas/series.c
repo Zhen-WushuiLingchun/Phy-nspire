@@ -1046,6 +1046,21 @@ static phy_status series_from_expr(phy_cas *cas, phy_ir_ref expression,
     return PHY_ERR_UNSUPPORTED;
 }
 
+phy_status phy_series_expand_node(phy_cas *cas, phy_ir_ref expression,
+                                  phy_ir_ref variable, phy_ir_ref center,
+                                  int order, phy_series *out_series)
+{
+    if (cas == NULL || expression == PHY_IR_NULL ||
+        phy_ir_kind_of(cas != NULL ? cas->ir : NULL, variable) !=
+            PHY_IR_SYMBOL ||
+        !phy_cas_is_exact(cas, center) || out_series == NULL ||
+        order < 1 || order > PHY_SERIES_MAX_EXPONENT) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    return series_from_expr(
+        cas, expression, variable, center, order, 0u, out_series);
+}
+
 static phy_status series_normal_expression(phy_cas *cas,
                                            const phy_series *series,
                                            phy_ir_ref *out_ref)
@@ -1161,9 +1176,8 @@ phy_status phy_cas_series(phy_cas *cas, phy_ir_ref expression,
     phy_cas_begin(cas);
     phy_series expansion;
     const int exclusive_order = (int)order + 1;
-    phy_status status = series_from_expr(
-        cas, expression, variable, center, exclusive_order, 0u,
-        &expansion);
+    phy_status status = phy_series_expand_node(
+        cas, expression, variable, center, exclusive_order, &expansion);
     if (status == PHY_OK && expansion.order > exclusive_order) {
         if (expansion.valuation >= exclusive_order) {
             status = phy_series_zero(

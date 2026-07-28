@@ -132,25 +132,32 @@ minimal-polynomial equality are still required before F3 can be closed.
 
 ### F4 — series, limits, and equations
 
-Status: the exact bounded Taylor/Laurent ring and reader-facing `Series` /
-`Normal` path are implemented. Rational expressions expand about arbitrary
+Status: the exact bounded Taylor/Laurent ring, reader-facing `Series` /
+`Normal` path, and a proof-producing exact `Limit` subset are implemented.
+Rational expressions expand about arbitrary
 exact rational centers; exact Maclaurin recurrence/composition covers
 `Exp`, `Sin`, `Cos`, `Tan`, `Sinh`, `Cosh`, `Tanh`, `ArcSin`, `ArcTan`,
 `Log[1+u]`, and rational binomial powers. Results are typed `SeriesData`
 operators, preserve the order term across save/open, and render through the
 shared MathTree backend. Coefficients presently remain rational: an expansion
 whose coefficients require an unsupported transcendental constant returns a
-typed unsupported result.
+typed unsupported result. Finite limits use exact substitution at structurally
+certified continuous points and the Laurent leading term at singular points.
+`Infinity` and `-Infinity` use an exact `t=1/x` reduction. One-sided pole signs
+come from coefficient sign and valuation parity; a two-sided pole with unequal
+directions is `PHY_ERR_DOMAIN`. Oscillatory, branch-sensitive, or otherwise
+undecidable cases remain typed unsupported rather than being sampled.
 
 The remaining implementation is governed by
 [`plans/2026-07-28-cas-foundation-f4-f5.md`](plans/2026-07-28-cas-foundation-f4-f5.md).
 The compiled reader matrix is `tests/corpus/cas_foundation_cases.inc`.
-`Limit`, `Solve`, `NSolve`, and `Reduce` remain typed unsupported until their
+`Solve`, `NSolve`, and `Reduce` remain typed unsupported until their
 corresponding exact backend, evaluator, display, and negative controls land
 together.
 
 - Truncated formal power-series arithmetic before reader-facing `Series`.
-- Limits driven by series/rational order, with explicit one-sided direction.
+- Extend the exact limit subset only alongside proof rules and negative
+  controls; there is no numerical sampling fallback.
 - Polynomial `Solve` before transcendental solving; solutions carry conditions
   rather than silently dropping branches.
 

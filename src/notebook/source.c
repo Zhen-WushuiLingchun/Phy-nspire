@@ -41,6 +41,7 @@ static const command_descriptor kCommands[] = {
     {"Integrate", PHY_SOURCE_INTEGRATE, true, true},
     {"Series", PHY_SOURCE_SERIES, true, false},
     {"Normal", PHY_SOURCE_NORMAL, true, false},
+    {"Limit", PHY_SOURCE_LIMIT, true, false},
     {"Set", PHY_SOURCE_ASSIGN, true, false},
     {"Clear", PHY_SOURCE_CLEAR, true, false},
     {"ClearAll", PHY_SOURCE_CLEAR, true, false},
@@ -50,7 +51,6 @@ static const command_descriptor kCommands[] = {
      * exists. Treating Limit[x] as an opaque mathematical function would look
      * successful while doing no limit computation.
      */
-    {"Limit", PHY_SOURCE_SIMPLIFY, false, false},
     {"Solve", PHY_SOURCE_SIMPLIFY, false, false},
     {"NSolve", PHY_SOURCE_SIMPLIFY, false, false},
     {"Reduce", PHY_SOURCE_SIMPLIFY, false, false},
@@ -216,6 +216,10 @@ static const constant_descriptor *known_constant(const char *name)
                            (uint32_t)PHY_IR_ASSUME_REAL |
                            (uint32_t)PHY_IR_ASSUME_POSITIVE |
                            (uint32_t)PHY_IR_ASSUME_NONZERO},
+        {"Infinity", (uint32_t)PHY_IR_ASSUME_CONSTANT |
+                         (uint32_t)PHY_IR_ASSUME_REAL |
+                         (uint32_t)PHY_IR_ASSUME_POSITIVE |
+                         (uint32_t)PHY_IR_ASSUME_NONZERO},
     };
     for (size_t i = 0u; i < sizeof constants / sizeof constants[0]; ++i) {
         /*
@@ -833,6 +837,82 @@ static void parse_series_body(source_reader *reader, char closer,
     }
 }
 
+static bool read_limit_direction(
+    source_reader *reader, phy_source_limit_direction *out_direction)
+{
+    char name[SOURCE_NAME_CAPACITY];
+    if (!read_name(reader, name)) {
+        return false;
+    }
+    if (name_equals(name, "Direction")) {
+        if (!take(reader, '-') || !take(reader, '>')) {
+            fail(reader, PHY_ERR_PARSE);
+            return false;
+        }
+        if (take(reader, '"')) {
+            if (!read_name(reader, name) || !take(reader, '"')) {
+                fail(reader, PHY_ERR_PARSE);
+                return false;
+            }
+        } else if (!read_name(reader, name)) {
+            fail(reader, PHY_ERR_PARSE);
+            return false;
+        }
+    }
+    if (name_equals(name, "FromAbove")) {
+        *out_direction = PHY_SOURCE_LIMIT_FROM_ABOVE;
+        return true;
+    }
+    if (name_equals(name, "FromBelow")) {
+        *out_direction = PHY_SOURCE_LIMIT_FROM_BELOW;
+        return true;
+    }
+    fail(reader, PHY_ERR_TYPE);
+    return false;
+}
+
+static void parse_limit_body(source_reader *reader, char closer,
+                             phy_source_command *command)
+{
+    command->expression = parse_expression(reader);
+    if (reader->status == PHY_OK && !take(reader, ',')) {
+        fail(reader, PHY_ERR_PARSE);
+    }
+    if (reader->status == PHY_OK && !take(reader, '{')) {
+        fail(reader, PHY_ERR_TYPE);
+    }
+    phy_ir_ref variable = PHY_IR_NULL;
+    phy_ir_ref point = PHY_IR_NULL;
+    if (reader->status == PHY_OK) {
+        variable = parse_expression(reader);
+    }
+    if (reader->status == PHY_OK && !take(reader, ',')) {
+        fail(reader, PHY_ERR_PARSE);
+    }
+    if (reader->status == PHY_OK) {
+        point = parse_expression(reader);
+    }
+    if (reader->status == PHY_OK &&
+        phy_ir_kind_of(reader->ir, variable) != PHY_IR_SYMBOL) {
+        fail(reader, PHY_ERR_TYPE);
+    }
+    if (reader->status == PHY_OK && take(reader, ',')) {
+        (void)read_limit_direction(
+            reader, &command->limit_direction);
+    }
+    if (reader->status == PHY_OK && !take(reader, '}')) {
+        fail(reader, PHY_ERR_PARSE);
+    }
+    if (reader->status == PHY_OK && !take(reader, closer)) {
+        fail(reader, PHY_ERR_PARSE);
+    }
+    if (reader->status == PHY_OK) {
+        command->variables[0] = variable;
+        command->variable_count = 1u;
+        command->parameter = point;
+    }
+}
+
 phy_status phy_source_parse(phy_ir_context *ir, const char *source,
                             phy_source_command *out_command,
                             size_t *out_error_offset)
@@ -917,6 +997,10 @@ phy_status phy_source_parse(phy_ir_context *ir, const char *source,
         if (reader.status == PHY_OK && !take(&reader, closer)) {
             fail(&reader, PHY_ERR_PARSE);
         }
+    } else if (descriptor != NULL && reader.status == PHY_OK &&
+               descriptor->operation == PHY_SOURCE_LIMIT) {
+        command.operation = PHY_SOURCE_LIMIT;
+        parse_limit_body(&reader, closer, &command);
     } else if (descriptor != NULL && reader.status == PHY_OK) {
         command.operation = descriptor->operation;
         if (descriptor->operation == PHY_SOURCE_SERIES) {

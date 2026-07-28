@@ -147,6 +147,25 @@ static void test_commands_and_functions(void)
     PHY_CHECK_EQ_STR(render(ir, command.variables[0]), "x");
     PHY_CHECK_EQ_INT(command.series_order, 5);
 
+    command = parse(ir, "Limit[Sin[x]/x,{x,0}]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_LIMIT);
+    PHY_CHECK_EQ_INT(command.variable_count, 1);
+    PHY_CHECK_EQ_STR(render(ir, command.expression),
+                     "(* (^ x -1) (fn sin x))");
+    PHY_CHECK_EQ_STR(render(ir, command.variables[0]), "x");
+    PHY_CHECK_EQ_STR(render(ir, command.parameter), "0");
+    PHY_CHECK_EQ_INT(
+        command.limit_direction, PHY_SOURCE_LIMIT_TWO_SIDED);
+    command = parse(
+        ir, "Limit[1/x,{x,0,Direction->\"FromAbove\"}]");
+    PHY_CHECK_EQ_INT(
+        command.limit_direction, PHY_SOURCE_LIMIT_FROM_ABOVE);
+    command = parse(ir, "Limit[1/x,{x,0,FromBelow}]");
+    PHY_CHECK_EQ_INT(
+        command.limit_direction, PHY_SOURCE_LIMIT_FROM_BELOW);
+    command = parse(ir, "Limit[x,{x,-Infinity}]");
+    PHY_CHECK_EQ_STR(render(ir, command.parameter), "(* -1 Infinity)");
+
     command = parse(ir, "ArcTan[Sinh[x]] + ArcSinh[TanH[y]]");
     PHY_CHECK_EQ_STR(
         render(ir, command.expression),
@@ -249,7 +268,12 @@ static void test_diagnostics_and_bounds(void)
         PHY_ERR_UNSUPPORTED);
     PHY_CHECK_EQ_INT(
         phy_source_parse(ir, "Limit[1/x]", &command, &error),
-        PHY_ERR_UNSUPPORTED);
+        PHY_ERR_PARSE);
+    PHY_CHECK_EQ_INT(
+        phy_source_parse(
+            ir, "Limit[1/x,{x,0,Direction->Sideways}]",
+            &command, &error),
+        PHY_ERR_TYPE);
     PHY_CHECK_EQ_INT(
         phy_source_parse(ir, "Series[x,x]", &command, &error),
         PHY_ERR_TYPE);
@@ -393,7 +417,7 @@ static void test_assignment_and_reserved_heads(void)
     PHY_CHECK_EQ_STR(phy_ir_symbol_name(ir, command.target), "gamma");
     PHY_CHECK_EQ_STR(render(ir, command.expression), "4");
 
-    command = parse(ir, "Pi + E + I + EulerGamma");
+    command = parse(ir, "Pi + E + I + EulerGamma + Infinity");
     const uint32_t constant_mask = (uint32_t)PHY_IR_ASSUME_CONSTANT;
     PHY_CHECK((phy_ir_assumptions(ir, phy_ir_intern(ir, "Pi")) &
                constant_mask) != 0u);
@@ -402,6 +426,8 @@ static void test_assignment_and_reserved_heads(void)
     PHY_CHECK((phy_ir_assumptions(ir, phy_ir_intern(ir, "I")) &
                constant_mask) != 0u);
     PHY_CHECK((phy_ir_assumptions(ir, phy_ir_intern(ir, "EulerGamma")) &
+               constant_mask) != 0u);
+    PHY_CHECK((phy_ir_assumptions(ir, phy_ir_intern(ir, "Infinity")) &
                constant_mask) != 0u);
     PHY_CHECK_EQ_INT(phy_source_parse(ir, "2 = x", &command, &error),
                      PHY_ERR_PARSE);

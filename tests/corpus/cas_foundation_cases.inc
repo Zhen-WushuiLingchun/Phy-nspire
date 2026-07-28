@@ -18,14 +18,14 @@ PHY_FOUNDATION_CASE(
     PHY_OK, "composed_analytic_series")
 PHY_FOUNDATION_CASE(
     limit_removable, "Limit", "Limit[(x^2-1)/(x-1),{x,1}]",
-    PHY_ERR_UNSUPPORTED, "finite_exact_limit")
+    PHY_OK, "finite_exact_limit")
 PHY_FOUNDATION_CASE(
     limit_one_sided_pole, "Limit",
-    "Limit[1/x,{x,0,FromAbove}]", PHY_ERR_UNSUPPORTED,
+    "Limit[1/x,{x,0,FromAbove}]", PHY_OK,
     "directed_infinite_limit")
 PHY_FOUNDATION_CASE(
     limit_infinity, "Limit", "Limit[(3x^4+1)/(2x^4-x),{x,Infinity}]",
-    PHY_ERR_UNSUPPORTED, "rational_infinity_limit")
+    PHY_OK, "rational_infinity_limit")
 PHY_FOUNDATION_CASE(
     solve_linear, "Solve", "Solve[3x-2==0,x]",
     PHY_ERR_UNSUPPORTED, "exact_rational_solution")

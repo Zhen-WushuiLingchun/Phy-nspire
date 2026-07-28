@@ -310,6 +310,34 @@ phy_status phy_cas_series(phy_cas *cas, phy_ir_ref expr, phy_ir_ref var,
 phy_status phy_cas_series_normal(phy_cas *cas, phy_ir_ref expr,
                                  phy_ir_ref *out_ref);
 
+/* --------------------------------------------------------------- limits */
+
+typedef enum {
+    /* A finite two-sided limit exists only when both directed limits agree. */
+    PHY_CAS_LIMIT_TWO_SIDED = 0,
+    /* x approaches the point through values greater than the point. */
+    PHY_CAS_LIMIT_FROM_ABOVE,
+    /* x approaches the point through values less than the point. */
+    PHY_CAS_LIMIT_FROM_BELOW
+} phy_cas_limit_direction;
+
+/*
+ * Exact, proof-producing subset of real limits.
+ *
+ * `point` is an exact integer/rational, the symbol Infinity, or -Infinity.
+ * Finite regular points are decided by exact substitution. Removable
+ * singularities, supported analytic compositions and poles are decided from
+ * the same exact Laurent-series leading term used by phy_cas_series().
+ * Infinity is reduced to a one-sided expansion in t=1/x. A pole returns the
+ * canonical symbolic Infinity or -Infinity; unequal left/right results return
+ * PHY_ERR_DOMAIN, and an undecidable/oscillatory case returns
+ * PHY_ERR_UNSUPPORTED. No numeric sampling is used.
+ */
+phy_status phy_cas_limit(phy_cas *cas, phy_ir_ref expr, phy_ir_ref var,
+                         phy_ir_ref point,
+                         phy_cas_limit_direction direction,
+                         phy_ir_ref *out_ref);
+
 /* ------------------------------------------------------------ the zero decision */
 
 /*

@@ -596,6 +596,18 @@ static phy_status apply_scalar_operation(phy_env *env,
                        : status;
         }
         return phy_cas_series_normal(env->cas, value, out_ref);
+    case PHY_SOURCE_LIMIT:
+        if (command->variable_count != 1u ||
+            command->parameter == PHY_IR_NULL) {
+            return PHY_ERR_CORRUPT_DOCUMENT;
+        }
+        if (eval_lookup(
+                env, phy_ir_head(env->ir, command->variables[0]), NULL)) {
+            return PHY_ERR_TYPE;
+        }
+        return phy_cas_limit(
+            env->cas, value, command->variables[0], command->parameter,
+            (phy_cas_limit_direction)command->limit_direction, out_ref);
     default:
         break;
     }

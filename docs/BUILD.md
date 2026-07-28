@@ -219,12 +219,12 @@ Measured on the pinned ARM toolchain on 2026-07-28:
 - SU(N) colour: 23/23 APIs retained, 4,924 bytes of layer text, 52,764-byte
   probe package;
 - evaluator plus complete backend stack: 15/15 public evaluator APIs retained
-  from 40 portable sources, 29,233 bytes of evaluator text, 207,004-byte
+  from 41 portable sources, 29,334 bytes of evaluator text, 209,232-byte
   isolated probe;
 - all four isolated probes contain no float formatter, libm call, or ARM
   soft-float helper.
 
-A clean product build from the same source is 1,153,412 bytes (18.3% of the
+A clean product build from the same source is 1,154,912 bytes (18.4% of the
 6 MiB ceiling). The product includes nMarkdown/FreeType/HarfBuzz and therefore
 has different retained dependencies from the exact isolated probes; the
 no-float statement above is specifically a property of those native symbolic

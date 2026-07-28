@@ -282,6 +282,33 @@ static void test_series_reader_and_evaluator(void)
     fixture_close(&f);
 }
 
+static void test_limit_reader_and_evaluator(void)
+{
+    fixture f = fixture_open();
+    expect_scalar(&f, "Limit[(x^2-1)/(x-1),{x,1}]", "2");
+    expect_scalar(&f, "Limit[Sin[x]/x,{x,0}]", "1");
+    expect_scalar(
+        &f, "Limit[(1-Cos[x])/x^2,{x,0}]", "(rat 1 2)");
+    expect_scalar(
+        &f, "Limit[1/x,{x,0,FromAbove}]", "Infinity");
+    expect_scalar(
+        &f, "Limit[1/x,{x,0,Direction->\"FromBelow\"}]",
+        "(* -1 Infinity)");
+    expect_status(&f, "Limit[1/x,{x,0}]", PHY_ERR_DOMAIN);
+    expect_scalar(
+        &f, "Limit[(3x^4+1)/(2x^4-x),{x,Infinity}]",
+        "(rat 3 2)");
+    expect_scalar(
+        &f, "Limit[x,{x,-Infinity}]", "(* -1 Infinity)");
+    expect_status(
+        &f, "Limit[Sin[1/x],{x,0}]", PHY_ERR_UNSUPPORTED);
+
+    expect_scalar(&f, "a = 3", "3");
+    expect_status(&f, "Limit[x,{a,0}]", PHY_ERR_TYPE);
+    expect_status(&f, "Infinity = 3", PHY_ERR_TYPE);
+    fixture_close(&f);
+}
+
 static void test_clear_and_reset(void)
 {
     fixture f = fixture_open();
@@ -1302,6 +1329,7 @@ int main(void)
     PHY_TEST_CASE(test_scalar_state_flows_between_cells);
     PHY_TEST_CASE(test_scalar_elementary_foundation);
     PHY_TEST_CASE(test_series_reader_and_evaluator);
+    PHY_TEST_CASE(test_limit_reader_and_evaluator);
     PHY_TEST_CASE(test_clear_and_reset);
     PHY_TEST_CASE(test_binding_rejects_reserved_and_captured_names);
     PHY_TEST_CASE(test_manifolds_and_forms);

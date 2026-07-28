@@ -661,6 +661,136 @@ static void test_public_series_allocation_failure_is_transactional(void)
     PHY_CHECK(failures >= 4u);
 }
 
+static void check_limit(fixture *f, const char *expression,
+                        phy_ir_ref point,
+                        phy_cas_limit_direction direction,
+                        const char *expected)
+{
+    phy_ir_ref result = PHY_IR_NULL;
+    const phy_status status = phy_cas_limit(
+        f->cas, parse_ir(f, expression), f->x, point, direction,
+        &result);
+    if (status != PHY_OK) {
+        fprintf(stderr, "  Limit[%s] failed: %d\n", expression,
+                (int)status);
+    }
+    PHY_CHECK_EQ_INT(status, PHY_OK);
+    PHY_CHECK_EQ_STR(render_ref(f, result), expected);
+}
+
+static void test_public_exact_limits(void)
+{
+    fixture f = open_fixture();
+    check_limit(
+        &f, "(+ x y)", f.zero, PHY_CAS_LIMIT_TWO_SIDED, "y");
+    check_limit(
+        &f, "(* (+ (^ x 2) -1) (^ (+ x -1) -1))", f.one,
+        PHY_CAS_LIMIT_TWO_SIDED, "2");
+    check_limit(
+        &f, "(* (fn sin x) (^ x -1))", f.zero,
+        PHY_CAS_LIMIT_TWO_SIDED, "1");
+    check_limit(
+        &f, "(* (+ 1 (* -1 (fn cos x))) (^ x -2))", f.zero,
+        PHY_CAS_LIMIT_TWO_SIDED, "(rat 1 2)");
+
+    check_limit(
+        &f, "(^ x -1)", f.zero, PHY_CAS_LIMIT_FROM_ABOVE,
+        "Infinity");
+    check_limit(
+        &f, "(^ x -1)", f.zero, PHY_CAS_LIMIT_FROM_BELOW,
+        "(* -1 Infinity)");
+    check_limit(
+        &f, "(^ x -2)", f.zero, PHY_CAS_LIMIT_TWO_SIDED,
+        "Infinity");
+    phy_ir_ref result = f.one;
+    PHY_CHECK_EQ_INT(
+        phy_cas_limit(
+            f.cas, parse_ir(&f, "(^ x -1)"), f.x, f.zero,
+            PHY_CAS_LIMIT_TWO_SIDED, &result),
+        PHY_ERR_DOMAIN);
+    PHY_CHECK(result == f.one);
+
+    const phy_ir_ref infinity = parse_ir(&f, "Infinity");
+    const phy_ir_ref negative_infinity =
+        parse_ir(&f, "(* -1 Infinity)");
+    check_limit(
+        &f, "x", infinity, PHY_CAS_LIMIT_TWO_SIDED, "Infinity");
+    check_limit(
+        &f, "x", negative_infinity, PHY_CAS_LIMIT_TWO_SIDED,
+        "(* -1 Infinity)");
+    check_limit(
+        &f,
+        "(* (+ (* 3 (^ x 4)) 1) "
+        "(^ (+ (* 2 (^ x 4)) (* -1 x)) -1))",
+        infinity, PHY_CAS_LIMIT_TWO_SIDED, "(rat 3 2)");
+    check_limit(
+        &f, "(^ x -1)", infinity, PHY_CAS_LIMIT_TWO_SIDED, "0");
+
+    result = f.one;
+    PHY_CHECK_EQ_INT(
+        phy_cas_limit(
+            f.cas, parse_ir(&f, "(fn sin (^ x -1))"), f.x, f.zero,
+            PHY_CAS_LIMIT_TWO_SIDED, &result),
+        PHY_ERR_UNSUPPORTED);
+    PHY_CHECK(result == f.one);
+    PHY_CHECK_EQ_INT(
+        phy_cas_limit(
+            f.cas, f.x, f.one, f.zero, PHY_CAS_LIMIT_TWO_SIDED,
+            &result),
+        PHY_ERR_INVALID_ARGUMENT);
+    PHY_CHECK_EQ_INT(
+        phy_cas_limit(
+            f.cas, f.x, f.x, f.y, PHY_CAS_LIMIT_TWO_SIDED, &result),
+        PHY_ERR_TYPE);
+    PHY_CHECK_EQ_INT(
+        phy_cas_limit(
+            f.cas, f.x, f.x, infinity, PHY_CAS_LIMIT_FROM_ABOVE,
+            &result),
+        PHY_ERR_INVALID_ARGUMENT);
+    close_fixture(&f);
+}
+
+static void test_public_limit_budgets_are_transactional(void)
+{
+    phy_cas_limits limits;
+    memset(&limits, 0, sizeof limits);
+    limits.max_steps = 1u;
+    fixture bounded = open_fixture_with_limits(&limits);
+    phy_ir_ref output = bounded.one;
+    PHY_CHECK_EQ_INT(
+        phy_cas_limit(
+            bounded.cas,
+            parse_ir(&bounded, "(* (fn sin x) (^ x -1))"),
+            bounded.x, bounded.zero, PHY_CAS_LIMIT_TWO_SIDED,
+            &output),
+        PHY_ERR_TIMEOUT);
+    PHY_CHECK(output == bounded.one);
+    close_fixture(&bounded);
+
+    unsigned failures = 0u;
+    for (size_t fail_after = 1u; fail_after <= 32u; ++fail_after) {
+        fixture f = open_fixture();
+        const phy_ir_ref expression = parse_ir(
+            &f, "(* (+ (^ x 2) -1) (^ (+ x -1) -1))");
+        output = f.one;
+        phy_host_fail_alloc_after((unsigned)fail_after);
+        const phy_status status = phy_cas_limit(
+            f.cas, expression, f.x, f.one,
+            PHY_CAS_LIMIT_TWO_SIDED, &output);
+        phy_host_fail_alloc_after(0u);
+        if (status != PHY_OK) {
+            failures++;
+            PHY_CHECK(
+                status == PHY_ERR_OUT_OF_MEMORY ||
+                status == PHY_ERR_MEMORY_LIMIT);
+            PHY_CHECK(output == f.one);
+        }
+        phy_ir_clear_error(f.ir);
+        close_fixture(&f);
+    }
+    PHY_CHECK(failures >= 4u);
+}
+
 int main(void)
 {
     if (phy_platform_init() != PHY_OK) {
@@ -679,6 +809,8 @@ int main(void)
     PHY_TEST_CASE(test_public_rational_and_analytic_series);
     PHY_TEST_CASE(
         test_public_series_allocation_failure_is_transactional);
+    PHY_TEST_CASE(test_public_exact_limits);
+    PHY_TEST_CASE(test_public_limit_budgets_are_transactional);
     const int result = PHY_TEST_REPORT("test_series");
     phy_platform_shutdown();
     return result;

@@ -49,7 +49,8 @@ std::string_view display_symbol(std::string_view name)
     static constexpr Mapping kMappings[] = {
         {"Alpha", u8"Α"},   {"Beta", u8"Β"},    {"Chi", u8"Χ"},
         {"Delta", u8"Δ"},   {"Epsilon", u8"Ε"}, {"Eta", u8"Η"},
-        {"Gamma", u8"Γ"},   {"Iota", u8"Ι"},    {"Kappa", u8"Κ"},
+        {"Gamma", u8"Γ"},   {"Infinity", u8"∞"}, {"Iota", u8"Ι"},
+        {"Kappa", u8"Κ"},
         {"Lambda", u8"Λ"},  {"Mu", u8"Μ"},      {"Nu", u8"Ν"},
         {"Omega", u8"Ω"},   {"Omicron", u8"Ο"}, {"Phi", u8"Φ"},
         {"Pi", u8"π"},      {"Psi", u8"Ψ"},     {"Rho", u8"Ρ"},
