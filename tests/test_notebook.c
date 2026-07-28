@@ -472,6 +472,58 @@ static void test_notebook_frame_fixture(void)
     phy_platform_shutdown();
 }
 
+/*
+ * A Kerr curvature pass saturates the interning IR long before it completes.
+ * Interned nodes are permanent, so before the context rebuild existed this
+ * wedged the whole session: every later cell -- 1+1 included -- failed on
+ * its first interned node until the document was reopened. The rebuild keeps
+ * the session alive and quarantines the offender so a replay converges.
+ */
+static void test_saturated_context_recovers(void)
+{
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    phy_notebook *notebook = phy_notebook_create();
+    PHY_CHECK(notebook != NULL);
+
+    static const char *const kKerr[] = {
+        "K=Manifold[{tk,rk,u,phk},Lorentzian]",
+        "Sg=rk^2+ak^2*u^2",
+        "Dl=rk^2-2*mk*rk+ak^2",
+        "gk=Metric[K,{{-(1-2*mk*rk/Sg),0,0,-2*mk*rk*ak*(1-u^2)/Sg},"
+        "{0,Sg/Dl,0,0},{0,0,Sg/(1-u^2),0},{-2*mk*rk*ak*(1-u^2)/Sg,0,0,"
+        "(rk^2+ak^2+2*mk*rk*ak^2*(1-u^2)/Sg)*(1-u^2)}}]",
+    };
+    size_t index = 0u;
+    for (size_t i = 0u; i < sizeof kKerr / sizeof kKerr[0]; ++i) {
+        PHY_CHECK_EQ_INT(phy_notebook_add_input(notebook, kKerr[i], &index),
+                         PHY_OK);
+        PHY_CHECK_EQ_INT(phy_notebook_evaluate(notebook, index), PHY_OK);
+    }
+    size_t heavy = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_notebook_add_input(notebook, "ck=Curvature[gk]", &heavy),
+        PHY_OK);
+    PHY_CHECK(phy_notebook_evaluate(notebook, heavy) != PHY_OK);
+
+    /* The session survives: a later cell still computes. */
+    size_t light = 0u;
+    PHY_CHECK_EQ_INT(phy_notebook_add_input(notebook, "1+1", &light),
+                     PHY_OK);
+    PHY_CHECK_EQ_INT(phy_notebook_evaluate(notebook, light), PHY_OK);
+    expect_expression(notebook, light + 1u, "2");
+
+    /* A replay skips the quarantined input instead of refilling the fresh
+       context, and the offender still reports its failure honestly. */
+    PHY_CHECK_EQ_INT(phy_notebook_evaluate_all(notebook), PHY_OK);
+    expect_expression(notebook, light + 1u, "2");
+    phy_notebook_cell_view view;
+    PHY_CHECK(phy_notebook_cell(notebook, heavy, &view));
+    PHY_CHECK(view.status != PHY_OK);
+
+    phy_notebook_destroy(notebook);
+    phy_platform_shutdown();
+}
+
 int main(void)
 {
     PHY_TEST_CASE(test_seeded_cell_model_and_exact_results);
@@ -484,6 +536,7 @@ int main(void)
     PHY_TEST_CASE(test_markdown_latex_uses_native_typesetter);
     PHY_TEST_CASE(test_markdown_mixed_flow_wraps);
     PHY_TEST_CASE(test_markdown_body_grid_editing);
+    PHY_TEST_CASE(test_saturated_context_recovers);
     PHY_TEST_CASE(test_notebook_frame_fixture);
     return PHY_TEST_REPORT("test_notebook");
 }

@@ -43,6 +43,16 @@ consequences are visible in the shell:
   with an empty environment. `FILE` > `Run all cells` replays it in order, which
   is `phy_notebook_evaluate_all`.
 
+An evaluation heavy enough to fill the permanent interning IR — a Kerr
+curvature attempt is the measured example — used to wedge the whole session:
+every later cell failed on its first interned node until the document was
+reopened. The notebook now probes for that state after any failed evaluation
+(one canary intern), rebuilds its IR/CAS/environment with every cell's
+expression re-read from its stored text, and quarantines the offending input
+so `Run all cells` converges instead of refilling the fresh context. Bindings
+do not survive the rebuild, so every output goes stale — which is exactly
+what stale is for. Running the quarantined cell directly retries it.
+
 Every executable input has an independent `RUN` badge in its upper-right
 corner. The badge has a tested hit rectangle: clicking the card body only
 selects and edits it, while clicking `RUN` reevaluates that one input. The

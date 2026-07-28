@@ -51,12 +51,27 @@ typedef struct {
      * serialized.
      */
     int height;
+    /*
+     * This input saturated the interning IR and forced a context rebuild.
+     * phy_notebook_evaluate_all skips it so the replay cannot fill the
+     * fresh context again; running the cell directly retries it. Runtime
+     * only, cleared whenever the cell is evaluated again.
+     */
+    bool poisoned;
 } notebook_cell;
 
 struct phy_notebook {
     phy_ir_context *ir;
     phy_cas *cas;
     phy_env *env;
+    /*
+     * Bumped each time a saturated context is torn down and rebuilt.
+     * phy_notebook_evaluate_all watches it to know its bindings are gone
+     * and the replay must start over.
+     */
+    uint32_t generation;
+    /* Monotonic salt for the wedge canary; see context_wedged(). */
+    uint32_t canary;
     notebook_cell cells[PHY_NOTEBOOK_MAX_CELLS];
     size_t count;
     size_t selected;

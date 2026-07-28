@@ -351,6 +351,62 @@ static phy_status insert_cell(phy_notebook *notebook, size_t index,
     return PHY_OK;
 }
 
+/*
+ * The ceilings a stateful physics evaluator needs rather than the ones a
+ * two-cell scalar demo needed. A 4D curvature pass interns several thousand
+ * nodes and the IR has no collection, so a document that computes one and
+ * then edits a cell has to be able to compute it again. The limits stay
+ * limits: an intentionally explosive expression still fails as a typed
+ * PHY_ERR_NODE_LIMIT rather than exhausting the calculator.
+ *
+ * Headroom above the measured tour peak (~15k nodes / 1 MiB through the
+ * Schwarzschild extras and the eight-gamma trace). Boyer-Lindquist Kerr
+ * curvature stays out of reach: even on the rational u = cos(theta) chart
+ * the Riemann normalization interns 1.9 million nodes and 144 MiB on a
+ * host before Ricci -- fourteen times this ceiling -- until the CAS gains
+ * a normal form that keeps Sigma/Delta symbolic. Pools grow on demand, so
+ * an unused ceiling costs no calculator memory.
+ */
+#define NOTEBOOK_IR_MAX_NODES 131072u
+#define NOTEBOOK_IR_MAX_BYTES (4096u * 1024u)
+
+/* The engine trio every notebook context needs, in dependency order. */
+static phy_status create_engines(phy_ir_context **out_ir, phy_cas **out_cas,
+                                 phy_env **out_env)
+{
+    phy_ir_limits ir_limits;
+    phy_ir_limits_defaults(&ir_limits);
+    ir_limits.max_nodes = NOTEBOOK_IR_MAX_NODES;
+    ir_limits.max_depth = 64u;
+    ir_limits.max_children = 1024u;
+    ir_limits.max_bytes = NOTEBOOK_IR_MAX_BYTES;
+    phy_ir_context *ir = phy_ir_context_create(&ir_limits);
+    if (ir == NULL) {
+        return PHY_ERR_OUT_OF_MEMORY;
+    }
+
+    phy_cas_limits cas_limits;
+    phy_cas_limits_defaults(&cas_limits);
+    cas_limits.max_steps = 1000000u;
+    cas_limits.max_bytes = 1024u * 1024u;
+    phy_cas *cas = phy_cas_create(ir, &cas_limits);
+    if (cas == NULL) {
+        phy_ir_context_destroy(ir);
+        return PHY_ERR_OUT_OF_MEMORY;
+    }
+
+    phy_env *env = phy_env_create(cas);
+    if (env == NULL) {
+        phy_cas_destroy(cas);
+        phy_ir_context_destroy(ir);
+        return PHY_ERR_OUT_OF_MEMORY;
+    }
+    *out_ir = ir;
+    *out_cas = cas;
+    *out_env = env;
+    return PHY_OK;
+}
+
 phy_notebook *phy_notebook_create(void)
 {
     phy_notebook *notebook = phy_alloc(sizeof *notebook);
@@ -360,49 +416,8 @@ phy_notebook *phy_notebook_create(void)
     memset(notebook, 0, sizeof *notebook);
     notebook->next_execution = 1u;
 
-    /*
-     * The ceilings a stateful physics evaluator needs rather than the ones a
-     * two-cell scalar demo needed. A 4D curvature pass interns several thousand
-     * nodes and the IR has no collection, so a document that computes one and
-     * then edits a cell has to be able to compute it again. The limits stay
-     * limits: an intentionally explosive expression still fails as a typed
-     * PHY_ERR_NODE_LIMIT rather than exhausting the calculator.
-     */
-    phy_ir_limits ir_limits;
-    phy_ir_limits_defaults(&ir_limits);
-    /*
-     * Headroom above the measured tour peak (~15k nodes / 1 MiB through the
-     * Schwarzschild extras and the eight-gamma trace). Boyer-Lindquist Kerr
-     * curvature was measured at two million nodes and 151 MiB on a host --
-     * out of reach of any ceiling here until the CAS gains a rational
-     * normal form that keeps Sigma/Delta symbolic. Pools grow on demand, so
-     * an unused ceiling costs no calculator memory.
-     */
-    ir_limits.max_nodes = 131072u;
-    ir_limits.max_depth = 64u;
-    ir_limits.max_children = 1024u;
-    ir_limits.max_bytes = 4096u * 1024u;
-    notebook->ir = phy_ir_context_create(&ir_limits);
-    if (notebook->ir == NULL) {
-        phy_free(notebook, sizeof *notebook);
-        return NULL;
-    }
-
-    phy_cas_limits cas_limits;
-    phy_cas_limits_defaults(&cas_limits);
-    cas_limits.max_steps = 1000000u;
-    cas_limits.max_bytes = 1024u * 1024u;
-    notebook->cas = phy_cas_create(notebook->ir, &cas_limits);
-    if (notebook->cas == NULL) {
-        phy_ir_context_destroy(notebook->ir);
-        phy_free(notebook, sizeof *notebook);
-        return NULL;
-    }
-
-    notebook->env = phy_env_create(notebook->cas);
-    if (notebook->env == NULL) {
-        phy_cas_destroy(notebook->cas);
-        phy_ir_context_destroy(notebook->ir);
+    if (create_engines(&notebook->ir, &notebook->cas, &notebook->env) !=
+        PHY_OK) {
         phy_free(notebook, sizeof *notebook);
         return NULL;
     }
@@ -513,12 +528,84 @@ static void mark_following_stale(phy_notebook *notebook, size_t after)
     }
 }
 
+/*
+ * Can the context still intern anything? Not a percentage question: pool
+ * growth holds the old and new buffers at once, so a heavy evaluation can
+ * exhaust the byte budget at a power-of-two node count far below max_nodes
+ * -- Kerr wedges at 32767 nodes of the 131072 ceiling -- and after that
+ * every fresh node fails. The canary is an integer no document would
+ * contain, salted so each probe demands a genuinely new node; a healthy
+ * context pays about seventy bytes per failed evaluation for the answer.
+ */
+static bool context_wedged(phy_notebook *notebook)
+{
+    const int64_t salt = INT64_MIN + 1 + (int64_t)notebook->canary;
+    notebook->canary++;
+    return phy_ir_integer(notebook->ir, salt) == PHY_IR_NULL;
+}
+
+/*
+ * A heavy evaluation can run the interning IR to its ceiling, and interned
+ * nodes are permanent -- after that every later cell fails on its first
+ * allocation, and before this function existed only reopening the document
+ * recovered. So the notebook rebuilds its context instead: a fresh
+ * IR/CAS/environment, every cell's expression re-read from its stored text,
+ * every non-markdown cell marked stale. Bindings do not survive -- stale is
+ * the honest display for exactly that.
+ *
+ * Output expressions longer than the migration buffer lose their expansion
+ * and fall back to the descriptor line; their value was going stale either
+ * way, and re-running the cell recomputes it.
+ */
+static phy_status rebuild_context(phy_notebook *notebook)
+{
+    phy_ir_context *ir = NULL;
+    phy_cas *cas = NULL;
+    phy_env *env = NULL;
+    const phy_status status = create_engines(&ir, &cas, &env);
+    if (status != PHY_OK) {
+        return status;
+    }
+
+    for (size_t i = 0u; i < notebook->count; ++i) {
+        notebook_cell *cell = &notebook->cells[i];
+        phy_ir_ref migrated = PHY_IR_NULL;
+        if (cell->kind == PHY_NOTEBOOK_CELL_INPUT) {
+            if (cell->secondary[0] != '\0') {
+                (void)phy_ir_read(ir, cell->secondary, &migrated, NULL);
+            }
+        } else if (cell->expression != PHY_IR_NULL) {
+            char text[2048];
+            size_t length = 0u;
+            if (phy_ir_write(notebook->ir, cell->expression, text,
+                             sizeof text, &length) == PHY_OK) {
+                (void)phy_ir_read(ir, text, &migrated, NULL);
+            }
+        }
+        cell->expression = migrated;
+        cell->height = 0;
+        if (cell->kind != PHY_NOTEBOOK_CELL_MARKDOWN) {
+            cell->stale = true;
+        }
+    }
+
+    phy_env_destroy(notebook->env);
+    phy_cas_destroy(notebook->cas);
+    phy_ir_context_destroy(notebook->ir);
+    notebook->ir = ir;
+    notebook->cas = cas;
+    notebook->env = env;
+    notebook->generation++;
+    return PHY_OK;
+}
+
 phy_status phy_notebook_evaluate(phy_notebook *notebook, size_t input_index)
 {
     if (notebook == NULL || input_index >= notebook->count ||
         notebook->cells[input_index].kind != PHY_NOTEBOOK_CELL_INPUT) {
         return PHY_ERR_INVALID_ARGUMENT;
     }
+    notebook->cells[input_index].poisoned = false;
 
     notebook_cell *output = NULL;
     phy_status status = ensure_output(notebook, input_index, &output);
@@ -586,6 +673,16 @@ phy_status phy_notebook_evaluate(phy_notebook *notebook, size_t input_index)
     }
     mark_following_stale(notebook, input_index + 1u);
     notebook->dirty = true;
+    if (status != PHY_OK && context_wedged(notebook)) {
+        /*
+         * The failed evaluation filled the permanent IR; without a rebuild
+         * every later cell would fail too, MemoryStatus[] included. A
+         * rebuild that itself fails leaves the notebook as wedged as it
+         * already was, so its status is not the cell's status.
+         */
+        notebook->cells[input_index].poisoned = true;
+        (void)rebuild_context(notebook);
+    }
     ensure_selected_visible(notebook);
     return status;
 }
@@ -601,17 +698,32 @@ phy_status phy_notebook_evaluate_all(phy_notebook *notebook)
      * from an empty one. Every input runs; the first failing status is
      * reported, and later cells still run so the reader sees which of them
      * depended on the failure.
+     *
+     * A cell that saturates the context rebuilds it mid-replay, which
+     * discards every binding made so far -- so the replay restarts, with
+     * the offender quarantined. Each restart quarantines one more input,
+     * so the loop converges however many heavy cells the document holds.
      */
     phy_env_reset(notebook->env);
     phy_status first_error = PHY_OK;
-    for (size_t i = 0u; i < notebook->count; ++i) {
-        if (notebook->cells[i].kind != PHY_NOTEBOOK_CELL_INPUT) {
+    size_t i = 0u;
+    while (i < notebook->count) {
+        if (notebook->cells[i].kind != PHY_NOTEBOOK_CELL_INPUT ||
+            notebook->cells[i].poisoned) {
+            i++;
             continue;
         }
+        const uint32_t generation = notebook->generation;
         const phy_status status = phy_notebook_evaluate(notebook, i);
         if (status != PHY_OK && first_error == PHY_OK) {
             first_error = status;
         }
+        if (notebook->generation != generation) {
+            phy_env_reset(notebook->env);
+            i = 0u;
+            continue;
+        }
+        i++;
     }
     return first_error;
 }

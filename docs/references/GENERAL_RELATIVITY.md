@@ -204,12 +204,35 @@ budget allowed for this work. This is a known-hard case rather than a surprise �
 Kerr is the first non-diagonal metric here, its `g_tphi` cross term makes the
 inverse metric dense, and every downstream contraction inherits that density.
 
-Kerr is therefore excluded from the MVP in both directions: no committed golden
-values, and no live device computation. Reaching it needs a targeted
-simplification strategy — the standard approach is to work in terms of
-`Sigma = r^2 + a^2 cos^2(theta)` and `Delta = r^2 - 2Mr + a^2` rather than
-expanding, and to substitute `u = cos(theta)` so the components become rational
-— not merely more patience. Treat it as its own piece of work.
+Re-measured 2026-07-28 against the native pipeline with the LCD rational form
+and known-factor cancellation, on a host with the resource ceilings lifted:
+
+- On the trigonometric Boyer-Lindquist chart, `Curvature` interned 3.0M IR
+  nodes / 278 MiB in 124 s and still failed.
+- On the rational `u = cos(theta)` chart the picture is qualitatively better
+  — the inverse metric and every Christoffel symbol are cheap (14k nodes),
+  and with experimental normalization gating the full bundle completed with
+  `RicciScalar = 0` proved exactly — but Riemann normalization still interned
+  1.9M nodes / 144 MiB in 10 s, `ZeroQ[Einstein]` stayed `Unknown`, and the
+  Kretschmann invariant did not reduce to Henry's closed form. The wall is
+  `expand_factored` on the dense Riemann components, whose expanded
+  numerators dwarf their factored spelling.
+
+The notebook's IR ceiling is 131072 nodes / 4 MiB, so the gap to the device
+is more than an order of magnitude before wall-clock is even considered.
+
+Kerr therefore stays excluded in both directions: no committed golden values,
+and no live device computation. Reaching it needs a targeted simplification
+strategy — keep `Sigma = r^2 + a^2 cos^2(theta)` and
+`Delta = r^2 - 2Mr + a^2` as opaque scalars with side relations rather than
+expanding through them — not merely more patience. Treat it as its own piece
+of work.
+
+What the 2026-07-28 attempt did produce: a notebook that survives trying.
+A heavy evaluation used to fill the permanent interning IR and wedge every
+later cell until the document was reopened; the notebook now detects the
+wedge with a canary intern, rebuilds its context, and quarantines the
+offending input (`rebuild_context` in src/notebook/notebook.c).
 
 For when that work happens, the target closed form for the Kerr Kretschmann
 scalar is:
