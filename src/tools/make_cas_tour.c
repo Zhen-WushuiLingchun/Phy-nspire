@@ -73,6 +73,7 @@ static const tour_cell kTour[] = {
      "$$d^2=0,\\quad \\mathcal{L}_v=d\\iota_v+\\iota_vd$$"},
     {TOUR_INPUT, "a=DifferentialForm[M,1,{0,Sin[theta]}]", NULL},
     {TOUR_INPUT, "ExteriorD[a]", NULL},
+    {TOUR_INPUT, "ExteriorD[ExteriorD[a]]", NULL},
     {TOUR_INPUT, "v=VectorField[M,{1,0}]", NULL},
     {TOUR_INPUT, "InteriorProduct[a,v]", NULL},
     {TOUR_INPUT, "LieDerivative[a,v]", NULL},
