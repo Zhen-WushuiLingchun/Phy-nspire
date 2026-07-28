@@ -71,6 +71,9 @@ int main(void)
         &b, &a, &quotient, &remainder));
     sink((unsigned)phy_bigint_divide_exact(&b, &a, &quotient));
     sink((unsigned)phy_bigint_gcd(&a, &b, &result));
+    uint32_t word_remainder = 0u;
+    sink((unsigned)phy_bigint_mod_u32(&b, 65521u, &word_remainder));
+    sink(word_remainder);
 
     phy_bigrat x;
     phy_bigrat y;

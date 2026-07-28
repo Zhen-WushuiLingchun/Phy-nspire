@@ -307,6 +307,45 @@ static void test_integer_division_and_gcd(void)
     fixture_close(&f);
 }
 
+static void test_integer_word_modulus_bridge(void)
+{
+    fixture f = fixture_open();
+    phy_bigint value;
+    PHY_CHECK_EQ_INT(phy_bigint_init(f.exact, &value), PHY_OK);
+    read_integer(
+        &value, "1234567890123456789012345678901234567890");
+
+    uint32_t remainder = UINT32_MAX;
+    PHY_CHECK_EQ_INT(
+        phy_bigint_mod_u32(&value, 65521u, &remainder), PHY_OK);
+    PHY_CHECK_EQ_INT(remainder, 5138);
+    PHY_CHECK_EQ_INT(
+        phy_bigint_mod_u32(&value, 4294967291u, &remainder), PHY_OK);
+    PHY_CHECK_EQ_INT(remainder, 2241632293u);
+    PHY_CHECK_EQ_INT(
+        phy_bigint_mod_u32(&value, 2u, &remainder), PHY_OK);
+    PHY_CHECK_EQ_INT(remainder, 0);
+
+    PHY_CHECK_EQ_INT(phy_bigint_negate(&value, &value), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_bigint_mod_u32(&value, 65521u, &remainder), PHY_OK);
+    PHY_CHECK_EQ_INT(remainder, 60383);
+
+    remainder = 77u;
+    PHY_CHECK_EQ_INT(
+        phy_bigint_mod_u32(&value, 0u, &remainder), PHY_ERR_DOMAIN);
+    PHY_CHECK_EQ_INT(remainder, 77);
+    PHY_CHECK_EQ_INT(
+        phy_bigint_mod_u32(NULL, 5u, &remainder),
+        PHY_ERR_INVALID_ARGUMENT);
+    PHY_CHECK_EQ_INT(
+        phy_bigint_mod_u32(&value, 5u, NULL),
+        PHY_ERR_INVALID_ARGUMENT);
+
+    phy_bigint_destroy(&value);
+    fixture_close(&f);
+}
+
 static int64_t model_gcd(int64_t left, int64_t right)
 {
     left = left < 0 ? -left : left;
@@ -548,6 +587,7 @@ int main(void)
     PHY_TEST_CASE(test_integer_add_subtract_and_aliasing);
     PHY_TEST_CASE(test_integer_multiply_and_power);
     PHY_TEST_CASE(test_integer_division_and_gcd);
+    PHY_TEST_CASE(test_integer_word_modulus_bridge);
     PHY_TEST_CASE(test_integer_small_model_exhaustive);
     PHY_TEST_CASE(test_integer_resource_and_cancel_contracts);
     PHY_TEST_CASE(test_rational_normalization_and_arithmetic);

@@ -79,6 +79,13 @@ integer coefficients; promoted inputs outside that search return
 `PHY_ERR_UNSUPPORTED`. General factorization must replace that enumerator,
 not silently widen its trial count.
 
+The next modular layer is now present: a fixed-footprint exact `F_p[x]` kernel
+with verified-prime contexts, Euclidean division/GCD, modular powers,
+square-free decisions, and deterministic Berlekamp factorization. The bigint
+domain exposes a non-truncating Euclidean `mod_u32` bridge. See
+[`POLYNOMIAL.md`](POLYNOMIAL.md). Hensel lifting and certified recombination
+remain open, so this foundation does not yet widen reader-facing `Factor`.
+
 ### F3 — exact number domains
 
 Status: native bounded-memory arbitrary-precision integers/rationals are

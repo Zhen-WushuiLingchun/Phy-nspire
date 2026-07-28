@@ -105,6 +105,14 @@ phy_status phy_bigint_divide_exact(const phy_bigint *dividend,
 phy_status phy_bigint_gcd(const phy_bigint *left, const phy_bigint *right,
                           phy_bigint *out_gcd);
 
+/*
+ * Euclidean remainder in one machine word. The result is always in
+ * [0, modulus), including for a negative input. This is the bridge used by
+ * modular polynomial algorithms; it never truncates the bigint first.
+ */
+phy_status phy_bigint_mod_u32(const phy_bigint *value, uint32_t modulus,
+                              uint32_t *out_remainder);
+
 typedef struct {
     phy_bigint numerator;
     phy_bigint denominator;

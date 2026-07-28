@@ -1054,3 +1054,32 @@ phy_status phy_bigint_gcd(const phy_bigint *left, const phy_bigint *right,
     }
     return phy_exact_operation_end(context, status);
 }
+
+phy_status phy_bigint_mod_u32(const phy_bigint *value, uint32_t modulus,
+                              uint32_t *out_remainder)
+{
+    if (!phy_bigint_shallow_valid(value) || out_remainder == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    if (modulus == 0u) {
+        return PHY_ERR_DOMAIN;
+    }
+    phy_exact_context *context = value->context;
+    phy_status status = phy_exact_operation_begin(context);
+    uint64_t remainder = 0u;
+    for (size_t index = value->count;
+         status == PHY_OK && index-- != 0u;) {
+        status = phy_exact_step(context, 1u);
+        if (status == PHY_OK) {
+            remainder =
+                ((remainder << 32u) | value->limbs[index]) % modulus;
+        }
+    }
+    if (status == PHY_OK && value->sign < 0 && remainder != 0u) {
+        remainder = (uint64_t)modulus - remainder;
+    }
+    if (status == PHY_OK) {
+        *out_remainder = (uint32_t)remainder;
+    }
+    return phy_exact_operation_end(context, status);
+}

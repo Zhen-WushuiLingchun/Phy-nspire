@@ -116,6 +116,7 @@ SOURCES := \
     src/exact/algebraic.c \
     src/cas/num.c \
     src/cas/big_num.c \
+    src/cas/finite_poly.c \
     src/cas/engine.c \
     src/cas/simplify.c \
     src/cas/diff.c \
