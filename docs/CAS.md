@@ -321,19 +321,26 @@ domain return `PHY_ERR_UNSUPPORTED`; unequal finite directions return
 `phy_cas_solve` and reader-facing `Solve[equation,x]` reuse the exact Q[x]
 factorizer rather than maintaining a second polynomial representation.
 The equation is converted to one reduced rational numerator and denominator.
-All numerator factors must be linear or real quadratic: linear roots remain
-exact rationals, and quadratic roots remain exact radicals through the typed
-power node. Multiplicity stays in the factor workspace while the returned
+Every numerator factor must be completely certified by the bounded factorizer.
+Linear roots remain exact rationals, real quadratic roots remain exact radicals
+through the typed power node, and real roots of irreducible higher-degree
+factors are represented as `Root[List[a0,...,an],k]`. The coefficient list is
+in increasing degree order. `k` is one-based in increasing order among the
+factor's real roots, as proved by one exact Sturm chain and disjoint rational
+isolating intervals; it does not yet claim Mathematica's full complex-root
+ordering. Multiplicity stays in the factor workspace while the returned
 `List[List[Rule[x,root]],...]` contains distinct roots.
 
 Every candidate is substituted back into the numerator with the exact zero
-decision. Candidates that make the denominator zero are excluded. An
-undecidable verification aborts the whole operation, as does any irreducible
-factor of degree three or more; no verified prefix is returned as if it were a
-complete solution. Constant false equations return an empty list, while an
-identity returns `PHY_ERR_UNSUPPORTED` until the evaluator has a typed
-conditional solution-set representation. Non-real quadratics remain assigned
-to the forthcoming Gaussian-rational/algebraic complex layer.
+decision. A higher-degree `Root` candidate instead carries the exact
+factorization/Sturm certificate; the reduced numerator and denominator are
+proved coprime in Q[x], so its denominator exclusion is decided without
+numeric substitution. An undecidable factor aborts the whole operation; no
+verified prefix is returned as if it were a complete solution. Constant false
+equations return an empty list, while an identity returns
+`PHY_ERR_UNSUPPORTED` until the evaluator has a typed conditional solution-set
+representation. Non-real quadratics and non-real roots remain assigned to the
+forthcoming Gaussian-rational/algebraic complex layer.
 
 ### Why trigonometry is reduced, and to what
 
@@ -572,14 +579,14 @@ counts are recorded in `CAS_ACCEPTANCE.md` after each clean build.
 
 Built with the pinned Ndless r2022 SDK and ARM GNU 14.3 toolchain using
 `-Os -marm`. The isolated link check compiles the complete scalar layer to
-90,601 bytes of ARM text; its dependency-complete probe packages to 124,528
+92,875 bytes of ARM text; its dependency-complete probe packages to 135,616
 bytes. These figures are deliberately measured by the link-check target rather
 than maintained as a hand-summed per-object table.
 
 The application now calls the CAS and the typed physics backends through
 editable notebook cells. The current product, including persistence,
-nMarkdown's math typesetter, and the reachable evaluator stack, is 1,156,629
-bytes (18.3% of the 6 MiB ceiling).
+nMarkdown's math typesetter, and the reachable evaluator stack, is 1,161,533
+bytes (18.5% of the 6 MiB ceiling).
 
 `make cas-link-check` closes the gap that leaves. It is the same guard as
 `make ir-link-check`, and `tools/link-check.sh` now serves both layers from one
@@ -597,7 +604,7 @@ not the check itself.
 
 `make cas-link-check` has been run with the real Ndless linker and packager:
 all **34/34** public entry points derived from `include/phy/cas.h` survive
-`--gc-sections`; the CAS+IR+platform probe packages to a **124,528-byte `.tns`**;
+`--gc-sections`; the CAS+IR+platform probe packages to a **135,616-byte `.tns`**;
 and no `_dtoa`, `_strtod`, `_printf_float`, libm, `stdio` formatting, or ARM
 soft-float helper reaches the image. Real IR atoms are ordered by their
 IEEE-754 bit keys rather than by executing a floating-point comparison. The

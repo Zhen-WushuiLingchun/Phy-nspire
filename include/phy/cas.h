@@ -344,20 +344,23 @@ phy_status phy_cas_limit(phy_cas *cas, phy_ir_ref expr, phy_ir_ref var,
  * Exact bounded solution of one scalar equation in one symbol.
  *
  * The current certified class is a rational function over Q[var] whose
- * reduced numerator factors completely into linear and real quadratic
- * factors within the degree-48 polynomial kernel. Linear roots are exact
- * rationals and quadratic roots are exact radicals. Candidate roots at which
- * the reduced denominator vanishes are excluded. Multiplicity is retained by
- * the factorizer but the reader-facing solution list contains distinct roots.
+ * reduced numerator factors completely within the degree-48 polynomial
+ * kernel. Linear roots are exact rationals, real quadratic roots are exact
+ * radicals, and real roots of irreducible higher-degree factors are exact
+ * Root[List[a0,...,an], k] descriptors backed by Sturm isolation. Here k is
+ * one-based in increasing order among that factor's real roots; complex-root
+ * ordering is not claimed. Candidate roots at which the reduced denominator
+ * vanishes are excluded. Multiplicity is retained by the factorizer but the
+ * reader-facing solution list contains distinct roots.
  *
  * The result uses Mathematica-shaped typed IR:
  *
  *     List[List[Rule[var, root]], ...]
  *
  * A false constant equation returns an empty List. An identity (infinitely
- * many solutions), an irreducible factor of degree three or more, a
- * non-polynomial/transcendental equation, or a non-real quadratic returns
- * PHY_ERR_UNSUPPORTED. No numeric root finder is used.
+ * many solutions), a non-polynomial/transcendental equation, or any factor
+ * requiring an unavailable complex root returns PHY_ERR_UNSUPPORTED. No
+ * numeric root finder is used and no partial solution list is published.
  */
 phy_status phy_cas_solve(phy_cas *cas, phy_ir_ref equation, phy_ir_ref var,
                          phy_ir_ref *out_ref);

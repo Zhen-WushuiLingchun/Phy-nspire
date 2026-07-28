@@ -67,6 +67,26 @@ phy_status phy_algebraic_count_real_roots(
     uint32_t *out_count);
 
 /*
+ * Isolate every real root of one primitive square-free integer polynomial.
+ *
+ * On success, out_values[0..*out_count) are newly owned algebraic values in
+ * strictly increasing real order. Each has a disjoint exact rational interval
+ * containing exactly one root. The caller destroys the values individually,
+ * or destroys the context to reclaim all of them.
+ *
+ * The routine constructs one Sturm chain and bisects inside a certified
+ * Cauchy bound. It never samples floating point. `value_capacity` must be at
+ * least the number of real roots; otherwise PHY_ERR_TERM_LIMIT is returned.
+ * Failure is transactional: no value is published and every output slot is
+ * left NULL.
+ */
+phy_status phy_algebraic_isolate_real_roots(
+    phy_algebraic_context *context,
+    const char *const *coefficients, size_t coefficient_count,
+    phy_real_algebraic **out_values, size_t value_capacity,
+    size_t *out_count);
+
+/*
  * Construct a certified real algebraic value. The interval must contain
  * exactly one root. On failure *out_value remains NULL and no value is linked
  * into the context.

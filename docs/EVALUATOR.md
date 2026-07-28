@@ -324,7 +324,7 @@ its configured arenas.
 
 ## Verification
 
-`tests/test_eval.c`, 1,817 checks. The physics cases deliberately reproduce,
+`tests/test_eval.c`, 1,827 checks. The physics cases deliberately reproduce,
 through reader-facing source, results the backend suites already certify
 directly:
 
@@ -372,4 +372,4 @@ product-size measurement.
 One consequence of this phase that the earlier link-check reports called out as
 future work has now happened: the application genuinely calls the geometry,
 Lie, Yang--Mills, and QFT layers, so `--gc-sections` no longer drops them.
-`dist/phy-nspire.tns` is currently 1,156,629 bytes.
+`dist/phy-nspire.tns` is currently 1,161,533 bytes.

@@ -250,17 +250,24 @@ void phy_cas_begin(phy_cas *cas)
 
 phy_status phy_cas_step(phy_cas *cas)
 {
-    if (cas->steps >= cas->limits.max_steps) {
+    return phy_cas_charge(cas, 1u);
+}
+
+phy_status phy_cas_charge(phy_cas *cas, uint32_t amount)
+{
+    if (amount > cas->limits.max_steps - cas->steps) {
         return PHY_ERR_TIMEOUT;
     }
-    cas->steps++;
-    cas->total_steps++;
+    const uint32_t previous = cas->steps;
+    cas->steps += amount;
+    cas->total_steps += amount;
     /*
      * Polling every step would make an interactive cancel cost a call per node.
      * Every 256 is far below anything a user perceives and far above the cost of
      * asking.
      */
-    if (cas->cancelled != NULL && (cas->steps & PHY_CAS_CANCEL_MASK) == 0u &&
+    if (cas->cancelled != NULL &&
+        (previous >> 8u) != (cas->steps >> 8u) &&
         cas->cancelled(cas->cancel_user)) {
         return PHY_ERR_INTERRUPTED;
     }

@@ -1385,6 +1385,34 @@ static void test_exact_polynomial_solve(void)
         "PHY_ERR_UNSUPPORTED");
     PHY_CHECK_EQ_STR(
         solved(&f, "(= (+ (^ x 3) -2) 0)"),
+        "(fn List (fn List (fn Rule x "
+        "(fn Root (fn List -2 0 0 1) 1))))");
+    PHY_CHECK_EQ_STR(
+        solved(
+            &f,
+            "(= (+ (^ x 3) (* (rat 1 2) x) (rat 1 2)) 0)"),
+        "(fn List (fn List (fn Rule x "
+        "(fn Root (fn List 1 1 0 2) 1))))");
+    PHY_CHECK_EQ_STR(
+        solved(&f, "(= (+ (* 2 (^ x 3)) x 1) 0)"),
+        "(fn List (fn List (fn Rule x "
+        "(fn Root (fn List 1 1 0 2) 1))))");
+    PHY_CHECK_EQ_STR(
+        solved(&f, "(= (+ (^ x 3) (* -3 x) 1) 0)"),
+        "(fn List "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 1))) "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 2))) "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 3))))");
+    PHY_CHECK_EQ_STR(
+        solved(
+            &f,
+            "(= (* (+ (^ x 5) (* -1 x) -1) (^ (+ -2 x) -1)) 0)"),
+        "(fn List (fn List (fn Rule x "
+        "(fn Root (fn List -1 -1 0 0 0 1) 1))))");
+    PHY_CHECK_EQ_STR(
+        solved(
+            &f,
+            "(= (* (+ (^ x 5) (* -1 x) -1) (+ (^ x 2) 1)) 0)"),
         "PHY_ERR_UNSUPPORTED");
     PHY_CHECK_EQ_STR(solved(&f, "(= x x)"), "PHY_ERR_UNSUPPORTED");
 
@@ -1672,6 +1700,16 @@ static void test_cancellation(void)
                      PHY_ERR_INTERRUPTED);
     PHY_CHECK(polls > 0u);
     PHY_CHECK_EQ_INT(phy_cas_validate(f.cas), PHY_OK);
+
+    polls = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_cas_solve(
+            f.cas, parse(f.ir, "(= (+ (^ x 5) (* -1 x) -1) 0)"),
+            phy_ir_symbol_ref(f.ir, phy_ir_intern(f.ir, "x")), &out),
+        PHY_ERR_INTERRUPTED);
+    PHY_CHECK(polls > 0u);
+    PHY_CHECK_EQ_INT(phy_cas_validate(f.cas), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_ir_validate(f.ir), PHY_OK);
 
     /* A hook that declines to cancel costs nothing but the poll. */
     phy_cas_set_cancel(f.cas, never_cancel, NULL);

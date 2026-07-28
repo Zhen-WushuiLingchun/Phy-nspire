@@ -186,6 +186,80 @@ static void test_create_normalizes_and_certifies(void)
     fixture_close(&f);
 }
 
+static void test_all_real_roots_are_isolated_in_order(void)
+{
+    fixture f = fixture_open();
+    static const char *cubic[] = {"0", "-1", "0", "1"};
+    phy_real_algebraic *roots[3] = {NULL, NULL, NULL};
+    size_t count = 99u;
+    PHY_CHECK_EQ_INT(
+        phy_algebraic_isolate_real_roots(
+            f.algebraic, cubic, 4u, roots, 3u, &count),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(count, 3);
+    for (size_t index = 0u; index < count; ++index) {
+        PHY_CHECK(roots[index] != NULL);
+        PHY_CHECK_EQ_INT(
+            phy_real_algebraic_validate(roots[index]), PHY_OK);
+        PHY_CHECK_EQ_INT(phy_real_algebraic_degree(roots[index]), 3);
+    }
+    int comparison = 0;
+    PHY_CHECK_EQ_INT(
+        phy_real_algebraic_compare(
+            roots[0], roots[1], &comparison),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(comparison, -1);
+    PHY_CHECK_EQ_INT(
+        phy_real_algebraic_compare(
+            roots[1], roots[2], &comparison),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(comparison, -1);
+    PHY_CHECK_EQ_INT(phy_algebraic_validate(f.algebraic), PHY_OK);
+
+    for (size_t index = 0u; index < count; ++index) {
+        phy_real_algebraic_destroy(roots[index]);
+    }
+
+    static const char *quintic[] = {"-1", "-1", "0", "0", "0", "1"};
+    phy_real_algebraic *quintic_roots[5] = {
+        NULL, NULL, NULL, NULL, NULL};
+    count = 99u;
+    PHY_CHECK_EQ_INT(
+        phy_algebraic_isolate_real_roots(
+            f.algebraic, quintic, 6u, quintic_roots, 5u, &count),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(count, 1);
+    PHY_CHECK_EQ_INT(
+        phy_real_algebraic_degree(quintic_roots[0]), 5);
+    PHY_CHECK_EQ_STR(
+        coefficient_text(quintic_roots[0], 0u), "-1");
+    PHY_CHECK_EQ_STR(
+        coefficient_text(quintic_roots[0], 5u), "1");
+    phy_real_algebraic_destroy(quintic_roots[0]);
+
+    static const char *no_real[] = {"1", "0", "1"};
+    phy_real_algebraic *none[2] = {roots[0], roots[1]};
+    count = 99u;
+    PHY_CHECK_EQ_INT(
+        phy_algebraic_isolate_real_roots(
+            f.algebraic, no_real, 3u, none, 2u, &count),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(count, 0);
+    PHY_CHECK(none[0] == NULL);
+    PHY_CHECK(none[1] == NULL);
+
+    phy_real_algebraic *too_small[1] = {roots[0]};
+    count = 99u;
+    PHY_CHECK_EQ_INT(
+        phy_algebraic_isolate_real_roots(
+            f.algebraic, cubic, 4u, too_small, 1u, &count),
+        PHY_ERR_TERM_LIMIT);
+    PHY_CHECK(too_small[0] == NULL);
+    PHY_CHECK_EQ_INT(count, 99);
+    PHY_CHECK_EQ_INT(phy_algebraic_validate(f.algebraic), PHY_OK);
+    fixture_close(&f);
+}
+
 static void test_refine_and_safe_compare(void)
 {
     fixture f = fixture_open();
@@ -305,6 +379,17 @@ static void test_limits_and_cancellation_are_typed(void)
             context, polynomial, 4u, rational("-2", "1"),
             rational("2", "1"), &roots),
         PHY_ERR_TIMEOUT);
+    phy_real_algebraic *isolated[3] = {NULL, NULL, NULL};
+    size_t isolated_count = 77u;
+    PHY_CHECK_EQ_INT(
+        phy_algebraic_isolate_real_roots(
+            context, polynomial, 4u, isolated, 3u,
+            &isolated_count),
+        PHY_ERR_TIMEOUT);
+    PHY_CHECK_EQ_INT(isolated_count, 77);
+    PHY_CHECK(isolated[0] == NULL);
+    PHY_CHECK(isolated[1] == NULL);
+    PHY_CHECK(isolated[2] == NULL);
     PHY_CHECK_EQ_INT(phy_algebraic_validate(context), PHY_OK);
     phy_algebraic_context_destroy(context);
 
@@ -319,9 +404,97 @@ static void test_limits_and_cancellation_are_typed(void)
             rational("2", "1"), &roots),
         PHY_ERR_INTERRUPTED);
     PHY_CHECK(calls > 0u);
+    calls = 0u;
+    isolated_count = 77u;
+    PHY_CHECK_EQ_INT(
+        phy_algebraic_isolate_real_roots(
+            context, polynomial, 4u, isolated, 3u,
+            &isolated_count),
+        PHY_ERR_INTERRUPTED);
+    PHY_CHECK(calls > 0u);
+    PHY_CHECK_EQ_INT(isolated_count, 77);
+    PHY_CHECK(isolated[0] == NULL);
+    PHY_CHECK(isolated[1] == NULL);
+    PHY_CHECK(isolated[2] == NULL);
     phy_algebraic_set_cancel(context, NULL, NULL);
     PHY_CHECK_EQ_INT(phy_algebraic_validate(context), PHY_OK);
     phy_algebraic_context_destroy(context);
+    phy_platform_shutdown();
+}
+
+static void test_isolation_allocation_failure_is_transactional(void)
+{
+    static const char *polynomial[] = {
+        "-1", "-1", "0", "0", "0", "1"};
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+
+    const uint32_t attempts_before = phy_host_alloc_attempts();
+    phy_algebraic_context *calibration =
+        phy_algebraic_context_create(NULL);
+    PHY_CHECK(calibration != NULL);
+    phy_real_algebraic *calibration_roots[5] = {
+        NULL, NULL, NULL, NULL, NULL};
+    size_t calibration_count = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_algebraic_isolate_real_roots(
+            calibration, polynomial, 6u, calibration_roots, 5u,
+            &calibration_count),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(calibration_count, 1);
+    const uint32_t allocations =
+        phy_host_alloc_attempts() - attempts_before;
+    phy_algebraic_context_destroy(calibration);
+    PHY_CHECK(allocations > 40u);
+
+    unsigned failures = 0u;
+    for (uint32_t nth = 1u; nth <= allocations; ++nth) {
+        phy_host_fail_alloc_after(nth);
+        phy_algebraic_context *context =
+            phy_algebraic_context_create(NULL);
+        if (context == NULL) {
+            phy_host_fail_alloc_after(0u);
+            continue;
+        }
+        phy_real_algebraic *values[5] = {
+            NULL, NULL, NULL, NULL, NULL};
+        size_t count = 91u;
+        const phy_status status =
+            phy_algebraic_isolate_real_roots(
+                context, polynomial, 6u, values, 5u, &count);
+        phy_host_fail_alloc_after(0u);
+        PHY_CHECK(status == PHY_OK ||
+                  status == PHY_ERR_OUT_OF_MEMORY ||
+                  status == PHY_ERR_MEMORY_LIMIT);
+        if (status != PHY_OK) {
+            failures++;
+            PHY_CHECK_EQ_INT(count, 91);
+            for (size_t index = 0u; index < 5u; ++index) {
+                PHY_CHECK(values[index] == NULL);
+            }
+        } else {
+            PHY_CHECK_EQ_INT(count, 1);
+            phy_real_algebraic_destroy(values[0]);
+        }
+        PHY_CHECK_EQ_INT(phy_algebraic_validate(context), PHY_OK);
+
+        memset(values, 0, sizeof values);
+        count = 0u;
+        PHY_CHECK_EQ_INT(
+            phy_algebraic_isolate_real_roots(
+                context, polynomial, 6u, values, 5u, &count),
+            PHY_OK);
+        PHY_CHECK_EQ_INT(count, 1);
+        PHY_CHECK_EQ_INT(
+            phy_real_algebraic_validate(values[0]), PHY_OK);
+        PHY_CHECK_EQ_INT(phy_algebraic_validate(context), PHY_OK);
+        phy_algebraic_context_destroy(context);
+
+        phy_telemetry telemetry;
+        phy_telemetry_get(&telemetry);
+        PHY_CHECK_EQ_INT(telemetry.bytes_live, 0);
+    }
+    PHY_CHECK(failures > 20u);
+    phy_host_fail_alloc_after(0u);
     phy_platform_shutdown();
 }
 
@@ -394,9 +567,11 @@ int main(void)
     PHY_TEST_CASE(test_context_lifecycle);
     PHY_TEST_CASE(test_sturm_root_counts);
     PHY_TEST_CASE(test_create_normalizes_and_certifies);
+    PHY_TEST_CASE(test_all_real_roots_are_isolated_in_order);
     PHY_TEST_CASE(test_refine_and_safe_compare);
     PHY_TEST_CASE(test_arbitrary_precision_coefficients_and_intervals);
     PHY_TEST_CASE(test_limits_and_cancellation_are_typed);
+    PHY_TEST_CASE(test_isolation_allocation_failure_is_transactional);
     PHY_TEST_CASE(test_allocation_failure_is_transactional);
     return PHY_TEST_REPORT("test_algebraic");
 }

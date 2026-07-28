@@ -170,6 +170,7 @@ struct phy_cas {
  * expression size.
  */
 phy_status phy_cas_step(phy_cas *cas);
+phy_status phy_cas_charge(phy_cas *cas, uint32_t amount);
 
 /* Resets the per-operation step count. Called by public entry points only. */
 void phy_cas_begin(phy_cas *cas);
@@ -356,12 +357,16 @@ phy_status phy_cas_cancel_known_factors(phy_cas *cas, phy_ir_ref numerator,
 typedef struct {
     size_t count;
     phy_ir_ref values[PHY_CAS_POLYNOMIAL_MAX_ROOTS];
+    bool certified_algebraic[PHY_CAS_POLYNOMIAL_MAX_ROOTS];
 } phy_cas_root_set;
 
 phy_status phy_cas_polynomial_roots_node(phy_cas *cas,
                                          phy_ir_ref polynomial,
                                          phy_ir_ref variable,
                                          phy_cas_root_set *out_roots);
+phy_status phy_cas_polynomials_coprime_node(
+    phy_cas *cas, phy_ir_ref left, phy_ir_ref right,
+    phy_ir_ref variable, bool *out_coprime);
 
 /*
  * Largest |k| for which sin(k*u) and cos(k*u) are expanded into polynomials in

@@ -71,9 +71,12 @@ static const tour_cell kTour[] = {
      "Limit[(3*x^4+1)/(2*x^4-x),{x,Infinity}]", NULL},
     {TOUR_MARKDOWN, "Exact polynomial equations",
      "$$3x-2=0\\quad x=\\frac{2}{3},\\qquad "
-     "x^2-2=0\\quad x=\\pm\\sqrt{2}$$"},
+     "x^2-2=0\\quad x=\\pm\\sqrt{2}$$"
+     " Irreducible higher-degree real roots stay exact as ordered "
+     "$\\operatorname{Root}(\\{a_0,\\ldots,a_n\\},k)$ certificates."},
     {TOUR_INPUT, "Solve[3*x-2==0,x]", NULL},
     {TOUR_INPUT, "Solve[x^2-2==0,x]", NULL},
+    {TOUR_INPUT, "Solve[x^5-x-1==0,x]", NULL},
     {TOUR_INPUT, "Solve[(x^2-1)/(x-1)==0,x]", NULL},
     {TOUR_INPUT, "Gamma[6]+LogGamma[2]+Erfc[0]", NULL},
     {TOUR_INPUT, "EquivalentQ[Sin[x]^2+Cos[x]^2,1]", NULL},

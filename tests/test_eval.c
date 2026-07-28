@@ -332,7 +332,21 @@ static void test_solve_reader_and_evaluator(void)
     PHY_CHECK_EQ_STR(expansion(&f, value), "(fn List)");
 
     expect_status(&f, "Solve[x^2+1==0,x]", PHY_ERR_UNSUPPORTED);
-    expect_status(&f, "Solve[x^3-2==0,x]", PHY_ERR_UNSUPPORTED);
+    value = run(&f, "Solve[x^5-x-1==0,x]");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List (fn List (fn Rule x "
+        "(fn Root (fn List -1 -1 0 0 0 1) 1))))");
+    value = run(&f, "Solve[x^3-3x+1==0,x]");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 1))) "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 2))) "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 3))))");
+    expect_status(
+        &f, "Solve[(x^5-x-1)(x^2+1)==0,x]",
+        PHY_ERR_UNSUPPORTED);
     expect_status(&f, "Solve[x==x,x]", PHY_ERR_UNSUPPORTED);
     expect_status(&f, "Solve[x,x]", PHY_ERR_TYPE);
 

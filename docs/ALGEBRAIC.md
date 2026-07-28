@@ -1,7 +1,7 @@
 # Certified real algebraic foundation
 
 `include/phy/algebraic.h` and `src/exact/algebraic.c` provide the certified
-real-root layer underneath future polynomial `Solve`, radical comparison, and
+real-root layer underneath polynomial `Solve`, radical comparison, and future
 denominator rationalization.
 
 ## Representation
@@ -55,6 +55,8 @@ equality.
 ## Operations now available
 
 - exact real-root count on an open rational interval;
+- automatic isolation of every real root inside a conservative exact Cauchy
+  bound, returned in strictly increasing order;
 - certified construction and structural validation;
 - access to the canonical defining polynomial and interval;
 - transactional bisection refinement;
@@ -70,6 +72,13 @@ resultant/minimal-polynomial proof. Until that layer exists, a comparison that
 cannot separate them returns `PHY_ERR_UNSUPPORTED`; it never guesses from
 decimal approximations.
 
+The scalar Q[x] factorizer now uses this API for irreducible factors of degree
+three or more. Reader-facing `Solve` emits
+`Root[List[a0,...,an],k]`, where coefficients are in increasing degree order
+and `k` is one-based among that factor's increasing real roots. This is a
+certified real-root convention; the project does not yet claim Mathematica's
+ordering over all complex roots.
+
 ## Resource model
 
 The algebraic context has independent ceilings for:
@@ -81,21 +90,23 @@ The algebraic context has independent ceilings for:
 - coefficient-handle and polynomial-array metadata.
 
 Cancellation reaches both the Sturm layer and the bigint/rational layer.
-Creation and refinement are transactional. Allocation-failure injection walks
-every allocation in a representative certificate and verifies that a failed
-construction publishes no object, both contexts still validate, a retry
-succeeds, and tracked live heap returns to zero.
+Creation, all-root isolation, and refinement are transactional.
+Allocation-failure injection walks every allocation in both a representative
+single-root certificate and a quintic all-root isolation. It verifies that a
+failed call publishes no object, the context still validates, a retry succeeds,
+and tracked live heap returns to zero. Independent step and cancellation
+ceilings cover both root count and all-root isolation.
 
 Current reproducible evidence:
 
 - `test_exact`: 76,051 checks, zero failures;
-- `test_algebraic`: 6,401 checks, zero failures;
+- `test_algebraic`: 34,243 checks, zero failures;
 - strict Windows suite: 34/34 tests;
 - ASan/UBSan/leak suite: 36/36 tests;
 - Ndless exact-number link probe: 51/51 public entry points, 14,516 bytes of
   exact-layer ARM text, 19,912-byte packaged probe;
-- Ndless real-algebraic link probe: 19/19 public entry points, 9,196 bytes of
-  algebraic-layer ARM text, 26,964-byte packaged probe;
+- Ndless real-algebraic link probe: 20/20 public entry points, 12,388 bytes of
+  algebraic-layer ARM text, 30,260-byte packaged probe;
 - neither ARM probe retains a floating-point formatter, libm call, or
   soft-float helper.
 
@@ -111,7 +122,6 @@ algebraic closure:
 - no proof of equality across unrelated irrational defining polynomials;
 - no complex isolating rectangles;
 - no radical-to-algebraic lowering in the typed IR;
-- no automatic all-root isolation or reader-facing `Root[...]`;
 - no claim that a defining polynomial is minimal.
 
 Those operations depend on coefficient-generic polynomial arithmetic and

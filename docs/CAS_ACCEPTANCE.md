@@ -8,19 +8,19 @@ evidence.
 ## Executable notebook
 
 [`examples/phy-nspire-cas-tour.tns`](../examples/phy-nspire-cas-tour.tns) is a
-6,978-byte `PHYNB001` notebook with 127 source cards:
+7,134-byte `PHYNB001` notebook with 128 source cards:
 
 - twelve Markdown cells with nMarkdown LaTeX;
-- 115 editable Math inputs;
+- 116 editable Math inputs;
 - no eagerly persisted output/IR cache.
 
 The generator evaluates a validation copy of the complete document, serializes
 it, opens it in a new notebook with an empty environment, and runs every cell
 again. It separately serializes and reopens the source-only artifact before
 writing it. Generation fails on any parse, evaluation, serialization, reopen,
-or replay error. The source-only form avoids rebuilding 230 cached IR trees
-during `FILE > Open`; running all inputs produces the same 115 typed outputs and
-a 242-card session. The inputs touch every currently implemented evaluator head
+or replay error. The source-only form avoids rebuilding 232 cached IR trees
+during `FILE > Open`; running all inputs produces the same 116 typed outputs and
+a 244-card session. The inputs touch every currently implemented evaluator head
 at least once:
 
 | Area | Successful reader-facing heads |
@@ -54,10 +54,10 @@ where the QFT type checker must reject a cross-space operation.
 
 - Windows strict build and CTest: 34/34.
 - WSL ASan, UBSan, and leak detection: 36/36.
-- Assertion-bearing tests: 213,591 checks.
-- Ndless r2022 ARM product: 1,156,629 bytes, 18.4% of the 6 MiB ceiling.
-- Isolated CAS ARM probe: 34/34 public APIs, 90,601 bytes of CAS text,
-  124,528-byte package, and no float formatter, libm call, or ARM soft-float
+- Assertion-bearing tests: 241,459 checks.
+- Ndless r2022 ARM product: 1,161,533 bytes, 18.5% of the 6 MiB ceiling.
+- Isolated CAS ARM probe: 34/34 public APIs, 92,875 bytes of CAS text,
+  135,616-byte package, and no float formatter, libm call, or ARM soft-float
   helper.
 - Isolated evaluator ARM probe: 15/15 public APIs, 29,334 bytes of evaluator
   text, 209,232-byte package, and no float formatter, libm call, or ARM
@@ -70,9 +70,9 @@ exact artifacts are opened and exercised on the physical CX II.
 ## Explicit non-features
 
 `NSolve`, `Reduce`, `Refine`, and the `Trig*` family are registered but return
-`PHY_ERR_UNSUPPORTED`. `Solve` is implemented only for the certified
-linear/real-quadratic factor class documented in `docs/CAS.md`; irreducible
-higher-degree and non-real factors remain typed unsupported. There is no
+`PHY_ERR_UNSUPPORTED`. `Solve` covers certified bounded real polynomial roots,
+including higher-degree `Root` descriptors as documented in `docs/CAS.md`;
+non-real factors remain typed unsupported. There is no
 multi-chart transition map or pullback, no
 global-topology or named-manifold catalogue, no unbounded tensor rank, no
 abstract dummy-index canonicalizer, no gamma-five, and no general loop-integral

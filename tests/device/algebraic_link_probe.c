@@ -46,6 +46,14 @@ int main(void)
     sink((unsigned)phy_algebraic_count_real_roots(
         context, polynomial, 3u, lower, upper, &roots));
     sink(roots);
+    phy_real_algebraic *isolated[2] = {0, 0};
+    size_t isolated_count = 0u;
+    sink((unsigned)phy_algebraic_isolate_real_roots(
+        context, polynomial, 3u, isolated, 2u, &isolated_count));
+    sink((unsigned)isolated_count);
+    for (size_t index = 0u; index < isolated_count; ++index) {
+        phy_real_algebraic_destroy(isolated[index]);
+    }
 
     phy_real_algebraic *left = 0;
     phy_real_algebraic *right = 0;

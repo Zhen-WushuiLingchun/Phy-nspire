@@ -107,9 +107,36 @@ phy_status phy_cas_solve(phy_cas *cas, phy_ir_ref equation,
         return status;
     }
 
+    bool has_certified_algebraic = false;
+    for (size_t index = 0u; index < candidates.count; ++index) {
+        has_certified_algebraic =
+            has_certified_algebraic ||
+            candidates.certified_algebraic[index];
+    }
+    if (has_certified_algebraic) {
+        bool coprime = false;
+        status = phy_cas_polynomials_coprime_node(
+            cas, numerator, denominator, variable, &coprime);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (!coprime) {
+            /*
+             * rational_reduced_node() must have removed a common Q[x]
+             * factor. Publishing an algebraic root despite a surviving one
+             * would lose a domain exclusion.
+             */
+            return PHY_ERR_CORRUPT_DOCUMENT;
+        }
+    }
+
     phy_ir_ref accepted[PHY_CAS_POLYNOMIAL_MAX_ROOTS];
     size_t accepted_count = 0u;
     for (size_t index = 0u; index < candidates.count; ++index) {
+        if (candidates.certified_algebraic[index]) {
+            accepted[accepted_count++] = candidates.values[index];
+            continue;
+        }
         phy_cas_decision numerator_zero = PHY_CAS_UNKNOWN;
         status = substitute_and_decide(
             cas, numerator, variable, candidates.values[index],

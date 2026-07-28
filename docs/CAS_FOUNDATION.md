@@ -112,7 +112,7 @@ Status: native bounded-memory arbitrary-precision integers/rationals are
 implemented and flow through IR, source, scalar folding, evaluator,
 serialization, and MathTree display. The certified real-algebraic foundation
 (primitive square-free defining polynomial, rational isolating interval, Sturm
-count/refinement/comparison) is implemented and documented in
+count/all-root isolation/refinement/comparison) is implemented and documented in
 [`ALGEBRAIC.md`](ALGEBRAIC.md). Algebraic arithmetic, Gaussian rationals, and
 canonical minimal-polynomial equality remain open. The univariate polynomial
 coefficient containers and rational LCD path have been migrated.
@@ -149,23 +149,25 @@ come from coefficient sign and valuation parity; a two-sided pole with unequal
 directions is `PHY_ERR_DOMAIN`. Oscillatory, branch-sensitive, or otherwise
 undecidable cases remain typed unsupported rather than being sampled.
 `Solve[equation,x]` now reuses the bounded Q[x] factorizer and returns exact
-distinct rational or real quadratic-radical roots, excluding denominator
-zeros. An irreducible factor above degree two, non-real quadratic, identity,
-multivariate or transcendental equation fails transactionally with a typed
-unsupported result; no partial root list is published.
+distinct rational, real quadratic-radical, or certified higher-degree real
+roots, excluding denominator zeros. Higher roots are typed
+`Root[List[a0,...,an],k]` values with `k` ordered among the factor's real roots
+by exact Sturm isolation. A non-real quadratic, an unresolved complex factor,
+identity, multivariate or transcendental equation fails transactionally with a
+typed unsupported result; no partial root list is published.
 
 The remaining implementation is governed by
 [`plans/2026-07-28-cas-foundation-f4-f5.md`](plans/2026-07-28-cas-foundation-f4-f5.md).
 The compiled reader matrix is `tests/corpus/cas_foundation_cases.inc`.
 `NSolve` and `Reduce` remain typed unsupported until their corresponding exact
 backend, evaluator, display, and negative controls land together. Certified
-`Root[p,k]` output for irreducible higher-degree real roots remains the next
-extension of `Solve`.
+Complex roots, simultaneous systems, conditional solution sets, and algebraic
+arithmetic on `Root` values remain later extensions of `Solve`.
 
 - Truncated formal power-series arithmetic before reader-facing `Series`.
 - Extend the exact limit subset only alongside proof rules and negative
   controls; there is no numerical sampling fallback.
-- Extend polynomial `Solve` with certified algebraic `Root[p,k]` values before
+- Extend polynomial `Solve` into the complex algebraic domain before
   transcendental solving; solutions carry conditions rather than silently
   dropping branches.
 

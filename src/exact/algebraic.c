@@ -1052,6 +1052,498 @@ phy_status phy_real_algebraic_create(
     return call_end(context, status);
 }
 
+typedef struct {
+    phy_bigrat lower;
+    phy_bigrat upper;
+    uint32_t lower_variations;
+    uint32_t upper_variations;
+    bool lower_initialized;
+    bool upper_initialized;
+} isolation_interval;
+
+static void isolation_intervals_destroy(
+    phy_algebraic_context *context, isolation_interval *intervals,
+    size_t capacity)
+{
+    if (intervals == NULL) {
+        return;
+    }
+    for (size_t index = 0u; index < capacity; ++index) {
+        if (intervals[index].upper_initialized) {
+            phy_bigrat_destroy(&intervals[index].upper);
+        }
+        if (intervals[index].lower_initialized) {
+            phy_bigrat_destroy(&intervals[index].lower);
+        }
+    }
+    size_t bytes = 0u;
+    if (checked_multiply(capacity, sizeof(*intervals), &bytes)) {
+        metadata_free(context, intervals, bytes);
+    }
+}
+
+static phy_status value_from_certificate(
+    phy_algebraic_context *context, const phy_bigint *coefficients,
+    size_t coefficient_count, const phy_bigrat *lower,
+    const phy_bigrat *upper, phy_real_algebraic **out_value)
+{
+    *out_value = NULL;
+    phy_real_algebraic *value = NULL;
+    phy_status status =
+        metadata_allocate(context, sizeof *value, (void **)&value);
+    if (status != PHY_OK) {
+        return status;
+    }
+    value->context = context;
+    size_t bytes = 0u;
+    if (!checked_multiply(
+            coefficient_count, sizeof(phy_bigint), &bytes)) {
+        status = PHY_ERR_MEMORY_LIMIT;
+    }
+    if (status == PHY_OK) {
+        status = metadata_allocate(
+            context, bytes, (void **)&value->coefficients);
+    }
+    if (status == PHY_OK) {
+        value->coefficient_capacity = coefficient_count;
+        value->coefficient_count = coefficient_count;
+    }
+    for (size_t index = 0u;
+         index < coefficient_count && status == PHY_OK; ++index) {
+        status = phy_bigint_init(
+            context->exact, &value->coefficients[index]);
+        if (status == PHY_OK) {
+            status = phy_bigint_copy(
+                &coefficients[index], &value->coefficients[index]);
+        }
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context->exact, &value->lower);
+        value->lower_initialized = status == PHY_OK;
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context->exact, &value->upper);
+        value->upper_initialized = status == PHY_OK;
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_copy(lower, &value->lower);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_copy(upper, &value->upper);
+    }
+    if (status == PHY_OK) {
+        value->magic = PHY_REAL_ALGEBRAIC_MAGIC;
+        value->linked = true;
+        value->next = context->values;
+        if (context->values != NULL) {
+            context->values->previous = value;
+        }
+        context->values = value;
+        context->value_count++;
+        *out_value = value;
+        return PHY_OK;
+    }
+    release_value_fields(value);
+    metadata_free(context, value, sizeof *value);
+    return status;
+}
+
+static phy_status cauchy_interval(
+    phy_algebraic_context *context, const phy_bigint *coefficients,
+    size_t coefficient_count, phy_bigrat *out_lower,
+    phy_bigrat *out_upper)
+{
+    size_t maximum = 0u;
+    for (size_t index = 1u; index < coefficient_count; ++index) {
+        if (phy_bigint_compare_abs(
+                &coefficients[index], &coefficients[maximum]) > 0) {
+            maximum = index;
+        }
+    }
+    phy_bigint magnitude;
+    phy_bigint one;
+    phy_bigint bound;
+    phy_bigint negative_bound;
+    memset(&magnitude, 0, sizeof magnitude);
+    memset(&one, 0, sizeof one);
+    memset(&bound, 0, sizeof bound);
+    memset(&negative_bound, 0, sizeof negative_bound);
+    phy_status status = phy_bigint_init(context->exact, &magnitude);
+    if (status == PHY_OK) {
+        status = phy_bigint_init(context->exact, &one);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigint_init(context->exact, &bound);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigint_init(context->exact, &negative_bound);
+    }
+    if (status == PHY_OK) {
+        status =
+            phy_bigint_copy(&coefficients[maximum], &magnitude);
+    }
+    if (status == PHY_OK && phy_bigint_sign(&magnitude) < 0) {
+        status = phy_bigint_negate(&magnitude, &magnitude);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigint_set_i64(&one, 1);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigint_add(&magnitude, &one, &bound);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigint_negate(&bound, &negative_bound);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_set_bigint(&negative_bound, out_lower);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_set_bigint(&bound, out_upper);
+    }
+    phy_bigint_destroy(&negative_bound);
+    phy_bigint_destroy(&bound);
+    phy_bigint_destroy(&one);
+    phy_bigint_destroy(&magnitude);
+    return status;
+}
+
+static phy_status find_nonroot_split(
+    phy_algebraic_context *context, const sturm_chain *chain,
+    const isolation_interval *interval, size_t polynomial_degree,
+    phy_bigrat *out_split, uint32_t *out_variations)
+{
+    phy_bigrat width;
+    phy_bigrat fraction;
+    phy_bigrat scaled;
+    phy_bigrat value;
+    memset(&width, 0, sizeof width);
+    memset(&fraction, 0, sizeof fraction);
+    memset(&scaled, 0, sizeof scaled);
+    memset(&value, 0, sizeof value);
+    phy_status status = phy_bigrat_init(context->exact, &width);
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context->exact, &fraction);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context->exact, &scaled);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context->exact, &value);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_subtract(
+            &interval->upper, &interval->lower, &width);
+    }
+    const int64_t denominator =
+        (int64_t)polynomial_degree + 2;
+    bool found = false;
+    for (size_t attempt = 1u;
+         status == PHY_OK && attempt <= polynomial_degree + 1u;
+         ++attempt) {
+        status = phy_bigrat_set_i64(
+            &fraction, (int64_t)attempt, denominator);
+        if (status == PHY_OK) {
+            status = phy_bigrat_multiply(
+                &width, &fraction, &scaled);
+        }
+        if (status == PHY_OK) {
+            status = phy_bigrat_add(
+                &interval->lower, &scaled, out_split);
+        }
+        if (status == PHY_OK) {
+            status = rational_polynomial_evaluate(
+                context, &chain->items[0], out_split, &value);
+        }
+        if (status == PHY_OK && phy_bigrat_sign(&value) != 0) {
+            status = sturm_variations(
+                context, chain, out_split, out_variations);
+            found = status == PHY_OK;
+            break;
+        }
+    }
+    phy_bigrat_destroy(&value);
+    phy_bigrat_destroy(&scaled);
+    phy_bigrat_destroy(&fraction);
+    phy_bigrat_destroy(&width);
+    if (status == PHY_OK && !found) {
+        return PHY_ERR_CORRUPT_DOCUMENT;
+    }
+    return status;
+}
+
+phy_status phy_algebraic_isolate_real_roots(
+    phy_algebraic_context *context,
+    const char *const *coefficient_text, size_t coefficient_count,
+    phy_real_algebraic **out_values, size_t value_capacity,
+    size_t *out_count)
+{
+    if (!context_valid(context) || out_values == NULL ||
+        value_capacity == 0u || out_count == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    for (size_t index = 0u; index < value_capacity; ++index) {
+        out_values[index] = NULL;
+    }
+    phy_status status = call_begin(context);
+    phy_bigint *coefficients = NULL;
+    size_t canonical_count = 0u;
+    size_t canonical_capacity = 0u;
+    if (status == PHY_OK) {
+        status = load_canonical_coefficients(
+            context, coefficient_text, coefficient_count, &coefficients,
+            &canonical_count, &canonical_capacity);
+    }
+
+    sturm_chain chain;
+    memset(&chain, 0, sizeof chain);
+    if (status == PHY_OK) {
+        status = sturm_chain_build(
+            context, coefficients, canonical_count, &chain);
+    }
+    phy_bigrat lower;
+    phy_bigrat upper;
+    memset(&lower, 0, sizeof lower);
+    memset(&upper, 0, sizeof upper);
+    bool lower_initialized = false;
+    bool upper_initialized = false;
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context->exact, &lower);
+        lower_initialized = status == PHY_OK;
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context->exact, &upper);
+        upper_initialized = status == PHY_OK;
+    }
+    if (status == PHY_OK) {
+        status = cauchy_interval(
+            context, coefficients, canonical_count, &lower, &upper);
+    }
+    uint32_t lower_variations = 0u;
+    uint32_t upper_variations = 0u;
+    if (status == PHY_OK) {
+        status = sturm_variations(
+            context, &chain, &lower, &lower_variations);
+    }
+    if (status == PHY_OK) {
+        status = sturm_variations(
+            context, &chain, &upper, &upper_variations);
+    }
+    if (status == PHY_OK && lower_variations < upper_variations) {
+        status = PHY_ERR_CORRUPT_DOCUMENT;
+    }
+    const size_t root_count =
+        status == PHY_OK
+            ? (size_t)(lower_variations - upper_variations)
+            : 0u;
+    if (status == PHY_OK && root_count > value_capacity) {
+        status = PHY_ERR_TERM_LIMIT;
+    }
+
+    isolation_interval *intervals = NULL;
+    size_t interval_bytes = 0u;
+    if (status == PHY_OK && root_count != 0u) {
+        if (!checked_multiply(
+                root_count, sizeof(*intervals), &interval_bytes)) {
+            status = PHY_ERR_MEMORY_LIMIT;
+        } else {
+            status = metadata_allocate(
+                context, interval_bytes, (void **)&intervals);
+        }
+    }
+    size_t initialized_intervals = 0u;
+    while (status == PHY_OK && initialized_intervals < root_count) {
+        status = phy_bigrat_init(
+            context->exact,
+            &intervals[initialized_intervals].lower);
+        intervals[initialized_intervals].lower_initialized =
+            status == PHY_OK;
+        if (status == PHY_OK) {
+            status = phy_bigrat_init(
+                context->exact,
+                &intervals[initialized_intervals].upper);
+            intervals[initialized_intervals].upper_initialized =
+                status == PHY_OK;
+        }
+        if (status == PHY_OK) {
+            initialized_intervals++;
+        }
+    }
+    size_t interval_count = root_count == 0u ? 0u : 1u;
+    if (status == PHY_OK && root_count != 0u) {
+        status = phy_bigrat_copy(&lower, &intervals[0].lower);
+    }
+    if (status == PHY_OK && root_count != 0u) {
+        status = phy_bigrat_copy(&upper, &intervals[0].upper);
+    }
+    if (status == PHY_OK && root_count != 0u) {
+        intervals[0].lower_variations = lower_variations;
+        intervals[0].upper_variations = upper_variations;
+    }
+
+    phy_bigrat split;
+    memset(&split, 0, sizeof split);
+    bool split_initialized = false;
+    if (status == PHY_OK && root_count != 0u) {
+        status = phy_bigrat_init(context->exact, &split);
+        split_initialized = status == PHY_OK;
+    }
+    size_t current = 0u;
+    size_t splits = 0u;
+    const size_t degree = canonical_count == 0u
+                              ? 0u
+                              : canonical_count - 1u;
+    const size_t max_splits =
+        degree > (size_t)-1 / context->limits.max_refinements
+            ? (size_t)-1
+            : degree * context->limits.max_refinements;
+    while (status == PHY_OK && current < interval_count) {
+        isolation_interval *interval = &intervals[current];
+        if (interval->lower_variations < interval->upper_variations) {
+            status = PHY_ERR_CORRUPT_DOCUMENT;
+            break;
+        }
+        const uint32_t count =
+            interval->lower_variations - interval->upper_variations;
+        if (count == 1u) {
+            current++;
+            continue;
+        }
+        if (count == 0u || splits >= max_splits) {
+            status =
+                count == 0u ? PHY_ERR_CORRUPT_DOCUMENT : PHY_ERR_TIMEOUT;
+            break;
+        }
+        uint32_t split_variations = 0u;
+        status = find_nonroot_split(
+            context, &chain, interval, degree, &split,
+            &split_variations);
+        if (status != PHY_OK) {
+            break;
+        }
+        if (split_variations > interval->lower_variations ||
+            split_variations < interval->upper_variations) {
+            status = PHY_ERR_CORRUPT_DOCUMENT;
+            break;
+        }
+        const uint32_t left_count =
+            interval->lower_variations - split_variations;
+        const uint32_t right_count =
+            split_variations - interval->upper_variations;
+        if (left_count != 0u && right_count != 0u) {
+            if (interval_count >= root_count) {
+                status = PHY_ERR_CORRUPT_DOCUMENT;
+                break;
+            }
+            isolation_interval *right =
+                &intervals[interval_count++];
+            status = phy_bigrat_copy(&split, &right->lower);
+            if (status == PHY_OK) {
+                status = phy_bigrat_copy(
+                    &interval->upper, &right->upper);
+            }
+            if (status == PHY_OK) {
+                right->lower_variations = split_variations;
+                right->upper_variations =
+                    interval->upper_variations;
+                status =
+                    phy_bigrat_copy(&split, &interval->upper);
+            }
+            if (status == PHY_OK) {
+                interval->upper_variations = split_variations;
+            }
+        } else if (left_count != 0u) {
+            status = phy_bigrat_copy(&split, &interval->upper);
+            if (status == PHY_OK) {
+                interval->upper_variations = split_variations;
+            }
+        } else if (right_count != 0u) {
+            status = phy_bigrat_copy(&split, &interval->lower);
+            if (status == PHY_OK) {
+                interval->lower_variations = split_variations;
+            }
+        } else {
+            status = PHY_ERR_CORRUPT_DOCUMENT;
+        }
+        splits++;
+    }
+
+    for (size_t index = 1u;
+         status == PHY_OK && index < interval_count; ++index) {
+        size_t position = index;
+        while (position > 0u) {
+            int comparison = 0;
+            status = phy_bigrat_compare(
+                &intervals[position].lower,
+                &intervals[position - 1u].lower, &comparison);
+            if (status != PHY_OK || comparison >= 0) {
+                break;
+            }
+            status = phy_bigrat_swap(
+                &intervals[position].lower,
+                &intervals[position - 1u].lower);
+            if (status == PHY_OK) {
+                status = phy_bigrat_swap(
+                    &intervals[position].upper,
+                    &intervals[position - 1u].upper);
+            }
+            if (status == PHY_OK) {
+                const uint32_t lower_v =
+                    intervals[position].lower_variations;
+                const uint32_t upper_v =
+                    intervals[position].upper_variations;
+                intervals[position].lower_variations =
+                    intervals[position - 1u].lower_variations;
+                intervals[position].upper_variations =
+                    intervals[position - 1u].upper_variations;
+                intervals[position - 1u].lower_variations = lower_v;
+                intervals[position - 1u].upper_variations = upper_v;
+            }
+            position--;
+        }
+    }
+
+    /*
+     * The intervals themselves are now the certificates. The Sturm chain is
+     * the largest temporary metadata block, so release it before copying the
+     * defining polynomial into each returned value.
+     */
+    sturm_chain_destroy(context, &chain);
+    size_t created = 0u;
+    while (status == PHY_OK && created < interval_count) {
+        status = value_from_certificate(
+            context, coefficients, canonical_count,
+            &intervals[created].lower, &intervals[created].upper,
+            &out_values[created]);
+        if (status == PHY_OK) {
+            created++;
+        }
+    }
+    if (status != PHY_OK) {
+        for (size_t index = 0u; index < created; ++index) {
+            phy_real_algebraic_destroy(out_values[index]);
+            out_values[index] = NULL;
+        }
+    }
+    if (split_initialized) {
+        phy_bigrat_destroy(&split);
+    }
+    isolation_intervals_destroy(
+        context, intervals, root_count);
+    if (upper_initialized) {
+        phy_bigrat_destroy(&upper);
+    }
+    if (lower_initialized) {
+        phy_bigrat_destroy(&lower);
+    }
+    sturm_chain_destroy(context, &chain);
+    destroy_coefficient_array(
+        context, coefficients, canonical_capacity);
+    if (status == PHY_OK) {
+        *out_count = created;
+    }
+    return call_end(context, status);
+}
+
 void phy_real_algebraic_destroy(phy_real_algebraic *value)
 {
     if (!value_valid_handle(value)) {
