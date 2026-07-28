@@ -156,6 +156,7 @@ add_library(phy_core STATIC
     src/cas/diff.c
     src/cas/integrate.c
     src/cas/normal.c
+    src/cas/reduce.c
     src/geom/manifold.c
     src/geom/form.c
     src/geom/exterior.c

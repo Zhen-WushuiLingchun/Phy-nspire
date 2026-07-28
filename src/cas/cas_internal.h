@@ -259,6 +259,31 @@ phy_status phy_cas_rational_node(phy_cas *cas, phy_ir_ref expr,
                                  phy_ir_ref *out_numerator,
                                  phy_ir_ref *out_denominator);
 
+/* Polished numerator over the factored, cancellation-reduced denominator. */
+phy_status phy_cas_rational_reduced_node(phy_cas *cas, phy_ir_ref expr,
+                                         phy_ir_ref *out_numerator,
+                                         phy_ir_ref *out_denominator);
+
+/* --------------------------------------------------------------- reduce.c */
+
+/*
+ * n1/d1 + n2/d2 over the least common denominator: each base factor at its
+ * larger exponent, integer coefficients at their least common multiple.
+ */
+phy_status phy_cas_combine_sum_lcd(phy_cas *cas, phy_ir_ref n1, phy_ir_ref d1,
+                                   phy_ir_ref n2, phy_ir_ref d2,
+                                   phy_ir_ref *out_num, phy_ir_ref *out_den);
+
+/*
+ * Divide `numerator` exactly by the factors of the factored `denominator`
+ * wherever the division leaves no remainder. No factorization is attempted:
+ * only the denominator's own bases are tried.
+ */
+phy_status phy_cas_cancel_known_factors(phy_cas *cas, phy_ir_ref numerator,
+                                        phy_ir_ref denominator,
+                                        phy_ir_ref *out_num,
+                                        phy_ir_ref *out_den);
+
 /*
  * Largest |k| for which sin(k*u) and cos(k*u) are expanded into polynomials in
  * sin(u) and cos(u).

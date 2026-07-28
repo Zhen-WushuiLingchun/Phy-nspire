@@ -315,14 +315,22 @@ typedef enum {
  * sin(2*theta)/(2*tan(theta)) - cos(2*theta), and both must be decided equal to
  * the forms a curvature pass actually computes.
  *
- * No polynomial GCD is taken, so the two parts are NOT in lowest terms. That is
- * deliberate: cancelling a common factor needs a GCD over the generators, and
- * the decision below does not, so the expensive machinery is absent rather than
- * half-present.
+ * The numerator is divided exactly by each of the denominator's own factors
+ * wherever the remainder vanishes, so shared factors that the rational walk
+ * itself created do cancel. No general multivariate GCD is taken beyond that:
+ * a common factor invisible in the denominator's factorization stays.
  */
 phy_status phy_cas_rational_form(phy_cas *cas, phy_ir_ref expr,
                                  phy_ir_ref *out_numerator,
                                  phy_ir_ref *out_denominator);
+
+/*
+ * `expr` as one reduced quotient: the cancelled numerator times the factored
+ * denominator's inverse powers, 12*rs^2*rq^-6 rather than seventeen terms
+ * over mixed denominators. The reduction class is the decision class below;
+ * outside it the parts stay opaque generators and the result is still exact.
+ */
+phy_status phy_cas_reduce(phy_cas *cas, phy_ir_ref expr, phy_ir_ref *out_ref);
 
 /*
  * Decide whether `expr` is zero.

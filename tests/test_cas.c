@@ -786,6 +786,58 @@ static void test_rational_form(void)
 
 /* -------------------------------------------------- trigonometric identities */
 
+static void test_reduce_cancels_known_factors(void)
+{
+    fixture f = open_fixture();
+    phy_ir_ref reduced = PHY_IR_NULL;
+    phy_cas_decision decision = PHY_CAS_UNKNOWN;
+
+    /* (x^2 - 1)/(x - 1): the denominator's own factor divides out. */
+    PHY_CHECK_EQ_INT(
+        phy_cas_reduce(
+            f.cas,
+            parse(f.ir, "(* (+ (^ x 2) -1) (^ (+ x -1) -1))"), &reduced),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(render(f.ir, reduced), "(+ 1 x)");
+
+    /* 1/x + 1/x^2 combines over x^2, not x^3. */
+    PHY_CHECK_EQ_INT(
+        phy_cas_reduce(f.cas, parse(f.ir, "(+ (^ x -1) (^ x -2))"),
+                       &reduced),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_cas_equivalent(
+            f.cas, reduced, parse(f.ir, "(* (+ 1 x) (^ x -2))"), &decision),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(decision, PHY_CAS_ZERO);
+
+    /* 1/(x-1) - 1/x keeps the factored least common denominator. */
+    PHY_CHECK_EQ_INT(
+        phy_cas_reduce(
+            f.cas,
+            parse(f.ir, "(+ (^ (+ x -1) -1) (* -1 (^ x -1)))"), &reduced),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_cas_equivalent(
+            f.cas, reduced,
+            parse(f.ir, "(* (^ x -1) (^ (+ x -1) -1))"), &decision),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(decision, PHY_CAS_ZERO);
+
+    /* The telescoping identity collapses to the literal zero. */
+    PHY_CHECK_EQ_INT(
+        phy_cas_reduce(
+            f.cas,
+            parse(f.ir,
+                  "(+ (^ (+ x -1) -1) (* -1 (^ x -1)) "
+                  "(* -1 (^ x -1) (^ (+ x -1) -1)))"),
+            &reduced),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(render(f.ir, reduced), "0");
+
+    close_fixture(&f);
+}
+
 static void test_trigonometric_identities(void)
 {
     fixture f = open_fixture();
@@ -1146,6 +1198,7 @@ int main(void)
     PHY_TEST_CASE(test_zero_decision_reads_assumptions);
     PHY_TEST_CASE(test_zero_decision_stays_honest);
     PHY_TEST_CASE(test_rational_form);
+    PHY_TEST_CASE(test_reduce_cancels_known_factors);
     PHY_TEST_CASE(test_trigonometric_identities);
     PHY_TEST_CASE(test_gr_corpus_sphere_2d);
     PHY_TEST_CASE(test_flat_space_curvature_vanishes);

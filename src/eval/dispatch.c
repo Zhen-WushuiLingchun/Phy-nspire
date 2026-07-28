@@ -1285,6 +1285,19 @@ static phy_status eval_curvature(phy_env *env, phy_ir_ref expr,
                             : status;
 }
 
+/*
+ * A curvature invariant reads as physics only in lowest terms: the raw
+ * contraction behind Schwarzschild's Kretschmann scalar is seventeen terms
+ * over mixed denominators, and its reduced form is 12 rs^2/r^6. A reduction
+ * that fails inside its resource budget keeps the exact unreduced scalar.
+ */
+static phy_ir_ref reduced_scalar(phy_env *env, phy_ir_ref scalar)
+{
+    phy_ir_ref reduced = PHY_IR_NULL;
+    const phy_status status = phy_cas_reduce(env->cas, scalar, &reduced);
+    return status == PHY_OK && reduced != PHY_IR_NULL ? reduced : scalar;
+}
+
 static phy_status eval_curvature_part(phy_env *env, phy_ir_ref expr,
                                       eval_head head, phy_value *out_value)
 {
@@ -1303,7 +1316,7 @@ static phy_status eval_curvature_part(phy_env *env, phy_ir_ref expr,
         if (scalar == PHY_IR_NULL) {
             return PHY_ERR_CORRUPT_DOCUMENT;
         }
-        *out_value = scalar_value(scalar);
+        *out_value = scalar_value(reduced_scalar(env, scalar));
         return PHY_OK;
     }
     phy_value tensor;
@@ -1352,7 +1365,7 @@ static phy_status eval_kretschmann(phy_env *env, phy_ir_ref expr,
     status = phy_gr_kretschmann(
         env->cas, bundle.as.curvature, &scalar);
     if (status == PHY_OK) {
-        *out_value = scalar_value(scalar);
+        *out_value = scalar_value(reduced_scalar(env, scalar));
     }
     return status;
 }
@@ -1396,7 +1409,7 @@ static phy_status eval_weyl_squared(phy_env *env, phy_ir_ref expr,
     status = phy_gr_weyl_squared(
         env->cas, bundle.as.curvature, &scalar);
     if (status == PHY_OK) {
-        *out_value = scalar_value(scalar);
+        *out_value = scalar_value(reduced_scalar(env, scalar));
     }
     return status;
 }

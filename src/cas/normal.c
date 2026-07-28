@@ -652,15 +652,15 @@ static phy_status combine(phy_cas *cas, bool sum, phy_ir_ref n1, phy_ir_ref d1,
     }
 
     if (sum) {
-        const phy_ir_ref left[2] = {n1, d2};
-        const phy_ir_ref right[2] = {n2, d1};
-        phy_ir_ref a, b;
-        if ((status = phy_cas_mul_node(cas, left, 2u, &a)) != PHY_OK ||
-            (status = phy_cas_mul_node(cas, right, 2u, &b)) != PHY_OK) {
-            return status;
-        }
-        const phy_ir_ref terms[2] = {a, b};
-        status = phy_cas_add_node(cas, terms, 2u, &numerator);
+        /*
+         * Different denominators still share almost every factor when the
+         * terms came from one metric: combining over the least common
+         * denominator instead of the product is what keeps a seventeen-term
+         * curvature invariant at the degree of its true denominator instead
+         * of the sum of all of them.
+         */
+        return phy_cas_combine_sum_lcd(cas, n1, d1, n2, d2, out_num,
+                                       out_den);
     } else {
         const phy_ir_ref factors[2] = {n1, n2};
         status = phy_cas_mul_node(cas, factors, 2u, &numerator);
@@ -679,7 +679,9 @@ static phy_status combine(phy_cas *cas, bool sum, phy_ir_ref n1, phy_ir_ref d1,
     if (status != PHY_OK) {
         return status;
     }
-    return phy_cas_expand_factored_node(cas, denominator, out_den);
+    /* The product already folded equal bases; keep it factored. */
+    *out_den = denominator;
+    return PHY_OK;
 }
 
 static phy_status rational_walk(phy_cas *cas, phy_ir_ref expr,
@@ -757,11 +759,16 @@ static phy_status rational_walk(phy_cas *cas, phy_ir_ref expr,
                 return status;
             }
             if ((status = phy_cas_expand_node(cas, raised_num, &numerator)) !=
-                    PHY_OK ||
-                (status = phy_cas_expand_factored_node(
-                     cas, raised_den, &denominator)) != PHY_OK) {
+                PHY_OK) {
                 return status;
             }
+            /*
+             * The raised denominator stays a power of its base. Expanding
+             * (r-rs)^3 into a cubic makes it a different polynomial from the
+             * (r-rs)^2 of the next term, and the least common denominator
+             * then degenerates back into the product of both.
+             */
+            denominator = raised_den;
         }
         /*
          * A non-integer exponent stays whole: it is a generator. INT64_MIN
@@ -780,9 +787,15 @@ static phy_status rational_walk(phy_cas *cas, phy_ir_ref expr,
     return PHY_OK;
 }
 
-phy_status phy_cas_rational_node(phy_cas *cas, phy_ir_ref expr,
-                                 phy_ir_ref *out_numerator,
-                                 phy_ir_ref *out_denominator)
+/*
+ * The reduced rational pair: polished numerator over the factored
+ * denominator that remains after exact cancellation. The denominator keeps
+ * its factored shape -- rq^6 rather than the expanded polynomial -- because
+ * that is both what cancellation consumes and what a reader wants shown.
+ */
+phy_status phy_cas_rational_reduced_node(phy_cas *cas, phy_ir_ref expr,
+                                         phy_ir_ref *out_numerator,
+                                         phy_ir_ref *out_denominator)
 {
     phy_ir_ref reduced, based;
     phy_status status = phy_cas_simplify_node(cas, expr, &reduced);
@@ -799,10 +812,25 @@ phy_status phy_cas_rational_node(phy_cas *cas, phy_ir_ref expr,
     if (status != PHY_OK) {
         return status;
     }
-    status = polish(cas, numerator, out_numerator);
+    status = polish(cas, numerator, &numerator);
     if (status != PHY_OK) {
         return status;
     }
+    return phy_cas_cancel_known_factors(cas, numerator, denominator,
+                                        out_numerator, out_denominator);
+}
+
+phy_status phy_cas_rational_node(phy_cas *cas, phy_ir_ref expr,
+                                 phy_ir_ref *out_numerator,
+                                 phy_ir_ref *out_denominator)
+{
+    phy_ir_ref numerator, denominator;
+    phy_status status = phy_cas_rational_reduced_node(cas, expr, &numerator,
+                                                      &denominator);
+    if (status != PHY_OK) {
+        return status;
+    }
+    *out_numerator = numerator;
     status = polish(cas, denominator, out_denominator);
     if (status != PHY_OK) {
         return status;
@@ -978,7 +1006,17 @@ static phy_status decide_by_clearing_denominators(
     if (status != PHY_OK) {
         return status;
     }
+    phy_ir_ref previous = PHY_IR_NULL;
     for (unsigned pass = 0u; pass < 32u; ++pass) {
+        /*
+         * A pass that leaves the expression untouched will leave every later
+         * pass untouched too; burning the remaining budget on it would only
+         * delay the same honest give-up.
+         */
+        if (current == previous) {
+            break;
+        }
+        previous = current;
         phy_ir_ref base = PHY_IR_NULL;
         if (!first_negative_power(cas->ir, current, &base)) {
             phy_ir_ref expanded = PHY_IR_NULL;
@@ -1051,16 +1089,38 @@ static phy_status decide(phy_cas *cas, phy_ir_ref expr,
         status = trig_reduce(cas, reduced, &based);
     }
     /*
-     * A factored quotient is already in the best representation for the
-     * denominator-clearing proof.  Taking it through rational_walk first can
-     * allocate a large common numerator that is immediately discarded on a
-     * resource failure; an immutable IR cannot reclaim those nodes inside the
-     * current context.  Clear the visible denominator factors directly.
+     * A factored quotient tries the cheap proof first: clearing the visible
+     * denominator factors one at a time allocates little and settles most
+     * curvature components. Only a question it leaves undecided -- its
+     * clearing loop is guarded against treading water -- is worth the
+     * common-denominator walk below, which is stronger but interns its
+     * intermediate polynomials in an IR that cannot reclaim them.
      */
     phy_ir_ref negative_base = PHY_IR_NULL;
     if (status == PHY_OK &&
         first_negative_power(cas->ir, based, &negative_base)) {
-        return decide_by_clearing_denominators(cas, based, out_decision);
+        const phy_status cleared =
+            decide_by_clearing_denominators(cas, based, out_decision);
+        if (cleared == PHY_OK && *out_decision != PHY_CAS_UNKNOWN) {
+            return PHY_OK;
+        }
+        if (cleared != PHY_OK && !decision_resource_failure(cleared)) {
+            return cleared;
+        }
+        *out_decision = PHY_CAS_UNKNOWN;
+        /*
+         * Escalating interns every intermediate polynomial permanently, so a
+         * question too large to answer would still leave its working set in
+         * the IR and starve whatever runs after it. Size-gate the escalation
+         * and let a big undecided expression stay honestly undecided.
+         */
+        char probe[1];
+        size_t length = 0u;
+        (void)phy_ir_write(cas->ir, based, probe, sizeof probe, &length);
+        if (length > 512u) {
+            return PHY_OK;
+        }
+        phy_cas_cache_clear(cas);
     }
     if (status == PHY_OK) {
         status = rational_walk(cas, based, &numerator, &denominator);
