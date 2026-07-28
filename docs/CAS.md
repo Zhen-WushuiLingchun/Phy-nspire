@@ -137,11 +137,20 @@ as a canonical exact atom. Integer powers use the same route, so `2^200`
 evaluates exactly and `4^500 - 2^1000` is proved zero. A limb, byte, step, or
 cancellation ceiling still fails transactionally with its typed status.
 
-This promotion currently covers atom normalization, sum/product collection,
-integer powers, source/evaluator flow, serialization, and MathTree display.
-The univariate polynomial view used by rational reduction and `Factor` still
-has checked `int64` coefficient storage. F3 is not complete until those
-algorithms use a coefficient-generic interface.
+This promotion covers atom normalization, sum/product collection, integer
+powers, source/evaluator flow, serialization, MathTree display, rational LCD
+construction, and the univariate polynomial view used by reduction and
+`Factor`. Polynomial coefficients are immutable exact IR refs: the checked
+`int64` path remains the common fast path, while promoted coefficients use the
+bounded bigint/rational bridge. Thus Euclidean division and GCD do not fail
+merely because a coefficient exceeds 64 bits.
+
+The current rational-root enumeration used by `Factor` is intentionally
+narrower. It converts a primitive polynomial to bounded `int64` coefficients
+before enumerating divisors; a promoted coefficient outside that enumerator
+returns `PHY_ERR_UNSUPPORTED`, rather than claiming that no rational root
+exists. General modular factorization is the layer that will remove this
+remaining boundary.
 
 ## The zero decision
 
@@ -172,7 +181,8 @@ denominator that reduces to exactly zero is `PHY_ERR_DOMAIN`, because such an
 expression is defined nowhere.
 
 After exact division by denominator factors, a bounded Euclidean algorithm
-computes a monic GCD in `Q[x]` through degree 48. This closes cases such as
+computes a monic GCD in `Q[x]` through degree 48 with arbitrary-precision exact
+coefficients. This closes cases such as
 `(x^2-1)/(x^2-2x+1) -> (x+1)/(x-1)` even though the hidden factor is not the
 whole denominator. It is deliberately univariate: a coefficient containing a
 second symbol does not get guessed to be a field element, and the pair stays

@@ -989,6 +989,42 @@ static void test_reduce_cancels_known_factors(void)
         render(f.ir, reduced),
         "(* (+ (rat 1 2) x) (^ (+ (rat -1 2) x) -1))");
 
+    /*
+     * The Q[x] coefficient domain is exact IR, not int64. This common factor
+     * must cancel even though every nonzero numerator coefficient is 2^100.
+     */
+    PHY_CHECK_EQ_INT(
+        phy_cas_reduce(
+            f.cas,
+            parse(f.ir,
+                  "(* (+ (* 1267650600228229401496703205376 (^ x 2)) "
+                  "       -1267650600228229401496703205376) "
+                  "   (^ (+ 1 (* -2 x) (^ x 2)) -1))"),
+            &reduced),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(
+        render(f.ir, reduced),
+        "(* (+ 1267650600228229401496703205376 "
+        "(* 1267650600228229401496703205376 x)) "
+        "(^ (+ -1 x) -1))");
+
+    /*
+     * LCD coefficients are exact IR as well.  The two denominators have
+     * promoted coefficients 2^100 and 3*2^100; their sum reduces to
+     * 1/(3*2^98*x) without an int64 LCM.
+     */
+    PHY_CHECK_EQ_INT(
+        phy_cas_reduce(
+            f.cas,
+            parse(f.ir,
+                  "(+ (^ (* 1267650600228229401496703205376 x) -1) "
+                  "   (^ (* 3802951800684688204490109616128 x) -1))"),
+            &reduced),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(
+        render(f.ir, reduced),
+        "(* (rat 1 950737950171172051122527404032) (^ x -1))");
+
     /* 1/x + 1/x^2 combines over x^2, not x^3. */
     PHY_CHECK_EQ_INT(
         phy_cas_reduce(f.cas, parse(f.ir, "(+ (^ x -1) (^ x -2))"),
@@ -1053,6 +1089,20 @@ static void test_exact_univariate_factorization(void)
     PHY_CHECK_EQ_STR(
         factored(&f, "(* (^ x 4) (+ x 1))"),
         "(* (+ 1 x) (^ x 4))");
+    PHY_CHECK_EQ_STR(
+        factored(
+            &f,
+            "(+ (* 1267650600228229401496703205376 (^ x 2)) "
+            "   -1267650600228229401496703205376)"),
+        "(* 1267650600228229401496703205376 "
+        "(+ -1 x) (+ 1 x))");
+    PHY_CHECK_EQ_STR(
+        factored(
+            &f,
+            "(+ (* (rat 1267650600228229401496703205376 3) (^ x 2)) "
+            "   (rat -1267650600228229401496703205376 3))"),
+        "(* (rat 1267650600228229401496703205376 3) "
+        "(+ -1 x) (+ 1 x))");
 
     static const char *const round_trip[] = {
         "(+ (^ x 2) -1)",
@@ -1092,6 +1142,11 @@ static void test_exact_univariate_factorization(void)
                      PHY_ERR_UNSUPPORTED);
     PHY_CHECK_EQ_INT(factor_status(&f, "(+ 1000001 (^ x 2))"),
                      PHY_ERR_TERM_LIMIT);
+    PHY_CHECK_EQ_INT(
+        factor_status(
+            &f,
+            "(+ 1267650600228229401496703205376 (^ x 4))"),
+        PHY_ERR_UNSUPPORTED);
     PHY_CHECK_EQ_INT(factor_status(&f, "(^ x 49)"),
                      PHY_ERR_UNSUPPORTED);
 

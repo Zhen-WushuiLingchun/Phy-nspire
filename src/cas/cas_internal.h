@@ -53,7 +53,11 @@ int phy_cas_rat_cmp_int(phy_cas_rat a, int64_t value);
  */
 phy_status phy_cas_exact_add_refs(phy_cas *cas, phy_ir_ref left,
                                   phy_ir_ref right, phy_ir_ref *out_ref);
+phy_status phy_cas_exact_sub_refs(phy_cas *cas, phy_ir_ref left,
+                                  phy_ir_ref right, phy_ir_ref *out_ref);
 phy_status phy_cas_exact_mul_refs(phy_cas *cas, phy_ir_ref left,
+                                  phy_ir_ref right, phy_ir_ref *out_ref);
+phy_status phy_cas_exact_div_refs(phy_cas *cas, phy_ir_ref left,
                                   phy_ir_ref right, phy_ir_ref *out_ref);
 phy_status phy_cas_exact_pow_ref(phy_cas *cas, phy_ir_ref base,
                                  int64_t exponent, phy_ir_ref *out_ref);

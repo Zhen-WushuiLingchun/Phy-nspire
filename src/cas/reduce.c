@@ -32,11 +32,25 @@
 #define REDUCE_MAX_FACTOR_COEFFICIENTS (2u * REDUCE_MAX_DEGREE)
 
 typedef struct {
-    phy_cas_rat coefficient;
+    phy_ir_ref coefficient;
     size_t count;
     phy_ir_ref bases[REDUCE_MAX_FACTORS];
     int64_t exponents[REDUCE_MAX_FACTORS];
 } reduce_factors;
+
+static bool coefficient_is_zero(const phy_cas *cas, phy_ir_ref coefficient);
+static bool coefficient_small_value(const phy_cas *cas,
+                                    phy_ir_ref coefficient,
+                                    int64_t *out_numerator,
+                                    int64_t *out_denominator);
+static phy_status coefficient_add(phy_cas *cas, phy_ir_ref left,
+                                  phy_ir_ref right, phy_ir_ref *out);
+static phy_status coefficient_subtract(phy_cas *cas, phy_ir_ref left,
+                                       phy_ir_ref right, phy_ir_ref *out);
+static phy_status coefficient_multiply(phy_cas *cas, phy_ir_ref left,
+                                       phy_ir_ref right, phy_ir_ref *out);
+static phy_status coefficient_divide(phy_cas *cas, phy_ir_ref dividend,
+                                     phy_ir_ref divisor, phy_ir_ref *out);
 
 static int64_t positive_gcd(int64_t a, int64_t b)
 {
@@ -95,13 +109,12 @@ static bool factors_push(reduce_factors *factors, phy_ir_ref base,
     return true;
 }
 
-static bool factors_push_node(phy_cas *cas, reduce_factors *factors,
-                              phy_ir_ref node)
+static phy_status factors_push_node(phy_cas *cas, reduce_factors *factors,
+                                    phy_ir_ref node)
 {
-    phy_cas_rat value;
-    if (phy_cas_exact_value(cas, node, &value)) {
-        return phy_cas_rat_mul(factors->coefficient, value,
-                               &factors->coefficient);
+    if (phy_cas_is_exact(cas, node)) {
+        return coefficient_multiply(
+            cas, factors->coefficient, node, &factors->coefficient);
     }
     if (phy_ir_kind_of(cas->ir, node) == PHY_IR_POW) {
         int64_t exponent = 0;
@@ -110,20 +123,23 @@ static bool factors_push_node(phy_cas *cas, reduce_factors *factors,
                                  &exponent) &&
             exponent > 0) {
             return factors_push(
-                factors, phy_ir_child(cas->ir, node, 0u), exponent);
+                       factors, phy_ir_child(cas->ir, node, 0u),
+                       exponent)
+                       ? PHY_OK
+                       : PHY_ERR_TERM_LIMIT;
         }
     }
-    return factors_push(factors, node, 1);
+    return factors_push(factors, node, 1) ? PHY_OK : PHY_ERR_TERM_LIMIT;
 }
 
 /*
  * A denominator produced by the rational walk: an exact coefficient times a
  * product of positive integer powers of expanded polynomial bases.
  */
-static bool factors_of(phy_cas *cas, phy_ir_ref denominator,
-                       reduce_factors *out_factors)
+static phy_status factors_of(phy_cas *cas, phy_ir_ref denominator,
+                             reduce_factors *out_factors)
 {
-    out_factors->coefficient = (phy_cas_rat){1, 1};
+    out_factors->coefficient = cas->one;
     out_factors->count = 0u;
     const phy_ir_kind kind = phy_ir_kind_of(cas->ir, denominator);
     if (kind != PHY_IR_MUL) {
@@ -131,13 +147,14 @@ static bool factors_of(phy_cas *cas, phy_ir_ref denominator,
     }
     const size_t count = phy_ir_child_count(cas->ir, denominator);
     for (size_t i = 0u; i < count; ++i) {
-        if (!factors_push_node(cas, out_factors,
-                               phy_ir_child(cas->ir, denominator,
-                                            i))) {
-            return false;
+        const phy_status status =
+            factors_push_node(cas, out_factors,
+                              phy_ir_child(cas->ir, denominator, i));
+        if (status != PHY_OK) {
+            return status;
         }
     }
-    return true;
+    return PHY_OK;
 }
 
 static int64_t factors_exponent_of(const reduce_factors *factors,
@@ -162,15 +179,13 @@ static phy_status factors_build(phy_cas *cas, const reduce_factors *factors,
         return status;
     }
     size_t used = 0u;
-    phy_cas_rat coefficient = factors->coefficient;
+    phy_ir_ref coefficient = factors->coefficient;
     if (invert) {
-        const phy_cas_rat flipped = {coefficient.den, coefficient.num};
-        coefficient = flipped;
+        status =
+            coefficient_divide(cas, cas->one, coefficient, &coefficient);
     }
-    phy_ir_ref number = PHY_IR_NULL;
-    status = phy_cas_number_node(cas, coefficient, &number);
-    if (status == PHY_OK && !phy_cas_is_integer(cas, number, 1)) {
-        phy_cas_scratch_at(cas, offset)[used++] = number;
+    if (status == PHY_OK && !phy_cas_is_integer(cas, coefficient, 1)) {
+        phy_cas_scratch_at(cas, offset)[used++] = coefficient;
     }
     for (size_t i = 0u; i < factors->count && status == PHY_OK; ++i) {
         if (factors->exponents[i] == 0) {
@@ -205,10 +220,14 @@ phy_status phy_cas_combine_sum_lcd(phy_cas *cas, phy_ir_ref n1, phy_ir_ref d1,
                                    phy_ir_ref n2, phy_ir_ref d2,
                                    phy_ir_ref *out_num, phy_ir_ref *out_den)
 {
-    reduce_factors left;
-    reduce_factors right;
-    if (!factors_of(cas, d1, &left) || !factors_of(cas, d2, &right)) {
-        return PHY_ERR_TERM_LIMIT;
+    reduce_factors left = {0};
+    reduce_factors right = {0};
+    phy_status status = factors_of(cas, d1, &left);
+    if (status == PHY_OK) {
+        status = factors_of(cas, d2, &right);
+    }
+    if (status != PHY_OK) {
+        return status;
     }
 
     /*
@@ -224,16 +243,43 @@ phy_status phy_cas_combine_sum_lcd(phy_cas *cas, phy_ir_ref n1, phy_ir_ref d1,
             return PHY_ERR_TERM_LIMIT;
         }
     }
+    int64_t left_num = 0;
+    int64_t left_den = 0;
+    int64_t right_num = 0;
+    int64_t right_den = 0;
     int64_t lcm = 0;
-    if (!checked_gcd_lcm(left.coefficient.num > 0 ? left.coefficient.num
-                                                  : -left.coefficient.num,
-                         right.coefficient.num > 0 ? right.coefficient.num
-                                                   : -right.coefficient.num,
-                         &lcm)) {
-        return PHY_ERR_OVERFLOW;
+    if (coefficient_small_value(
+            cas, left.coefficient, &left_num, &left_den) &&
+        coefficient_small_value(
+            cas, right.coefficient, &right_num, &right_den) &&
+        left_num > 0 && right_num > 0 &&
+        checked_gcd_lcm(left_num, right_num, &lcm)) {
+        status = phy_cas_number_node(
+            cas,
+            (phy_cas_rat){
+                lcm, positive_gcd(left_den, right_den)},
+            &common.coefficient);
+    } else {
+        /*
+         * Any nonzero product is a valid common rational multiple. Keep the
+         * historical least common coefficient on the inline fast path; when
+         * either coefficient is promoted, use the exact product and normalize
+         * its sign. This removes the int64 ceiling without pretending that a
+         * bigint rational LCM has already been exposed as a public primitive.
+         */
+        status = coefficient_multiply(
+            cas, left.coefficient, right.coefficient,
+            &common.coefficient);
+        if (status == PHY_OK &&
+            phy_cas_exact_sign_ref(cas, common.coefficient) < 0) {
+            status = coefficient_subtract(
+                cas, cas->zero, common.coefficient,
+                &common.coefficient);
+        }
     }
-    common.coefficient = (phy_cas_rat){
-        lcm, positive_gcd(left.coefficient.den, right.coefficient.den)};
+    if (status != PHY_OK) {
+        return status;
+    }
 
     reduce_factors fill = common;
     phy_ir_ref multiplier_left = PHY_IR_NULL;
@@ -242,11 +288,12 @@ phy_status phy_cas_combine_sum_lcd(phy_cas *cas, phy_ir_ref n1, phy_ir_ref d1,
         fill.exponents[i] =
             common.exponents[i] - factors_exponent_of(&left, fill.bases[i]);
     }
-    if (!rat_divide(common.coefficient, left.coefficient,
-                    &fill.coefficient)) {
-        return PHY_ERR_OVERFLOW;
+    status = coefficient_divide(
+        cas, common.coefficient, left.coefficient, &fill.coefficient);
+    if (status != PHY_OK) {
+        return status;
     }
-    phy_status status = factors_build(cas, &fill, false, &multiplier_left);
+    status = factors_build(cas, &fill, false, &multiplier_left);
     if (status != PHY_OK) {
         return status;
     }
@@ -254,9 +301,10 @@ phy_status phy_cas_combine_sum_lcd(phy_cas *cas, phy_ir_ref n1, phy_ir_ref d1,
         fill.exponents[i] =
             common.exponents[i] - factors_exponent_of(&right, fill.bases[i]);
     }
-    if (!rat_divide(common.coefficient, right.coefficient,
-                    &fill.coefficient)) {
-        return PHY_ERR_OVERFLOW;
+    status = coefficient_divide(
+        cas, common.coefficient, right.coefficient, &fill.coefficient);
+    if (status != PHY_OK) {
+        return status;
     }
     status = factors_build(cas, &fill, false, &multiplier_right);
     if (status != PHY_OK) {
@@ -590,36 +638,110 @@ static phy_status divide_exact(phy_cas *cas, phy_ir_ref poly,
 
 typedef struct {
     int64_t degree;
-    phy_cas_rat coefficients[REDUCE_MAX_DEGREE + 1u];
+    phy_ir_ref coefficients[REDUCE_MAX_DEGREE + 1u];
 } rational_poly;
 
-static bool rat_subtract(phy_cas_rat left, phy_cas_rat right,
-                         phy_cas_rat *out)
+static bool coefficient_is_zero(const phy_cas *cas, phy_ir_ref coefficient)
 {
-    phy_cas_rat negated;
-    return phy_cas_rat_mul(right, (phy_cas_rat){-1, 1}, &negated) &&
-           phy_cas_rat_add(left, negated, out);
+    return phy_cas_is_integer(cas, coefficient, 0);
 }
 
-static void poly_zero(rational_poly *poly)
+static bool coefficient_small_value(const phy_cas *cas,
+                                    phy_ir_ref coefficient,
+                                    int64_t *out_numerator,
+                                    int64_t *out_denominator)
+{
+    if (phy_ir_integer_value(
+            cas->ir, coefficient, out_numerator)) {
+        *out_denominator = 1;
+        return true;
+    }
+    return phy_ir_rational_value(
+        cas->ir, coefficient, out_numerator, out_denominator);
+}
+
+static phy_status coefficient_add(phy_cas *cas, phy_ir_ref left,
+                                  phy_ir_ref right, phy_ir_ref *out)
+{
+    phy_cas_rat a;
+    phy_cas_rat b;
+    phy_cas_rat result;
+    if (phy_cas_exact_value(cas, left, &a) &&
+        phy_cas_exact_value(cas, right, &b) &&
+        phy_cas_rat_add(a, b, &result)) {
+        return phy_cas_number_node(cas, result, out);
+    }
+    return phy_cas_exact_add_refs(cas, left, right, out);
+}
+
+static phy_status coefficient_subtract(phy_cas *cas, phy_ir_ref left,
+                                       phy_ir_ref right, phy_ir_ref *out)
+{
+    phy_cas_rat a;
+    phy_cas_rat b;
+    phy_cas_rat negated;
+    phy_cas_rat result;
+    if (phy_cas_exact_value(cas, left, &a) &&
+        phy_cas_exact_value(cas, right, &b) &&
+        phy_cas_rat_mul(b, (phy_cas_rat){-1, 1}, &negated) &&
+        phy_cas_rat_add(a, negated, &result)) {
+        return phy_cas_number_node(cas, result, out);
+    }
+    return phy_cas_exact_sub_refs(cas, left, right, out);
+}
+
+static phy_status coefficient_multiply(phy_cas *cas, phy_ir_ref left,
+                                       phy_ir_ref right, phy_ir_ref *out)
+{
+    phy_cas_rat a;
+    phy_cas_rat b;
+    phy_cas_rat result;
+    if (phy_cas_exact_value(cas, left, &a) &&
+        phy_cas_exact_value(cas, right, &b) &&
+        phy_cas_rat_mul(a, b, &result)) {
+        return phy_cas_number_node(cas, result, out);
+    }
+    return phy_cas_exact_mul_refs(cas, left, right, out);
+}
+
+static phy_status coefficient_divide(phy_cas *cas, phy_ir_ref dividend,
+                                     phy_ir_ref divisor, phy_ir_ref *out)
+{
+    phy_cas_rat a;
+    phy_cas_rat b;
+    phy_cas_rat result;
+    if (phy_cas_exact_value(cas, dividend, &a) &&
+        phy_cas_exact_value(cas, divisor, &b)) {
+        if (b.num == 0) {
+            return PHY_ERR_DOMAIN;
+        }
+        if (rat_divide(a, b, &result)) {
+            return phy_cas_number_node(cas, result, out);
+        }
+    }
+    return phy_cas_exact_div_refs(cas, dividend, divisor, out);
+}
+
+static void poly_zero(phy_cas *cas, rational_poly *poly)
 {
     poly->degree = 0;
     for (size_t index = 0u; index <= REDUCE_MAX_DEGREE; ++index) {
-        poly->coefficients[index] = (phy_cas_rat){0, 1};
+        poly->coefficients[index] = cas->zero;
     }
 }
 
-static void poly_trim(rational_poly *poly)
+static void poly_trim(const phy_cas *cas, rational_poly *poly)
 {
     while (poly->degree > 0 &&
-           poly->coefficients[poly->degree].num == 0) {
+           coefficient_is_zero(cas, poly->coefficients[poly->degree])) {
         poly->degree--;
     }
 }
 
-static bool poly_is_zero(const rational_poly *poly)
+static bool poly_is_zero(const phy_cas *cas, const rational_poly *poly)
 {
-    return poly->degree == 0 && poly->coefficients[0].num == 0;
+    return poly->degree == 0 &&
+           coefficient_is_zero(cas, poly->coefficients[0]);
 }
 
 /*
@@ -641,30 +763,32 @@ static phy_status poly_from_ir(phy_cas *cas, phy_ir_ref expression,
         return status;
     }
 
-    poly_zero(out_poly);
+    poly_zero(cas, out_poly);
     out_poly->degree = degree;
     for (int64_t index = 0; index <= degree; ++index) {
-        if (!phy_cas_exact_value(cas, buckets[index],
-                                 &out_poly->coefficients[index])) {
+        if (!phy_cas_is_exact(cas, buckets[index])) {
             *out_fits = false;
             return PHY_OK;
         }
+        out_poly->coefficients[index] = buckets[index];
     }
-    poly_trim(out_poly);
+    poly_trim(cas, out_poly);
     *out_fits = true;
     return PHY_OK;
 }
 
-static phy_status poly_make_monic(rational_poly *poly)
+static phy_status poly_make_monic(phy_cas *cas, rational_poly *poly)
 {
-    if (poly_is_zero(poly)) {
+    if (poly_is_zero(cas, poly)) {
         return PHY_OK;
     }
-    const phy_cas_rat leading = poly->coefficients[poly->degree];
+    const phy_ir_ref leading = poly->coefficients[poly->degree];
     for (int64_t index = 0; index <= poly->degree; ++index) {
-        phy_cas_rat divided;
-        if (!rat_divide(poly->coefficients[index], leading, &divided)) {
-            return PHY_ERR_OVERFLOW;
+        phy_ir_ref divided = PHY_IR_NULL;
+        const phy_status status = coefficient_divide(
+            cas, poly->coefficients[index], leading, &divided);
+        if (status != PHY_OK) {
+            return status;
         }
         poly->coefficients[index] = divided;
     }
@@ -675,11 +799,11 @@ static phy_status poly_remainder(phy_cas *cas, const rational_poly *dividend,
                                  const rational_poly *divisor,
                                  rational_poly *out_remainder)
 {
-    if (poly_is_zero(divisor)) {
+    if (poly_is_zero(cas, divisor)) {
         return PHY_ERR_DOMAIN;
     }
     *out_remainder = *dividend;
-    while (!poly_is_zero(out_remainder) &&
+    while (!poly_is_zero(cas, out_remainder) &&
            out_remainder->degree >= divisor->degree) {
         phy_status status = phy_cas_step(cas);
         if (status != PHY_OK) {
@@ -687,25 +811,31 @@ static phy_status poly_remainder(phy_cas *cas, const rational_poly *dividend,
         }
         const int64_t shift =
             out_remainder->degree - divisor->degree;
-        phy_cas_rat factor;
-        if (!rat_divide(
-                out_remainder->coefficients[out_remainder->degree],
-                divisor->coefficients[divisor->degree], &factor)) {
-            return PHY_ERR_OVERFLOW;
+        phy_ir_ref factor = PHY_IR_NULL;
+        status = coefficient_divide(
+            cas,
+            out_remainder->coefficients[out_remainder->degree],
+            divisor->coefficients[divisor->degree], &factor);
+        if (status != PHY_OK) {
+            return status;
         }
         for (int64_t index = 0; index <= divisor->degree; ++index) {
-            phy_cas_rat product;
-            phy_cas_rat updated;
-            if (!phy_cas_rat_mul(factor, divisor->coefficients[index],
-                                 &product) ||
-                !rat_subtract(
-                    out_remainder->coefficients[index + shift], product,
-                    &updated)) {
-                return PHY_ERR_OVERFLOW;
+            phy_ir_ref product = PHY_IR_NULL;
+            phy_ir_ref updated = PHY_IR_NULL;
+            status = coefficient_multiply(
+                cas, factor, divisor->coefficients[index], &product);
+            if (status == PHY_OK) {
+                status = coefficient_subtract(
+                    cas,
+                    out_remainder->coefficients[index + shift],
+                    product, &updated);
+            }
+            if (status != PHY_OK) {
+                return status;
             }
             out_remainder->coefficients[index + shift] = updated;
         }
-        poly_trim(out_remainder);
+        poly_trim(cas, out_remainder);
     }
     return PHY_OK;
 }
@@ -716,16 +846,16 @@ static phy_status poly_gcd(phy_cas *cas, const rational_poly *left,
 {
     rational_poly a = *left;
     rational_poly b = *right;
-    phy_status status = poly_make_monic(&a);
+    phy_status status = poly_make_monic(cas, &a);
     if (status == PHY_OK) {
-        status = poly_make_monic(&b);
+        status = poly_make_monic(cas, &b);
     }
-    while (status == PHY_OK && !poly_is_zero(&b)) {
+    while (status == PHY_OK && !poly_is_zero(cas, &b)) {
         rational_poly remainder;
-        poly_zero(&remainder);
+        poly_zero(cas, &remainder);
         status = poly_remainder(cas, &a, &b, &remainder);
         if (status == PHY_OK) {
-            status = poly_make_monic(&remainder);
+            status = poly_make_monic(cas, &remainder);
         }
         a = b;
         b = remainder;
@@ -737,44 +867,51 @@ static phy_status poly_gcd(phy_cas *cas, const rational_poly *left,
     return PHY_OK;
 }
 
-static phy_status poly_divide_exact(const rational_poly *dividend,
+static phy_status poly_divide_exact(phy_cas *cas,
+                                    const rational_poly *dividend,
                                     const rational_poly *divisor,
                                     rational_poly *out_quotient,
                                     bool *out_exact)
 {
     *out_exact = false;
-    if (poly_is_zero(divisor)) {
+    if (poly_is_zero(cas, divisor)) {
         return PHY_ERR_DOMAIN;
     }
     rational_poly remainder = *dividend;
-    poly_zero(out_quotient);
+    poly_zero(cas, out_quotient);
     if (remainder.degree >= divisor->degree) {
         out_quotient->degree = remainder.degree - divisor->degree;
     }
-    while (!poly_is_zero(&remainder) &&
+    while (!poly_is_zero(cas, &remainder) &&
            remainder.degree >= divisor->degree) {
         const int64_t shift = remainder.degree - divisor->degree;
-        phy_cas_rat factor;
-        if (!rat_divide(remainder.coefficients[remainder.degree],
-                        divisor->coefficients[divisor->degree], &factor)) {
-            return PHY_ERR_OVERFLOW;
+        phy_ir_ref factor = PHY_IR_NULL;
+        phy_status status = coefficient_divide(
+            cas, remainder.coefficients[remainder.degree],
+            divisor->coefficients[divisor->degree], &factor);
+        if (status != PHY_OK) {
+            return status;
         }
         out_quotient->coefficients[shift] = factor;
         for (int64_t index = 0; index <= divisor->degree; ++index) {
-            phy_cas_rat product;
-            phy_cas_rat updated;
-            if (!phy_cas_rat_mul(factor, divisor->coefficients[index],
-                                 &product) ||
-                !rat_subtract(remainder.coefficients[index + shift], product,
-                              &updated)) {
-                return PHY_ERR_OVERFLOW;
+            phy_ir_ref product = PHY_IR_NULL;
+            phy_ir_ref updated = PHY_IR_NULL;
+            status = coefficient_multiply(
+                cas, factor, divisor->coefficients[index], &product);
+            if (status == PHY_OK) {
+                status = coefficient_subtract(
+                    cas, remainder.coefficients[index + shift],
+                    product, &updated);
+            }
+            if (status != PHY_OK) {
+                return status;
             }
             remainder.coefficients[index + shift] = updated;
         }
-        poly_trim(&remainder);
+        poly_trim(cas, &remainder);
     }
-    poly_trim(out_quotient);
-    *out_exact = poly_is_zero(&remainder);
+    poly_trim(cas, out_quotient);
+    *out_exact = poly_is_zero(cas, &remainder);
     return PHY_OK;
 }
 
@@ -791,20 +928,15 @@ static phy_status poly_to_ir(phy_cas *cas, const rational_poly *poly,
     size_t used = 0u;
     for (int64_t degree = 0; degree <= poly->degree && status == PHY_OK;
          ++degree) {
-        const phy_cas_rat coefficient = poly->coefficients[degree];
-        if (coefficient.num == 0) {
+        const phy_ir_ref coefficient_ref = poly->coefficients[degree];
+        if (coefficient_is_zero(cas, coefficient_ref)) {
             continue;
         }
-        phy_ir_ref coefficient_ref = PHY_IR_NULL;
         phy_ir_ref exponent = PHY_IR_NULL;
         phy_ir_ref power = PHY_IR_NULL;
         phy_ir_ref term = PHY_IR_NULL;
-        status =
-            phy_cas_number_node(cas, coefficient, &coefficient_ref);
-        if (status == PHY_OK) {
-            status = phy_cas_number_node(
-                cas, (phy_cas_rat){degree, 1}, &exponent);
-        }
+        status = phy_cas_number_node(
+            cas, (phy_cas_rat){degree, 1}, &exponent);
         if (status == PHY_OK) {
             status = phy_cas_pow_node(cas, variable, exponent, &power);
         }
@@ -835,31 +967,38 @@ typedef struct {
     size_t count;
     size_t coefficient_count;
     factor_record records[REDUCE_MAX_DEGREE];
-    phy_cas_rat coefficients[REDUCE_MAX_FACTOR_COEFFICIENTS];
+    phy_ir_ref coefficients[REDUCE_MAX_FACTOR_COEFFICIENTS];
 } factor_workspace;
 
-static bool poly_is_one(const rational_poly *poly)
+static bool poly_is_one(const phy_cas *cas, const rational_poly *poly)
 {
-    return poly->degree == 0 && poly->coefficients[0].num == 1 &&
-           poly->coefficients[0].den == 1;
+    return poly->degree == 0 &&
+           phy_cas_is_integer(cas, poly->coefficients[0], 1);
 }
 
-static phy_status poly_derivative(const rational_poly *poly,
+static phy_status poly_derivative(phy_cas *cas,
+                                  const rational_poly *poly,
                                   rational_poly *out_derivative)
 {
-    poly_zero(out_derivative);
+    poly_zero(cas, out_derivative);
     if (poly->degree == 0) {
         return PHY_OK;
     }
     out_derivative->degree = poly->degree - 1;
     for (int64_t degree = 1; degree <= poly->degree; ++degree) {
-        if (!phy_cas_rat_mul(poly->coefficients[degree],
-                             (phy_cas_rat){degree, 1},
-                             &out_derivative->coefficients[degree - 1])) {
-            return PHY_ERR_OVERFLOW;
+        phy_ir_ref degree_ref = PHY_IR_NULL;
+        phy_status status = phy_cas_number_node(
+            cas, (phy_cas_rat){degree, 1}, &degree_ref);
+        if (status == PHY_OK) {
+            status = coefficient_multiply(
+                cas, poly->coefficients[degree], degree_ref,
+                &out_derivative->coefficients[degree - 1]);
+        }
+        if (status != PHY_OK) {
+            return status;
         }
     }
-    poly_trim(out_derivative);
+    poly_trim(cas, out_derivative);
     return PHY_OK;
 }
 
@@ -870,13 +1009,21 @@ static phy_status poly_derivative(const rational_poly *poly,
  * calculator cell into billions of divisor trials.
  */
 static phy_status poly_primitive_integers(
+    phy_cas *cas,
     const rational_poly *poly,
     int64_t out_coefficients[REDUCE_MAX_DEGREE + 1u])
 {
     int64_t denominator_lcm = 1;
     for (int64_t degree = 0; degree <= poly->degree; ++degree) {
+        int64_t numerator = 0;
+        int64_t denominator = 0;
+        if (!coefficient_small_value(
+                cas, poly->coefficients[degree],
+                &numerator, &denominator)) {
+            return PHY_ERR_UNSUPPORTED;
+        }
         if (!checked_gcd_lcm(denominator_lcm,
-                             poly->coefficients[degree].den,
+                             denominator,
                              &denominator_lcm)) {
             return PHY_ERR_OVERFLOW;
         }
@@ -884,13 +1031,19 @@ static phy_status poly_primitive_integers(
 
     int64_t content = 0;
     for (int64_t degree = 0; degree <= poly->degree; ++degree) {
-        const phy_cas_rat coefficient = poly->coefficients[degree];
-        const int64_t scale = denominator_lcm / coefficient.den;
-        if (coefficient.num > REDUCE_MAX_INTEGER_COEFFICIENT / scale ||
-            coefficient.num < -REDUCE_MAX_INTEGER_COEFFICIENT / scale) {
+        int64_t numerator = 0;
+        int64_t denominator = 0;
+        if (!coefficient_small_value(
+                cas, poly->coefficients[degree],
+                &numerator, &denominator)) {
+            return PHY_ERR_UNSUPPORTED;
+        }
+        const int64_t scale = denominator_lcm / denominator;
+        if (numerator > REDUCE_MAX_INTEGER_COEFFICIENT / scale ||
+            numerator < -REDUCE_MAX_INTEGER_COEFFICIENT / scale) {
             return PHY_ERR_TERM_LIMIT;
         }
-        const int64_t integer = coefficient.num * scale;
+        const int64_t integer = numerator * scale;
         out_coefficients[degree] = integer;
         const int64_t magnitude = integer < 0 ? -integer : integer;
         if (magnitude != 0) {
@@ -941,20 +1094,29 @@ static phy_status integer_divisors(phy_cas *cas, int64_t value,
 static phy_status poly_has_value(phy_cas *cas, const rational_poly *poly,
                                  phy_cas_rat value, bool *out_zero)
 {
-    phy_cas_rat accumulated = poly->coefficients[poly->degree];
+    phy_ir_ref value_ref = PHY_IR_NULL;
+    phy_status status = phy_cas_number_node(cas, value, &value_ref);
+    phy_ir_ref accumulated = poly->coefficients[poly->degree];
     for (int64_t degree = poly->degree; degree > 0; --degree) {
-        phy_status status = phy_cas_step(cas);
+        if (status == PHY_OK) {
+            status = phy_cas_step(cas);
+        }
         if (status != PHY_OK) {
             return status;
         }
-        phy_cas_rat product;
-        if (!phy_cas_rat_mul(accumulated, value, &product) ||
-            !phy_cas_rat_add(product, poly->coefficients[degree - 1],
-                             &accumulated)) {
-            return PHY_ERR_OVERFLOW;
+        phy_ir_ref product = PHY_IR_NULL;
+        status = coefficient_multiply(
+            cas, accumulated, value_ref, &product);
+        if (status == PHY_OK) {
+            status = coefficient_add(
+                cas, product, poly->coefficients[degree - 1],
+                &accumulated);
+        }
+        if (status != PHY_OK) {
+            return status;
         }
     }
-    *out_zero = accumulated.num == 0;
+    *out_zero = coefficient_is_zero(cas, accumulated);
     return PHY_OK;
 }
 
@@ -966,7 +1128,7 @@ static phy_status poly_has_value(phy_cas *cas, const rational_poly *poly,
  */
 static phy_status poly_rational_root(phy_cas *cas,
                                      const rational_poly *poly,
-                                     phy_cas_rat *out_root,
+                                     phy_ir_ref *out_root,
                                      bool *out_found)
 {
     *out_found = false;
@@ -974,23 +1136,25 @@ static phy_status poly_rational_root(phy_cas *cas,
         return PHY_OK;
     }
     if (poly->degree == 1) {
-        phy_cas_rat negated;
-        if (!phy_cas_rat_mul(poly->coefficients[0],
-                             (phy_cas_rat){-1, 1}, &negated) ||
-            !rat_divide(negated, poly->coefficients[1], out_root)) {
-            return PHY_ERR_OVERFLOW;
+        phy_ir_ref negated = PHY_IR_NULL;
+        phy_status status = coefficient_subtract(
+            cas, cas->zero, poly->coefficients[0], &negated);
+        if (status == PHY_OK) {
+            status = coefficient_divide(
+                cas, negated, poly->coefficients[1], out_root);
         }
-        *out_found = true;
-        return PHY_OK;
+        *out_found = status == PHY_OK;
+        return status;
     }
 
     int64_t integers[REDUCE_MAX_DEGREE + 1u];
-    phy_status status = poly_primitive_integers(poly, integers);
+    phy_status status =
+        poly_primitive_integers(cas, poly, integers);
     if (status != PHY_OK) {
         return status;
     }
     if (integers[0] == 0) {
-        *out_root = (phy_cas_rat){0, 1};
+        *out_root = cas->zero;
         *out_found = true;
         return PHY_OK;
     }
@@ -1037,7 +1201,11 @@ static phy_status poly_rational_root(phy_cas *cas,
                     return status;
                 }
                 if (zero) {
-                    *out_root = candidate;
+                    status =
+                        phy_cas_number_node(cas, candidate, out_root);
+                    if (status != PHY_OK) {
+                        return status;
+                    }
                     *out_found = true;
                     return PHY_OK;
                 }
@@ -1047,32 +1215,35 @@ static phy_status poly_rational_root(phy_cas *cas,
     return PHY_OK;
 }
 
-static phy_status poly_divide_linear(const rational_poly *poly,
-                                     phy_cas_rat root,
+static phy_status poly_divide_linear(phy_cas *cas,
+                                     const rational_poly *poly,
+                                     phy_ir_ref root,
                                      rational_poly *out_quotient)
 {
     rational_poly divisor;
-    poly_zero(&divisor);
+    poly_zero(cas, &divisor);
     divisor.degree = 1;
-    if (!phy_cas_rat_mul(root, (phy_cas_rat){-1, 1},
-                         &divisor.coefficients[0])) {
-        return PHY_ERR_OVERFLOW;
+    phy_status status = coefficient_subtract(
+        cas, cas->zero, root, &divisor.coefficients[0]);
+    if (status != PHY_OK) {
+        return status;
     }
-    divisor.coefficients[1] = (phy_cas_rat){1, 1};
+    divisor.coefficients[1] = cas->one;
     bool exact = false;
-    const phy_status status =
-        poly_divide_exact(poly, &divisor, out_quotient, &exact);
+    status =
+        poly_divide_exact(cas, poly, &divisor, out_quotient, &exact);
     if (status != PHY_OK) {
         return status;
     }
     return exact ? PHY_OK : PHY_ERR_CORRUPT_DOCUMENT;
 }
 
-static phy_status factor_record_push(factor_workspace *workspace,
+static phy_status factor_record_push(phy_cas *cas,
+                                     factor_workspace *workspace,
                                      const rational_poly *poly,
                                      unsigned multiplicity)
 {
-    if (poly_is_one(poly)) {
+    if (poly_is_one(cas, poly)) {
         return PHY_OK;
     }
     const size_t coefficient_count = (size_t)poly->degree + 1u;
@@ -1104,7 +1275,7 @@ static phy_status factor_square_free(
 {
     rational_poly remaining = *poly;
     while (remaining.degree > 0) {
-        phy_cas_rat root;
+        phy_ir_ref root = PHY_IR_NULL;
         bool found = false;
         phy_status status =
             poly_rational_root(cas, &remaining, &root, &found);
@@ -1114,24 +1285,27 @@ static phy_status factor_square_free(
         if (!found) {
             return remaining.degree <= 3
                        ? factor_record_push(
-                             workspace, &remaining, multiplicity)
+                             cas, workspace, &remaining, multiplicity)
                        : PHY_ERR_UNSUPPORTED;
         }
 
         rational_poly linear;
-        poly_zero(&linear);
+        poly_zero(cas, &linear);
         linear.degree = 1;
-        if (!phy_cas_rat_mul(root, (phy_cas_rat){-1, 1},
-                             &linear.coefficients[0])) {
-            return PHY_ERR_OVERFLOW;
+        status = coefficient_subtract(
+            cas, cas->zero, root, &linear.coefficients[0]);
+        if (status != PHY_OK) {
+            return status;
         }
-        linear.coefficients[1] = (phy_cas_rat){1, 1};
-        status = factor_record_push(workspace, &linear, multiplicity);
+        linear.coefficients[1] = cas->one;
+        status =
+            factor_record_push(cas, workspace, &linear, multiplicity);
         if (status != PHY_OK) {
             return status;
         }
         rational_poly quotient;
-        status = poly_divide_linear(&remaining, root, &quotient);
+        status =
+            poly_divide_linear(cas, &remaining, root, &quotient);
         if (status != PHY_OK) {
             return status;
         }
@@ -1154,17 +1328,17 @@ static phy_status factor_complete(
     rational_poly derivative;
     rational_poly repeated;
     rational_poly square_free_product;
-    poly_zero(&derivative);
-    poly_zero(&repeated);
-    poly_zero(&square_free_product);
-    phy_status status = poly_derivative(monic, &derivative);
+    poly_zero(cas, &derivative);
+    poly_zero(cas, &repeated);
+    poly_zero(cas, &square_free_product);
+    phy_status status = poly_derivative(cas, monic, &derivative);
     if (status == PHY_OK) {
         status = poly_gcd(cas, monic, &derivative, &repeated);
     }
     bool exact = false;
     if (status == PHY_OK) {
         status = poly_divide_exact(
-            monic, &repeated, &square_free_product, &exact);
+            cas, monic, &repeated, &square_free_product, &exact);
     }
     if (status != PHY_OK) {
         return status;
@@ -1176,24 +1350,26 @@ static phy_status factor_complete(
     rational_poly remaining_repeated = repeated;
     rational_poly layer = square_free_product;
     unsigned multiplicity = 1u;
-    while (!poly_is_one(&layer)) {
+    while (!poly_is_one(cas, &layer)) {
         if (multiplicity > REDUCE_MAX_DEGREE) {
             return PHY_ERR_CORRUPT_DOCUMENT;
         }
         rational_poly shared;
         rational_poly component;
         rational_poly next_repeated;
-        poly_zero(&shared);
-        poly_zero(&component);
-        poly_zero(&next_repeated);
+        poly_zero(cas, &shared);
+        poly_zero(cas, &component);
+        poly_zero(cas, &next_repeated);
         status = poly_gcd(cas, &layer, &remaining_repeated, &shared);
         if (status == PHY_OK) {
             status =
-                poly_divide_exact(&layer, &shared, &component, &exact);
+                poly_divide_exact(
+                    cas, &layer, &shared, &component, &exact);
         }
         if (status == PHY_OK && exact) {
             status = poly_divide_exact(
-                &remaining_repeated, &shared, &next_repeated, &exact);
+                cas, &remaining_repeated, &shared, &next_repeated,
+                &exact);
         }
         if (status != PHY_OK) {
             return status;
@@ -1201,7 +1377,7 @@ static phy_status factor_complete(
         if (!exact) {
             return PHY_ERR_CORRUPT_DOCUMENT;
         }
-        if (!poly_is_one(&component)) {
+        if (!poly_is_one(cas, &component)) {
             status = factor_square_free(
                 cas, &component, multiplicity, workspace);
             if (status != PHY_OK) {
@@ -1212,7 +1388,7 @@ static phy_status factor_complete(
         remaining_repeated = next_repeated;
         multiplicity++;
     }
-    return poly_is_one(&remaining_repeated) ? PHY_OK
+    return poly_is_one(cas, &remaining_repeated) ? PHY_OK
                                             : PHY_ERR_CORRUPT_DOCUMENT;
 }
 
@@ -1254,7 +1430,7 @@ static phy_status collect_factor_variables(
 }
 
 static phy_status build_factorization(
-    phy_cas *cas, phy_ir_ref variable, phy_cas_rat leading,
+    phy_cas *cas, phy_ir_ref variable, phy_ir_ref leading,
     const factor_workspace *workspace,
     phy_ir_ref *out_ref)
 {
@@ -1266,16 +1442,14 @@ static phy_status build_factorization(
         return status;
     }
     size_t used = 0u;
-    phy_ir_ref coefficient = PHY_IR_NULL;
-    status = phy_cas_number_node(cas, leading, &coefficient);
-    if (status == PHY_OK && !phy_cas_is_integer(cas, coefficient, 1)) {
-        phy_cas_scratch_at(cas, offset)[used++] = coefficient;
+    if (!phy_cas_is_integer(cas, leading, 1)) {
+        phy_cas_scratch_at(cas, offset)[used++] = leading;
     }
     for (size_t index = 0u;
          index < workspace->count && status == PHY_OK; ++index) {
         const factor_record *record = &workspace->records[index];
         rational_poly polynomial;
-        poly_zero(&polynomial);
+        poly_zero(cas, &polynomial);
         polynomial.degree = record->degree;
         for (int64_t degree = 0; degree <= record->degree; ++degree) {
             polynomial.coefficients[degree] =
@@ -1389,7 +1563,7 @@ static phy_status cancel_univariate_gcd(phy_cas *cas, phy_ir_ref numerator,
             return status;
         }
         if (!numerator_fits || !denominator_fits ||
-            poly_is_zero(&num_poly)) {
+            poly_is_zero(cas, &num_poly)) {
             continue;
         }
 
@@ -1404,15 +1578,15 @@ static phy_status cancel_univariate_gcd(phy_cas *cas, phy_ir_ref numerator,
 
         rational_poly num_quotient;
         rational_poly den_quotient;
-        poly_zero(&num_quotient);
-        poly_zero(&den_quotient);
+        poly_zero(cas, &num_quotient);
+        poly_zero(cas, &den_quotient);
         bool num_exact = false;
         bool den_exact = false;
         status = poly_divide_exact(
-            &num_poly, &gcd, &num_quotient, &num_exact);
+            cas, &num_poly, &gcd, &num_quotient, &num_exact);
         if (status == PHY_OK) {
             status = poly_divide_exact(
-                &den_poly, &gcd, &den_quotient, &den_exact);
+                cas, &den_poly, &gcd, &den_quotient, &den_exact);
         }
         if (status != PHY_OK) {
             return status;
@@ -1422,21 +1596,25 @@ static phy_status cancel_univariate_gcd(phy_cas *cas, phy_ir_ref numerator,
         }
 
         /* A unique reduced pair: make the denominator monic. */
-        const phy_cas_rat denominator_lead =
+        const phy_ir_ref denominator_lead =
             den_quotient.coefficients[den_quotient.degree];
         for (int64_t degree = 0; degree <= num_quotient.degree; ++degree) {
-            phy_cas_rat normalized;
-            if (!rat_divide(num_quotient.coefficients[degree],
-                            denominator_lead, &normalized)) {
-                return PHY_ERR_OVERFLOW;
+            phy_ir_ref normalized = PHY_IR_NULL;
+            status = coefficient_divide(
+                cas, num_quotient.coefficients[degree],
+                denominator_lead, &normalized);
+            if (status != PHY_OK) {
+                return status;
             }
             num_quotient.coefficients[degree] = normalized;
         }
         for (int64_t degree = 0; degree <= den_quotient.degree; ++degree) {
-            phy_cas_rat normalized;
-            if (!rat_divide(den_quotient.coefficients[degree],
-                            denominator_lead, &normalized)) {
-                return PHY_ERR_OVERFLOW;
+            phy_ir_ref normalized = PHY_IR_NULL;
+            status = coefficient_divide(
+                cas, den_quotient.coefficients[degree],
+                denominator_lead, &normalized);
+            if (status != PHY_OK) {
+                return status;
             }
             den_quotient.coefficients[degree] = normalized;
         }
@@ -1458,9 +1636,13 @@ phy_status phy_cas_cancel_known_factors(phy_cas *cas, phy_ir_ref numerator,
 {
     *out_num = numerator;
     *out_den = denominator;
-    reduce_factors factors;
-    if (!factors_of(cas, denominator, &factors)) {
+    reduce_factors factors = {0};
+    phy_status factors_status = factors_of(cas, denominator, &factors);
+    if (factors_status == PHY_ERR_TERM_LIMIT) {
         return PHY_OK; /* an unrecognized denominator shape stays as-is */
+    }
+    if (factors_status != PHY_OK) {
+        return factors_status;
     }
     phy_ir_ref current = numerator;
     bool changed = false;
@@ -1515,10 +1697,11 @@ phy_status phy_cas_reduce(phy_cas *cas, phy_ir_ref expr, phy_ir_ref *out_ref)
         *out_ref = numerator;
         return PHY_OK;
     }
-    reduce_factors factors;
+    reduce_factors factors = {0};
     phy_ir_ref inverse = PHY_IR_NULL;
-    if (!factors_of(cas, denominator, &factors)) {
-        return PHY_ERR_TERM_LIMIT;
+    status = factors_of(cas, denominator, &factors);
+    if (status != PHY_OK) {
+        return status;
     }
     status = factors_build(cas, &factors, true, &inverse);
     if (status != PHY_OK) {
@@ -1579,7 +1762,7 @@ phy_status phy_cas_factor(phy_cas *cas, phy_ir_ref expr,
     if (!fits) {
         return PHY_ERR_UNSUPPORTED;
     }
-    if (poly_is_zero(&polynomial)) {
+    if (poly_is_zero(cas, &polynomial)) {
         *out_ref = cas->zero;
         return PHY_OK;
     }
@@ -1588,9 +1771,9 @@ phy_status phy_cas_factor(phy_cas *cas, phy_ir_ref expr,
         return PHY_OK;
     }
 
-    const phy_cas_rat leading =
+    const phy_ir_ref leading =
         polynomial.coefficients[polynomial.degree];
-    status = poly_make_monic(&polynomial);
+    status = poly_make_monic(cas, &polynomial);
     if (status != PHY_OK) {
         return status;
     }

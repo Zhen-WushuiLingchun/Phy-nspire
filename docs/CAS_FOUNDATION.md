@@ -60,7 +60,8 @@ semantics.
 
 Status: the bounded univariate `Q[x]` GCD, reader-facing `Cancel`, Yun
 square-free decomposition, and a complete-on-success bounded `Factor` class
-are implemented. Multivariate GCD, general high-degree irreducible
+are implemented. Their coefficient containers now use the F3 arbitrary-
+precision exact domain. Multivariate GCD, general high-degree irreducible
 factorization, and `Apart` remain open.
 
 - A bounded polynomial view with explicit variable order.
@@ -70,10 +71,13 @@ factorization, and `Apart` remain open.
 - `Cancel`, robust `Together`, square-free decomposition, `Factor`, and
   `Apart`, in that order.
 
-Polynomial algorithms currently use checked `int64` rationals and return
-`PHY_ERR_OVERFLOW` outside that coefficient domain. Scalar folding has already
-promoted, but these algorithms still must be isolated behind coefficient
-operations so F3 can replace their storage without rewriting their logic.
+Polynomial Euclidean division, GCD, square-free decomposition, factor
+reconstruction, denominator LCDs, and univariate cancellation use exact IR
+coefficients with a checked `int64` fast path and arbitrary-precision fallback.
+The rational-root candidate enumerator remains bounded to small primitive
+integer coefficients; promoted inputs outside that search return
+`PHY_ERR_UNSUPPORTED`. General factorization must replace that enumerator,
+not silently widen its trial count.
 
 ### F3 — exact number domains
 
@@ -83,7 +87,8 @@ serialization, and MathTree display. The certified real-algebraic foundation
 (primitive square-free defining polynomial, rational isolating interval, Sturm
 count/refinement/comparison) is implemented and documented in
 [`ALGEBRAIC.md`](ALGEBRAIC.md). Algebraic arithmetic, Gaussian rationals, and
-migration of the polynomial coefficient containers remain open.
+canonical minimal-polynomial equality remain open. The univariate polynomial
+coefficient containers and rational LCD path have been migrated.
 
 - Native bounded-memory arbitrary-precision integers and rationals.
 - Gaussian rationals and exact `I`, `Conjugate`, `Re`, `Im`, and `Abs`.
@@ -95,8 +100,8 @@ migration of the polynomial coefficient containers remain open.
 
 The native choice has host strict/ASan, serialization, allocation-failure, and
 complete public-API ARM link/size evidence. Physical CX II timing/peak-heap
-acceptance, algebraic arithmetic, and polynomial coefficient migration are
-still required before F3 can be closed.
+acceptance, Gaussian rationals, algebraic arithmetic, and canonical
+minimal-polynomial equality are still required before F3 can be closed.
 
 ### F4 — series, limits, and equations
 
