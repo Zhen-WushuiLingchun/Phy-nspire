@@ -1,5 +1,7 @@
 # Phy-nspire
 
+[中文说明 (Chinese README)](README.zh-CN.md)
+
 Phy-nspire is an Ndless-native symbolic physics notebook for the TI-Nspire
 CX II CAS.
 
