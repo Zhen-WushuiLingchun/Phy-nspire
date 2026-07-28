@@ -132,6 +132,13 @@ minimal-polynomial equality are still required before F3 can be closed.
 
 ### F4 — series, limits, and equations
 
+Status: implementation is governed by
+[`plans/2026-07-28-cas-foundation-f4-f5.md`](plans/2026-07-28-cas-foundation-f4-f5.md).
+The compiled reader matrix is `tests/corpus/cas_foundation_cases.inc`. Until
+the corresponding exact backend, evaluator, display, and negative controls
+land together, `Series`, `Limit`, `Solve`, `NSolve`, and `Reduce` remain typed
+unsupported commands.
+
 - Truncated formal power-series arithmetic before reader-facing `Series`.
 - Limits driven by series/rational order, with explicit one-sided direction.
 - Polynomial `Solve` before transcendental solving; solutions carry conditions

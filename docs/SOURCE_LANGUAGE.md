@@ -137,6 +137,10 @@ Registered but not implemented commands include `Limit`, `Series`, `Solve`,
 opaque ordinary functions, because that would present a no-op as successful
 computer algebra.
 
+Their promotion cases are compiled from
+`tests/corpus/cas_foundation_cases.inc`; changing a registry flag without
+updating that matrix and adding evaluator/backend tests fails the strict suite.
+
 The same rule applies when such a command is nested. General nested command
 scheduling is future work; until then it fails explicitly.
 

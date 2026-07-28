@@ -77,6 +77,11 @@ abstract dummy-index canonicalizer, no gamma-five, and no general loop-integral
 reduction engine. Calling those absences implemented would turn a typed failure
 into a false scientific claim.
 
+The exact promotion order and the positive/negative cases that must change
+those statuses are frozen in
+[`plans/2026-07-28-cas-foundation-f4-f5.md`](plans/2026-07-28-cas-foundation-f4-f5.md)
+and compiled by `tests/corpus/cas_foundation_cases.inc`.
+
 ## Memory lifetime
 
 Evaluator objects are swept after every successful and failed command.

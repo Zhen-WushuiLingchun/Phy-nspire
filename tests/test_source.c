@@ -379,6 +379,44 @@ static void test_assignment_and_reserved_heads(void)
     phy_platform_shutdown();
 }
 
+static void test_foundation_capability_matrix_is_reserved(void)
+{
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    phy_ir_context *ir = phy_ir_context_create(NULL);
+    PHY_CHECK(ir != NULL);
+
+    typedef struct {
+        const char *id;
+        const char *area;
+        const char *source;
+        phy_status expected;
+        const char *semantic_class;
+    } foundation_case;
+#define PHY_FOUNDATION_CASE(id, area, source, expected, semantic_class) \
+    {#id, area, source, expected, semantic_class},
+    static const foundation_case cases[] = {
+#include "corpus/cas_foundation_cases.inc"
+    };
+#undef PHY_FOUNDATION_CASE
+
+    for (size_t index = 0u;
+         index < sizeof cases / sizeof cases[0]; ++index) {
+        phy_source_command command;
+        size_t error = 0u;
+        const phy_status status = phy_source_parse(
+            ir, cases[index].source, &command, &error);
+        if (status != cases[index].expected) {
+            fprintf(stderr, "  foundation case %s (%s/%s): %s\n",
+                    cases[index].id, cases[index].area,
+                    cases[index].semantic_class, cases[index].source);
+        }
+        PHY_CHECK_EQ_INT(status, cases[index].expected);
+    }
+
+    phy_ir_context_destroy(ir);
+    phy_platform_shutdown();
+}
+
 int main(void)
 {
     PHY_TEST_CASE(test_operator_precedence_and_exact_numbers);
@@ -386,5 +424,6 @@ int main(void)
     PHY_TEST_CASE(test_commands_and_functions);
     PHY_TEST_CASE(test_diagnostics_and_bounds);
     PHY_TEST_CASE(test_assignment_and_reserved_heads);
+    PHY_TEST_CASE(test_foundation_capability_matrix_is_reserved);
     return PHY_TEST_REPORT("test_source");
 }
