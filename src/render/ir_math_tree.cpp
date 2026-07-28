@@ -369,6 +369,131 @@ private:
         return base;
     }
 
+    /*
+     * True when a sum term wears a minus sign a reader would move onto the
+     * separator: a negative number, or a product led by one. INT64_MIN is
+     * excluded because its magnitude does not exist in int64.
+     */
+    bool negative_lead(phy_ir_ref expression) const
+    {
+        const phy_ir_kind kind = phy_ir_kind_of(context_, expression);
+        std::int64_t numerator = 0;
+        std::int64_t denominator = 1;
+        if (kind == PHY_IR_INTEGER) {
+            return phy_ir_integer_value(context_, expression, &numerator) &&
+                   numerator < 0 && numerator != INT64_MIN;
+        }
+        if (kind == PHY_IR_RATIONAL) {
+            return phy_ir_rational_value(context_, expression, &numerator,
+                                         &denominator) &&
+                   numerator < 0 && numerator != INT64_MIN;
+        }
+        if (kind == PHY_IR_MUL &&
+            phy_ir_child_count(context_, expression) > 1U) {
+            const phy_ir_ref first = phy_ir_child(context_, expression, 0U);
+            const phy_ir_kind first_kind = phy_ir_kind_of(context_, first);
+            return (first_kind == PHY_IR_INTEGER ||
+                    first_kind == PHY_IR_RATIONAL) &&
+                   negative_lead(first);
+        }
+        return false;
+    }
+
+    /*
+     * The magnitude of a negative number as a rendered node, or
+     * kInvalidMathNode for exactly -1 -- a coefficient of one is not
+     * printed. Only called on numbers negative_lead() accepted.
+     */
+    MathNodeId number_magnitude(phy_ir_ref expression)
+    {
+        std::int64_t value = 0;
+        if (phy_ir_integer_value(context_, expression, &value)) {
+            return value == -1 ? kInvalidMathNode
+                               : text(MathNodeKind::Symbol,
+                                      format_integer(-value));
+        }
+        std::int64_t numerator = 0;
+        std::int64_t denominator = 1;
+        if (phy_ir_rational_value(context_, expression, &numerator,
+                                  &denominator)) {
+            MathNode fraction;
+            fraction.kind = MathNodeKind::Fraction;
+            fraction.atom_class = AtomClass::Inner;
+            return add(fraction,
+                       {text(MathNodeKind::Symbol,
+                             format_integer(-numerator)),
+                        text(MathNodeKind::Symbol,
+                             format_integer(denominator))});
+        }
+        fail("stripped a sign from a term without a numeric lead");
+        return kInvalidMathNode;
+    }
+
+    /* A sum term with its leading sign stripped: the separator drew it. */
+    MathNodeId negated_term(phy_ir_ref term, unsigned depth)
+    {
+        if (phy_ir_kind_of(context_, term) == PHY_IR_MUL) {
+            return product(term, depth, true);
+        }
+        const MathNodeId magnitude = number_magnitude(term);
+        return magnitude == kInvalidMathNode
+                   ? text(MathNodeKind::Symbol, "1")
+                   : magnitude;
+    }
+
+    /*
+     * A product row. `negated` renders the magnitude of the leading numeric
+     * factor because the caller already drew the sign; an unnegated product
+     * led by exactly -1 draws a unary minus instead of the literal
+     * coefficient, so (* -1 cos sin) reads -cos(theta)sin(theta).
+     */
+    MathNodeId product(phy_ir_ref expression, unsigned depth, bool negated)
+    {
+        const std::size_t count = phy_ir_child_count(context_, expression);
+        std::vector<MathNodeId> items;
+        items.reserve(count * 2U + 1U);
+        std::size_t start = 0U;
+        bool leading_magnitude = false;
+        if (negated) {
+            const MathNodeId magnitude =
+                number_magnitude(phy_ir_child(context_, expression, 0U));
+            start = 1U;
+            if (magnitude != kInvalidMathNode) {
+                items.push_back(magnitude);
+                leading_magnitude = true;
+            }
+        } else {
+            std::int64_t value = 0;
+            if (count > 1U &&
+                phy_ir_integer_value(
+                    context_, phy_ir_child(context_, expression, 0U),
+                    &value) &&
+                value == -1) {
+                items.push_back(text(MathNodeKind::Symbol, u8"−"));
+                start = 1U;
+            }
+        }
+        for (std::size_t index = start; index < count; ++index) {
+            if (index != start || leading_magnitude) {
+                std::string_view gap;
+                if (multi_letter_symbol(phy_ir_child(context_, expression,
+                                                     index - 1U)) ||
+                    multi_letter_symbol(
+                        phy_ir_child(context_, expression, index))) {
+                    gap = u8"⋅";
+                }
+                if (!gap.empty()) {
+                    items.push_back(text(MathNodeKind::Symbol, gap,
+                                         AtomClass::Binary));
+                }
+            }
+            items.push_back(child_with_precedence(
+                phy_ir_child(context_, expression, index), depth,
+                kPrecedenceProduct));
+        }
+        return row(items);
+    }
+
     MathNodeId build(phy_ir_ref expression, unsigned depth,
                      int parent_precedence)
     {
@@ -425,42 +550,37 @@ private:
             return styled(text(MathNodeKind::Text, phy_status_name(status)),
                           MathVariant::Roman);
         }
-        case PHY_IR_ADD:
         case PHY_IR_MUL:
+            return product(expression, depth, false);
+        case PHY_IR_ADD:
         case PHY_IR_NCMUL:
         case PHY_IR_WEDGE: {
             const int current_precedence = precedence(expression);
-            std::string_view separator;
-            AtomClass separator_class = AtomClass::Binary;
-            if (kind == PHY_IR_ADD) {
-                separator = "+";
-            } else if (kind == PHY_IR_NCMUL) {
-                separator = u8"⋅";
-            } else if (kind == PHY_IR_WEDGE) {
-                separator = u8"∧";
-            }
+            const std::string_view separator =
+                kind == PHY_IR_ADD ? "+"
+                : kind == PHY_IR_NCMUL ? u8"⋅"
+                                       : u8"∧";
             std::vector<MathNodeId> items;
             const std::size_t count =
                 phy_ir_child_count(context_, expression);
             items.reserve(count * 2U);
             for (std::size_t index = 0; index < count; ++index) {
+                const phy_ir_ref term =
+                    phy_ir_child(context_, expression, index);
+                if (index != 0U && kind == PHY_IR_ADD &&
+                    negative_lead(term)) {
+                    /* a + (-b) reads a − b, the way a reader writes it. */
+                    items.push_back(text(MathNodeKind::Symbol, u8"−",
+                                         AtomClass::Binary));
+                    items.push_back(negated_term(term, depth));
+                    continue;
+                }
                 if (index != 0U) {
-                    std::string_view gap = separator;
-                    if (kind == PHY_IR_MUL &&
-                        (multi_letter_symbol(phy_ir_child(
-                             context_, expression, index - 1U)) ||
-                         multi_letter_symbol(phy_ir_child(
-                             context_, expression, index)))) {
-                        gap = u8"⋅";
-                    }
-                    if (!gap.empty()) {
-                        items.push_back(text(MathNodeKind::Symbol, gap,
-                                             separator_class));
-                    }
+                    items.push_back(text(MathNodeKind::Symbol, separator,
+                                         AtomClass::Binary));
                 }
                 items.push_back(child_with_precedence(
-                    phy_ir_child(context_, expression, index), depth,
-                    current_precedence));
+                    term, depth, current_precedence));
             }
             return row(items);
         }
