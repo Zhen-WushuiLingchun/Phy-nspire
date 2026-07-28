@@ -157,6 +157,7 @@ add_library(phy_core STATIC
     src/cas/num.c
     src/cas/big_num.c
     src/cas/finite_poly.c
+    src/cas/series.c
     src/cas/engine.c
     src/cas/simplify.c
     src/cas/diff.c
@@ -226,6 +227,8 @@ if(BUILD_TESTING)
                   test_qft_scalar test_yang_mills test_cas test_geom
                   test_geom_metric test_eval test_lorentz test_mandelstam
                   test_color test_exact test_algebraic test_finite_poly)
+        # test_series is appended below because it also sees the internal
+        # bounded-series contract.
         add_executable(${suite} tests/${suite}.c)
         target_link_libraries(${suite} PRIVATE phy_core phy_platform_host phy_warnings)
         target_include_directories(${suite} PRIVATE tests)
@@ -247,6 +250,16 @@ if(BUILD_TESTING)
         add_test(NAME ${suite} COMMAND ${suite})
     endforeach()
     target_include_directories(test_finite_poly PRIVATE src/cas)
+
+    add_executable(test_series tests/test_series.c)
+    target_link_libraries(
+        test_series PRIVATE phy_core phy_platform_host phy_warnings)
+    target_include_directories(test_series PRIVATE tests src/cas)
+    if(MSVC)
+        target_compile_definitions(
+            test_series PRIVATE _CRT_SECURE_NO_WARNINGS)
+    endif()
+    add_test(NAME test_series COMMAND test_series)
 
     # The general-relativity corpus suite. It has its own reader for
     # research/corpus/gr_golden.json and for the SymPy subset the corpus is
