@@ -325,8 +325,12 @@ typedef enum {
  * The numerator is divided exactly by each of the denominator's own factors
  * wherever the remainder vanishes. A bounded Euclidean GCD over Q[x] then
  * cancels hidden common factors of univariate polynomials through degree 48.
- * Multivariate polynomial GCD is not claimed: a common factor that requires
- * treating another symbol as a coefficient stays explicit.
+ * For two or more variables, a bounded mixed-radix Kronecker image generates
+ * candidates whose encoded degree is at most 48. No decoded candidate is
+ * published unless it and both decoded quotients multiply exactly to the
+ * original expanded polynomials. This is a sound cancellation subset, not a
+ * claim of a complete general multivariate GCD algorithm; unsupported images
+ * stay explicit.
  */
 phy_status phy_cas_rational_form(phy_cas *cas, phy_ir_ref expr,
                                  phy_ir_ref *out_numerator,

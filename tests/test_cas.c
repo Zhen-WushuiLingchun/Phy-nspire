@@ -1025,6 +1025,66 @@ static void test_reduce_cancels_known_factors(void)
         render(f.ir, reduced),
         "(* (rat 1 950737950171172051122527404032) (^ x -1))");
 
+    /*
+     * A hidden multivariate factor is recovered through bounded mixed-radix
+     * encoding, then accepted only after both decoded products reproduce the
+     * original expanded polynomials.
+     */
+    PHY_CHECK_EQ_INT(
+        phy_cas_reduce(
+            f.cas,
+            parse(f.ir,
+                  "(* (+ (^ x 2) (* x y) x y) "
+                  "   (^ (+ (* x y) x (^ y 2) y) -1))"),
+            &reduced),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(
+        render(f.ir, reduced),
+        "(* (+ 1 x) (^ (+ 1 y) -1))");
+
+    PHY_CHECK_EQ_INT(
+        phy_cas_reduce(
+            f.cas,
+            parse(f.ir,
+                  "(* (+ (^ x 2) (* x y) (* x z) x y z) "
+                  "   (^ (+ (* x z) (* y z) (^ z 2) x y z) -1))"),
+            &reduced),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(
+        render(f.ir, reduced),
+        "(* (+ 1 x) (^ (+ 1 z) -1))");
+
+    PHY_CHECK_EQ_INT(
+        phy_cas_reduce(
+            f.cas,
+            parse(f.ir,
+                  "(* (+ (* 1267650600228229401496703205376 (^ x 2)) "
+                  "       (* 1267650600228229401496703205376 x) "
+                  "       (* x y) y) "
+                  "   (^ (+ (* 1267650600228229401496703205376 x y) "
+                  "          (* 1267650600228229401496703205376 x) "
+                  "          (^ y 2) y) -1))"),
+            &reduced),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(
+        render(f.ir, reduced),
+        "(* (+ 1 x) (^ (+ 1 y) -1))");
+
+    /*
+     * Kronecker images of x+y and x+2y share t, although the multivariate
+     * polynomials are coprime. Product verification must reject that
+     * substitution artefact and leave the quotient exact.
+     */
+    const phy_ir_ref spurious_input = parse(
+        f.ir, "(* (+ x y) (^ (+ x (* 2 y)) -1))");
+    PHY_CHECK_EQ_INT(
+        phy_cas_reduce(f.cas, spurious_input, &reduced), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_cas_equivalent(
+            f.cas, reduced, spurious_input, &decision),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(decision, PHY_CAS_ZERO);
+
     /* 1/x + 1/x^2 combines over x^2, not x^3. */
     PHY_CHECK_EQ_INT(
         phy_cas_reduce(f.cas, parse(f.ir, "(+ (^ x -1) (^ x -2))"),

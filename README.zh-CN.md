@@ -81,7 +81,7 @@ Riemann)列出**非零分量方程**,指标用坐标名标注,如
 ```sh
 cmake -S . -B build-review -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build build-review -j
-ctest --test-dir build-review          # 32 个套件,~9.5 万条断言
+ctest --test-dir build-review          # 当前 Windows 33 个套件,193,903 条断言
 ```
 
 设备端(需要 Ndless SDK 与 arm-none-eabi 工具链,当前在 WSL 下验证):
@@ -91,8 +91,8 @@ export PATH="$HOME/.phy-nspire/Ndless/ndless-sdk/bin:$HOME/.phy-nspire/arm-gnu-t
 make -j 8                              # 产物:dist/phy-nspire.tns
 ```
 
-另有 ASan/UBSan/Leak 全开的 `build-asan` 配置,与严格配置各跑一遍
-32/32 是每次改动的合入门槛。
+另有 ASan/UBSan/Leak 全开的 `build-asan` 配置。当前合入门槛是
+Windows 严格配置 33/33、WSL ASan/UBSan/Leak 配置 35/35。
 
 ## 架构
 
@@ -179,8 +179,8 @@ Mathematica / Maple / SymPy / TI 自带 CAS 这一档的通用系统。这份清
 
 ## 测试与验收
 
-- 严格配置(`-Wall -Wextra -Wpedantic` + 更多)与 ASan/UBSan/Leak
-  配置各 32/32 套件,约 9.5 万条断言;
+- Windows 严格配置 33/33，WSL ASan/UBSan/Leak 配置 35/35，
+  断言型测试合计 193,903 条检查;
 - GR 金标语料(`research/corpus/gr_golden.json`)由 SymPy 独立生成,
   设备管线的每个曲率分量与之精确判等;
 - 像素级回归:笔记本首帧渲染有 64 位指纹固定;

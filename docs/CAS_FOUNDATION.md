@@ -61,8 +61,9 @@ semantics.
 Status: the bounded univariate `Q[x]` GCD, reader-facing `Cancel`, Yun
 square-free decomposition, and a complete-on-success bounded `Factor` class
 are implemented. Their coefficient containers now use the F3 arbitrary-
-precision exact domain. Multivariate GCD, general high-degree irreducible
-factorization, and `Apart` remain open.
+precision exact domain. A bounded mixed-radix multivariate cancellation subset
+is implemented with exact reconstruction checks. Complete general multivariate
+GCD, general high-degree irreducible factorization, and `Apart` remain open.
 
 - A bounded polynomial view with explicit variable order.
 - Content/primitive-part extraction and exact coefficient division.
@@ -78,6 +79,15 @@ The rational-root candidate enumerator remains bounded to small primitive
 integer coefficients; promoted inputs outside that search return
 `PHY_ERR_UNSUPPORTED`. General factorization must replace that enumerator,
 not silently widen its trial count.
+
+For expanded multivariate inputs whose Kronecker image has degree at most 48,
+the reducer computes an image GCD, decodes candidate divisors, and accepts one
+only if the decoded divisor times each decoded quotient exactly reconstructs
+both original polynomials. This closes a useful cancellation subset, including
+arbitrary-precision coefficients, without mistaking substitution artefacts for
+real common factors. A sparse polynomial representation plus a complete
+validated Brown/Zippel/subresultant-style algorithm is still required for the
+general milestone.
 
 The next modular layer is now present: a fixed-footprint exact `F_p[x]` kernel
 with verified-prime contexts, Euclidean division/GCD, modular powers,

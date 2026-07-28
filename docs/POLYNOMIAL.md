@@ -12,6 +12,12 @@ The second domain is not a numerical approximation. Reduction modulo a chosen
 prime is an exact algebraic homomorphism and is the next layer needed by
 modular GCD and integer-polynomial factorization.
 
+The reducer also contains a bounded mixed-radix Kronecker candidate path for
+expanded multivariate cancellation. Since a univariate image can acquire
+spurious factors, decoded candidates are accepted only after exact
+reconstruction of both original polynomials. This is a sound subset, separate
+from the still-open complete sparse multivariate GCD layer.
+
 ## Finite-field invariants
 
 - the modulus is checked prime at context initialization;
@@ -67,6 +73,6 @@ References:
   images;
 - bounded Hensel lifting and exact recombination;
 - sparse multivariate representation with explicit monomial order;
-- content/primitive-part and a validated multivariate GCD algorithm;
+- content/primitive-part and a complete validated multivariate GCD algorithm
+  beyond the bounded verified Kronecker cancellation subset;
 - `Apart` after denominator factorization is complete.
-

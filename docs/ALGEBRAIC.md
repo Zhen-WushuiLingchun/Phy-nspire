@@ -88,12 +88,12 @@ succeeds, and tracked live heap returns to zero.
 
 Current reproducible evidence:
 
-- `test_exact`: 76,034 checks, zero failures;
+- `test_exact`: 76,051 checks, zero failures;
 - `test_algebraic`: 6,401 checks, zero failures;
-- strict Windows suite: 32/32 tests;
-- ASan/UBSan/leak suite: 34/34 tests;
-- Ndless exact-number link probe: 50/50 public entry points, 14,304 bytes of
-  exact-layer ARM text, 19,656-byte packaged probe;
+- strict Windows suite: 33/33 tests;
+- ASan/UBSan/leak suite: 35/35 tests;
+- Ndless exact-number link probe: 51/51 public entry points, 14,516 bytes of
+  exact-layer ARM text, 19,912-byte packaged probe;
 - Ndless real-algebraic link probe: 19/19 public entry points, 9,196 bytes of
   algebraic-layer ARM text, 26,964-byte packaged probe;
 - neither ARM probe retains a floating-point formatter, libm call, or

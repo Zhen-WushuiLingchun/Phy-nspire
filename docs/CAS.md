@@ -13,10 +13,9 @@ is not repeated here.
 **Exact.** Integer and reduced-rational atoms use an `int64` fast path and
 promote to the native bounded arbitrary-precision layer when necessary. They
 never wrap and never silently promote to `double`. `PHY_IR_REAL` atoms are
-carried but never folded. The older polynomial coefficient containers remain
-checked `int64` until the F2 algorithms are migrated to coefficient operations;
-those entry points still return `PHY_ERR_OVERFLOW` beyond their documented
-class.
+carried but never folded. Polynomial coefficient containers use immutable exact
+IR refs, so their checked `int64` fast path promotes to the same integer and
+rational domain.
 
 **Decidable.** `phy_cas_is_zero` *decides* zero on a documented class and
 answers `PHY_CAS_UNKNOWN` outside it. It never estimates.
@@ -149,8 +148,9 @@ The current rational-root enumeration used by `Factor` is intentionally
 narrower. It converts a primitive polynomial to bounded `int64` coefficients
 before enumerating divisors; a promoted coefficient outside that enumerator
 returns `PHY_ERR_UNSUPPORTED`, rather than claiming that no rational root
-exists. General modular factorization is the layer that will remove this
-remaining boundary.
+exists. Roots `0`, `-1`, and `1` are tested in the exact coefficient domain
+before that conversion. General modular factorization is the layer that will
+remove the remaining boundary.
 
 ## The zero decision
 
@@ -184,9 +184,17 @@ After exact division by denominator factors, a bounded Euclidean algorithm
 computes a monic GCD in `Q[x]` through degree 48 with arbitrary-precision exact
 coefficients. This closes cases such as
 `(x^2-1)/(x^2-2x+1) -> (x+1)/(x-1)` even though the hidden factor is not the
-whole denominator. It is deliberately univariate: a coefficient containing a
-second symbol does not get guessed to be a field element, and the pair stays
-explicit until the multivariate milestone in `CAS_FOUNDATION.md`.
+whole denominator.
+
+Expanded polynomials in two or more symbols also have a bounded, sound
+cancellation path. Their exponent vectors are encoded by mixed-radix
+Kronecker substitution only when the resulting degree is at most 48. Because
+a univariate image can have factors that are not multivariate factors, every
+decoded candidate and quotient pair is multiplied back against both original
+polynomials. A complete-on-success divisor search is used on the currently
+factorable image class, with a separate exact path for the universal image
+roots `0`, `-1`, and `1`; otherwise the expression stays explicit. This is not
+yet a complete sparse multivariate GCD implementation.
 
 ### Complete-on-success `Factor`
 
@@ -414,15 +422,15 @@ answers `UNKNOWN` rather than deciding anything about it.
 
 ## Not in this layer
 
-General integration, limits, series, and solving. Multivariate polynomial GCD,
-general high-degree polynomial factorization, and partial fractions. Matrices.
+General integration, limits, series, and solving. Complete general
+multivariate polynomial GCD, general high-degree polynomial factorization, and
+partial fractions. Matrices.
 Dummy-index canonicalization,
 contraction, and anything
 that consumes declared slot symmetries — this layer simplifies the operands of
 `PHY_IR_NCMUL`, `PHY_IR_TENSOR`, `PHY_IR_OPERATOR`, `PHY_IR_WEDGE` and
 `PHY_IR_DERIVATIVE` in place and otherwise leaves them alone, never reordering
-them or reading their indices. Arbitrary-precision numbers. The Giac backend
-boundary.
+them or reading their indices. The Giac backend boundary.
 
 ## Testing
 
@@ -461,14 +469,14 @@ counts are recorded in `CAS_ACCEPTANCE.md` after each clean build.
 
 Built with the pinned Ndless r2022 SDK and ARM GNU 14.3 toolchain using
 `-Os -marm`. The isolated link check compiles the complete scalar layer to
-49,199 bytes of ARM text; its dependency-complete probe packages to 68,056
+63,927 bytes of ARM text; its dependency-complete probe packages to 90,248
 bytes. These figures are deliberately measured by the link-check target rather
 than maintained as a hand-summed per-object table.
 
 The application now calls the CAS and the typed physics backends through
 editable notebook cells. The current product, including persistence,
-nMarkdown's math typesetter, and the reachable evaluator stack, is 1,124,477
-bytes (17.9% of the 6 MiB ceiling).
+nMarkdown's math typesetter, and the reachable evaluator stack, is 1,134,215
+bytes (18.0% of the 6 MiB ceiling).
 
 `make cas-link-check` closes the gap that leaves. It is the same guard as
 `make ir-link-check`, and `tools/link-check.sh` now serves both layers from one
@@ -486,7 +494,7 @@ not the check itself.
 
 `make cas-link-check` has been run with the real Ndless linker and packager:
 all **29/29** public entry points derived from `include/phy/cas.h` survive
-`--gc-sections`; the CAS+IR+platform probe packages to a **68,056-byte `.tns`**;
+`--gc-sections`; the CAS+IR+platform probe packages to a **90,248-byte `.tns`**;
 and no `_dtoa`, `_strtod`, `_printf_float`, libm, `stdio` formatting, or ARM
 soft-float helper reaches the image. Real IR atoms are ordered by their
 IEEE-754 bit keys rather than by executing a floating-point comparison. The

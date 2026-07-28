@@ -1147,16 +1147,46 @@ static phy_status poly_rational_root(phy_cas *cas,
         return status;
     }
 
+    /*
+     * Test the universal small roots before requesting an int64 primitive
+     * image.  These tests remain exact for arbitrary-precision coefficients
+     * and keep common factors such as (B*x + y), B > INT64_MAX, available to
+     * the verified Kronecker decoder.
+     */
+    if (coefficient_is_zero(cas, poly->coefficients[0])) {
+        *out_root = cas->zero;
+        *out_found = true;
+        return PHY_OK;
+    }
+    static const phy_cas_rat universal_candidates[] = {
+        {-1, 1},
+        {1, 1},
+    };
+    for (size_t index = 0u;
+         index < sizeof(universal_candidates) /
+                     sizeof(universal_candidates[0]);
+         ++index) {
+        bool zero = false;
+        phy_status status =
+            poly_has_value(cas, poly, universal_candidates[index], &zero);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (zero) {
+            status = phy_cas_number_node(
+                cas, universal_candidates[index], out_root);
+            if (status == PHY_OK) {
+                *out_found = true;
+            }
+            return status;
+        }
+    }
+
     int64_t integers[REDUCE_MAX_DEGREE + 1u];
     phy_status status =
         poly_primitive_integers(cas, poly, integers);
     if (status != PHY_OK) {
         return status;
-    }
-    if (integers[0] == 0) {
-        *out_root = cas->zero;
-        *out_found = true;
-        return PHY_OK;
     }
 
     const int64_t constant =
@@ -1479,10 +1509,688 @@ static phy_status build_factorization(
     return status;
 }
 
+static void sort_variables(phy_cas *cas, phy_ir_ref *variables, size_t count)
+{
+    for (size_t index = 1u; index < count; ++index) {
+        const phy_ir_ref key = variables[index];
+        size_t position = index;
+        while (position > 0u &&
+               phy_ir_compare(
+                   cas->ir, key, variables[position - 1u]) < 0) {
+            variables[position] = variables[position - 1u];
+            position--;
+        }
+        variables[position] = key;
+    }
+}
+
+static phy_status kronecker_term(
+    phy_cas *cas, phy_ir_ref term, const phy_ir_ref *variables,
+    size_t variable_count, uint32_t *out_exponents,
+    phy_ir_ref *out_coefficient, bool *out_fits)
+{
+    phy_ir_ref rest = term;
+    *out_fits = true;
+    for (size_t variable = 0u; variable < variable_count; ++variable) {
+        int64_t exponent = 0;
+        phy_ir_ref next = PHY_IR_NULL;
+        const phy_status status = term_power_of(
+            cas, rest, variables[variable], &exponent, &next);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (exponent < 0 ||
+            exponent > (int64_t)REDUCE_MAX_DEGREE) {
+            *out_fits = false;
+            return PHY_OK;
+        }
+        out_exponents[variable] = (uint32_t)exponent;
+        rest = next;
+    }
+    if (!phy_cas_is_exact(cas, rest)) {
+        *out_fits = false;
+        return PHY_OK;
+    }
+    *out_coefficient = rest;
+    return PHY_OK;
+}
+
+static phy_status kronecker_degrees(
+    phy_cas *cas, phy_ir_ref expression, const phy_ir_ref *variables,
+    size_t variable_count, uint32_t *in_out_degrees, bool *out_fits)
+{
+    const bool split =
+        phy_ir_kind_of(cas->ir, expression) == PHY_IR_ADD;
+    const size_t count =
+        split ? phy_ir_child_count(cas->ir, expression) : 1u;
+    *out_fits = true;
+    for (size_t term_index = 0u; term_index < count; ++term_index) {
+        const phy_ir_ref term =
+            split ? phy_ir_child(cas->ir, expression, term_index)
+                  : expression;
+        uint32_t exponents[REDUCE_MAX_CANDIDATES] = {0u};
+        phy_ir_ref coefficient = PHY_IR_NULL;
+        bool fits = false;
+        const phy_status status = kronecker_term(
+            cas, term, variables, variable_count, exponents,
+            &coefficient, &fits);
+        (void)coefficient;
+        if (status != PHY_OK || !fits) {
+            *out_fits = fits;
+            return status;
+        }
+        for (size_t variable = 0u; variable < variable_count; ++variable) {
+            if (exponents[variable] > in_out_degrees[variable]) {
+                in_out_degrees[variable] = exponents[variable];
+            }
+        }
+    }
+    return PHY_OK;
+}
+
+static bool kronecker_radices(const uint32_t *degrees, size_t variable_count,
+                              uint32_t *out_radices,
+                              uint32_t *out_strides)
+{
+    uint32_t stride = 1u;
+    for (size_t variable = 0u; variable < variable_count; ++variable) {
+        if (degrees[variable] >= REDUCE_MAX_DEGREE) {
+            return false;
+        }
+        out_radices[variable] = degrees[variable] + 1u;
+        out_strides[variable] = stride;
+        if (variable + 1u < variable_count) {
+            if (stride >
+                (uint32_t)REDUCE_MAX_DEGREE /
+                    out_radices[variable]) {
+                return false;
+            }
+            stride *= out_radices[variable];
+        }
+    }
+    return true;
+}
+
+static phy_status kronecker_poly_from_ir(
+    phy_cas *cas, phy_ir_ref expression, const phy_ir_ref *variables,
+    size_t variable_count, const uint32_t *strides,
+    rational_poly *out_polynomial, bool *out_fits)
+{
+    poly_zero(cas, out_polynomial);
+    *out_fits = true;
+    const bool split =
+        phy_ir_kind_of(cas->ir, expression) == PHY_IR_ADD;
+    const size_t count =
+        split ? phy_ir_child_count(cas->ir, expression) : 1u;
+    for (size_t term_index = 0u; term_index < count; ++term_index) {
+        const phy_ir_ref term =
+            split ? phy_ir_child(cas->ir, expression, term_index)
+                  : expression;
+        uint32_t exponents[REDUCE_MAX_CANDIDATES] = {0u};
+        phy_ir_ref coefficient = PHY_IR_NULL;
+        bool fits = false;
+        phy_status status = kronecker_term(
+            cas, term, variables, variable_count, exponents,
+            &coefficient, &fits);
+        if (status != PHY_OK || !fits) {
+            *out_fits = fits;
+            return status;
+        }
+        uint32_t encoded = 0u;
+        for (size_t variable = 0u; variable < variable_count; ++variable) {
+            const uint32_t contribution =
+                exponents[variable] * strides[variable];
+            if (contribution > (uint32_t)REDUCE_MAX_DEGREE - encoded) {
+                *out_fits = false;
+                return PHY_OK;
+            }
+            encoded += contribution;
+        }
+        phy_ir_ref updated = PHY_IR_NULL;
+        status = coefficient_add(
+            cas, out_polynomial->coefficients[encoded],
+            coefficient, &updated);
+        if (status != PHY_OK) {
+            return status;
+        }
+        out_polynomial->coefficients[encoded] = updated;
+        if ((int64_t)encoded > out_polynomial->degree) {
+            out_polynomial->degree = (int64_t)encoded;
+        }
+    }
+    poly_trim(cas, out_polynomial);
+    return PHY_OK;
+}
+
+static phy_status kronecker_poly_to_ir(
+    phy_cas *cas, const rational_poly *polynomial,
+    const phy_ir_ref *variables, size_t variable_count,
+    const uint32_t *radices, phy_ir_ref *out_expression,
+    bool *out_fits)
+{
+    *out_fits = true;
+    const size_t mark = phy_cas_scratch_mark(cas);
+    size_t offset = 0u;
+    phy_status status = phy_cas_scratch_alloc(
+        cas, (size_t)polynomial->degree + 1u, &offset);
+    if (status != PHY_OK) {
+        return status;
+    }
+    size_t used = 0u;
+    for (int64_t encoded = 0;
+         encoded <= polynomial->degree && status == PHY_OK; ++encoded) {
+        const phy_ir_ref coefficient =
+            polynomial->coefficients[encoded];
+        if (coefficient_is_zero(cas, coefficient)) {
+            continue;
+        }
+        phy_ir_ref factors[REDUCE_MAX_CANDIDATES + 1u];
+        size_t factor_count = 0u;
+        if (!phy_cas_is_integer(cas, coefficient, 1)) {
+            factors[factor_count++] = coefficient;
+        }
+        uint32_t remaining = (uint32_t)encoded;
+        for (size_t variable = 0u; variable < variable_count; ++variable) {
+            const uint32_t exponent = remaining % radices[variable];
+            remaining /= radices[variable];
+            if (exponent == 0u) {
+                continue;
+            }
+            phy_ir_ref factor = variables[variable];
+            if (exponent > 1u) {
+                phy_ir_ref exponent_ref = PHY_IR_NULL;
+                status = phy_cas_number_node(
+                    cas, (phy_cas_rat){(int64_t)exponent, 1},
+                    &exponent_ref);
+                if (status == PHY_OK) {
+                    status = phy_cas_pow_node(
+                        cas, factor, exponent_ref, &factor);
+                }
+            }
+            if (status != PHY_OK) {
+                break;
+            }
+            factors[factor_count++] = factor;
+        }
+        if (remaining != 0u) {
+            *out_fits = false;
+            status = PHY_OK;
+            break;
+        }
+        phy_ir_ref term = PHY_IR_NULL;
+        status =
+            phy_cas_mul_node(cas, factors, factor_count, &term);
+        if (status == PHY_OK) {
+            phy_cas_scratch_at(cas, offset)[used++] = term;
+        }
+    }
+    if (status == PHY_OK && *out_fits) {
+        status = phy_cas_add_at(cas, offset, used, out_expression);
+    }
+    if (status == PHY_OK && *out_fits) {
+        status =
+            phy_cas_expand_node(cas, *out_expression, out_expression);
+    }
+    phy_cas_scratch_release(cas, mark);
+    return status;
+}
+
+static phy_status kronecker_product_matches(
+    phy_cas *cas, phy_ir_ref factor, phy_ir_ref quotient,
+    phy_ir_ref expected, bool *out_matches)
+{
+    const phy_ir_ref pair[2] = {factor, quotient};
+    phy_ir_ref product = PHY_IR_NULL;
+    phy_status status = phy_cas_mul_node(cas, pair, 2u, &product);
+    if (status == PHY_OK) {
+        status = phy_cas_expand_node(cas, product, &product);
+    }
+    if (status == PHY_OK) {
+        *out_matches = product == expected;
+    }
+    return status;
+}
+
+static phy_status poly_multiply_exact(phy_cas *cas,
+                                      const rational_poly *left,
+                                      const rational_poly *right,
+                                      rational_poly *out_product)
+{
+    poly_zero(cas, out_product);
+    if (poly_is_zero(cas, left) || poly_is_zero(cas, right)) {
+        return PHY_OK;
+    }
+    if (left->degree > REDUCE_MAX_DEGREE - right->degree) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    out_product->degree = left->degree + right->degree;
+    for (int64_t left_degree = 0; left_degree <= left->degree;
+         ++left_degree) {
+        for (int64_t right_degree = 0; right_degree <= right->degree;
+             ++right_degree) {
+            phy_ir_ref product = PHY_IR_NULL;
+            phy_ir_ref sum = PHY_IR_NULL;
+            phy_status status = coefficient_multiply(
+                cas, left->coefficients[left_degree],
+                right->coefficients[right_degree], &product);
+            if (status == PHY_OK) {
+                status = coefficient_add(
+                    cas,
+                    out_product->coefficients[
+                        left_degree + right_degree],
+                    product, &sum);
+            }
+            if (status != PHY_OK) {
+                return status;
+            }
+            out_product->coefficients[left_degree + right_degree] = sum;
+        }
+    }
+    poly_trim(cas, out_product);
+    return PHY_OK;
+}
+
+static void factor_record_polynomial(
+    phy_cas *cas, const factor_workspace *workspace, size_t index,
+    rational_poly *out_polynomial)
+{
+    poly_zero(cas, out_polynomial);
+    const factor_record *record = &workspace->records[index];
+    out_polynomial->degree = record->degree;
+    for (int64_t degree = 0; degree <= record->degree; ++degree) {
+        out_polynomial->coefficients[degree] =
+            workspace->coefficients[
+                record->coefficient_offset + (size_t)degree];
+    }
+}
+
+static phy_status try_kronecker_candidate(
+    phy_cas *cas, const rational_poly *numerator_poly,
+    const rational_poly *denominator_poly,
+    const rational_poly *candidate,
+    const phy_ir_ref *variables, size_t variable_count,
+    const uint32_t *radices, phy_ir_ref expected_numerator,
+    phy_ir_ref expected_denominator, phy_ir_ref *out_numerator,
+    phy_ir_ref *out_denominator, bool *out_accepted)
+{
+    *out_accepted = false;
+    rational_poly numerator_quotient;
+    rational_poly denominator_quotient;
+    rational_poly scaled_candidate = *candidate;
+    poly_zero(cas, &numerator_quotient);
+    poly_zero(cas, &denominator_quotient);
+    bool numerator_exact = false;
+    bool denominator_exact = false;
+    phy_status status = poly_divide_exact(
+        cas, numerator_poly, candidate, &numerator_quotient,
+        &numerator_exact);
+    if (status == PHY_OK) {
+        status = poly_divide_exact(
+            cas, denominator_poly, candidate, &denominator_quotient,
+            &denominator_exact);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (!numerator_exact || !denominator_exact ||
+        poly_is_zero(cas, &denominator_quotient)) {
+        return PHY_OK;
+    }
+
+    const phy_ir_ref denominator_lead =
+        denominator_quotient.coefficients[denominator_quotient.degree];
+    for (int64_t degree = 0;
+         degree <= numerator_quotient.degree; ++degree) {
+        status = coefficient_divide(
+            cas, numerator_quotient.coefficients[degree],
+            denominator_lead,
+            &numerator_quotient.coefficients[degree]);
+        if (status != PHY_OK) {
+            return status;
+        }
+    }
+    for (int64_t degree = 0;
+         degree <= denominator_quotient.degree; ++degree) {
+        status = coefficient_divide(
+            cas, denominator_quotient.coefficients[degree],
+            denominator_lead,
+            &denominator_quotient.coefficients[degree]);
+        if (status != PHY_OK) {
+            return status;
+        }
+    }
+    for (int64_t degree = 0; degree <= scaled_candidate.degree; ++degree) {
+        status = coefficient_multiply(
+            cas, scaled_candidate.coefficients[degree], denominator_lead,
+            &scaled_candidate.coefficients[degree]);
+        if (status != PHY_OK) {
+            return status;
+        }
+    }
+
+    bool fits = false;
+    phy_ir_ref decoded_candidate = PHY_IR_NULL;
+    phy_ir_ref decoded_numerator = PHY_IR_NULL;
+    phy_ir_ref decoded_denominator = PHY_IR_NULL;
+    status = kronecker_poly_to_ir(
+        cas, &scaled_candidate, variables, variable_count, radices,
+        &decoded_candidate, &fits);
+    if (status == PHY_OK && fits) {
+        status = kronecker_poly_to_ir(
+            cas, &numerator_quotient, variables, variable_count,
+            radices, &decoded_numerator, &fits);
+    }
+    if (status == PHY_OK && fits) {
+        status = kronecker_poly_to_ir(
+            cas, &denominator_quotient, variables, variable_count,
+            radices, &decoded_denominator, &fits);
+    }
+    if (status != PHY_OK || !fits) {
+        return status;
+    }
+
+    bool numerator_matches = false;
+    bool denominator_matches = false;
+    status = kronecker_product_matches(
+        cas, decoded_candidate, decoded_numerator, expected_numerator,
+        &numerator_matches);
+    if (status == PHY_OK) {
+        status = kronecker_product_matches(
+            cas, decoded_candidate, decoded_denominator,
+            expected_denominator, &denominator_matches);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (numerator_matches && denominator_matches) {
+        *out_numerator = decoded_numerator;
+        *out_denominator = decoded_denominator;
+        *out_accepted = true;
+    }
+    return PHY_OK;
+}
+
 /*
- * Cancel a hidden common factor when both sides are univariate polynomials
- * over Q.  Multivariate coefficients, non-symbol generators, and degree above
- * REDUCE_MAX_DEGREE leave the pair unchanged.
+ * Kronecker images often acquire the universal linear factors t, t-1, or
+ * t+1 from unrelated multivariate factors.  Strip every bounded combination
+ * of those factors and retain only a cofactor whose decoded products verify.
+ * This also works when the remaining exact coefficients do not fit int64.
+ */
+static phy_status try_kronecker_universal_cofactors(
+    phy_cas *cas, const rational_poly *numerator_poly,
+    const rational_poly *denominator_poly, const rational_poly *gcd,
+    const phy_ir_ref *variables, size_t variable_count,
+    const uint32_t *radices, phy_ir_ref expected_numerator,
+    phy_ir_ref expected_denominator, phy_ir_ref *out_numerator,
+    phy_ir_ref *out_denominator, bool *out_accepted)
+{
+    static const phy_cas_rat roots[] = {
+        {0, 1},
+        {-1, 1},
+        {1, 1},
+    };
+    rational_poly factors[sizeof(roots) / sizeof(roots[0])];
+    unsigned multiplicities[sizeof(roots) / sizeof(roots[0])] = {0u};
+    size_t combinations = 1u;
+    *out_accepted = false;
+
+    for (size_t index = 0u; index < sizeof(roots) / sizeof(roots[0]);
+         ++index) {
+        phy_ir_ref root = PHY_IR_NULL;
+        phy_status status = phy_cas_number_node(cas, roots[index], &root);
+        poly_zero(cas, &factors[index]);
+        factors[index].degree = 1;
+        factors[index].coefficients[1] = cas->one;
+        if (status == PHY_OK) {
+            status = coefficient_subtract(
+                cas, cas->zero, root, &factors[index].coefficients[0]);
+        }
+        if (status != PHY_OK) {
+            return status;
+        }
+
+        rational_poly remaining = *gcd;
+        while (remaining.degree > 0) {
+            rational_poly quotient;
+            bool exact = false;
+            status = poly_divide_exact(
+                cas, &remaining, &factors[index], &quotient, &exact);
+            if (status != PHY_OK) {
+                return status;
+            }
+            if (!exact) {
+                break;
+            }
+            ++multiplicities[index];
+            remaining = quotient;
+        }
+        const size_t choices = (size_t)multiplicities[index] + 1u;
+        if (combinations > REDUCE_MAX_ROOT_TRIALS / choices) {
+            return PHY_OK;
+        }
+        combinations *= choices;
+    }
+
+    int64_t best_degree = 0;
+    phy_ir_ref best_numerator = PHY_IR_NULL;
+    phy_ir_ref best_denominator = PHY_IR_NULL;
+    for (size_t code = 1u; code < combinations; ++code) {
+        size_t digits = code;
+        rational_poly candidate = *gcd;
+        phy_status status = PHY_OK;
+        for (size_t index = 0u;
+             index < sizeof(roots) / sizeof(roots[0]); ++index) {
+            const unsigned removed =
+                (unsigned)(digits % ((size_t)multiplicities[index] + 1u));
+            digits /= (size_t)multiplicities[index] + 1u;
+            for (unsigned power = 0u; power < removed; ++power) {
+                rational_poly quotient;
+                bool exact = false;
+                status = poly_divide_exact(
+                    cas, &candidate, &factors[index], &quotient, &exact);
+                if (status != PHY_OK) {
+                    return status;
+                }
+                if (!exact) {
+                    return PHY_ERR_CORRUPT_DOCUMENT;
+                }
+                candidate = quotient;
+            }
+        }
+        if (candidate.degree <= best_degree) {
+            continue;
+        }
+
+        bool accepted = false;
+        phy_ir_ref candidate_numerator = PHY_IR_NULL;
+        phy_ir_ref candidate_denominator = PHY_IR_NULL;
+        status = try_kronecker_candidate(
+            cas, numerator_poly, denominator_poly, &candidate, variables,
+            variable_count, radices, expected_numerator,
+            expected_denominator, &candidate_numerator,
+            &candidate_denominator, &accepted);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (accepted) {
+            best_degree = candidate.degree;
+            best_numerator = candidate_numerator;
+            best_denominator = candidate_denominator;
+        }
+    }
+    if (best_degree > 0) {
+        *out_numerator = best_numerator;
+        *out_denominator = best_denominator;
+        *out_accepted = true;
+    }
+    return PHY_OK;
+}
+
+/*
+ * Mixed-radix Kronecker substitution is a fast exact candidate generator for
+ * bounded multivariate GCD. A univariate image may have spurious factors, so
+ * no result is published until the decoded GCD and both decoded quotients
+ * multiply back to the original expanded polynomials.
+ */
+static phy_status cancel_multivariate_gcd(
+    phy_cas *cas, phy_ir_ref numerator, phy_ir_ref denominator,
+    phy_ir_ref *out_num, phy_ir_ref *out_den)
+{
+    phy_ir_ref variables[REDUCE_MAX_CANDIDATES];
+    size_t variable_count = 0u;
+    phy_status status = collect_factor_variables(
+        cas, numerator, variables, &variable_count);
+    if (status == PHY_OK) {
+        status = collect_factor_variables(
+            cas, denominator, variables, &variable_count);
+    }
+    if (status != PHY_OK) {
+        return status == PHY_ERR_UNSUPPORTED ? PHY_OK : status;
+    }
+    if (variable_count < 2u) {
+        return PHY_OK;
+    }
+    sort_variables(cas, variables, variable_count);
+
+    uint32_t degrees[REDUCE_MAX_CANDIDATES] = {0u};
+    bool fits = false;
+    status = kronecker_degrees(
+        cas, numerator, variables, variable_count, degrees, &fits);
+    if (status == PHY_OK && fits) {
+        status = kronecker_degrees(
+            cas, denominator, variables, variable_count, degrees, &fits);
+    }
+    if (status != PHY_OK || !fits) {
+        return status;
+    }
+    uint32_t radices[REDUCE_MAX_CANDIDATES] = {0u};
+    uint32_t strides[REDUCE_MAX_CANDIDATES] = {0u};
+    if (!kronecker_radices(
+            degrees, variable_count, radices, strides)) {
+        return PHY_OK;
+    }
+
+    rational_poly numerator_poly;
+    rational_poly denominator_poly;
+    status = kronecker_poly_from_ir(
+        cas, numerator, variables, variable_count, strides,
+        &numerator_poly, &fits);
+    if (status == PHY_OK && fits) {
+        status = kronecker_poly_from_ir(
+            cas, denominator, variables, variable_count, strides,
+            &denominator_poly, &fits);
+    }
+    if (status != PHY_OK || !fits ||
+        poly_is_zero(cas, &numerator_poly)) {
+        return status;
+    }
+
+    rational_poly gcd;
+    status = poly_gcd(
+        cas, &numerator_poly, &denominator_poly, &gcd);
+    if (status != PHY_OK || gcd.degree == 0) {
+        return status;
+    }
+    bool accepted = false;
+    status = try_kronecker_candidate(
+        cas, &numerator_poly, &denominator_poly, &gcd, variables,
+        variable_count, radices, numerator, denominator, out_num, out_den,
+        &accepted);
+    if (status != PHY_OK || accepted) {
+        return status;
+    }
+
+    status = try_kronecker_universal_cofactors(
+        cas, &numerator_poly, &denominator_poly, &gcd, variables,
+        variable_count, radices, numerator, denominator, out_num, out_den,
+        &accepted);
+    if (status != PHY_OK || accepted) {
+        return status;
+    }
+
+    /*
+     * The full univariate GCD can contain substitution artefacts. Factor it
+     * completely on the currently certified Q[x] class and search its divisor
+     * lattice. The largest decoded divisor that passes both product checks is
+     * the true multivariate GCD within this bounded image.
+     */
+    factor_workspace workspace;
+    status = factor_complete(cas, &gcd, &workspace);
+    if (status == PHY_ERR_UNSUPPORTED || status == PHY_ERR_TERM_LIMIT ||
+        status == PHY_ERR_OVERFLOW) {
+        return PHY_OK;
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    size_t combinations = 1u;
+    for (size_t index = 0u; index < workspace.count; ++index) {
+        const size_t choices =
+            (size_t)workspace.records[index].multiplicity + 1u;
+        if (choices == 0u ||
+            combinations > REDUCE_MAX_ROOT_TRIALS / choices) {
+            return PHY_OK;
+        }
+        combinations *= choices;
+    }
+
+    int64_t best_degree = 0;
+    phy_ir_ref best_numerator = PHY_IR_NULL;
+    phy_ir_ref best_denominator = PHY_IR_NULL;
+    for (size_t code = 1u; code + 1u < combinations; ++code) {
+        size_t digits = code;
+        rational_poly candidate;
+        poly_zero(cas, &candidate);
+        candidate.coefficients[0] = cas->one;
+        for (size_t index = 0u;
+             index < workspace.count && status == PHY_OK; ++index) {
+            const unsigned multiplicity =
+                workspace.records[index].multiplicity;
+            const unsigned selected =
+                (unsigned)(digits % ((size_t)multiplicity + 1u));
+            digits /= (size_t)multiplicity + 1u;
+            rational_poly factor;
+            factor_record_polynomial(cas, &workspace, index, &factor);
+            for (unsigned power = 0u; power < selected; ++power) {
+                rational_poly product;
+                status = poly_multiply_exact(
+                    cas, &candidate, &factor, &product);
+                candidate = product;
+            }
+        }
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (candidate.degree <= best_degree) {
+            continue;
+        }
+        phy_ir_ref candidate_numerator = PHY_IR_NULL;
+        phy_ir_ref candidate_denominator = PHY_IR_NULL;
+        accepted = false;
+        status = try_kronecker_candidate(
+            cas, &numerator_poly, &denominator_poly, &candidate,
+            variables, variable_count, radices, numerator, denominator,
+            &candidate_numerator, &candidate_denominator, &accepted);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (accepted) {
+            best_degree = candidate.degree;
+            best_numerator = candidate_numerator;
+            best_denominator = candidate_denominator;
+        }
+    }
+    if (best_degree > 0) {
+        *out_num = best_numerator;
+        *out_den = best_denominator;
+    }
+    return PHY_OK;
+}
+
+/*
+ * Prefer the direct univariate Q[x] path, then offer the expanded pair to the
+ * separately verified bounded multivariate candidate path. Non-polynomial
+ * generators and images above REDUCE_MAX_DEGREE leave the pair unchanged.
  */
 static phy_status cancel_univariate_gcd(phy_cas *cas, phy_ir_ref numerator,
                                         phy_ir_ref denominator,
@@ -1504,20 +2212,14 @@ static phy_status cancel_univariate_gcd(phy_cas *cas, phy_ir_ref numerator,
         return PHY_OK;
     }
 
-    phy_cas_rat denominator_scale;
-    if (!phy_cas_exact_value(cas, denominator_coefficient,
-                             &denominator_scale) ||
-        denominator_scale.num == 0) {
+    if (!phy_cas_is_exact(cas, denominator_coefficient) ||
+        phy_cas_exact_sign_ref(cas, denominator_coefficient) == 0) {
         return PHY_OK;
-    }
-    phy_cas_rat inverse_scale;
-    if (!rat_divide((phy_cas_rat){1, 1}, denominator_scale,
-                    &inverse_scale)) {
-        return PHY_ERR_OVERFLOW;
     }
     phy_ir_ref scale = PHY_IR_NULL;
     phy_ir_ref scaled_numerator = PHY_IR_NULL;
-    status = phy_cas_number_node(cas, inverse_scale, &scale);
+    status = coefficient_divide(
+        cas, cas->one, denominator_coefficient, &scale);
     if (status == PHY_OK) {
         const phy_ir_ref factors[2] = {scale, numerator};
         status = phy_cas_mul_node(cas, factors, 2u, &scaled_numerator);
@@ -1573,7 +2275,7 @@ static phy_status cancel_univariate_gcd(phy_cas *cas, phy_ir_ref numerator,
             return status;
         }
         if (gcd.degree == 0) {
-            return PHY_OK;
+            continue;
         }
 
         rational_poly num_quotient;
@@ -1624,7 +2326,8 @@ static phy_status cancel_univariate_gcd(phy_cas *cas, phy_ir_ref numerator,
                    ? poly_to_ir(cas, &den_quotient, variable, out_den)
                    : status;
     }
-    return PHY_OK;
+    return cancel_multivariate_gcd(
+        cas, expanded_numerator, expanded_denominator, out_num, out_den);
 }
 
 /* ---------------------------------------------------------- cancellation */

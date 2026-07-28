@@ -372,4 +372,4 @@ product-size measurement.
 One consequence of this phase that the earlier link-check reports called out as
 future work has now happened: the application genuinely calls the geometry,
 Lie, Yang--Mills, and QFT layers, so `--gc-sections` no longer drops them.
-`dist/phy-nspire.tns` is currently 1,124,477 bytes.
+`dist/phy-nspire.tns` is currently 1,134,215 bytes.
