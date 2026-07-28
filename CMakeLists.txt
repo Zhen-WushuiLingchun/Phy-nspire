@@ -150,6 +150,9 @@ add_library(phy_core STATIC
     src/qft/dirac.c
     src/qft/mandelstam.c
     src/qft/color.c
+    src/exact/context.c
+    src/exact/integer.c
+    src/exact/rational.c
     src/cas/num.c
     src/cas/engine.c
     src/cas/simplify.c
@@ -219,7 +222,7 @@ if(BUILD_TESTING)
                   test_notebook test_ir test_tensor test_gr test_lie
                   test_qft_scalar test_yang_mills test_cas test_geom
                   test_geom_metric test_eval test_lorentz test_mandelstam
-                  test_color)
+                  test_color test_exact)
         add_executable(${suite} tests/${suite}.c)
         target_link_libraries(${suite} PRIVATE phy_core phy_platform_host phy_warnings)
         target_include_directories(${suite} PRIVATE tests)

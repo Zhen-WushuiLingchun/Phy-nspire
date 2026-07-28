@@ -108,6 +108,9 @@ SOURCES := \
     src/qft/dirac.c \
     src/qft/mandelstam.c \
     src/qft/color.c \
+    src/exact/context.c \
+    src/exact/integer.c \
+    src/exact/rational.c \
     src/cas/num.c \
     src/cas/engine.c \
     src/cas/simplify.c \

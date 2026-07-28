@@ -199,4 +199,3 @@ ASan/UBSan/leak detection, and the pinned Ndless r2022 ARM toolchain.
 5. Limits driven by rational/series order.
 6. Polynomial solving with rational and certified algebraic roots before any
    transcendental solver.
-
