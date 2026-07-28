@@ -52,9 +52,9 @@ acceptance remains required.
   antiderivative rules.
 - Source aliases, 2D display, palette entries, and notebook end-to-end tests.
 
-This milestone deliberately does **not** introduce complex-number rewrites.
-For example, `Sqrt[-1]` remains explicit until `I` has Gaussian-rational
-semantics.
+Exact complex-number rewrites were subsequently added in F3. `Sqrt[-1]`
+remains a principal-branch power spelling rather than a separate parser
+special case, while explicit `I` has Gaussian-rational semantics.
 
 ### F2 — polynomial and rational algebra
 
@@ -108,12 +108,15 @@ typed unsupported cases.
 
 ### F3 — exact number domains
 
-Status: native bounded-memory arbitrary-precision integers/rationals are
+Status: native bounded-memory arbitrary-precision integers/rationals and
+Gaussian rationals are
 implemented and flow through IR, source, scalar folding, evaluator,
-serialization, and MathTree display. The certified real-algebraic foundation
+serialization, and MathTree display. Exact `I`, `Re`, `Im`, `Conjugate`, and
+`Abs` share that backend, including transactional allocation-failure tests and
+complete public-API ARM retention. The certified real-algebraic foundation
 (primitive square-free defining polynomial, rational isolating interval, Sturm
 count/all-root isolation/refinement/comparison) is implemented and documented in
-[`ALGEBRAIC.md`](ALGEBRAIC.md). Algebraic arithmetic, Gaussian rationals, and
+[`ALGEBRAIC.md`](ALGEBRAIC.md). General algebraic arithmetic and
 canonical minimal-polynomial equality remain open. The univariate polynomial
 coefficient containers and rational LCD path have been migrated.
 
@@ -127,7 +130,7 @@ coefficient containers and rational LCD path have been migrated.
 
 The native choice has host strict/ASan, serialization, allocation-failure, and
 complete public-API ARM link/size evidence. Physical CX II timing/peak-heap
-acceptance, Gaussian rationals, algebraic arithmetic, and canonical
+acceptance, algebraic arithmetic, and canonical
 minimal-polynomial equality are still required before F3 can be closed.
 
 ### F4 — series, limits, and equations
@@ -149,11 +152,13 @@ come from coefficient sign and valuation parity; a two-sided pole with unequal
 directions is `PHY_ERR_DOMAIN`. Oscillatory, branch-sensitive, or otherwise
 undecidable cases remain typed unsupported rather than being sampled.
 `Solve[equation,x]` now reuses the bounded Q[x] factorizer and returns exact
-distinct rational, real quadratic-radical, or certified higher-degree real
-roots, excluding denominator zeros. Higher roots are typed
+distinct rational, real or complex quadratic-radical, or certified
+higher-degree all-real factors, excluding denominator zeros. A certified affine
+fallback also handles proved constant coefficients over `Q(i)`. Higher real
+roots are typed
 `Root[List[a0,...,an],k]` values with `k` ordered among the factor's real roots
-by exact Sturm isolation. A non-real quadratic, an unresolved complex factor,
-identity, multivariate or transcendental equation fails transactionally with a
+by exact Sturm isolation. An unresolved complex factor of degree at least
+three, identity, multivariate or transcendental equation fails transactionally with a
 typed unsupported result; no partial root list is published.
 
 The remaining implementation is governed by

@@ -173,6 +173,18 @@ static const char *canonical_function(const char *name)
     if (strcmp(name, "Erfc") == 0) {
         return "erfc";
     }
+    if (strcmp(name, "Re") == 0) {
+        return "Re";
+    }
+    if (strcmp(name, "Im") == 0) {
+        return "Im";
+    }
+    if (strcmp(name, "Conjugate") == 0) {
+        return "Conjugate";
+    }
+    if (strcmp(name, "Abs") == 0) {
+        return "Abs";
+    }
     static const function_alias known[] = {
         {"sin", "sin"},       {"cos", "cos"},
         {"tan", "tan"},       {"exp", "exp"},

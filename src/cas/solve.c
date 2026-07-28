@@ -65,6 +65,115 @@ static phy_status build_solution_list(phy_cas *cas, phy_ir_ref variable,
     return PHY_OK;
 }
 
+/*
+ * Certified affine fallback over the scalar constant field.
+ *
+ * The polynomial kernel is intentionally Q[x], but simplification can expose
+ * a linear numerator with an exact non-rational constant, for example
+ * (x^2+1)/(x-I) -> x+I.  Differentiate, prove the derivative independent of x,
+ * reconstruct a*x+b exactly, and only then publish -b/a.  This admits Q(i)
+ * without quietly widening every polynomial coefficient algorithm.
+ */
+static phy_status try_affine_solution(phy_cas *cas,
+                                      phy_ir_ref numerator,
+                                      phy_ir_ref denominator,
+                                      phy_ir_ref variable,
+                                      phy_ir_ref *out_ref,
+                                      bool *out_matched)
+{
+    *out_matched = false;
+    phy_ir_ref coefficient = PHY_IR_NULL;
+    phy_status status =
+        phy_cas_diff_node(cas, numerator, variable, &coefficient);
+    if (status != PHY_OK) {
+        return status;
+    }
+    bool coefficient_depends = true;
+    status = phy_cas_may_depend(
+        cas, coefficient, variable, &coefficient_depends);
+    if (status != PHY_OK || coefficient_depends ||
+        !phy_cas_known_nonzero(cas, coefficient)) {
+        return status;
+    }
+
+    const phy_cas_rule zero_rule = {variable, cas->zero};
+    phy_ir_ref constant = PHY_IR_NULL;
+    status = phy_cas_substitute_node(
+        cas, numerator, &zero_rule, 1u, &constant);
+    phy_ir_ref linear = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        const phy_ir_ref factors[2] = {coefficient, variable};
+        status = phy_cas_mul_node(cas, factors, 2u, &linear);
+    }
+    phy_ir_ref reconstructed = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        const phy_ir_ref terms[2] = {constant, linear};
+        status = phy_cas_add_node(
+            cas, terms, 2u, &reconstructed);
+    }
+    phy_cas_decision is_affine = PHY_CAS_UNKNOWN;
+    if (status == PHY_OK) {
+        phy_ir_ref negative_reconstructed = PHY_IR_NULL;
+        status = phy_cas_neg_node(
+            cas, reconstructed, &negative_reconstructed);
+        if (status == PHY_OK) {
+            const phy_ir_ref terms[2] = {
+                numerator, negative_reconstructed};
+            phy_ir_ref difference = PHY_IR_NULL;
+            status = phy_cas_add_node(
+                cas, terms, 2u, &difference);
+            if (status == PHY_OK) {
+                status = phy_cas_decide_zero_node(
+                    cas, difference, &is_affine);
+            }
+        }
+    }
+    if (status != PHY_OK || is_affine != PHY_CAS_ZERO) {
+        return status;
+    }
+
+    phy_ir_ref negative_constant = PHY_IR_NULL;
+    phy_ir_ref inverse = PHY_IR_NULL;
+    phy_ir_ref root = PHY_IR_NULL;
+    status = phy_cas_neg_node(
+        cas, constant, &negative_constant);
+    if (status == PHY_OK) {
+        status = phy_cas_pow_node(
+            cas, coefficient, cas->minus_one, &inverse);
+    }
+    if (status == PHY_OK) {
+        const phy_ir_ref factors[2] = {
+            negative_constant, inverse};
+        status = phy_cas_mul_node(cas, factors, 2u, &root);
+    }
+
+    phy_cas_decision numerator_zero = PHY_CAS_UNKNOWN;
+    if (status == PHY_OK) {
+        status = substitute_and_decide(
+            cas, numerator, variable, root, &numerator_zero);
+    }
+    if (status == PHY_OK && numerator_zero != PHY_CAS_ZERO) {
+        return numerator_zero == PHY_CAS_UNKNOWN
+                   ? PHY_ERR_UNSUPPORTED
+                   : PHY_ERR_CORRUPT_DOCUMENT;
+    }
+    phy_cas_decision denominator_zero = PHY_CAS_UNKNOWN;
+    if (status == PHY_OK) {
+        status = substitute_and_decide(
+            cas, denominator, variable, root, &denominator_zero);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (denominator_zero == PHY_CAS_UNKNOWN) {
+        return PHY_ERR_UNSUPPORTED;
+    }
+    *out_matched = true;
+    return denominator_zero == PHY_CAS_ZERO
+               ? build_solution_list(cas, variable, NULL, 0u, out_ref)
+               : build_solution_list(cas, variable, &root, 1u, out_ref);
+}
+
 phy_status phy_cas_solve(phy_cas *cas, phy_ir_ref equation,
                          phy_ir_ref variable, phy_ir_ref *out_ref)
 {
@@ -97,6 +206,14 @@ phy_status phy_cas_solve(phy_cas *cas, phy_ir_ref equation,
     status = phy_cas_rational_reduced_node(
         cas, difference, &numerator, &denominator);
     if (status != PHY_OK) {
+        return status;
+    }
+
+    bool affine_matched = false;
+    status = try_affine_solution(
+        cas, numerator, denominator, variable,
+        out_ref, &affine_matched);
+    if (status != PHY_OK || affine_matched) {
         return status;
     }
 

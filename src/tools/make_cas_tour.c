@@ -52,6 +52,14 @@ static const tour_cell kTour[] = {
     {TOUR_INPUT, "Cancel[(x^2-1)/(x^2-2*x+1)]", NULL},
     {TOUR_INPUT, "Factor[x^4-1]", NULL},
     {TOUR_INPUT, "Apart[1/(x^2-1)]", NULL},
+    {TOUR_MARKDOWN, "Exact complex arithmetic",
+     "$$I^2=-1,\\quad \\overline{3+4I}=3-4I,\\quad |3+4I|=5$$"
+     " The real and imaginary parts use the same bounded arbitrary-precision "
+     "exact domain as rational arithmetic."},
+    {TOUR_INPUT, "(1+2*I)*(3-4*I)", NULL},
+    {TOUR_INPUT, "Re[3+4*I]+Im[3+4*I]", NULL},
+    {TOUR_INPUT, "Conjugate[3+4*I]", NULL},
+    {TOUR_INPUT, "Abs[3+4*I]", NULL},
     {TOUR_MARKDOWN, "Exact series",
      "$$e^x\\sin x=x+x^2+\\frac{x^3}{3}"
      "-\\frac{x^5}{30}+O(x^6)$$"},
@@ -72,11 +80,12 @@ static const tour_cell kTour[] = {
     {TOUR_MARKDOWN, "Exact polynomial equations",
      "$$3x-2=0\\quad x=\\frac{2}{3},\\qquad "
      "x^2-2=0\\quad x=\\pm\\sqrt{2}$$"
-     " Irreducible higher-degree real roots stay exact as ordered "
+     " Higher-degree factors proved all-real stay exact as ordered "
      "$\\operatorname{Root}(\\{a_0,\\ldots,a_n\\},k)$ certificates."},
     {TOUR_INPUT, "Solve[3*x-2==0,x]", NULL},
     {TOUR_INPUT, "Solve[x^2-2==0,x]", NULL},
-    {TOUR_INPUT, "Solve[x^5-x-1==0,x]", NULL},
+    {TOUR_INPUT, "Solve[x^2+2*x+5==0,x]", NULL},
+    {TOUR_INPUT, "Solve[x^3-3*x+1==0,x]", NULL},
     {TOUR_INPUT, "Solve[(x^2-1)/(x-1)==0,x]", NULL},
     {TOUR_INPUT, "Gamma[6]+LogGamma[2]+Erfc[0]", NULL},
     {TOUR_INPUT, "EquivalentQ[Sin[x]^2+Cos[x]^2,1]", NULL},

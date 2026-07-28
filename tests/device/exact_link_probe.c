@@ -112,6 +112,35 @@ int main(void)
              ? (unsigned)(numerator + denominator)
              : 0u);
 
+    phy_gaussian ga;
+    phy_gaussian gb;
+    phy_gaussian gc;
+    if (phy_gaussian_init(context, &ga) != PHY_OK ||
+        phy_gaussian_init(context, &gb) != PHY_OK ||
+        phy_gaussian_init(context, &gc) != PHY_OK) {
+        phy_exact_context_destroy(context);
+        return 4;
+    }
+    sink((unsigned)phy_gaussian_validate(&ga));
+    sink((unsigned)phy_gaussian_set_i64(&ga, 1, 2, 2, 3));
+    sink((unsigned)phy_gaussian_read(
+        &gb, "18446744073709551616", "5", "-7", "11"));
+    sink((unsigned)phy_gaussian_copy(&ga, &gc));
+    sink((unsigned)phy_gaussian_add(&ga, &gb, &gc));
+    sink((unsigned)phy_gaussian_negate(&ga, &gc));
+    sink((unsigned)phy_gaussian_subtract(&ga, &gb, &gc));
+    sink((unsigned)phy_gaussian_multiply(&ga, &gb, &gc));
+    sink((unsigned)phy_gaussian_reciprocal(&ga, &gc));
+    sink((unsigned)phy_gaussian_divide(&ga, &gb, &gc));
+    sink((unsigned)phy_gaussian_conjugate(&ga, &gc));
+    sink((unsigned)phy_gaussian_norm(&ga, &z));
+    sink((unsigned)phy_gaussian_pow_i32(&ga, -3, &gc));
+    sink(phy_gaussian_real(&gc) != 0 ? 1u : 0u);
+    sink(phy_gaussian_imaginary(&gc) != 0 ? 1u : 0u);
+
+    phy_gaussian_destroy(&gc);
+    phy_gaussian_destroy(&gb);
+    phy_gaussian_destroy(&ga);
     phy_bigrat_destroy(&z);
     phy_bigrat_destroy(&y);
     phy_bigrat_destroy(&x);
@@ -121,5 +150,5 @@ int main(void)
     phy_bigint_destroy(&b);
     phy_bigint_destroy(&a);
     phy_exact_context_destroy(context);
-    return g_phy_exact_probe_sink != 0u ? 0 : 4;
+    return g_phy_exact_probe_sink != 0u ? 0 : 5;
 }

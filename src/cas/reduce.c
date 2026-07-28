@@ -2573,10 +2573,8 @@ static phy_status quadratic_roots(phy_cas *cas,
     if (status != PHY_OK) {
         return status;
     }
-    if (phy_cas_exact_sign_ref(cas, discriminant) < 0) {
-        /* The complex-number layer owns non-real roots. */
-        return PHY_ERR_UNSUPPORTED;
-    }
+    const bool complex_discriminant =
+        phy_cas_exact_sign_ref(cas, discriminant) < 0;
     status = phy_cas_neg_node(cas, b, &minus_b);
     if (status == PHY_OK) {
         status = phy_cas_number_node(cas, (phy_cas_rat){2, 1}, &two);
@@ -2596,14 +2594,24 @@ static phy_status quadratic_roots(phy_cas *cas,
     }
 
     phy_ir_ref half = PHY_IR_NULL;
+    phy_ir_ref radicand = discriminant;
     phy_ir_ref square_root = PHY_IR_NULL;
     phy_ir_ref negative_square_root = PHY_IR_NULL;
     phy_ir_ref numerators[2] = {PHY_IR_NULL, PHY_IR_NULL};
     status =
         phy_cas_number_node(cas, (phy_cas_rat){1, 2}, &half);
+    if (status == PHY_OK && complex_discriminant) {
+        status = phy_cas_neg_node(cas, discriminant, &radicand);
+    }
     if (status == PHY_OK) {
         status =
-            phy_cas_pow_node(cas, discriminant, half, &square_root);
+            phy_cas_pow_node(cas, radicand, half, &square_root);
+    }
+    if (status == PHY_OK && complex_discriminant) {
+        const phy_ir_ref factors[2] = {
+            square_root, cas->constant_i};
+        status = phy_cas_mul_node(
+            cas, factors, 2u, &square_root);
     }
     if (status == PHY_OK) {
         status =
@@ -2738,6 +2746,17 @@ static phy_status algebraic_factor_roots(
         status = charge;
     }
 
+    /*
+     * Solve has complex-domain semantics. Root[...] currently carries a
+     * certified real isolating interval, so publishing only the real subset
+     * of a factor that also has non-real roots would be a silently incomplete
+     * answer. Until complex algebraic Root values land, accept a higher-degree
+     * square-free factor only when every one of its roots is real.
+     */
+    if (status == PHY_OK &&
+        isolated_count != (size_t)integer.degree) {
+        status = PHY_ERR_UNSUPPORTED;
+    }
     if (status == PHY_OK &&
         isolated_count >
             PHY_CAS_POLYNOMIAL_MAX_ROOTS - roots->count) {

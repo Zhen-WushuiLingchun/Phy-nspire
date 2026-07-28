@@ -157,6 +157,10 @@ phy_cas *phy_cas_create(phy_ir_context *ir, const phy_cas_limits *limits)
         cas->functions[index] = phy_ir_intern(ir, kFunctionNames[index]);
     }
     cas->fn_integrate = phy_ir_intern(ir, "Integrate");
+    cas->fn_re = phy_ir_intern(ir, "Re");
+    cas->fn_im = phy_ir_intern(ir, "Im");
+    cas->fn_conjugate = phy_ir_intern(ir, "Conjugate");
+    cas->fn_abs = phy_ir_intern(ir, "Abs");
     cas->zero = phy_ir_integer(ir, 0);
     cas->one = phy_ir_integer(ir, 1);
     cas->minus_one = phy_ir_integer(ir, -1);
@@ -194,6 +198,10 @@ phy_cas *phy_cas_create(phy_ir_context *ir, const phy_cas_limits *limits)
     }
     if (!functions_ok || !constants_ok ||
         cas->fn_integrate == PHY_IR_NO_SYMBOL ||
+        cas->fn_re == PHY_IR_NO_SYMBOL ||
+        cas->fn_im == PHY_IR_NO_SYMBOL ||
+        cas->fn_conjugate == PHY_IR_NO_SYMBOL ||
+        cas->fn_abs == PHY_IR_NO_SYMBOL ||
         cas->zero == PHY_IR_NULL || cas->one == PHY_IR_NULL ||
         cas->minus_one == PHY_IR_NULL) {
         phy_cas_destroy(cas);

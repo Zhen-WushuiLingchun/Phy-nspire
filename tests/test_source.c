@@ -106,6 +106,20 @@ static void test_commands_and_functions(void)
     PHY_CHECK_EQ_STR(render(ir, command.expression),
                      "(fn f x (fn log (fn exp y)))");
 
+    command = parse(ir, "Re[3+4I]");
+    PHY_CHECK_EQ_STR(render(ir, command.expression),
+                     "(fn Re (+ 3 (* 4 I)))");
+    command = parse(ir, "Im[(1+2I)/(3-I)]");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(fn Im (* (+ 1 (* 2 I)) (^ (+ 3 (* -1 I)) -1)))");
+    command = parse(ir, "Conjugate[z]");
+    PHY_CHECK_EQ_STR(render(ir, command.expression),
+                     "(fn Conjugate z)");
+    command = parse(ir, "Abs[3+4I]");
+    PHY_CHECK_EQ_STR(render(ir, command.expression),
+                     "(fn Abs (+ 3 (* 4 I)))");
+
     command = parse(ir, "Together[(x+1)/(x-1)]");
     PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_TOGETHER);
     command = parse(ir, "Cancel[(x^2-1)/(x^2-2x+1)]");

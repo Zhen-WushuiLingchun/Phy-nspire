@@ -18,6 +18,7 @@ using nmarkdown::MathNodeFlagHasSubscript;
 using nmarkdown::MathNodeFlagHasSuperscript;
 using nmarkdown::MathNodeId;
 using nmarkdown::MathNodeKind;
+using nmarkdown::MathAccent;
 using nmarkdown::MathTree;
 using nmarkdown::MathVariant;
 using nmarkdown::kInvalidMathNode;
@@ -227,6 +228,14 @@ private:
         if (child < tree_.nodes.size()) {
             node.atom_class = tree_.nodes[child].atom_class;
         }
+        return add(node, {child});
+    }
+
+    MathNodeId accented(MathNodeId child, MathAccent accent)
+    {
+        MathNode node;
+        node.kind = MathNodeKind::Accent;
+        node.aux = static_cast<std::uint16_t>(accent);
         return add(node, {child});
     }
 
@@ -840,6 +849,20 @@ private:
                         phy_ir_child(context_, expression, 1U),
                         depth + 1U, 0),
                 });
+            }
+            if (head_name == "Abs" && count == 1U) {
+                return delimited(
+                    build(
+                        phy_ir_child(context_, expression, 0U),
+                        depth + 1U, 0),
+                    "|", "|");
+            }
+            if (head_name == "Conjugate" && count == 1U) {
+                return accented(
+                    build(
+                        phy_ir_child(context_, expression, 0U),
+                        depth + 1U, 0),
+                    MathAccent::Overline);
             }
             MathNodeId head = function_head(expression);
             std::vector<std::size_t> positions;

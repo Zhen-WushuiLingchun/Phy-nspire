@@ -51,7 +51,9 @@ their numerator or denominator leaves `int64`.
 
 Calls accept either Mathematica brackets or calculator-friendly parentheses:
 `Sin[x]` and `sin(x)` are equivalent. Scalar heads recognized by the native CAS
-are `Sin`, `Cos`, `Tan`, `Exp`, and `Log`.
+include the elementary trigonometric, inverse, hyperbolic, exponential and
+logarithmic families, `Gamma`, `LogGamma`, `Erf`, `Erfc`, and the exact complex
+heads `Re`, `Im`, `Conjugate`, and `Abs`.
 
 The parser also maps useful FullForm constructors directly to IR:
 
@@ -131,7 +133,7 @@ semantics implicitly.
 | `Limit[expr,{x,a}]` | exact finite two-sided limit when both directions agree |
 | `Limit[expr,{x,a,FromAbove}]`, `Limit[expr,{x,a,FromBelow}]` | exact directed finite limit; `Direction->"FromAbove"` and `Direction->"FromBelow"` are equivalent spellings |
 | `Limit[expr,{x,Infinity}]`, `Limit[expr,{x,-Infinity}]` | exact rational/Laurent infinity limit through the certified `t=1/x` transform |
-| `Solve[equation,x]` | exact distinct real roots for bounded reduced Q[x] equations: rationals, real quadratic radicals, and certified `Root[{a0,...,an},k]` values for higher irreducible factors; denominator roots are excluded |
+| `Solve[equation,x]` | exact distinct roots for bounded reduced Q[x] equations: rational/constant affine roots, real or complex quadratic radicals, and certified `Root[{a0,...,an},k]` values when a higher irreducible factor is proved all-real; denominator roots are excluded |
 
 Every command except assignment, a bare expression, and the two simplifies is
 scalar algebra, so `Expand[M]` on a manifold is `PHY_ERR_TYPE` rather than a
@@ -157,15 +159,19 @@ scheduling is future work; the explicitly implemented
   arguments, replacement rules, patterns, or scoping;
 - binding a name a live chart uses as a coordinate is `PHY_ERR_ASSUMPTION`, in
   both directions — see [`EVALUATOR.md`](EVALUATOR.md);
-- no complex arbitrary-precision numeric approximation layer; exact integers
-  and rationals do promote natively under explicit resource ceilings;
-- `Solve` publishes exact rational, real quadratic-radical, and certified
-  higher-degree real roots. `Root[{a0,...,an},k]` uses increasing coefficient
+- no complex arbitrary-precision numeric approximation layer; exact integers,
+  rationals, and Gaussian rationals do promote natively under explicit resource
+  ceilings;
+- `Solve` publishes exact rational/constant affine roots, real and complex
+  quadratic radicals, and certified roots of higher-degree all-real factors.
+  `Root[{a0,...,an},k]` uses increasing coefficient
   order and a one-based index among that factor's increasing real roots; full
-  complex-root ordering is deferred. A non-real factor, identity with
+  complex-algebraic root ordering is deferred. An unresolved non-real factor
+  of degree at least three, identity with
   infinitely many solutions, multivariate equation, or transcendental
   equation returns `PHY_ERR_UNSUPPORTED`; it never returns a partial root list;
-- no complex literals or numeric approximation command;
+- no `a+bi` literal token or numeric approximation command; exact complex
+  expressions use the protected symbol `I`;
 - no implicit function application beyond bracket/parenthesis calls;
 - no shorthand Einstein syntax yet; explicit `Up`/`Down` indices retain their
   Generic/Lorentz/Spinor/color space in typed IR;

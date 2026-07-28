@@ -11,7 +11,7 @@
 #include "cas_internal.h"
 #include "phy/exact.h"
 
-static phy_exact_context *operation_context(phy_cas *cas)
+phy_exact_context *phy_cas_exact_operation_context(phy_cas *cas)
 {
     phy_exact_limits limits;
     phy_exact_limits_defaults(&limits);
@@ -25,8 +25,8 @@ static phy_exact_context *operation_context(phy_cas *cas)
     return exact;
 }
 
-static phy_status load_ref(phy_cas *cas, phy_exact_context *exact,
-                           phy_ir_ref ref, phy_bigrat *out_value)
+phy_status phy_cas_exact_load_ref(phy_cas *cas, phy_exact_context *exact,
+                                  phy_ir_ref ref, phy_bigrat *out_value)
 {
     int64_t numerator = 0;
     int64_t denominator = 0;
@@ -68,8 +68,9 @@ static phy_status load_ref(phy_cas *cas, phy_exact_context *exact,
     return status;
 }
 
-static phy_status publish(phy_cas *cas, const phy_bigrat *value,
-                          phy_ir_ref *out_ref)
+phy_status phy_cas_exact_publish_bigrat(phy_cas *cas,
+                                        const phy_bigrat *value,
+                                        phy_ir_ref *out_ref)
 {
     int64_t numerator = 0;
     int64_t denominator = 0;
@@ -145,7 +146,7 @@ typedef phy_status (*binary_operation)(const phy_bigrat *left,
 static phy_status binary(phy_cas *cas, phy_ir_ref left, phy_ir_ref right,
                          phy_ir_ref *out_ref, binary_operation operation)
 {
-    phy_exact_context *exact = operation_context(cas);
+    phy_exact_context *exact = phy_cas_exact_operation_context(cas);
     if (exact == NULL) {
         return PHY_ERR_OUT_OF_MEMORY;
     }
@@ -163,16 +164,16 @@ static phy_status binary(phy_cas *cas, phy_ir_ref left, phy_ir_ref right,
         status = phy_bigrat_init(exact, &result);
     }
     if (status == PHY_OK) {
-        status = load_ref(cas, exact, left, &a);
+        status = phy_cas_exact_load_ref(cas, exact, left, &a);
     }
     if (status == PHY_OK) {
-        status = load_ref(cas, exact, right, &b);
+        status = phy_cas_exact_load_ref(cas, exact, right, &b);
     }
     if (status == PHY_OK) {
         status = operation(&a, &b, &result);
     }
     if (status == PHY_OK) {
-        status = publish(cas, &result, out_ref);
+        status = phy_cas_exact_publish_bigrat(cas, &result, out_ref);
     }
     phy_bigrat_destroy(&result);
     phy_bigrat_destroy(&b);
@@ -211,7 +212,7 @@ phy_status phy_cas_exact_pow_ref(phy_cas *cas, phy_ir_ref base,
     if (exponent < INT32_MIN || exponent > INT32_MAX) {
         return PHY_ERR_UNSUPPORTED;
     }
-    phy_exact_context *exact = operation_context(cas);
+    phy_exact_context *exact = phy_cas_exact_operation_context(cas);
     if (exact == NULL) {
         return PHY_ERR_OUT_OF_MEMORY;
     }
@@ -224,14 +225,14 @@ phy_status phy_cas_exact_pow_ref(phy_cas *cas, phy_ir_ref base,
         status = phy_bigrat_init(exact, &result);
     }
     if (status == PHY_OK) {
-        status = load_ref(cas, exact, base, &value);
+        status = phy_cas_exact_load_ref(cas, exact, base, &value);
     }
     if (status == PHY_OK) {
         status = phy_bigrat_pow_i32(
             &value, (int32_t)exponent, &result);
     }
     if (status == PHY_OK) {
-        status = publish(cas, &result, out_ref);
+        status = phy_cas_exact_publish_bigrat(cas, &result, out_ref);
     }
     phy_bigrat_destroy(&result);
     phy_bigrat_destroy(&value);
@@ -258,7 +259,7 @@ phy_status phy_cas_exact_mod_u32_ref(phy_cas *cas, phy_ir_ref integer,
         return PHY_OK;
     }
 
-    phy_exact_context *exact = operation_context(cas);
+    phy_exact_context *exact = phy_cas_exact_operation_context(cas);
     if (exact == NULL) {
         return PHY_ERR_OUT_OF_MEMORY;
     }
@@ -266,7 +267,7 @@ phy_status phy_cas_exact_mod_u32_ref(phy_cas *cas, phy_ir_ref integer,
     memset(&value, 0, sizeof value);
     phy_status status = phy_bigrat_init(exact, &value);
     if (status == PHY_OK) {
-        status = load_ref(cas, exact, integer, &value);
+        status = phy_cas_exact_load_ref(cas, exact, integer, &value);
     }
     if (status == PHY_OK) {
         status = phy_bigint_mod_u32(

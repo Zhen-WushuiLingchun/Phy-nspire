@@ -26,6 +26,10 @@ static void test_catalog_bounds_and_representative_entries(void)
     PHY_CHECK(strstr(entry.snippet, "\\begin{matrix}") != NULL);
     PHY_CHECK(phy_palette_get(PHY_PALETTE_CAS, 3u, 4u, &entry));
     PHY_CHECK(strstr(entry.snippet, "ComponentTensor[M") != NULL);
+    PHY_CHECK(phy_palette_get(PHY_PALETTE_CAS, 1u, 15u, &entry));
+    PHY_CHECK_EQ_STR(entry.snippet, "Re[]");
+    PHY_CHECK(phy_palette_get(PHY_PALETTE_CAS, 1u, 18u, &entry));
+    PHY_CHECK_EQ_STR(entry.snippet, "Abs[]");
     PHY_CHECK(phy_palette_get(PHY_PALETTE_CAS, 4u, 0u, &entry));
     PHY_CHECK_EQ_STR(entry.snippet, "M = Manifold[{t,x,y,z},Lorentzian]");
     PHY_CHECK(phy_palette_get(PHY_PALETTE_CAS, 4u, 6u, &entry));

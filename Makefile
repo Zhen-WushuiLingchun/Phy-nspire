@@ -113,9 +113,11 @@ SOURCES := \
     src/exact/context.c \
     src/exact/integer.c \
     src/exact/rational.c \
+    src/exact/gaussian.c \
     src/exact/algebraic.c \
     src/cas/num.c \
     src/cas/big_num.c \
+    src/cas/complex.c \
     src/cas/finite_poly.c \
     src/cas/series.c \
     src/cas/limit.c \

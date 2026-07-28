@@ -54,9 +54,11 @@ CAS_SOURCES=(
     src/exact/context.c
     src/exact/integer.c
     src/exact/rational.c
+    src/exact/gaussian.c
     src/exact/algebraic.c
     src/cas/num.c
     src/cas/big_num.c
+    src/cas/complex.c
     src/cas/finite_poly.c
     src/cas/series.c
     src/cas/limit.c
@@ -113,13 +115,14 @@ exact)
     PROBE="tests/device/exact_link_probe.c"
     HEADER="include/phy/exact.h"
     OBJECT_GLOB="src_exact_*.o"
-    SYMBOL_RE='phy_(exact|bigint|bigrat)_'
+    SYMBOL_RE='phy_(exact|bigint|bigrat|gaussian)_'
     EXCLUDE='^$'
     MIN_ENTRY_POINTS=40
     SOURCES=("${COMMON_SOURCES[@]}"
              src/exact/context.c
              src/exact/integer.c
-             src/exact/rational.c)
+             src/exact/rational.c
+             src/exact/gaussian.c)
     ;;
 cas)
     LABEL="CAS"
@@ -142,6 +145,7 @@ algebraic)
              src/exact/context.c
              src/exact/integer.c
              src/exact/rational.c
+             src/exact/gaussian.c
              src/exact/algebraic.c)
     ;;
 geom)

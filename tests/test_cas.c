@@ -399,6 +399,60 @@ static void test_power_rules(void)
     close_fixture(&f);
 }
 
+static void test_exact_gaussian_rationals(void)
+{
+    fixture f = open_fixture();
+
+    /* I is algebraic, not an opaque label: all integral powers reduce modulo
+       four, including negative powers. */
+    PHY_CHECK_EQ_STR(normal(&f, "(^ I 2)"), "-1");
+    PHY_CHECK_EQ_STR(normal(&f, "(^ I 3)"), "(* -1 I)");
+    PHY_CHECK_EQ_STR(normal(&f, "(^ I 4)"), "1");
+    PHY_CHECK_EQ_STR(normal(&f, "(^ I -1)"), "(* -1 I)");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(^ I 18446744073709551616)"), "1");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(^ I -18446744073709551617)"),
+        "(* -1 I)");
+
+    /* Closed Q(i) arithmetic is canonical and exact. */
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(* (+ 1 (* 2 I)) (+ 3 (* -4 I)))"),
+        "(+ 11 (* 2 I))");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(^ (+ 1 I) -1)"),
+        "(+ (rat 1 2) (* (rat -1 2) I))");
+    PHY_CHECK_EQ_STR(
+        normal(&f,
+               "(* (+ 3 (* 4 I)) (^ (+ 1 (* -2 I)) -1))"),
+        "(+ -1 (* 2 I))");
+
+    /* Reader-level complex projections are real symbolic operations over the
+       same kernel, not display-only heads. */
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(fn Re (+ 3 (* 4 I)))"), "3");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(fn Im (+ 3 (* 4 I)))"), "4");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(fn Conjugate (+ 3 (* 4 I)))"),
+        "(+ 3 (* -4 I))");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(fn Abs (+ 3 (* 4 I)))"), "5");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn Re I)"), "0");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn Im I)"), "1");
+
+    /* Promoted coefficients stay arbitrary precision through both parts. */
+    PHY_CHECK_EQ_STR(
+        normal(&f,
+               "(+ 340282366920938463463374607431768211456 "
+               "   (* 340282366920938463463374607431768211457 I) "
+               "   (* -1 I))"),
+        "(+ 340282366920938463463374607431768211456 "
+        "(* 340282366920938463463374607431768211456 I))");
+
+    close_fixture(&f);
+}
+
 static void test_known_functions(void)
 {
     fixture f = open_fixture();
@@ -1382,21 +1436,38 @@ static void test_exact_polynomial_solve(void)
     PHY_CHECK_EQ_STR(solved(&f, "(= 1 0)"), "(fn List)");
     PHY_CHECK_EQ_STR(
         solved(&f, "(= (+ (^ x 2) 1) 0)"),
-        "PHY_ERR_UNSUPPORTED");
+        "(fn List "
+        "(fn List (fn Rule x I)) "
+        "(fn List (fn Rule x (* -1 I))))");
     PHY_CHECK_EQ_STR(
-        solved(&f, "(= (+ (^ x 3) -2) 0)"),
-        "(fn List (fn List (fn Rule x "
-        "(fn Root (fn List -2 0 0 1) 1))))");
+        solved(&f, "(= (+ (^ x 2) (* 2 x) 5) 0)"),
+        "(fn List "
+        "(fn List (fn Rule x (+ -1 (* -2 I)))) "
+        "(fn List (fn Rule x (+ -1 (* 2 I)))))");
     PHY_CHECK_EQ_STR(
         solved(
             &f,
-            "(= (+ (^ x 3) (* (rat 1 2) x) (rat 1 2)) 0)"),
-        "(fn List (fn List (fn Rule x "
-        "(fn Root (fn List 1 1 0 2) 1))))");
+            "(= (* (+ (^ x 2) 1) "
+            "      (^ (+ x (* -1 I)) -1)) 0)"),
+        "(fn List (fn List (fn Rule x (* -1 I))))");
     PHY_CHECK_EQ_STR(
-        solved(&f, "(= (+ (* 2 (^ x 3)) x 1) 0)"),
-        "(fn List (fn List (fn Rule x "
-        "(fn Root (fn List 1 1 0 2) 1))))");
+        solved(&f, "(= (+ (^ x 3) -2) 0)"),
+        "PHY_ERR_UNSUPPORTED");
+    PHY_CHECK_EQ_STR(
+        solved(
+            &f,
+            "(= (+ (* (rat 1 2) (^ x 3)) "
+            "      (* (rat -3 2) x) (rat 1 2)) 0)"),
+        "(fn List "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 1))) "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 2))) "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 3))))");
+    PHY_CHECK_EQ_STR(
+        solved(&f, "(= (+ (* 2 (^ x 3)) (* -6 x) 2) 0)"),
+        "(fn List "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 1))) "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 2))) "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 3))))");
     PHY_CHECK_EQ_STR(
         solved(&f, "(= (+ (^ x 3) (* -3 x) 1) 0)"),
         "(fn List "
@@ -1406,9 +1477,12 @@ static void test_exact_polynomial_solve(void)
     PHY_CHECK_EQ_STR(
         solved(
             &f,
-            "(= (* (+ (^ x 5) (* -1 x) -1) (^ (+ -2 x) -1)) 0)"),
-        "(fn List (fn List (fn Rule x "
-        "(fn Root (fn List -1 -1 0 0 0 1) 1))))");
+            "(= (* (+ (^ x 3) (* -3 x) 1) "
+            "      (^ (+ -2 x) -1)) 0)"),
+        "(fn List "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 1))) "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 2))) "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 3))))");
     PHY_CHECK_EQ_STR(
         solved(
             &f,
@@ -1940,6 +2014,76 @@ static void test_promoted_exact_allocation_failure_is_transactional(void)
     phy_platform_shutdown();
 }
 
+static void test_gaussian_allocation_failure_is_transactional(void)
+{
+    static const char expression[] =
+        "(+ 340282366920938463463374607431768211456 "
+        "   (* 340282366920938463463374607431768211457 I) "
+        "   (* -340282366920938463463374607431768211457 I))";
+    static const char expected[] =
+        "340282366920938463463374607431768211456";
+
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    phy_ir_context *calibration_ir = phy_ir_context_create(NULL);
+    PHY_CHECK(calibration_ir != NULL);
+    phy_cas *calibration_cas =
+        phy_cas_create(calibration_ir, NULL);
+    PHY_CHECK(calibration_cas != NULL);
+    const phy_ir_ref calibration_expr =
+        parse(calibration_ir, expression);
+    const uint32_t attempts_before = phy_host_alloc_attempts();
+    phy_ir_ref calibration_out = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_simplify(
+            calibration_cas, calibration_expr, &calibration_out),
+        PHY_OK);
+    const uint32_t allocations =
+        phy_host_alloc_attempts() - attempts_before;
+    PHY_CHECK_EQ_STR(
+        render(calibration_ir, calibration_out), expected);
+    phy_cas_destroy(calibration_cas);
+    phy_ir_context_destroy(calibration_ir);
+    PHY_CHECK(allocations > 12u);
+
+    unsigned failures = 0u;
+    for (uint32_t nth = 1u; nth <= allocations; ++nth) {
+        phy_ir_context *ir = phy_ir_context_create(NULL);
+        PHY_CHECK(ir != NULL);
+        phy_cas *cas = phy_cas_create(ir, NULL);
+        PHY_CHECK(cas != NULL);
+        const phy_ir_ref expr = parse(ir, expression);
+
+        phy_host_fail_alloc_after(nth);
+        phy_ir_ref out = PHY_IR_NULL;
+        const phy_status status =
+            phy_cas_simplify(cas, expr, &out);
+        phy_host_fail_alloc_after(0u);
+        PHY_CHECK(status == PHY_OK ||
+                  status == PHY_ERR_OUT_OF_MEMORY ||
+                  status == PHY_ERR_MEMORY_LIMIT);
+        failures += status == PHY_OK ? 0u : 1u;
+        PHY_CHECK_EQ_INT(phy_cas_validate(cas), PHY_OK);
+        PHY_CHECK_EQ_INT(phy_ir_validate(ir), PHY_OK);
+
+        phy_ir_clear_error(ir);
+        out = PHY_IR_NULL;
+        PHY_CHECK_EQ_INT(
+            phy_cas_simplify(cas, expr, &out), PHY_OK);
+        PHY_CHECK_EQ_STR(render(ir, out), expected);
+        PHY_CHECK_EQ_INT(phy_cas_validate(cas), PHY_OK);
+        PHY_CHECK_EQ_INT(phy_ir_validate(ir), PHY_OK);
+
+        phy_cas_destroy(cas);
+        phy_ir_context_destroy(ir);
+        phy_telemetry telemetry;
+        phy_telemetry_get(&telemetry);
+        PHY_CHECK_EQ_INT(telemetry.bytes_live, 0);
+    }
+    PHY_CHECK(failures > 8u);
+    phy_host_fail_alloc_after(0u);
+    phy_platform_shutdown();
+}
+
 /* ---------------------------------------------------------------- driver */
 
 int main(void)
@@ -1951,6 +2095,7 @@ int main(void)
     PHY_TEST_CASE(test_sums_collect);
     PHY_TEST_CASE(test_products_collect);
     PHY_TEST_CASE(test_power_rules);
+    PHY_TEST_CASE(test_exact_gaussian_rationals);
     PHY_TEST_CASE(test_known_functions);
     PHY_TEST_CASE(test_simplify_is_idempotent);
     PHY_TEST_CASE(test_errors_propagate_as_values);
@@ -1980,5 +2125,6 @@ int main(void)
     PHY_TEST_CASE(test_cache_survives_a_tight_byte_ceiling);
     PHY_TEST_CASE(test_allocation_failure_unwinds_scratch);
     PHY_TEST_CASE(test_promoted_exact_allocation_failure_is_transactional);
+    PHY_TEST_CASE(test_gaussian_allocation_failure_is_transactional);
     return PHY_TEST_REPORT("test_cas");
 }

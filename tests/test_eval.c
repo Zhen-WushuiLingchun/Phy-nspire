@@ -199,6 +199,21 @@ static void test_scalar_elementary_foundation(void)
     expect_scalar(
         &f, "Rational[18446744073709551616,3] * 3",
         "18446744073709551616");
+    expect_scalar(&f, "I^2026", "-1");
+    expect_scalar(&f, "I^18446744073709551616", "1");
+    expect_scalar(
+        &f, "(1+2I)(3-4I)", "(+ 11 (* 2 I))");
+    expect_scalar(
+        &f, "1/(1+I)", "(+ (rat 1 2) (* (rat -1 2) I))");
+    expect_scalar(&f, "Re[3+4I]", "3");
+    expect_scalar(&f, "Im[3+4I]", "4");
+    expect_scalar(
+        &f, "Conjugate[3+4I]", "(+ 3 (* -4 I))");
+    expect_scalar(&f, "Abs[3+4I]", "5");
+    expect_scalar(
+        &f,
+        "Re[340282366920938463463374607431768211456+I]",
+        "340282366920938463463374607431768211456");
 
     expect_scalar(&f, "D[ArcTan[x],x]", "(^ (+ 1 (^ x 2)) -1)");
     expect_scalar(
@@ -331,12 +346,20 @@ static void test_solve_reader_and_evaluator(void)
     value = run(&f, "Solve[1==0,x]");
     PHY_CHECK_EQ_STR(expansion(&f, value), "(fn List)");
 
-    expect_status(&f, "Solve[x^2+1==0,x]", PHY_ERR_UNSUPPORTED);
-    value = run(&f, "Solve[x^5-x-1==0,x]");
+    value = run(&f, "Solve[x^2+1==0,x]");
     PHY_CHECK_EQ_STR(
         expansion(&f, value),
-        "(fn List (fn List (fn Rule x "
-        "(fn Root (fn List -1 -1 0 0 0 1) 1))))");
+        "(fn List "
+        "(fn List (fn Rule x I)) "
+        "(fn List (fn Rule x (* -1 I))))");
+    value = run(&f, "Solve[x^2+2x+5==0,x]");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List "
+        "(fn List (fn Rule x (+ -1 (* -2 I)))) "
+        "(fn List (fn Rule x (+ -1 (* 2 I)))))");
+    expect_status(
+        &f, "Solve[x^5-x-1==0,x]", PHY_ERR_UNSUPPORTED);
     value = run(&f, "Solve[x^3-3x+1==0,x]");
     PHY_CHECK_EQ_STR(
         expansion(&f, value),
@@ -380,6 +403,9 @@ static void test_binding_rejects_reserved_and_captured_names(void)
 
     /* Reserved spellings are not bindable; rejected by the parser. */
     expect_status(&f, "Sin = 2", PHY_ERR_TYPE);
+    expect_status(&f, "Re = 2", PHY_ERR_TYPE);
+    expect_status(&f, "Conjugate = 2", PHY_ERR_TYPE);
+    expect_status(&f, "Abs = 2", PHY_ERR_TYPE);
     expect_status(&f, "Manifold = 2", PHY_ERR_TYPE);
     expect_status(&f, "Simplify = 2", PHY_ERR_TYPE);
     expect_status(&f, "Clear[Sin]", PHY_ERR_TYPE);

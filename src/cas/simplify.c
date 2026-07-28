@@ -926,6 +926,52 @@ phy_status phy_cas_pow_node(phy_cas *cas, phy_ir_ref base, phy_ir_ref exponent,
     const bool integral =
         phy_ir_integer_value(ir, exponent, &integer_exponent);
 
+    /*
+     * I has period four for every integer exponent, including a promoted
+     * integer too large for int64/int32.  Reduce the exact atom directly
+     * instead of refusing an exponent whose magnitude is irrelevant.
+     */
+    if (base == cas->constant_i &&
+        phy_ir_kind_of(ir, exponent) == PHY_IR_INTEGER) {
+        uint32_t residue = 0u;
+        phy_status status = phy_cas_exact_mod_u32_ref(
+            cas, exponent, 4u, &residue);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (residue == 0u) {
+            *out_ref = cas->one;
+            return PHY_OK;
+        }
+        if (residue == 1u) {
+            *out_ref = cas->constant_i;
+            return PHY_OK;
+        }
+        if (residue == 2u) {
+            *out_ref = cas->minus_one;
+            return PHY_OK;
+        }
+        const phy_ir_ref factors[2] = {
+            cas->minus_one, cas->constant_i};
+        const phy_ir_ref result = phy_ir_mul(ir, factors, 2u);
+        if (result == PHY_IR_NULL) {
+            return phy_cas_ir_failure(cas);
+        }
+        *out_ref = result;
+        return PHY_OK;
+    }
+
+    if (integral) {
+        bool gaussian_matched = false;
+        const phy_status gaussian_status =
+            phy_cas_gaussian_pow_node(
+                cas, base, integer_exponent, out_ref,
+                &gaussian_matched);
+        if (gaussian_status != PHY_OK || gaussian_matched) {
+            return gaussian_status;
+        }
+    }
+
     if (integral && integer_exponent == 0) {
         /* 0^0 has no value to choose; anything else to the zero is 1 wherever it
            is defined, which is the generic-domain convention this layer uses. */
@@ -1233,6 +1279,13 @@ static phy_status apply_function(phy_cas *cas, phy_ir_symbol head,
                                  phy_ir_ref argument, phy_ir_ref *out_ref)
 {
     phy_ir_context *ir = cas->ir;
+    bool gaussian_matched = false;
+    const phy_status gaussian_status =
+        phy_cas_gaussian_function(
+            cas, head, argument, out_ref, &gaussian_matched);
+    if (gaussian_status != PHY_OK || gaussian_matched) {
+        return gaussian_status;
+    }
     const bool zero_argument = phy_cas_is_integer(cas, argument, 0);
 
     const phy_cas_function function = phy_cas_function_id(cas, head);
@@ -1457,7 +1510,10 @@ phy_status phy_cas_rebuild_at(phy_cas *cas, phy_ir_kind kind,
     case PHY_IR_FUNCTION:
         /* Arity is part of recognition: a one-argument sin goes through the
            rules, and anything else keeps its head and is rebuilt below. */
-        if (count == 1u && phy_cas_is_known_head(cas, head)) {
+        if (count == 1u &&
+            (phy_cas_is_known_head(cas, head) ||
+             head == cas->fn_re || head == cas->fn_im ||
+             head == cas->fn_conjugate || head == cas->fn_abs)) {
             return apply_function(cas, head, phy_cas_scratch_at(cas, offset)[0],
                                   out_ref);
         }
@@ -1663,10 +1719,15 @@ phy_status phy_cas_add_at(phy_cas *cas, size_t offset, size_t count,
         *out_ref = cas->zero;
         return PHY_OK;
     }
+    bool gaussian_matched = false;
+    phy_status status = phy_cas_gaussian_fold_at(
+        cas, offset, count, true, out_ref, &gaussian_matched);
+    if (status != PHY_OK || gaussian_matched) {
+        return status;
+    }
     const size_t mark = phy_cas_scratch_mark(cas);
     size_t terms, total;
-    phy_status status =
-        flatten(cas, PHY_IR_ADD, offset, count, &terms, &total);
+    status = flatten(cas, PHY_IR_ADD, offset, count, &terms, &total);
     if (status == PHY_OK) {
         status = collect_sum(cas, terms, total, out_ref);
     }
@@ -1681,10 +1742,15 @@ phy_status phy_cas_mul_at(phy_cas *cas, size_t offset, size_t count,
         *out_ref = cas->one;
         return PHY_OK;
     }
+    bool gaussian_matched = false;
+    phy_status status = phy_cas_gaussian_fold_at(
+        cas, offset, count, false, out_ref, &gaussian_matched);
+    if (status != PHY_OK || gaussian_matched) {
+        return status;
+    }
     const size_t mark = phy_cas_scratch_mark(cas);
     size_t factors, total;
-    phy_status status =
-        flatten(cas, PHY_IR_MUL, offset, count, &factors, &total);
+    status = flatten(cas, PHY_IR_MUL, offset, count, &factors, &total);
     if (status == PHY_OK) {
         status = collect_product(cas, factors, total, out_ref);
     }

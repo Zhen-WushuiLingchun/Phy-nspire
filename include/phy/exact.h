@@ -165,6 +165,62 @@ const phy_bigint *phy_bigrat_denominator(const phy_bigrat *value);
 bool phy_bigrat_try_i64(const phy_bigrat *value, int64_t *out_numerator,
                         int64_t *out_denominator);
 
+/*
+ * Exact Gaussian rationals Q(i).
+ *
+ * This stack-embeddable pair owns two canonical arbitrary-precision rationals.
+ * Arithmetic is transactional and alias-safe: on failure an already-valid
+ * output retains its previous value. Both parts share one exact context, so
+ * the existing limb, byte, step, and cancellation ceilings apply.
+ */
+typedef struct {
+    phy_bigrat real;
+    phy_bigrat imaginary;
+    uint32_t private_magic;
+} phy_gaussian;
+
+phy_status phy_gaussian_init(phy_exact_context *context,
+                             phy_gaussian *value);
+void phy_gaussian_destroy(phy_gaussian *value);
+phy_status phy_gaussian_validate(const phy_gaussian *value);
+
+phy_status phy_gaussian_set_i64(
+    phy_gaussian *value, int64_t real_numerator,
+    int64_t real_denominator, int64_t imaginary_numerator,
+    int64_t imaginary_denominator);
+phy_status phy_gaussian_read(
+    phy_gaussian *value, const char *real_numerator,
+    const char *real_denominator, const char *imaginary_numerator,
+    const char *imaginary_denominator);
+phy_status phy_gaussian_copy(const phy_gaussian *source,
+                             phy_gaussian *destination);
+
+phy_status phy_gaussian_add(const phy_gaussian *left,
+                            const phy_gaussian *right,
+                            phy_gaussian *out_sum);
+phy_status phy_gaussian_negate(const phy_gaussian *value,
+                               phy_gaussian *out_negated);
+phy_status phy_gaussian_subtract(const phy_gaussian *left,
+                                 const phy_gaussian *right,
+                                 phy_gaussian *out_difference);
+phy_status phy_gaussian_multiply(const phy_gaussian *left,
+                                 const phy_gaussian *right,
+                                 phy_gaussian *out_product);
+phy_status phy_gaussian_reciprocal(const phy_gaussian *value,
+                                   phy_gaussian *out_reciprocal);
+phy_status phy_gaussian_divide(const phy_gaussian *dividend,
+                               const phy_gaussian *divisor,
+                               phy_gaussian *out_quotient);
+phy_status phy_gaussian_conjugate(const phy_gaussian *value,
+                                  phy_gaussian *out_conjugate);
+phy_status phy_gaussian_norm(const phy_gaussian *value,
+                             phy_bigrat *out_norm);
+phy_status phy_gaussian_pow_i32(const phy_gaussian *base, int32_t exponent,
+                                phy_gaussian *out_power);
+
+const phy_bigrat *phy_gaussian_real(const phy_gaussian *value);
+const phy_bigrat *phy_gaussian_imaginary(const phy_gaussian *value);
+
 #ifdef __cplusplus
 }
 #endif

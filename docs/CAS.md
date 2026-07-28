@@ -15,7 +15,8 @@ promote to the native bounded arbitrary-precision layer when necessary. They
 never wrap and never silently promote to `double`. `PHY_IR_REAL` atoms are
 carried but never folded. Polynomial coefficient containers use immutable exact
 IR refs, so their checked `int64` fast path promotes to the same integer and
-rational domain.
+rational domain. The closed Gaussian-rational fragment `Q(i)` uses the same
+bounded exact context and publishes one canonical `a+b I` typed IR form.
 
 **Decidable.** `phy_cas_is_zero` *decides* zero on a documented class and
 answers `PHY_CAS_UNKNOWN` outside it. It never estimates.
@@ -56,6 +57,8 @@ sums, because that is usually what a reader wants to see. What it guarantees:
   factors sharing a base: `x * x^2` is `x^3`;
 - a power has neither exponent 0 nor 1, and folds when the base is exact and the
   exponent an integer;
+- a closed exact complex expression over `Q(i)` has one arbitrary-precision
+  `a+b I` normal form, with integral powers evaluated exactly;
 - a `PHY_IR_ERROR` operand anywhere propagates outward as the whole result.
 
 ### Collection is a sort, not a scan
@@ -143,6 +146,22 @@ construction, and the univariate polynomial view used by reduction and
 `int64` path remains the common fast path, while promoted coefficients use the
 bounded bigint/rational bridge. Thus Euclidean division and GCD do not fail
 merely because a coefficient exceeds 64 bits.
+
+### Exact Gaussian rationals
+
+`phy_gaussian` is a transactional pair of arbitrary-precision rationals in one
+bounded exact context. Addition, subtraction, multiplication, division,
+reciprocal, conjugation, norm and signed integer powers are alias-safe. A limb,
+byte, step, cancellation or allocation failure leaves an existing output
+unchanged.
+
+The CAS recognizes the closed grammar formed from exact rational atoms, `I`,
+`Add`, `Mul`, and integral `Pow`. It evaluates that tree in `Q(i)` and publishes
+exactly `a+b I`; no decimal approximation or numeric sign sampling is used.
+Reader-facing `Re`, `Im`, `Conjugate`, and `Abs` use the same bridge.
+`Conjugate[z]` and `Abs[z]` stay explicit when `z` is outside the certified
+fragment. Their output is rendered by the shared nMarkdown MathTree backend as
+an overline and absolute-value bars rather than being reparsed as LaTeX.
 
 The rational-root enumerator inside `Factor` is only a fast path. It converts a
 primitive polynomial to bounded `int64` coefficients before enumerating
@@ -322,13 +341,16 @@ domain return `PHY_ERR_UNSUPPORTED`; unequal finite directions return
 factorizer rather than maintaining a second polynomial representation.
 The equation is converted to one reduced rational numerator and denominator.
 Every numerator factor must be completely certified by the bounded factorizer.
-Linear roots remain exact rationals, real quadratic roots remain exact radicals
-through the typed power node, and real roots of irreducible higher-degree
-factors are represented as `Root[List[a0,...,an],k]`. The coefficient list is
+Linear roots remain exact constants, real quadratic roots remain exact radicals
+through the typed power node, non-real quadratic roots are exact principal
+radicals times `I`. An irreducible higher-degree factor is accepted only when
+Sturm isolation proves that all of its roots are real; those roots are
+represented as `Root[List[a0,...,an],k]`. The coefficient list is
 in increasing degree order. `k` is one-based in increasing order among the
-factor's real roots, as proved by one exact Sturm chain and disjoint rational
-isolating intervals; it does not yet claim Mathematica's full complex-root
-ordering. Multiplicity stays in the factor workspace while the returned
+factor's roots, as proved by one exact Sturm chain and disjoint rational
+isolating intervals. A higher factor with any non-real root is rejected rather
+than publishing an incomplete real subset. Multiplicity stays in the factor
+workspace while the returned
 `List[List[Rule[x,root]],...]` contains distinct roots.
 
 Every candidate is substituted back into the numerator with the exact zero
@@ -339,8 +361,11 @@ numeric substitution. An undecidable factor aborts the whole operation; no
 verified prefix is returned as if it were a complete solution. Constant false
 equations return an empty list, while an identity returns
 `PHY_ERR_UNSUPPORTED` until the evaluator has a typed conditional solution-set
-representation. Non-real quadratics and non-real roots remain assigned to the
-forthcoming Gaussian-rational/algebraic complex layer.
+representation. A certified affine fallback also solves a reduced `a*x+b`
+when `a` and `b` are proved scalar constants, including `Q(i)`; this is what
+preserves the denominator exclusion in
+`(x^2+1)/(x-I)==0`. General non-real roots of degree three and above still need
+the complex-algebraic extension.
 
 ### Why trigonometry is reduced, and to what
 
@@ -459,8 +484,9 @@ constants. The first elementary
 table includes exact trigonometric values at supported multiples of `Pi`,
 positive exact square-factor extraction (`Sqrt[72] -> 6 Sqrt[2]`),
 `Gamma[n]` while `(n-1)!` fits `int64`, `Gamma[1/2]`, and the zero values of
-`Erf`/`Erfc`. `I` does not yet satisfy `I^2=-1`: complex arithmetic remains a
-separate exact-number-domain milestone.
+`Erf`/`Erfc`. `I^2=-1`, integral powers reduce exactly, and closed
+Gaussian-rational arithmetic plus `Re`, `Im`, `Conjugate`, and `Abs` uses the
+native arbitrary-precision domain described above.
 
 ## Memory and budget
 
@@ -579,13 +605,13 @@ counts are recorded in `CAS_ACCEPTANCE.md` after each clean build.
 
 Built with the pinned Ndless r2022 SDK and ARM GNU 14.3 toolchain using
 `-Os -marm`. The isolated link check compiles the complete scalar layer to
-92,875 bytes of ARM text; its dependency-complete probe packages to 135,616
+97,259 bytes of ARM text; its dependency-complete probe packages to 142,684
 bytes. These figures are deliberately measured by the link-check target rather
 than maintained as a hand-summed per-object table.
 
 The application now calls the CAS and the typed physics backends through
 editable notebook cells. The current product, including persistence,
-nMarkdown's math typesetter, and the reachable evaluator stack, is 1,161,533
+nMarkdown's math typesetter, and the reachable evaluator stack, is 1,165,169
 bytes (18.5% of the 6 MiB ceiling).
 
 `make cas-link-check` closes the gap that leaves. It is the same guard as
@@ -604,7 +630,7 @@ not the check itself.
 
 `make cas-link-check` has been run with the real Ndless linker and packager:
 all **34/34** public entry points derived from `include/phy/cas.h` survive
-`--gc-sections`; the CAS+IR+platform probe packages to a **135,616-byte `.tns`**;
+`--gc-sections`; the CAS+IR+platform probe packages to a **142,684-byte `.tns`**;
 and no `_dtoa`, `_strtod`, `_printf_float`, libm, `stdio` formatting, or ARM
 soft-float helper reaches the image. Real IR atoms are ordered by their
 IEEE-754 bit keys rather than by executing a floating-point comparison. The

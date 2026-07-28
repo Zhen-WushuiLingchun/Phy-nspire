@@ -23,6 +23,7 @@
 #define PHY_CAS_INTERNAL_H
 
 #include "phy/cas.h"
+#include "phy/exact.h"
 
 /* ------------------------------------------------------- exact rationals */
 
@@ -65,6 +66,19 @@ phy_status phy_cas_exact_mod_u32_ref(phy_cas *cas, phy_ir_ref integer,
                                      uint32_t modulus,
                                      uint32_t *out_remainder);
 int phy_cas_exact_sign_ref(const phy_cas *cas, phy_ir_ref ref);
+
+/*
+ * Shared by the Gaussian-rational bridge.  These are CAS-internal helpers,
+ * not a second public exact-number API: the operation context inherits the
+ * active CAS resource and cancellation ceilings, load accepts only an exact
+ * IR atom, and publish returns one canonical exact IR atom.
+ */
+phy_exact_context *phy_cas_exact_operation_context(phy_cas *cas);
+phy_status phy_cas_exact_load_ref(phy_cas *cas, phy_exact_context *exact,
+                                  phy_ir_ref ref, phy_bigrat *out_value);
+phy_status phy_cas_exact_publish_bigrat(phy_cas *cas,
+                                        const phy_bigrat *value,
+                                        phy_ir_ref *out_ref);
 
 /* ------------------------------------------------------------ memo cache */
 
@@ -149,6 +163,10 @@ struct phy_cas {
     /* Heads of the functions this layer knows, interned at creation. */
     phy_ir_symbol functions[PHY_CAS_FN_COUNT];
     phy_ir_symbol fn_integrate;
+    phy_ir_symbol fn_re;
+    phy_ir_symbol fn_im;
+    phy_ir_symbol fn_conjugate;
+    phy_ir_symbol fn_abs;
 
     phy_ir_ref zero;
     phy_ir_ref one;
@@ -284,6 +302,21 @@ phy_status phy_cas_substitute_node(phy_cas *cas, phy_ir_ref expr,
 
 /* -1 * value, simplified. The IR has no negation and no subtraction. */
 phy_status phy_cas_neg_node(phy_cas *cas, phy_ir_ref value, phy_ir_ref *out_ref);
+
+/*
+ * Exact Q(i) folding.  The list bridge is called only after its operands have
+ * been simplified; it reports `matched=false` unless every operand is an exact
+ * Gaussian rational and at least one contains I.
+ */
+phy_status phy_cas_gaussian_fold_at(phy_cas *cas, size_t offset, size_t count,
+                                    bool sum, phy_ir_ref *out_ref,
+                                    bool *out_matched);
+phy_status phy_cas_gaussian_pow_node(phy_cas *cas, phy_ir_ref base,
+                                     int64_t exponent, phy_ir_ref *out_ref,
+                                     bool *out_matched);
+phy_status phy_cas_gaussian_function(phy_cas *cas, phy_ir_symbol head,
+                                     phy_ir_ref argument, phy_ir_ref *out_ref,
+                                     bool *out_matched);
 
 /*
  * Rebuild `kind` from `count` already-simplified operands in the arena,

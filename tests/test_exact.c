@@ -534,6 +534,207 @@ static void test_rational_normalization_and_arithmetic(void)
     fixture_close(&f);
 }
 
+static void check_gaussian(const phy_gaussian *value,
+                           const char *real, const char *imaginary)
+{
+    PHY_CHECK_EQ_INT(phy_gaussian_validate(value), PHY_OK);
+    PHY_CHECK_EQ_STR(
+        rational_text(phy_gaussian_real(value)), real);
+    PHY_CHECK_EQ_STR(
+        rational_text(phy_gaussian_imaginary(value)), imaginary);
+}
+
+static void test_gaussian_rational_arithmetic(void)
+{
+    fixture f = fixture_open();
+    phy_gaussian a;
+    phy_gaussian b;
+    phy_gaussian result;
+    memset(&a, 0, sizeof a);
+    memset(&b, 0, sizeof b);
+    memset(&result, 0, sizeof result);
+    PHY_CHECK_EQ_INT(phy_gaussian_init(f.exact, &a), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_gaussian_init(f.exact, &b), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_gaussian_init(f.exact, &result), PHY_OK);
+
+    PHY_CHECK_EQ_INT(
+        phy_gaussian_set_i64(&a, 1, 2, 2, 3), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_gaussian_set_i64(&b, 3, 5, -7, 11), PHY_OK);
+    check_gaussian(&a, "1/2", "2/3");
+    check_gaussian(&b, "3/5", "-7/11");
+
+    PHY_CHECK_EQ_INT(phy_gaussian_add(&a, &b, &result), PHY_OK);
+    check_gaussian(&result, "11/10", "1/33");
+    PHY_CHECK_EQ_INT(
+        phy_gaussian_subtract(&a, &b, &result), PHY_OK);
+    check_gaussian(&result, "-1/10", "43/33");
+    PHY_CHECK_EQ_INT(
+        phy_gaussian_multiply(&a, &b, &result), PHY_OK);
+    check_gaussian(&result, "239/330", "9/110");
+    PHY_CHECK_EQ_INT(
+        phy_gaussian_conjugate(&a, &result), PHY_OK);
+    check_gaussian(&result, "1/2", "-2/3");
+    PHY_CHECK_EQ_INT(
+        phy_gaussian_negate(&a, &result), PHY_OK);
+    check_gaussian(&result, "-1/2", "-2/3");
+
+    PHY_CHECK_EQ_INT(
+        phy_gaussian_set_i64(&a, 1, 1, 2, 1), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_gaussian_set_i64(&b, 3, 1, -4, 1), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_gaussian_divide(&a, &b, &result), PHY_OK);
+    check_gaussian(&result, "-1/5", "2/5");
+    PHY_CHECK_EQ_INT(
+        phy_gaussian_reciprocal(&a, &result), PHY_OK);
+    check_gaussian(&result, "1/5", "-2/5");
+
+    phy_bigrat norm;
+    memset(&norm, 0, sizeof norm);
+    PHY_CHECK_EQ_INT(phy_bigrat_init(f.exact, &norm), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_gaussian_norm(&a, &norm), PHY_OK);
+    PHY_CHECK_EQ_STR(rational_text(&norm), "5");
+
+    PHY_CHECK_EQ_INT(
+        phy_gaussian_set_i64(&a, 1, 1, 1, 1), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_gaussian_pow_i32(&a, 5, &result), PHY_OK);
+    check_gaussian(&result, "-4", "-4");
+    PHY_CHECK_EQ_INT(
+        phy_gaussian_pow_i32(&a, -1, &result), PHY_OK);
+    check_gaussian(&result, "1/2", "-1/2");
+    PHY_CHECK_EQ_INT(
+        phy_gaussian_pow_i32(&a, 0, &a), PHY_OK);
+    check_gaussian(&a, "1", "0");
+
+    PHY_CHECK_EQ_INT(
+        phy_gaussian_read(
+            &a, "340282366920938463463374607431768211456", "3",
+            "-18446744073709551616", "5"),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(phy_gaussian_copy(&a, &result), PHY_OK);
+    check_gaussian(
+        &result, "340282366920938463463374607431768211456/3",
+        "-18446744073709551616/5");
+
+    /* A domain failure is transactional, including when output aliases. */
+    PHY_CHECK_EQ_INT(
+        phy_gaussian_set_i64(&b, 0, 1, 0, 1), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_gaussian_set_i64(&result, 7, 9, 11, 13), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_gaussian_divide(&a, &b, &result), PHY_ERR_DOMAIN);
+    check_gaussian(&result, "7/9", "11/13");
+    PHY_CHECK_EQ_INT(
+        phy_gaussian_set_i64(&result, 1, 0, 2, 3),
+        PHY_ERR_DOMAIN);
+    check_gaussian(&result, "7/9", "11/13");
+
+    PHY_CHECK_EQ_INT(phy_exact_validate(f.exact), PHY_OK);
+    phy_bigrat_destroy(&norm);
+    phy_gaussian_destroy(&result);
+    phy_gaussian_destroy(&b);
+    phy_gaussian_destroy(&a);
+    fixture_close(&f);
+}
+
+static void test_gaussian_allocation_failure_is_transactional(void)
+{
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    phy_exact_context *calibration = phy_exact_context_create(NULL);
+    PHY_CHECK(calibration != NULL);
+    phy_gaussian ca;
+    phy_gaussian cb;
+    phy_gaussian cr;
+    memset(&ca, 0, sizeof ca);
+    memset(&cb, 0, sizeof cb);
+    memset(&cr, 0, sizeof cr);
+    PHY_CHECK_EQ_INT(phy_gaussian_init(calibration, &ca), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_gaussian_init(calibration, &cb), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_gaussian_init(calibration, &cr), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_gaussian_read(
+            &ca, "123456789012345678901234567890", "7",
+            "98765432109876543210987654321", "11"),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_gaussian_read(
+            &cb, "-340282366920938463463374607431768211456", "13",
+            "18446744073709551616", "17"),
+        PHY_OK);
+    const uint32_t attempts_before = phy_host_alloc_attempts();
+    PHY_CHECK_EQ_INT(phy_gaussian_multiply(&ca, &cb, &cr), PHY_OK);
+    const uint32_t allocations =
+        phy_host_alloc_attempts() - attempts_before;
+    PHY_CHECK(allocations > 32u);
+    phy_gaussian_destroy(&cr);
+    phy_gaussian_destroy(&cb);
+    phy_gaussian_destroy(&ca);
+    phy_exact_context_destroy(calibration);
+    phy_platform_shutdown();
+
+    bool reached_success = false;
+    for (uint32_t countdown = 1u;
+         countdown <= allocations + 1u; ++countdown) {
+        PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+        phy_telemetry before;
+        phy_telemetry_get(&before);
+        phy_exact_context *exact = phy_exact_context_create(NULL);
+        PHY_CHECK(exact != NULL);
+        phy_gaussian a;
+        phy_gaussian b;
+        phy_gaussian result;
+        memset(&a, 0, sizeof a);
+        memset(&b, 0, sizeof b);
+        memset(&result, 0, sizeof result);
+        PHY_CHECK_EQ_INT(phy_gaussian_init(exact, &a), PHY_OK);
+        PHY_CHECK_EQ_INT(phy_gaussian_init(exact, &b), PHY_OK);
+        PHY_CHECK_EQ_INT(phy_gaussian_init(exact, &result), PHY_OK);
+        PHY_CHECK_EQ_INT(
+            phy_gaussian_read(
+                &a, "123456789012345678901234567890", "7",
+                "98765432109876543210987654321", "11"),
+            PHY_OK);
+        PHY_CHECK_EQ_INT(
+            phy_gaussian_read(
+                &b, "-340282366920938463463374607431768211456", "13",
+                "18446744073709551616", "17"),
+            PHY_OK);
+        PHY_CHECK_EQ_INT(
+            phy_gaussian_set_i64(&result, 7, 9, 11, 13), PHY_OK);
+
+        phy_host_fail_alloc_after(countdown);
+        const phy_status status =
+            phy_gaussian_multiply(&a, &b, &result);
+        phy_host_fail_alloc_after(0u);
+        PHY_CHECK(status == PHY_OK ||
+                  status == PHY_ERR_OUT_OF_MEMORY);
+        if (status == PHY_OK) {
+            reached_success = true;
+        } else {
+            check_gaussian(&result, "7/9", "11/13");
+        }
+        PHY_CHECK_EQ_INT(phy_gaussian_validate(&a), PHY_OK);
+        PHY_CHECK_EQ_INT(phy_gaussian_validate(&b), PHY_OK);
+        PHY_CHECK_EQ_INT(phy_gaussian_validate(&result), PHY_OK);
+        PHY_CHECK_EQ_INT(phy_exact_validate(exact), PHY_OK);
+
+        phy_gaussian_destroy(&result);
+        phy_gaussian_destroy(&b);
+        phy_gaussian_destroy(&a);
+        phy_exact_context_destroy(exact);
+        phy_telemetry after;
+        phy_telemetry_get(&after);
+        PHY_CHECK_EQ_INT(after.bytes_live, before.bytes_live);
+        phy_platform_shutdown();
+        if (reached_success) {
+            break;
+        }
+    }
+    PHY_CHECK(reached_success);
+}
+
 static void test_allocation_failure_is_transactional(void)
 {
     bool reached_success = false;
@@ -591,6 +792,8 @@ int main(void)
     PHY_TEST_CASE(test_integer_small_model_exhaustive);
     PHY_TEST_CASE(test_integer_resource_and_cancel_contracts);
     PHY_TEST_CASE(test_rational_normalization_and_arithmetic);
+    PHY_TEST_CASE(test_gaussian_rational_arithmetic);
+    PHY_TEST_CASE(test_gaussian_allocation_failure_is_transactional);
     PHY_TEST_CASE(test_allocation_failure_is_transactional);
     return PHY_TEST_REPORT("test_exact");
 }
