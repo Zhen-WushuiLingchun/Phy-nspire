@@ -114,6 +114,7 @@ SOURCES := \
     src/cas/diff.c \
     src/cas/integrate.c \
     src/cas/normal.c \
+    src/cas/reduce.c \
     src/geom/manifold.c \
     src/geom/form.c \
     src/geom/exterior.c \
@@ -184,6 +185,7 @@ CAS_SMOKE_SOURCES := \
     src/cas/diff.c \
     src/cas/integrate.c \
     src/cas/normal.c \
+    src/cas/reduce.c \
     tests/device/cas_smoke.c \
     src/platform/ndless/platform_ndless.c \
     src/platform/ndless/crt_compat.c
@@ -206,6 +208,7 @@ QFT_BENCH_SOURCES := \
     src/cas/diff.c \
     src/cas/integrate.c \
     src/cas/normal.c \
+    src/cas/reduce.c \
     src/qft/lorentz.c \
     src/qft/dirac.c \
     tests/device/qft_bench.c \
@@ -239,15 +242,22 @@ check-sdk:
 
 $(BUILDDIR)/%.o: %.c | check-sdk
 	@mkdir -p $(dir $@)
-	$(GCC) $(GCCFLAGS) -c $< -o $@
+	$(GCC) $(GCCFLAGS) -MMD -MP -c $< -o $@
 
 $(BUILDDIR)/%.o: %.cpp | check-sdk
 	@mkdir -p $(dir $@)
-	$(GXX) $(CXXFLAGS) -c $< -o $@
+	$(GXX) $(CXXFLAGS) -MMD -MP -c $< -o $@
 
 $(BUILDDIR)/%.o: %.cc | check-sdk
 	@mkdir -p $(dir $@)
-	$(GXX) $(filter-out -Wall -Wextra -Wpedantic,$(CXXFLAGS)) -c $< -o $@
+	$(GXX) $(filter-out -Wall -Wextra -Wpedantic,$(CXXFLAGS)) -MMD -MP -c $< -o $@
+
+# A header change must rebuild every object that includes it. An edit to
+# notebook_internal.h once shipped a binary whose document codec and renderer
+# disagreed about sizeof(notebook_cell): documents loaded, then drew as empty.
+-include $(OBJECTS:.o=.d)
+-include $(CAS_SMOKE_OBJECTS:.o=.d)
+-include $(QFT_BENCH_OBJECTS:.o=.d)
 
 $(ELF): $(OBJECTS)
 	@mkdir -p $(DISTDIR)
@@ -291,7 +301,7 @@ tensor-link-check: check-sdk
 
 $(CAS_SMOKE_BUILDDIR)/%.o: %.c | check-sdk
 	@mkdir -p $(dir $@)
-	$(GCC) $(GCCFLAGS) -c $< -o $@
+	$(GCC) $(GCCFLAGS) -MMD -MP -c $< -o $@
 
 $(CAS_SMOKE_ELF): $(CAS_SMOKE_OBJECTS)
 	@mkdir -p $(DISTDIR)
@@ -307,7 +317,7 @@ $(CAS_SMOKE_TNS): $(CAS_SMOKE_ELF)
 
 $(QFT_BENCH_BUILDDIR)/%.o: %.c | check-sdk
 	@mkdir -p $(dir $@)
-	$(GCC) $(GCCFLAGS) -c $< -o $@
+	$(GCC) $(GCCFLAGS) -MMD -MP -c $< -o $@
 
 $(QFT_BENCH_ELF): $(QFT_BENCH_OBJECTS)
 	@mkdir -p $(DISTDIR)
