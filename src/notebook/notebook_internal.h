@@ -10,16 +10,17 @@
 #include "phy/notebook.h"
 
 /*
- * A six-gamma DiracTrace with explicit Lorentz index spaces is 109 bytes of
- * source; 96 cut it off.
+ * The Boyer-Lindquist Kerr metric written against bound Sigma/Delta scalars
+ * is about 170 bytes of source and an eight-gamma DiracTrace with explicit
+ * Lorentz index spaces about 133; 128 cut both off.
  */
-#define NOTEBOOK_TEXT_CAPACITY 128u
+#define NOTEBOOK_TEXT_CAPACITY 192u
 /*
- * Holds the canonical IR text an input reparses on load. A 4x4 symbolic
- * metric -- the Schwarzschild line in the CAS tour -- canonicalizes to just
- * over 200 bytes, so 192 was the binding constraint.
+ * Holds the canonical IR text an input reparses on load. Canonical form is
+ * several times the source -- explicit rationals, one operator per node --
+ * and the Boyer-Lindquist Kerr metric line needs most of a kilobyte.
  */
-#define NOTEBOOK_DETAIL_CAPACITY 320u
+#define NOTEBOOK_DETAIL_CAPACITY 1024u
 
 typedef struct {
     phy_notebook_cell_kind kind;
@@ -42,6 +43,14 @@ typedef struct {
     uint32_t execution;
     size_t owner_input;
     bool stale;
+    /*
+     * Cached card height in pixels; 0 means unmeasured. Markdown heights
+     * require laying out every formula in the body, and the draw loop asks
+     * for every cell's height every frame, so this must not recompute.
+     * Runtime-only: it resets when the cell's text is edited and is never
+     * serialized.
+     */
+    int height;
 } notebook_cell;
 
 struct phy_notebook {

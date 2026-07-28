@@ -348,6 +348,85 @@ static void test_markdown_latex_uses_native_typesetter(void)
     phy_platform_shutdown();
 }
 
+static void test_markdown_mixed_flow_wraps(void)
+{
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_formula_initialize(), PHY_OK);
+    phy_notebook *notebook = phy_notebook_create();
+    PHY_CHECK(notebook != NULL);
+    PHY_CHECK_EQ_INT(
+        phy_notebook_add_markdown(
+            notebook, "Mixed",
+            "The action $S=\\int d^4x\\sqrt{-g}R$ extremizes to "
+            "$G_{\\mu\\nu}=8\\pi T_{\\mu\\nu}$ while conservation "
+            "$\\nabla_\\mu T^{\\mu\\nu}=0$ follows from the Bianchi "
+            "identity, and the horizon of a Schwarzschild hole sits at "
+            "$r_s=2GM/c^2$ where infalling clocks still tick.",
+            NULL),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(phy_notebook_add_input(notebook, "1+1", NULL), PHY_OK);
+
+    /*
+     * The long mixed body flows onto several 17px lines, so a point 80px
+     * into the document is still inside the first card. The single-line
+     * renderer this replaces put the input cell there instead.
+     */
+    PHY_CHECK(phy_notebook_select(notebook, 1u));
+    PHY_CHECK(phy_notebook_select_at(notebook, 100, 100));
+    PHY_CHECK_EQ_INT((int)phy_notebook_selected(notebook), 0);
+    /* Wrapped flow never pans; horizontal keys stay selection moves. */
+    PHY_CHECK(!phy_notebook_pan_selected(notebook, 1));
+
+    /* A short mixed body still sits on one line: the input starts at 66. */
+    phy_notebook *compact = phy_notebook_create();
+    PHY_CHECK(compact != NULL);
+    PHY_CHECK_EQ_INT(
+        phy_notebook_add_markdown(compact, "Short", "x $y$ z", NULL),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(phy_notebook_add_input(compact, "1+1", NULL), PHY_OK);
+    PHY_CHECK(phy_notebook_select_at(compact, 100, 70));
+    PHY_CHECK_EQ_INT((int)phy_notebook_selected(compact), 1);
+
+    phy_notebook_destroy(compact);
+    phy_notebook_destroy(notebook);
+    phy_formula_shutdown();
+    phy_platform_shutdown();
+}
+
+static void test_markdown_body_grid_editing(void)
+{
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    phy_notebook *notebook = phy_notebook_create();
+    PHY_CHECK(notebook != NULL);
+    char body[121];
+    memset(body, 'a', 120u);
+    body[120] = '\0';
+    PHY_CHECK_EQ_INT(phy_notebook_add_markdown(notebook, "T", body, NULL),
+                     PHY_OK);
+    PHY_CHECK(phy_notebook_begin_edit_selected(notebook));
+    PHY_CHECK(phy_notebook_edit_switch_field(notebook));
+
+    /*
+     * 120 characters on a 45-column grid: the cursor starts at the end
+     * (row 2) and walks the rows; the first and last rows hand the key
+     * back so it can fall through to a selection move.
+     */
+    PHY_CHECK(phy_notebook_edit_move_line(notebook, -1));
+    PHY_CHECK(phy_notebook_edit_move_line(notebook, -1));
+    PHY_CHECK(!phy_notebook_edit_move_line(notebook, -1));
+    PHY_CHECK(phy_notebook_edit_move_line(notebook, 1));
+    PHY_CHECK(phy_notebook_edit_move_line(notebook, 1));
+    PHY_CHECK(!phy_notebook_edit_move_line(notebook, 1));
+
+    /* The heading editor is a single line: vertical keys are not its. */
+    PHY_CHECK(phy_notebook_edit_switch_field(notebook));
+    PHY_CHECK(!phy_notebook_edit_move_line(notebook, -1));
+    PHY_CHECK(!phy_notebook_edit_move_line(notebook, 1));
+
+    phy_notebook_destroy(notebook);
+    phy_platform_shutdown();
+}
+
 static void test_notebook_frame_fixture(void)
 {
     PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
@@ -403,6 +482,8 @@ int main(void)
     PHY_TEST_CASE(test_integrate_command_reaches_the_symbolic_evaluator);
     PHY_TEST_CASE(test_template_insertion_and_edit_context);
     PHY_TEST_CASE(test_markdown_latex_uses_native_typesetter);
+    PHY_TEST_CASE(test_markdown_mixed_flow_wraps);
+    PHY_TEST_CASE(test_markdown_body_grid_editing);
     PHY_TEST_CASE(test_notebook_frame_fixture);
     return PHY_TEST_REPORT("test_notebook");
 }

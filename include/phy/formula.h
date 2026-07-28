@@ -49,6 +49,14 @@ bool phy_formula_is_ready(void);
 void phy_formula_ir_cache_reset(void);
 
 /*
+ * The layout engine's own words for the most recent measure or draw whose
+ * metrics came back with valid == false: a parse that recovered still lays
+ * out (as "!" plus the source), and only this string says why. Empty when
+ * the last operation was valid. Returns the full diagnostic length.
+ */
+size_t phy_formula_last_diagnostic(char *buffer, size_t capacity);
+
+/*
  * source does not need to be NUL terminated. pixel_size and maximum_width are
  * integer pixels. A non-positive maximum_width disables overflow checking.
  */

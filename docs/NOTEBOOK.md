@@ -61,6 +61,16 @@ scroll the formula horizontally and `<`/`>` corner markers show which side has
 hidden content. Up/down still change the selection, so a wide result never
 traps navigation.
 
+A Markdown body that mixes prose with inline math flows like a paper
+paragraph: words and `$...$` formulas are unbreakable tokens laid left to
+right, wrapping at the card edge, and each line takes the height its tallest
+token needs, so a fraction or an integral opens its line up instead of
+colliding with neighbors. The card grows to hold the wrapped lines up to a
+viewport-sized cap; content past the cap is dropped and marked with a `+` in
+the card's bottom-right corner — the same marker a pure-prose body shows past
+its twelve-line cap. A body that is entirely one `$$...$$` display formula
+instead shrinks and then pans like a wide output card.
+
 Inside edit mode, `MENU` opens a context-sensitive insertion palette. Math
 cells expose only reader commands and functions already accepted by the
 current evaluator — `test_palette` parses every one of them — grouped as

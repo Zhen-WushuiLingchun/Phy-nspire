@@ -1,5 +1,6 @@
 #include "phy/formula.h"
 
+#include <cstring>
 #include <memory>
 #include <new>
 #include <string>
@@ -65,9 +66,12 @@ nmarkdown::MathStyle convert_style(phy_formula_style style)
                : nmarkdown::MathStyle::Text;
 }
 
+std::string g_last_diagnostic;
+
 void export_metrics(const nmarkdown::MathLayoutResult& layout,
                     phy_formula_metrics *out_metrics)
 {
+    g_last_diagnostic = layout.valid ? std::string() : layout.diagnostic;
     if (out_metrics == nullptr) {
         return;
     }
@@ -243,6 +247,17 @@ extern "C" void phy_formula_shutdown(void)
 extern "C" void phy_formula_ir_cache_reset(void)
 {
     ir_cache_clear();
+}
+
+extern "C" size_t phy_formula_last_diagnostic(char *buffer, size_t capacity)
+{
+    if (buffer != nullptr && capacity > 0u) {
+        const size_t copied =
+            std::min(capacity - 1u, g_last_diagnostic.size());
+        std::memcpy(buffer, g_last_diagnostic.data(), copied);
+        buffer[copied] = '\0';
+    }
+    return g_last_diagnostic.size();
 }
 
 extern "C" bool phy_formula_is_ready(void)

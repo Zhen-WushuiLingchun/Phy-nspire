@@ -25,6 +25,14 @@ typedef struct {
 } tour_cell;
 
 static const tour_cell kTour[] = {
+    {TOUR_MARKDOWN, "Phy-nspire CAS tour",
+     "Markdown flows like a paper: prose wraps at word boundaries, "
+     "inline math such as $G_{\\mu\\nu}=8\\pi T_{\\mu\\nu}$ or "
+     "$S=\\int d^4x\\sqrt{-g}R$ sits in the line at its own height, "
+     "wide display equations shrink and then pan under the arrow keys, "
+     "and every result below stays an exact rational all the way to "
+     "the pixels."},
+
     {TOUR_MARKDOWN, "Exact scalar CAS",
      "$$\\frac{1}{3}+\\frac{1}{6}=\\frac{1}{2},\\quad "
      "\\sin^2x+\\cos^2x=1$$"},
@@ -62,7 +70,7 @@ static const tour_cell kTour[] = {
     {TOUR_INPUT, "Tensor[H,Down[i],Up[j]]", NULL},
 
     {TOUR_MARKDOWN, "Exterior calculus",
-     "$$d^2=0,\\quad L_v=d\\iota_v+\\iota_v d$$"},
+     "$$d^2=0,\\quad \\mathcal{L}_v=d\\iota_v+\\iota_vd$$"},
     {TOUR_INPUT, "a=DifferentialForm[M,1,{0,Sin[theta]}]", NULL},
     {TOUR_INPUT, "ExteriorD[a]", NULL},
     {TOUR_INPUT, "v=VectorField[M,{1,0}]", NULL},
@@ -114,8 +122,8 @@ static const tour_cell kTour[] = {
      "YangMillsLagrangian[F,gm,{{1,0,0},{0,1,0},{0,0,1}}]", NULL},
 
     {TOUR_MARKDOWN, "Scalar QFT, Dirac and colour",
-     "$$L=\\frac{(\\partial\\phi)^2-m^2\\phi^2}{2}"
-     "-\\frac{\\lambda\\phi^4}{24}$$"},
+     "$$\\mathcal{L}=\\frac{1}{2}(\\partial\\phi)^2"
+     "-\\frac{1}{2}m^2\\phi^2-\\frac{\\lambda}{4!}\\phi^4$$"},
     {TOUR_INPUT, "Phi4Lagrangian[phi,m,lambda,4]", NULL},
     {TOUR_INPUT, "Phi4EOM[phi,m,lambda,4]", NULL},
     {TOUR_INPUT, "Phi4Diagrams[phi,m,lambda,4,s,t,u]", NULL},
@@ -156,13 +164,22 @@ static const tour_cell kTour[] = {
     {TOUR_INPUT, "cs=Curvature[gs]", NULL},
     {TOUR_INPUT, "RicciScalar[cs]", NULL},
     {TOUR_INPUT, "Kretschmann[cs]", NULL},
+    {TOUR_INPUT, "WeylSquared[cs]", NULL},
+    {TOUR_INPUT, "Einstein[cs]", NULL},
+    {TOUR_INPUT, "ZeroQ[CovariantDerivative[Einstein[cs],cs]]", NULL},
     {TOUR_INPUT,
      "DiracTrace[{Up[mu,Lorentz],Up[nu,Lorentz],Up[rho,Lorentz],"
      "Up[sigma,Lorentz],Up[eta,Lorentz],Up[chi,Lorentz]}]",
      NULL},
+    {TOUR_INPUT,
+     "DiracTrace[{Up[i1,Lorentz],Up[i2,Lorentz],Up[i3,Lorentz],"
+     "Up[i4,Lorentz],Up[i5,Lorentz],Up[i6,Lorentz],Up[i7,Lorentz],"
+     "Up[i8,Lorentz]}]",
+     NULL},
 
     {TOUR_MARKDOWN, "Exact decisions and resource bounds",
-     "$$L=I-V+1,\\quad \\omega=DL-2I$$"},
+     "$$L=I-V+1,\\quad \\omega=DL-2I,\\quad "
+     "w=\\frac{\\lambda^V}{S}$$"},
     {TOUR_INPUT, "ZeroQ[CovariantDerivative[Ricci[c],c]]", NULL},
     {TOUR_INPUT, "MemoryStatus[]", NULL},
 };
@@ -191,13 +208,11 @@ static size_t tour_input_count(void)
 }
 
 /*
- * The device renders a $$..$$ body as one display formula inside a card
- * roughly 273 pixels wide. A body that fails to lay out, or lays out wider
- * than the card, degrades to raw LaTeX text on the calculator, so the
- * generator refuses to ship one.
+ * A $$..$$ body that fails to lay out degrades to raw LaTeX text on the
+ * calculator, so the generator refuses to ship one. Width is no longer a
+ * failure: the notebook shrinks an over-wide display formula and pans what
+ * still does not fit.
  */
-#define TOUR_MARKDOWN_MAX_WIDTH 270
-
 static phy_status validate_markdown_formulas(void)
 {
     phy_status status = phy_formula_initialize();
@@ -211,22 +226,55 @@ static phy_status validate_markdown_formulas(void)
         }
         const char *body = kTour[index].secondary;
         const size_t length = strlen(body);
-        if (length < 4u || body[0] != '$' || body[1] != '$' ||
-            body[length - 1u] != '$' || body[length - 2u] != '$') {
+        phy_formula_metrics metrics;
+        if (length >= 4u && body[0] == '$' && body[1] == '$' &&
+            body[length - 1u] == '$' && body[length - 2u] == '$') {
+            status = phy_formula_measure_latex(
+                body + 2, length - 4u, PHY_FORMULA_STYLE_DISPLAY, 17, 0,
+                &metrics);
+            if (status != PHY_OK || !metrics.valid) {
+                char diagnostic[128];
+                (void)phy_formula_last_diagnostic(diagnostic,
+                                                  sizeof diagnostic);
+                (void)fprintf(stderr, "markdown cell %zu: %s (%s)\n",
+                              index,
+                              status == PHY_OK ? "parse recovered"
+                                               : phy_status_name(status),
+                              diagnostic);
+                return status == PHY_OK ? PHY_ERR_PARSE : status;
+            }
             continue;
         }
-        phy_formula_metrics metrics;
-        status = phy_formula_measure_latex(
-            body + 2, length - 4u, PHY_FORMULA_STYLE_DISPLAY, 17,
-            TOUR_MARKDOWN_MAX_WIDTH, &metrics);
-        if (status != PHY_OK || metrics.width > TOUR_MARKDOWN_MAX_WIDTH) {
-            (void)fprintf(
-                stderr, "markdown cell %zu: %s (width %d, limit %d)\n",
-                index,
-                status == PHY_OK ? "formula wider than the card"
-                                 : phy_status_name(status),
-                metrics.width, TOUR_MARKDOWN_MAX_WIDTH);
-            return status == PHY_OK ? PHY_ERR_TERM_LIMIT : status;
+        /*
+         * Inline math flows through the same typesetter, one $..$ token
+         * at a time, exactly as the notebook's word-and-formula flow
+         * will scan it on the calculator.
+         */
+        for (const char *cursor = body; *cursor != '\0';) {
+            if (cursor[0] != '$' || cursor[1] == '$') {
+                cursor++;
+                continue;
+            }
+            const char *close = strchr(cursor + 1, '$');
+            if (close == NULL) {
+                break;
+            }
+            status = phy_formula_measure_latex(
+                cursor + 1, (size_t)(close - cursor - 1),
+                PHY_FORMULA_STYLE_TEXT, 13, 0, &metrics);
+            if (status != PHY_OK || !metrics.valid) {
+                char diagnostic[128];
+                (void)phy_formula_last_diagnostic(diagnostic,
+                                                  sizeof diagnostic);
+                (void)fprintf(stderr,
+                              "markdown cell %zu inline: %s (%s)\n",
+                              index,
+                              status == PHY_OK ? "parse recovered"
+                                               : phy_status_name(status),
+                              diagnostic);
+                return status == PHY_OK ? PHY_ERR_PARSE : status;
+            }
+            cursor = close + 1;
         }
     }
     return PHY_OK;

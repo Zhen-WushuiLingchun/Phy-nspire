@@ -33,8 +33,12 @@
 extern "C" {
 #endif
 
-#define PHY_NOTEBOOK_MAX_CELLS 192u
-#define PHY_NOTEBOOK_DOCUMENT_MAX_BYTES (64u * 1024u)
+/*
+ * The CAS tour carries about 110 source cells and evaluation owns one output
+ * per input, so 192 total cells no longer held it.
+ */
+#define PHY_NOTEBOOK_MAX_CELLS 256u
+#define PHY_NOTEBOOK_DOCUMENT_MAX_BYTES (128u * 1024u)
 
 typedef struct phy_notebook phy_notebook;
 
@@ -147,6 +151,13 @@ bool phy_notebook_edit_insert_text(phy_notebook *notebook, const char *text,
                                    size_t cursor_offset);
 bool phy_notebook_edit_backspace(phy_notebook *notebook);
 bool phy_notebook_edit_move(phy_notebook *notebook, int direction);
+/*
+ * Move the Markdown-body editor cursor one grid row up or down. Returns
+ * false when the editor is not on a Markdown body or the cursor is already
+ * on its first or last row -- the caller should then treat the key as a
+ * selection move, exactly like the horizontal pan handover.
+ */
+bool phy_notebook_edit_move_line(phy_notebook *notebook, int direction);
 bool phy_notebook_edit_switch_field(phy_notebook *notebook);
 
 /*

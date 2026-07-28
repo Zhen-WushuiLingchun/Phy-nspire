@@ -88,7 +88,91 @@ static bool markdown_entire_formula(const char *text,
     return true;
 }
 
-static int cell_height(const notebook_cell *cell)
+#define NOTEBOOK_MARKDOWN_MAX_WIDTH (NOTEBOOK_CELL_WIDTH - 42)
+#define NOTEBOOK_MARKDOWN_MAX_LINES 12
+
+/*
+ * Mixed prose and inline math flow together: words and formulas are
+ * unbreakable tokens laid left to right, wrapping at the card edge. Every
+ * line takes the height its tallest token needs -- a fraction or an
+ * integral opens the line up instead of colliding with its neighbors --
+ * and the total content height is capped so a card always fits the
+ * viewport when selected; the cap itself is marked on the card, never
+ * silent.
+ */
+#define NOTEBOOK_MARKDOWN_FLOW_MAX_CONTENT 156
+#define NOTEBOOK_MARKDOWN_LEFT 34
+#define NOTEBOOK_MARKDOWN_RIGHT (NOTEBOOK_CELL_X + NOTEBOOK_CELL_WIDTH - 8)
+
+static int markdown_flow_height(const char *body);
+
+/*
+ * A display formula tries the full size first and steps down before
+ * overflowing; whatever still does not fit pans under the horizontal keys,
+ * exactly like an output card. Physics does not get rewritten to fit a
+ * 320-pixel screen.
+ */
+static phy_status measure_markdown_formula(const char *source, size_t length,
+                                           phy_formula_metrics *out_metrics,
+                                           int *out_pixel_size)
+{
+    static const int sizes[3] = {17, 15, 13};
+    phy_status status = PHY_ERR_BACKEND;
+    for (size_t attempt = 0u; attempt < 3u; ++attempt) {
+        *out_pixel_size = sizes[attempt];
+        status = phy_formula_measure_latex(
+            source, length, PHY_FORMULA_STYLE_DISPLAY, *out_pixel_size,
+            NOTEBOOK_MARKDOWN_MAX_WIDTH, out_metrics);
+        if (status != PHY_OK ||
+            (!out_metrics->overflow &&
+             out_metrics->width <= NOTEBOOK_MARKDOWN_MAX_WIDTH)) {
+            break;
+        }
+    }
+    return status;
+}
+
+/* One space-broken line of at most per_line fixed-width glyphs. */
+static size_t wrap_take(const char *cursor, size_t per_line)
+{
+    size_t take = strlen(cursor);
+    if (take > per_line) {
+        take = per_line;
+        size_t split = take;
+        while (split > 0u && cursor[split] != ' ') {
+            split--;
+        }
+        if (split > 0u) {
+            take = split;
+        }
+    }
+    return take;
+}
+
+static int wrapped_line_count(const char *text, size_t per_line,
+                              int max_lines)
+{
+    int lines = 0;
+    const char *cursor = text;
+    while (*cursor != '\0' && lines < max_lines) {
+        cursor += wrap_take(cursor, per_line);
+        while (*cursor == ' ') {
+            cursor++;
+        }
+        lines++;
+    }
+    return lines > 0 ? lines : 1;
+}
+
+static bool markdown_has_inline_formula(const char *body)
+{
+    const char *dollar = strchr(body, '$');
+    const char *paren = strstr(body, "\\(");
+    return (dollar != NULL && strchr(dollar + 1, '$') != NULL) ||
+           (paren != NULL && strstr(paren + 2, "\\)") != NULL);
+}
+
+static int cell_height_uncached(const notebook_cell *cell)
 {
     switch (cell->kind) {
     case PHY_NOTEBOOK_CELL_MARKDOWN:
@@ -100,10 +184,10 @@ static int cell_height(const notebook_cell *cell)
                                           &style);
             if (style == PHY_FORMULA_STYLE_DISPLAY) {
                 phy_formula_metrics metrics;
+                int pixel_size = 0;
                 int height = 64;
-                if (phy_formula_measure_latex(
-                        source, length, style, 17,
-                        NOTEBOOK_CELL_WIDTH - 42, &metrics) == PHY_OK) {
+                if (measure_markdown_formula(source, length, &metrics,
+                                             &pixel_size) == PHY_OK) {
                     const int measured =
                         27 + metrics.ascent + metrics.descent;
                     if (measured > height) {
@@ -116,15 +200,17 @@ static int cell_height(const notebook_cell *cell)
                 return height;
             }
         }
-        {
-            const char *dollar = strchr(cell->secondary, '$');
-            const char *paren = strstr(cell->secondary, "\\(");
-            if ((dollar != NULL && strchr(dollar + 1, '$') != NULL) ||
-                (paren != NULL && strstr(paren + 2, "\\)") != NULL)) {
-                return 45;
-            }
+        if (markdown_has_inline_formula(cell->secondary)) {
+            return markdown_flow_height(cell->secondary);
         }
-        return 37;
+        {
+            /* Prose wraps; the card grows to hold every wrapped line. */
+            const int lines = wrapped_line_count(
+                cell->secondary,
+                (size_t)(NOTEBOOK_MARKDOWN_MAX_WIDTH / PHY_GLYPH_ADVANCE),
+                NOTEBOOK_MARKDOWN_MAX_LINES);
+            return 26 + lines * 11;
+        }
     case PHY_NOTEBOOK_CELL_INPUT:
         return 32;
     case PHY_NOTEBOOK_CELL_OUTPUT:
@@ -135,11 +221,60 @@ static int cell_height(const notebook_cell *cell)
     }
 }
 
+static int cell_height(const notebook_cell *cell)
+{
+    if (cell->height > 0) {
+        return cell->height;
+    }
+    const int measured = cell_height_uncached(cell);
+    /*
+     * Markdown heights depend on formula layout; before the font pack is
+     * up they fall back to defaults that must not stick. The cell lives in
+     * a mutable notebook, so shedding const here writes through to it.
+     */
+    if (cell->kind != PHY_NOTEBOOK_CELL_MARKDOWN || phy_formula_is_ready()) {
+        ((notebook_cell *)(uintptr_t)cell)->height = measured;
+    }
+    return measured;
+}
+
+/*
+ * Editing a Markdown body swaps the rendered flow for a raw-source grid of
+ * fixed 45-glyph rows: a character grid keeps the cursor's position obvious
+ * while typing LaTeX. The card holds up to eight rows, windowed around the
+ * cursor, and the cell keeps that height for exactly as long as the editor
+ * is open.
+ */
+#define NOTEBOOK_EDIT_COLUMNS \
+    ((size_t)(NOTEBOOK_MARKDOWN_MAX_WIDTH / PHY_GLYPH_ADVANCE))
+#define NOTEBOOK_EDIT_MAX_LINES 8u
+
+static bool editing_markdown_body(const phy_notebook *notebook, size_t index)
+{
+    return notebook->editing && notebook->edit_index == index &&
+           notebook->edit_secondary &&
+           notebook->cells[index].kind == PHY_NOTEBOOK_CELL_MARKDOWN;
+}
+
+static int display_height(const phy_notebook *notebook, size_t index)
+{
+    if (editing_markdown_body(notebook, index)) {
+        size_t lines =
+            strlen(notebook->cells[index].secondary) / NOTEBOOK_EDIT_COLUMNS +
+            1u;
+        if (lines > NOTEBOOK_EDIT_MAX_LINES) {
+            lines = NOTEBOOK_EDIT_MAX_LINES;
+        }
+        return 29 + (int)lines * 11;
+    }
+    return cell_height(&notebook->cells[index]);
+}
+
 static int content_top(const phy_notebook *notebook, size_t index)
 {
     int y = NOTEBOOK_FIRST_CELL_Y;
     for (size_t i = 0u; i < index && i < notebook->count; ++i) {
-        y += cell_height(&notebook->cells[i]) + NOTEBOOK_CELL_GAP;
+        y += display_height(notebook, i) + NOTEBOOK_CELL_GAP;
     }
     return y;
 }
@@ -157,7 +292,7 @@ static void ensure_selected_visible(phy_notebook *notebook)
     }
     const int top = content_top(notebook, notebook->selected);
     const int bottom =
-        top + cell_height(&notebook->cells[notebook->selected]);
+        top + display_height(notebook, notebook->selected);
     if (top - notebook->scroll_y < NOTEBOOK_FIRST_CELL_Y) {
         notebook->scroll_y = top - NOTEBOOK_FIRST_CELL_Y;
     } else if (bottom - notebook->scroll_y > NOTEBOOK_LAST_CELL_Y) {
@@ -235,10 +370,18 @@ phy_notebook *phy_notebook_create(void)
      */
     phy_ir_limits ir_limits;
     phy_ir_limits_defaults(&ir_limits);
-    ir_limits.max_nodes = 65536u;
+    /*
+     * Headroom above the measured tour peak (~15k nodes / 1 MiB through the
+     * Schwarzschild extras and the eight-gamma trace). Boyer-Lindquist Kerr
+     * curvature was measured at two million nodes and 151 MiB on a host --
+     * out of reach of any ceiling here until the CAS gains a rational
+     * normal form that keeps Sigma/Delta symbolic. Pools grow on demand, so
+     * an unused ceiling costs no calculator memory.
+     */
+    ir_limits.max_nodes = 131072u;
     ir_limits.max_depth = 64u;
-    ir_limits.max_children = 256u;
-    ir_limits.max_bytes = 2048u * 1024u;
+    ir_limits.max_children = 1024u;
+    ir_limits.max_bytes = 4096u * 1024u;
     notebook->ir = phy_ir_context_create(&ir_limits);
     if (notebook->ir == NULL) {
         phy_free(notebook, sizeof *notebook);
@@ -247,8 +390,8 @@ phy_notebook *phy_notebook_create(void)
 
     phy_cas_limits cas_limits;
     phy_cas_limits_defaults(&cas_limits);
-    cas_limits.max_steps = 200000u;
-    cas_limits.max_bytes = 512u * 1024u;
+    cas_limits.max_steps = 1000000u;
+    cas_limits.max_bytes = 1024u * 1024u;
     notebook->cas = phy_cas_create(notebook->ir, &cas_limits);
     if (notebook->cas == NULL) {
         phy_ir_context_destroy(notebook->ir);
@@ -564,7 +707,7 @@ static bool cell_at(const phy_notebook *notebook, int x, int y,
     }
     for (size_t i = 0u; i < notebook->count; ++i) {
         const int top = screen_top(notebook, i);
-        const int height = cell_height(&notebook->cells[i]);
+        const int height = display_height(notebook, i);
         if (y >= top && y < top + height) {
             if (out_index != NULL) {
                 *out_index = i;
@@ -842,6 +985,7 @@ bool phy_notebook_edit_insert_text(phy_notebook *notebook, const char *text,
             length - notebook->cursor + 1u);
     memcpy(buffer + insertion, text, text_length);
     notebook->cursor = insertion + cursor_offset;
+    notebook->cells[notebook->edit_index].height = 0;
     mark_source_stale(notebook);
     notebook->dirty = true;
     return true;
@@ -862,6 +1006,7 @@ bool phy_notebook_edit_backspace(phy_notebook *notebook)
     memmove(buffer + notebook->cursor - 1u, buffer + notebook->cursor,
             length - notebook->cursor + 1u);
     notebook->cursor--;
+    notebook->cells[notebook->edit_index].height = 0;
     mark_source_stale(notebook);
     notebook->dirty = true;
     return true;
@@ -884,6 +1029,36 @@ bool phy_notebook_edit_move(phy_notebook *notebook, int direction)
         return true;
     }
     return false;
+}
+
+bool phy_notebook_edit_move_line(phy_notebook *notebook, int direction)
+{
+    size_t capacity = 0u;
+    char *buffer = edit_buffer(notebook, &capacity);
+    (void)capacity;
+    if (buffer == NULL || direction == 0 || !notebook->edit_secondary ||
+        notebook->cells[notebook->edit_index].kind !=
+            PHY_NOTEBOOK_CELL_MARKDOWN) {
+        return false;
+    }
+    const size_t columns = NOTEBOOK_EDIT_COLUMNS;
+    const size_t length = strlen(buffer);
+    if (notebook->cursor > length) {
+        notebook->cursor = length;
+    }
+    if (direction < 0) {
+        if (notebook->cursor < columns) {
+            return false;
+        }
+        notebook->cursor -= columns;
+        return true;
+    }
+    if (notebook->cursor / columns == length / columns) {
+        return false;
+    }
+    const size_t target = notebook->cursor + columns;
+    notebook->cursor = target > length ? length : target;
+    return true;
 }
 
 bool phy_notebook_edit_switch_field(phy_notebook *notebook)
@@ -1032,12 +1207,27 @@ static int selected_result_excess(const phy_notebook *notebook)
         return 0;
     }
     const notebook_cell *cell = &notebook->cells[notebook->selected];
+    phy_formula_metrics metrics;
+    int pixel_size = 0;
+    if (cell->kind == PHY_NOTEBOOK_CELL_MARKDOWN) {
+        const char *source = NULL;
+        size_t length = 0u;
+        phy_formula_style style = PHY_FORMULA_STYLE_TEXT;
+        if (!markdown_entire_formula(cell->secondary, &source, &length,
+                                     &style) ||
+            style != PHY_FORMULA_STYLE_DISPLAY ||
+            measure_markdown_formula(source, length, &metrics,
+                                     &pixel_size) != PHY_OK) {
+            return 0;
+        }
+        return metrics.width > NOTEBOOK_MARKDOWN_MAX_WIDTH
+                   ? metrics.width - NOTEBOOK_MARKDOWN_MAX_WIDTH
+                   : 0;
+    }
     if (cell->kind != PHY_NOTEBOOK_CELL_OUTPUT ||
         cell->expression == PHY_IR_NULL) {
         return 0;
     }
-    phy_formula_metrics metrics;
-    int pixel_size = 0;
     if (measure_result_formula(notebook, cell, &metrics, &pixel_size) !=
         PHY_OK) {
         return 0;
@@ -1082,6 +1272,53 @@ static int draw_text_span(const phy_surface *surface, int x, int y,
     memcpy(span, text, length);
     span[length] = '\0';
     return phy_gfx_draw_text(surface, x, y, span, color);
+}
+
+/*
+ * The Markdown body editor: the raw source in fixed 45-glyph rows with the
+ * cursor kept inside an eight-row window. Corner markers say when rows are
+ * hidden above or below, mirroring the pan markers on wide formulas.
+ */
+static void draw_editable_body_grid(const phy_surface *surface, int x, int y,
+                                    const char *text, size_t cursor)
+{
+    const size_t columns = NOTEBOOK_EDIT_COLUMNS;
+    const size_t length = strlen(text);
+    if (cursor > length) {
+        cursor = length;
+    }
+    const size_t total_lines = length / columns + 1u;
+    const size_t cursor_line = cursor / columns;
+    size_t first = 0u;
+    if (cursor_line >= NOTEBOOK_EDIT_MAX_LINES) {
+        first = cursor_line - NOTEBOOK_EDIT_MAX_LINES + 1u;
+    }
+    for (size_t line = 0u; line < NOTEBOOK_EDIT_MAX_LINES; ++line) {
+        const size_t index = first + line;
+        if (index >= total_lines) {
+            break;
+        }
+        const size_t offset = index * columns;
+        size_t count = length - offset;
+        if (count > columns) {
+            count = columns;
+        }
+        (void)draw_text_span(surface, x, y + (int)line * 11, text + offset,
+                             count, COLOR_DIM);
+    }
+    if (first > 0u) {
+        (void)phy_gfx_draw_text(surface, NOTEBOOK_MARKDOWN_RIGHT, y, "^",
+                                COLOR_DIM);
+    }
+    if (first + NOTEBOOK_EDIT_MAX_LINES < total_lines) {
+        (void)phy_gfx_draw_text(
+            surface, NOTEBOOK_MARKDOWN_RIGHT,
+            y + ((int)NOTEBOOK_EDIT_MAX_LINES - 1) * 11, "v", COLOR_DIM);
+    }
+    const int cursor_x = x + (int)(cursor % columns) * PHY_GLYPH_ADVANCE;
+    const int cursor_y = y + (int)(cursor_line - first) * 11;
+    phy_gfx_vline(surface, cursor_x, cursor_y - 1, PHY_GLYPH_HEIGHT + 2,
+                  COLOR_ACCENT);
 }
 
 /*
@@ -1146,11 +1383,197 @@ static bool find_inline_formula(const char *text, const char **out_open,
     return false;
 }
 
-static void draw_markdown_body(const phy_surface *surface, int card_y,
-                               int card_height, const char *body)
+/*
+ * Word-and-formula flow shared by measuring and drawing. Words and inline
+ * formulas are unbreakable tokens laid left to right, wrapping at the card
+ * edge. A line's tokens are buffered until it breaks, because the line's
+ * baseline is only known once its tallest ascent is; one walker produces
+ * both the content height and the pixels, so the card height can never
+ * disagree with what is drawn.
+ */
+#define NOTEBOOK_FLOW_MAX_TOKENS 48
+
+typedef struct {
+    const char *text; /* word bytes, or the formula source */
+    size_t length;
+    int x;
+    bool is_formula;
+} flow_token;
+
+typedef struct {
+    const phy_surface *surface; /* NULL measures without drawing */
+    int card_y;
+    int clip_height;
+    int pen;
+    int content;    /* height consumed by flushed lines */
+    bool full;      /* the height cap is reached: stop consuming tokens */
+    bool truncated; /* content was dropped or clipped; the card says so */
+    flow_token tokens[NOTEBOOK_FLOW_MAX_TOKENS];
+    size_t token_count;
+    int line_ascent;  /* text glyphs sit on the baseline: at least 7 */
+    int line_descent; /* plus one guard row below it */
+} markdown_flow;
+
+static void flow_init(markdown_flow *flow, const phy_surface *surface,
+                      int card_y, int clip_height)
 {
-    const int left = 34;
-    const int right = NOTEBOOK_CELL_X + NOTEBOOK_CELL_WIDTH - 8;
+    memset(flow, 0, sizeof *flow);
+    flow->surface = surface;
+    flow->card_y = card_y;
+    flow->clip_height = clip_height;
+    flow->pen = NOTEBOOK_MARKDOWN_LEFT;
+    flow->line_ascent = 7;
+    flow->line_descent = 1;
+}
+
+static void flow_flush_line(markdown_flow *flow)
+{
+    if (flow->token_count == 0u) {
+        flow->pen = NOTEBOOK_MARKDOWN_LEFT;
+        return;
+    }
+    const int line_height = flow->line_ascent + flow->line_descent + 3;
+    if (flow->content + line_height > NOTEBOOK_MARKDOWN_FLOW_MAX_CONTENT) {
+        flow->full = true;
+        flow->truncated = true;
+        flow->token_count = 0u;
+        return;
+    }
+    if (flow->surface != NULL) {
+        const int baseline =
+            flow->card_y + 25 + flow->content + flow->line_ascent;
+        for (size_t i = 0u; i < flow->token_count; ++i) {
+            const flow_token *token = &flow->tokens[i];
+            if (token->is_formula) {
+                (void)phy_formula_draw_latex(
+                    flow->surface, token->text, token->length,
+                    PHY_FORMULA_STYLE_TEXT, 13,
+                    NOTEBOOK_MARKDOWN_RIGHT - token->x, token->x, baseline,
+                    0, COLOR_MARKDOWN, COLOR_CARD, NOTEBOOK_MARKDOWN_LEFT,
+                    flow->card_y + 23,
+                    NOTEBOOK_MARKDOWN_RIGHT - NOTEBOOK_MARKDOWN_LEFT,
+                    flow->clip_height, NULL);
+            } else {
+                (void)draw_text_span(flow->surface, token->x, baseline - 7,
+                                     token->text, token->length, COLOR_DIM);
+            }
+        }
+    }
+    flow->content += line_height;
+    flow->token_count = 0u;
+    flow->pen = NOTEBOOK_MARKDOWN_LEFT;
+    flow->line_ascent = 7;
+    flow->line_descent = 1;
+}
+
+static void flow_push_token(markdown_flow *flow, bool is_formula,
+                            const char *text, size_t length, int width,
+                            int ascent, int descent)
+{
+    if (flow->full) {
+        return;
+    }
+    if ((flow->pen + width > NOTEBOOK_MARKDOWN_RIGHT &&
+         flow->pen > NOTEBOOK_MARKDOWN_LEFT) ||
+        flow->token_count >= NOTEBOOK_FLOW_MAX_TOKENS) {
+        flow_flush_line(flow);
+        if (flow->full) {
+            return;
+        }
+    }
+    flow_token *token = &flow->tokens[flow->token_count++];
+    token->text = text;
+    token->length = length;
+    token->x = flow->pen;
+    token->is_formula = is_formula;
+    flow->pen += width + (is_formula ? 1 : 0);
+    if (ascent > flow->line_ascent) {
+        flow->line_ascent = ascent;
+    }
+    if (descent > flow->line_descent) {
+        flow->line_descent = descent;
+    }
+    if (width > NOTEBOOK_MARKDOWN_RIGHT - NOTEBOOK_MARKDOWN_LEFT) {
+        /* Wider than a whole line: it draws clipped, and the card says so. */
+        flow->truncated = true;
+    }
+}
+
+static void flow_words(markdown_flow *flow, const char *text, size_t span)
+{
+    size_t offset = 0u;
+    while (offset < span && !flow->full) {
+        if (text[offset] == ' ') {
+            if (flow->pen > NOTEBOOK_MARKDOWN_LEFT) {
+                flow->pen += PHY_GLYPH_ADVANCE;
+            }
+            offset++;
+            continue;
+        }
+        size_t word = 0u;
+        while (offset + word < span && text[offset + word] != ' ') {
+            word++;
+        }
+        flow_push_token(flow, false, text + offset, word,
+                        (int)word * PHY_GLYPH_ADVANCE, 7, 1);
+        offset += word;
+    }
+}
+
+static void flow_formula(markdown_flow *flow, const char *raw,
+                         const char *source, size_t length,
+                         const char *after)
+{
+    phy_formula_metrics metrics;
+    const int line_width = NOTEBOOK_MARKDOWN_RIGHT - NOTEBOOK_MARKDOWN_LEFT;
+    if (phy_formula_measure_latex(source, length, PHY_FORMULA_STYLE_TEXT, 13,
+                                  line_width, &metrics) != PHY_OK) {
+        /* Unmeasurable math flows as its raw dollar-fenced text. */
+        flow_words(flow, raw, (size_t)(after - raw));
+        return;
+    }
+    flow_push_token(flow, true, source, length, metrics.width,
+                    metrics.ascent, metrics.descent);
+}
+
+static void markdown_flow_run(markdown_flow *flow, const char *body)
+{
+    const char *cursor = body;
+    while (*cursor != '\0' && !flow->full) {
+        const char *open = NULL;
+        const char *source = NULL;
+        const char *after = NULL;
+        size_t length = 0u;
+        if (find_inline_formula(cursor, &open, &source, &length, &after)) {
+            flow_words(flow, cursor, (size_t)(open - cursor));
+            if (!flow->full) {
+                flow_formula(flow, open, source, length, after);
+            }
+            cursor = after;
+        } else {
+            flow_words(flow, cursor, strlen(cursor));
+            break;
+        }
+    }
+    flow_flush_line(flow);
+}
+
+static int markdown_flow_height(const char *body)
+{
+    markdown_flow flow;
+    flow_init(&flow, NULL, 0, 0);
+    markdown_flow_run(&flow, body);
+    int content = flow.content;
+    if (content < 11) {
+        content = 11;
+    }
+    return 29 + content;
+}
+
+static void draw_markdown_body(const phy_surface *surface, int card_y,
+                               int card_height, const char *body, int pan)
+{
+    const int left = NOTEBOOK_MARKDOWN_LEFT;
     const int top = card_y + 23;
     const int clip_height = card_height - 25;
     const char *formula = NULL;
@@ -1159,12 +1582,34 @@ static void draw_markdown_body(const phy_surface *surface, int card_y,
 
     if (markdown_entire_formula(body, &formula, &formula_length, &style)) {
         phy_formula_metrics metrics;
-        const int pixel_size =
-            style == PHY_FORMULA_STYLE_DISPLAY ? 17 : 13;
-        const int maximum_width = right - left;
-        if (phy_formula_measure_latex(formula, formula_length, style,
-                                      pixel_size, maximum_width,
-                                      &metrics) == PHY_OK) {
+        int pixel_size = 13;
+        phy_status status;
+        const int maximum_width = NOTEBOOK_MARKDOWN_MAX_WIDTH;
+        if (style == PHY_FORMULA_STYLE_DISPLAY) {
+            status = measure_markdown_formula(formula, formula_length,
+                                              &metrics, &pixel_size);
+        } else {
+            status = phy_formula_measure_latex(
+                formula, formula_length, style, pixel_size, maximum_width,
+                &metrics);
+        }
+        if (status != PHY_OK) {
+            /*
+             * The raw-text fallback below hides why layout failed, and that
+             * cost a debugging round on the device once. Name the status in
+             * the corner so the next photograph answers the question.
+             */
+            (void)phy_gfx_draw_text(surface, left + maximum_width - 96,
+                                    card_y + 2, phy_status_name(status),
+                                    COLOR_DIM);
+        }
+        if (status == PHY_OK) {
+            const int excess = metrics.width > maximum_width
+                                   ? metrics.width - maximum_width
+                                   : 0;
+            if (pan > excess) {
+                pan = excess;
+            }
             int origin_x = left;
             if (style == PHY_FORMULA_STYLE_DISPLAY &&
                 metrics.width < maximum_width) {
@@ -1172,46 +1617,65 @@ static void draw_markdown_body(const phy_surface *surface, int card_y,
             }
             (void)phy_formula_draw_latex(
                 surface, formula, formula_length, style, pixel_size,
-                maximum_width, origin_x, top + metrics.ascent, 0,
+                maximum_width, origin_x, top + metrics.ascent, pan,
                 COLOR_MARKDOWN, COLOR_CARD, left, top, maximum_width,
                 clip_height, NULL);
+            if (pan > 0) {
+                (void)phy_gfx_draw_text(surface, left, card_y + 2, "<",
+                                        COLOR_DIM);
+            }
+            if (excess > pan) {
+                (void)phy_gfx_draw_text(surface, left + maximum_width - 8,
+                                        card_y + 2, ">", COLOR_DIM);
+            }
+            if (!metrics.valid) {
+                /*
+                 * The layout recovered from a parse error and is showing
+                 * "!" plus the raw source. Its own diagnostic is the only
+                 * record of why, so put it where the reader is looking.
+                 */
+                char diagnostic[44];
+                (void)phy_formula_last_diagnostic(diagnostic,
+                                                  sizeof diagnostic);
+                (void)phy_gfx_draw_text(surface, left,
+                                        card_y + card_height - 11,
+                                        diagnostic, COLOR_ERROR);
+            }
             return;
         }
     }
 
-    int pen = left;
-    const int text_y = card_y + 25;
-    const int baseline = card_y + 32;
-    const char *cursor = body;
-    const char *open = NULL;
-    const char *source = NULL;
-    const char *after = NULL;
-    size_t length = 0u;
-    while (pen < right &&
-           find_inline_formula(cursor, &open, &source, &length, &after)) {
-        pen = draw_text_span(surface, pen, text_y, cursor,
-                             (size_t)(open - cursor), COLOR_DIM);
-        if (pen >= right) {
-            return;
+    if (!markdown_has_inline_formula(body)) {
+        /* Prose: the card was sized for exactly these wrapped lines. */
+        const size_t per_line =
+            (size_t)(NOTEBOOK_MARKDOWN_MAX_WIDTH / PHY_GLYPH_ADVANCE);
+        const char *cursor = body;
+        for (int line = 0; line < NOTEBOOK_MARKDOWN_MAX_LINES &&
+                           *cursor != '\0';
+             ++line) {
+            const size_t take = wrap_take(cursor, per_line);
+            (void)draw_text_span(surface, left, card_y + 25 + line * 11,
+                                 cursor, take, COLOR_DIM);
+            cursor += take;
+            while (*cursor == ' ') {
+                cursor++;
+            }
         }
-        phy_formula_metrics metrics;
-        if (phy_formula_measure_latex(
-                source, length, PHY_FORMULA_STYLE_TEXT, 13, right - pen,
-                &metrics) != PHY_OK) {
-            pen = draw_text_span(surface, pen, text_y, open,
-                                 (size_t)(after - open), COLOR_DIM);
-        } else {
-            (void)phy_formula_draw_latex(
-                surface, source, length, PHY_FORMULA_STYLE_TEXT, 13,
-                right - pen, pen, baseline, 0, COLOR_MARKDOWN, COLOR_CARD,
-                left, top, right - left, clip_height, NULL);
-            pen += metrics.width + 1;
+        if (*cursor != '\0') {
+            /* The line cap dropped text; never let that pass silently. */
+            (void)phy_gfx_draw_text(surface, NOTEBOOK_MARKDOWN_RIGHT,
+                                    card_y + card_height - 9, "+",
+                                    COLOR_DIM);
         }
-        cursor = after;
+        return;
     }
-    if (pen < right) {
-        (void)draw_text_span(surface, pen, text_y, cursor, strlen(cursor),
-                             COLOR_DIM);
+
+    markdown_flow flow;
+    flow_init(&flow, surface, card_y, clip_height);
+    markdown_flow_run(&flow, body);
+    if (flow.truncated) {
+        (void)phy_gfx_draw_text(surface, NOTEBOOK_MARKDOWN_RIGHT,
+                                card_y + card_height - 9, "+", COLOR_DIM);
     }
 }
 
@@ -1277,7 +1741,7 @@ void phy_notebook_draw_document(const phy_surface *surface,
     for (size_t i = 0u; i < notebook->count; ++i) {
         const notebook_cell *cell = &notebook->cells[i];
         const int y = screen_top(notebook, i);
-        const int height = cell_height(cell);
+        const int height = display_height(notebook, i);
         if (y >= NOTEBOOK_LAST_CELL_Y ||
             y + height <= NOTEBOOK_FIRST_CELL_Y) {
             continue;
@@ -1306,10 +1770,13 @@ void phy_notebook_draw_document(const phy_surface *surface,
                           editing && !notebook->edit_secondary, 23u, 2u,
                           COLOR_MARKDOWN);
             if (editing && notebook->edit_secondary) {
-                draw_editable(surface, 34, y + 25, cell->secondary,
-                              notebook->cursor, true, 45u, 1u, COLOR_DIM);
+                draw_editable_body_grid(surface, 34, y + 25,
+                                        cell->secondary, notebook->cursor);
             } else {
-                draw_markdown_body(surface, y, height, cell->secondary);
+                draw_markdown_body(surface, y, height, cell->secondary,
+                                   selected && !notebook->editing
+                                       ? notebook->output_pan
+                                       : 0);
             }
         } else if (cell->kind == PHY_NOTEBOOK_CELL_INPUT) {
             draw_execution_label(surface, 10, y + 12, "In[", cell->execution,
