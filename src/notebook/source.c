@@ -29,6 +29,7 @@ static const command_descriptor kCommands[] = {
     {"FullSimplify", PHY_SOURCE_FULL_SIMPLIFY, true, false},
     {"Expand", PHY_SOURCE_EXPAND, true, false},
     {"Together", PHY_SOURCE_TOGETHER, true, false},
+    {"Cancel", PHY_SOURCE_CANCEL, true, false},
     {"Numerator", PHY_SOURCE_NUMERATOR, true, false},
     {"Denominator", PHY_SOURCE_DENOMINATOR, true, false},
     {"D", PHY_SOURCE_DIFFERENTIATE, true, true},
@@ -42,7 +43,6 @@ static const command_descriptor kCommands[] = {
      * exists. Treating Factor[x] as an opaque mathematical function would look
      * successful while doing no factorization.
      */
-    {"Cancel", PHY_SOURCE_SIMPLIFY, false, false},
     {"Factor", PHY_SOURCE_SIMPLIFY, false, false},
     {"Apart", PHY_SOURCE_SIMPLIFY, false, false},
     {"Limit", PHY_SOURCE_SIMPLIFY, false, false},
@@ -149,13 +149,81 @@ static const command_descriptor *find_command(const char *name)
 
 static const char *canonical_function(const char *name)
 {
-    static const char *const known[] = {"sin", "cos", "tan", "exp", "log"};
+    typedef struct {
+        const char *alias;
+        const char *canonical;
+    } function_alias;
+    /*
+     * These names follow Mathematica's case-sensitive spelling. Lower-case
+     * gamma and erf remain normal physics variables.
+     */
+    if (strcmp(name, "Gamma") == 0) {
+        return "gammafn";
+    }
+    if (strcmp(name, "LogGamma") == 0) {
+        return "loggamma";
+    }
+    if (strcmp(name, "Erf") == 0) {
+        return "erf";
+    }
+    if (strcmp(name, "Erfc") == 0) {
+        return "erfc";
+    }
+    static const function_alias known[] = {
+        {"sin", "sin"},       {"cos", "cos"},
+        {"tan", "tan"},       {"exp", "exp"},
+        {"log", "log"},       {"sqrt", "sqrt"},
+        {"asin", "asin"},     {"arcsin", "asin"},
+        {"acos", "acos"},     {"arccos", "acos"},
+        {"atan", "atan"},     {"arctan", "atan"},
+        {"sinh", "sinh"},     {"cosh", "cosh"},
+        {"tanh", "tanh"},     {"asinh", "asinh"},
+        {"arcsinh", "asinh"}, {"acosh", "acosh"},
+        {"arccosh", "acosh"}, {"atanh", "atanh"},
+        {"arctanh", "atanh"},
+    };
     for (size_t i = 0u; i < sizeof known / sizeof known[0]; ++i) {
-        if (name_equals(name, known[i])) {
-            return known[i];
+        if (name_equals(name, known[i].alias)) {
+            return known[i].canonical;
         }
     }
     return name;
+}
+
+typedef struct {
+    const char *name;
+    uint32_t assumptions;
+} constant_descriptor;
+
+static const constant_descriptor *known_constant(const char *name)
+{
+    static const constant_descriptor constants[] = {
+        {"Pi", (uint32_t)PHY_IR_ASSUME_CONSTANT |
+                   (uint32_t)PHY_IR_ASSUME_REAL |
+                   (uint32_t)PHY_IR_ASSUME_POSITIVE |
+                   (uint32_t)PHY_IR_ASSUME_NONZERO},
+        {"E", (uint32_t)PHY_IR_ASSUME_CONSTANT |
+                  (uint32_t)PHY_IR_ASSUME_REAL |
+                  (uint32_t)PHY_IR_ASSUME_POSITIVE |
+                  (uint32_t)PHY_IR_ASSUME_NONZERO},
+        {"I", (uint32_t)PHY_IR_ASSUME_CONSTANT |
+                  (uint32_t)PHY_IR_ASSUME_NONZERO},
+        {"EulerGamma", (uint32_t)PHY_IR_ASSUME_CONSTANT |
+                           (uint32_t)PHY_IR_ASSUME_REAL |
+                           (uint32_t)PHY_IR_ASSUME_POSITIVE |
+                           (uint32_t)PHY_IR_ASSUME_NONZERO},
+    };
+    for (size_t i = 0u; i < sizeof constants / sizeof constants[0]; ++i) {
+        /*
+         * Mathematical constants follow Mathematica's case-sensitive spelling.
+         * In particular, lower-case e and i remain ordinary user variables,
+         * which is essential in tensor, Lie-algebra, and index notation.
+         */
+        if (strcmp(name, constants[i].name) == 0) {
+            return &constants[i];
+        }
+    }
+    return NULL;
 }
 
 /*
@@ -372,7 +440,15 @@ static phy_ir_ref parse_primary(source_reader *reader)
     }
     const char opener = peek(reader);
     if (opener != '[' && opener != '(') {
-        const phy_ir_symbol symbol = phy_ir_intern(reader->ir, name);
+        const constant_descriptor *constant = known_constant(name);
+        const phy_ir_symbol symbol = phy_ir_intern(
+            reader->ir, constant != NULL ? constant->name : name);
+        if (constant != NULL &&
+            phy_ir_assume(reader->ir, symbol, constant->assumptions) !=
+                PHY_OK) {
+            fail(reader, PHY_ERR_ASSUMPTION);
+            return PHY_IR_NULL;
+        }
         const phy_ir_ref result = phy_ir_symbol_ref(reader->ir, symbol);
         if (result == PHY_IR_NULL) {
             fail(reader, phy_ir_last_error(reader->ir));
@@ -601,7 +677,7 @@ static phy_ir_ref parse_expression(source_reader *reader)
 static bool bindable_name(const char *name)
 {
     return find_command(name) == NULL && canonical_object_head(name) == NULL &&
-           canonical_function(name) == name;
+           canonical_function(name) == name && known_constant(name) == NULL;
 }
 
 /*

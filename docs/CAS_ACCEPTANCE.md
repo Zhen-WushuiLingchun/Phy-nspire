@@ -8,24 +8,24 @@ evidence.
 ## Executable notebook
 
 [`examples/phy-nspire-cas-tour.tns`](../examples/phy-nspire-cas-tour.tns) is a
-4,565-byte `PHYNB001` notebook with 91 source cards:
+6,033-byte `PHYNB001` notebook with 110 source cards:
 
-- seven Markdown cells with nMarkdown LaTeX;
-- 84 editable Math inputs;
+- nine Markdown cells with nMarkdown LaTeX;
+- 101 editable Math inputs;
 - no eagerly persisted output/IR cache.
 
 The generator evaluates a validation copy of the complete document, serializes
 it, opens it in a new notebook with an empty environment, and runs every cell
 again. It separately serializes and reopens the source-only artifact before
 writing it. Generation fails on any parse, evaluation, serialization, reopen,
-or replay error. The source-only form avoids rebuilding 168 cached IR trees
-during `FILE > Open`; running all inputs produces the same 84 typed outputs and
-a 175-card session. The inputs touch every currently implemented evaluator head
+or replay error. The source-only form avoids rebuilding 202 cached IR trees
+during `FILE > Open`; running all inputs produces the same 101 typed outputs and
+a 211-card session. The inputs touch every currently implemented evaluator head
 at least once:
 
 | Area | Successful reader-facing heads |
 | --- | --- |
-| scalar | bare exact expressions, assignment, `Simplify`, `FullSimplify`, `Expand`, `Together`, `Numerator`, `Denominator`, `D`, `Integrate` |
+| scalar | bare exact expressions, protected constants and special values, assignment, `Simplify`, `FullSimplify`, `Expand`, `Together`, `Cancel`, `Numerator`, `Denominator`, `D`, `Integrate`, inverse/hyperbolic/Gamma/error functions |
 | tensor/manifold | `Manifold`, `ComponentTensor`, `Metric`, `VectorField`, `Component`, `Rank`, `Dimension` |
 | exterior geometry | `DifferentialForm`, `Wedge`, `ExteriorD`, `InteriorProduct`, `LieDerivative`, `HodgeStar`, `Volume`, `Degree` |
 | Lie/Yang--Mills | `LieGroup`, `LieAlgebra`, `Generator`, `LieElement`, `LieBracket`, `StructureConstant`, `Killing`, `LieForm`, `GaugeConnection`, `CovariantD`, `FieldStrength`, `GaugeVariation`, `Bianchi`, `YangMillsLagrangian`, `ColorComponent` |
@@ -55,10 +55,10 @@ where the QFT type checker must reject a cross-space operation.
 - Windows strict build and CTest: 30/30.
 - WSL strict build and CTest: 32/32.
 - WSL ASan, UBSan, and leak detection: 32/32.
-- Assertion-bearing tests: 94,814 checks.
-- Ndless r2022 ARM product: 1,105,773 bytes, 17.6% of the 6 MiB ceiling.
-- Isolated evaluator ARM probe: 15/15 public APIs, 28,149 bytes of evaluator
-  text, 130,176-byte package, and no float formatter, libm call, or ARM
+- Assertion-bearing tests: 95,416 checks.
+- Ndless r2022 ARM product: 1,121,131 bytes, 17.8% of the 6 MiB ceiling.
+- Isolated evaluator ARM probe: 15/15 public APIs, 28,937 bytes of evaluator
+  text, 151,396-byte package, and no float formatter, libm call, or ARM
   soft-float helper.
 
 These results establish source, host, sanitizer, and ARM-link acceptance. They
@@ -67,7 +67,7 @@ exact artifacts are opened and exercised on the physical CX II.
 
 ## Explicit non-features
 
-`Cancel`, `Factor`, `Apart`, `Limit`, `Series`, `Solve`, `NSolve`, `Reduce`,
+`Factor`, `Apart`, `Limit`, `Series`, `Solve`, `NSolve`, `Reduce`,
 `Refine`, and the `Trig*` family are registered but return
 `PHY_ERR_UNSUPPORTED`. There is no multi-chart transition map or pullback, no
 global-topology or named-manifold catalogue, no unbounded tensor rank, no
@@ -81,6 +81,6 @@ Evaluator objects are swept after every successful and failed command.
 Bindings keep their dependency graph alive; `Clear`/`ClearAll` release it. CAS
 scratch is LIFO and the memo cache is bounded and rebuildable. Interned IR nodes
 are immutable and notebook-lifetime rather than individually collected; their
-65,536-node/2-MiB ceilings produce typed errors. New/Open destroys the complete
+131,072-node/4-MiB ceilings produce typed errors. New/Open destroys the complete
 old context. `MemoryStatus[]` exposes the current IR, CAS, object, and binding
 counts for on-device observation.

@@ -162,6 +162,11 @@ static void probe_symbolic_operations(phy_cas *cas, phy_chart *chart)
     sink((unsigned)phy_tensor_component_expression(
         cas, metric, zero, &expression));
     sink((unsigned)expression);
+    {
+        size_t zeroed = 0u;
+        sink((unsigned)phy_tensor_normalize(cas, metric, &zeroed));
+        sink((unsigned)zeroed);
+    }
     sink((unsigned)phy_tensor_determinant(cas, metric, &expression));
     sink((unsigned)expression);
     sink((unsigned)phy_tensor_inverse_metric(

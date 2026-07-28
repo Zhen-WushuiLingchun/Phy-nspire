@@ -163,10 +163,12 @@ assumed non-vanishing, which is what "wherever it is defined" means; a
 denominator that reduces to exactly zero is `PHY_ERR_DOMAIN`, because such an
 expression is defined nowhere.
 
-No polynomial GCD is taken, so `phy_cas_rational_form` does not return lowest
-terms. Cancelling a common factor needs a GCD over the generators and the
-decision does not, so the expensive machinery is absent rather than
-half-present.
+After exact division by denominator factors, a bounded Euclidean algorithm
+computes a monic GCD in `Q[x]` through degree 48. This closes cases such as
+`(x^2-1)/(x^2-2x+1) -> (x+1)/(x-1)` even though the hidden factor is not the
+whole denominator. It is deliberately univariate: a coefficient containing a
+second symbol does not get guessed to be a field element, and the pair stays
+explicit until the multivariate milestone in `CAS_FOUNDATION.md`.
 
 `phy_cas_full_simplify` — the notebook's `FullSimplify` — is the one door from
 the display normal form into this machinery. It runs the plain simplifier,
@@ -255,14 +257,45 @@ visible — and everything else differentiates to an unevaluated
 An unevaluated derivative is a correct answer a later layer can refine. A wrong
 zero is a curvature tensor that vanishes for a spacetime that curves.
 
-The known table is `sin`, `cos`, `tan`, `exp`, `log`. `tan` differentiates to
-`1/cos(u)^2` rather than to `1 + tan(u)^2` so that the result lands on the same
-basis the zero decision reduces to; the other form would need the identity
-applied before anything could cancel against it.
+The known table includes the elementary, inverse trigonometric, hyperbolic,
+inverse hyperbolic, and first special-function pack (`Gamma`, `LogGamma`,
+`Erf`, `Erfc`). `tan` differentiates to `1/cos(u)^2` rather than to
+`1 + tan(u)^2` so that the result lands on the same basis the zero decision
+reduces to; the other form would need the identity applied before anything
+could cancel against it. `Gamma'` is represented exactly as
+`Gamma(u) Digamma(u)`; Digamma remains an explicit special function outside
+this first table.
 
 `d(u^v)` uses the power rule when the exponent is constant, which avoids
 introducing a logarithm of a base that may be negative, and the general
 `u^v * (v' log u + v u'/u)` only when both parts vary.
+
+## Integration and exact function values
+
+`Integrate` is a bounded rule system, not a numerical or heuristic integrator.
+It covers sums and constant factors, rational powers with linear inner
+expressions, elementary and hyperbolic linear-inner rules, and the exact
+kernels
+
+```
+1/(1+u^2)          -> atan(u)
+1/(1-u^2)          -> atanh(u)
+1/sqrt(1+u^2)      -> asinh(u)
+1/sqrt(1-u^2)      -> asin(u)
+exp(-u^2)          -> sqrt(Pi) erf(u) / 2
+```
+
+with the constant derivative of `u` divided out. `Erf` and `Erfc` themselves
+have exact linear-inner antiderivatives. Every rule is tested by
+differentiating its result back to the input. Outside this class the result is
+the explicit typed head `Integrate[expr,var]`.
+
+`Pi`, `E`, `I`, and `EulerGamma` are protected constants. The first elementary
+table includes exact trigonometric values at supported multiples of `Pi`,
+positive exact square-factor extraction (`Sqrt[72] -> 6 Sqrt[2]`),
+`Gamma[n]` while `(n-1)!` fits `int64`, `Gamma[1/2]`, and the zero values of
+`Erf`/`Erfc`. `I` does not yet satisfy `I^2=-1`: complex arithmetic remains a
+separate exact-number-domain milestone.
 
 ## Memory and budget
 
@@ -329,8 +362,9 @@ answers `UNKNOWN` rather than deciding anything about it.
 
 ## Not in this layer
 
-Integration, limits, series, and solving. Polynomial GCD, factoring, and partial
-fractions. Matrices. Dummy-index canonicalization, contraction, and anything
+General integration, limits, series, and solving. Multivariate polynomial GCD,
+factoring, and partial fractions. Matrices. Dummy-index canonicalization,
+contraction, and anything
 that consumes declared slot symmetries — this layer simplifies the operands of
 `PHY_IR_NCMUL`, `PHY_IR_TENSOR`, `PHY_IR_OPERATOR`, `PHY_IR_WEDGE` and
 `PHY_IR_DERIVATIVE` in place and otherwise leaves them alone, never reordering
@@ -339,7 +373,7 @@ boundary.
 
 ## Testing
 
-`tests/test_cas.c`, 830 checks. Expressions are written in the IR's text format
+`tests/test_cas.c` contains over one thousand checks. Expressions are written in the IR's text format
 and parsed, so a case reads as the mathematics it is about; results are checked
 both against a serialized normal form, which pins the exact shape, and through
 the zero decision, which pins the value.
@@ -365,9 +399,8 @@ after each.
 
 Both layers are validated on the way out of every case, so an operation that
 leaked scratch or corrupted the cache fails the suite wherever it happened.
-The current full strict host suite passes 17/17, including under
-AddressSanitizer, trapping UndefinedBehaviorSanitizer, and leak detection.
-GCC's static analyzer reports all five CAS translation units clean.
+The full strict host and sanitizer suites are the release gates; current exact
+counts are recorded in `CAS_ACCEPTANCE.md` after each clean build.
 
 ## Device build
 

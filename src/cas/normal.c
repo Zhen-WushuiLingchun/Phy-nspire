@@ -349,11 +349,12 @@ static phy_status multiple_angle(phy_cas *cas, phy_ir_symbol head, int64_t k,
                                  phy_ir_ref unit, phy_ir_ref *out_ref)
 {
     phy_ir_ref sine, cosine;
-    phy_status status = trig_call(cas, cas->fn_sin, unit, &sine);
+    phy_status status =
+        trig_call(cas, cas->functions[PHY_CAS_FN_SIN], unit, &sine);
     if (status != PHY_OK) {
         return status;
     }
-    status = trig_call(cas, cas->fn_cos, unit, &cosine);
+    status = trig_call(cas, cas->functions[PHY_CAS_FN_COS], unit, &cosine);
     if (status != PHY_OK) {
         return status;
     }
@@ -387,7 +388,8 @@ static phy_status multiple_angle(phy_cas *cas, phy_ir_symbol head, int64_t k,
         }
     }
 
-    *out_ref = (head == cas->fn_sin) ? sin_n : cos_n;
+    *out_ref =
+        head == cas->functions[PHY_CAS_FN_SIN] ? sin_n : cos_n;
     return PHY_OK;
 }
 
@@ -410,7 +412,8 @@ static phy_status reduce_angle(phy_cas *cas, phy_ir_symbol head,
 
     /* Parity has normally folded a negative multiple out already; handling it
        here as well costs one branch and removes the need to rely on that. */
-    const bool negate = k < 0 && head == cas->fn_sin;
+    const bool negate =
+        k < 0 && head == cas->functions[PHY_CAS_FN_SIN];
     const int64_t magnitude = (k < 0) ? -k : k;
     if (magnitude < 2 || magnitude > PHY_CAS_MAX_MULTIPLE_ANGLE) {
         return trig_call(cas, head, argument, out_ref);
@@ -431,10 +434,10 @@ static phy_status reduce_angle(phy_cas *cas, phy_ir_symbol head,
 /*
  * Put every trigonometric application on the sin/cos basis of a unit argument.
  *
- * tan is rewritten as a quotient, so that the denominator it hides becomes a
- * denominator the rational form can see and cancel: 1/tan(theta) has to reach
- * cos(theta)/sin(theta), which is what the sphere_2d connection in the corpus
- * is compared against.
+ * tan and tanh are rewritten as quotients, so that the denominator they hide
+ * becomes a denominator the rational form can see and cancel.  For tan this is
+ * also what lets the sphere_2d connection corpus compare two notations; for
+ * tanh it proves that d log(cosh(u))/du is tanh(u).
  */
 static phy_status trig_reduce(phy_cas *cas, phy_ir_ref expr, phy_ir_ref *out_ref)
 {
@@ -479,19 +482,43 @@ static phy_status trig_reduce(phy_cas *cas, phy_ir_ref expr, phy_ir_ref *out_ref
     }
 
     if (kind == PHY_IR_FUNCTION && count == 1u &&
-        (head == cas->fn_sin || head == cas->fn_cos || head == cas->fn_tan)) {
+        (head == cas->functions[PHY_CAS_FN_SIN] ||
+         head == cas->functions[PHY_CAS_FN_COS] ||
+         head == cas->functions[PHY_CAS_FN_TAN] ||
+         head == cas->functions[PHY_CAS_FN_TANH])) {
         const phy_ir_ref argument = phy_cas_scratch_at(cas, offset)[0];
-        if (head == cas->fn_tan) {
-            phy_ir_ref sine, cosine, inverse;
-            if ((status = reduce_angle(cas, cas->fn_sin, argument, &sine)) !=
-                    PHY_OK ||
-                (status = reduce_angle(cas, cas->fn_cos, argument, &cosine)) !=
-                    PHY_OK ||
-                (status = phy_cas_pow_node(cas, cosine, cas->minus_one,
-                                           &inverse)) != PHY_OK) {
+        if (head == cas->functions[PHY_CAS_FN_TAN] ||
+            head == cas->functions[PHY_CAS_FN_TANH]) {
+            phy_ir_ref numerator = PHY_IR_NULL;
+            phy_ir_ref denominator = PHY_IR_NULL;
+            phy_ir_ref inverse = PHY_IR_NULL;
+            const bool hyperbolic =
+                head == cas->functions[PHY_CAS_FN_TANH];
+            const phy_ir_symbol numerator_head =
+                cas->functions[hyperbolic ? PHY_CAS_FN_SINH
+                                          : PHY_CAS_FN_SIN];
+            const phy_ir_symbol denominator_head =
+                cas->functions[hyperbolic ? PHY_CAS_FN_COSH
+                                          : PHY_CAS_FN_COS];
+            status =
+                hyperbolic
+                    ? trig_call(cas, numerator_head, argument, &numerator)
+                    : reduce_angle(cas, numerator_head, argument, &numerator);
+            if (status == PHY_OK) {
+                status = hyperbolic
+                             ? trig_call(cas, denominator_head, argument,
+                                         &denominator)
+                             : reduce_angle(cas, denominator_head, argument,
+                                            &denominator);
+            }
+            if (status == PHY_OK) {
+                status = phy_cas_pow_node(cas, denominator, cas->minus_one,
+                                          &inverse);
+            }
+            if (status != PHY_OK) {
                 goto done;
             }
-            const phy_ir_ref quotient[2] = {sine, inverse};
+            const phy_ir_ref quotient[2] = {numerator, inverse};
             status = phy_cas_mul_node(cas, quotient, 2u, &result);
         } else {
             status = reduce_angle(cas, head, argument, &result);
@@ -539,12 +566,12 @@ static phy_status reduce_cos_powers(phy_cas *cas, phy_ir_ref expr,
     if (kind == PHY_IR_POW) {
         const phy_ir_ref base = phy_ir_child(ir, expr, 0u);
         int64_t exponent;
-        if (phy_cas_known_function(cas, base) == cas->fn_cos &&
+        if (phy_cas_function_of(cas, base) == PHY_CAS_FN_COS &&
             phy_ir_integer_value(ir, phy_ir_child(ir, expr, 1u), &exponent) &&
             exponent >= 2) {
             phy_ir_ref sine, square, pythagorean, core;
-            status = trig_call(cas, cas->fn_sin, phy_ir_child(ir, base, 0u),
-                               &sine);
+            status = trig_call(cas, cas->functions[PHY_CAS_FN_SIN],
+                               phy_ir_child(ir, base, 0u), &sine);
             if (status != PHY_OK) {
                 return status;
             }

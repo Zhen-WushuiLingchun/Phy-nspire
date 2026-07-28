@@ -46,6 +46,7 @@ SOURCES=(
     src/cas/diff.c
     src/cas/integrate.c
     src/cas/normal.c
+    src/cas/reduce.c
     src/ir/ir.c
     src/ir/order.c
     src/ir/text.c

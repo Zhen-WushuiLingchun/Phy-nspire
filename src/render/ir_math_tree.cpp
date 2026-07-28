@@ -69,7 +69,7 @@ std::string_view display_symbol(std::string_view name)
         {"Gamma", u8"Γ"},   {"Iota", u8"Ι"},    {"Kappa", u8"Κ"},
         {"Lambda", u8"Λ"},  {"Mu", u8"Μ"},      {"Nu", u8"Ν"},
         {"Omega", u8"Ω"},   {"Omicron", u8"Ο"}, {"Phi", u8"Φ"},
-        {"Pi", u8"Π"},      {"Psi", u8"Ψ"},     {"Rho", u8"Ρ"},
+        {"Pi", u8"π"},      {"Psi", u8"Ψ"},     {"Rho", u8"Ρ"},
         {"Sigma", u8"Σ"},   {"Tau", u8"Τ"},     {"Theta", u8"Θ"},
         {"Upsilon", u8"Υ"}, {"Xi", u8"Ξ"},      {"Zeta", u8"Ζ"},
         {"alpha", u8"α"},   {"beta", u8"β"},    {"chi", u8"χ"},
@@ -88,6 +88,35 @@ std::string_view display_symbol(std::string_view name)
         });
     return found != std::end(kMappings) && found->name == name ? found->glyph
                                                                : name;
+}
+
+std::string_view display_function(std::string_view name)
+{
+    if (name == "asin") {
+        return "arcsin";
+    }
+    if (name == "acos") {
+        return "arccos";
+    }
+    if (name == "atan") {
+        return "arctan";
+    }
+    if (name == "asinh") {
+        return "arcsinh";
+    }
+    if (name == "acosh") {
+        return "arccosh";
+    }
+    if (name == "atanh") {
+        return "arctanh";
+    }
+    if (name == "gammafn") {
+        return "Gamma";
+    }
+    if (name == "loggamma") {
+        return "LogGamma";
+    }
+    return name;
 }
 
 class Builder {
@@ -301,6 +330,19 @@ private:
             result = styled(result, MathVariant::Roman);
         }
         return result;
+    }
+
+    MathNodeId function_head(phy_ir_ref expression)
+    {
+        const char *raw =
+            phy_ir_symbol_name(context_, phy_ir_head(context_, expression));
+        if (raw == nullptr) {
+            fail("typed IR contains an invalid function head");
+            return kInvalidMathNode;
+        }
+        return styled(
+            text(MathNodeKind::Symbol, display_function(raw)),
+            MathVariant::Roman);
     }
 
     /*
@@ -607,7 +649,7 @@ private:
             return row(items);
         }
         case PHY_IR_FUNCTION: {
-            MathNodeId head = head_symbol(expression, true);
+            MathNodeId head = function_head(expression);
             std::vector<std::size_t> positions;
             const std::size_t count =
                 phy_ir_child_count(context_, expression);

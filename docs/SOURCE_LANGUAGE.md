@@ -119,6 +119,7 @@ semantics implicitly.
 | `FullSimplify` | normal form, then the decision-grade trig-basis rational form; the shorter of the two is returned, so `Sin[x]^2+Cos[x]^2` reaches `1` while `1/Tan[q]` keeps its spelling. On a typed object it passes through like `Simplify` |
 | `Expand` | bounded distributive expansion |
 | `Together` | native rational form reconstructed as one quotient |
+| `Cancel` | exact known-factor and bounded univariate Q[x] GCD cancellation |
 | `Numerator`, `Denominator` | selected part of native rational form |
 | `D[expr,x,...]` | repeated exact symbolic differentiation |
 | `Integrate[expr,x,...]` | exact symbolic antiderivative on the documented linear-inner class; otherwise an explicit unevaluated `Integrate` |
@@ -127,7 +128,7 @@ Every command except assignment, a bare expression, and the two simplifies is
 scalar algebra, so `Expand[M]` on a manifold is `PHY_ERR_TYPE` rather than a
 silently ignored request.
 
-Registered but not implemented commands include `Cancel`, `Factor`, `Apart`,
+Registered but not implemented commands include `Factor`, `Apart`,
 `Limit`, `Series`, `Solve`, `NSolve`, `Reduce`, `Refine`, and the
 `Trig*` family. They return `PHY_ERR_UNSUPPORTED`. They are never accepted as
 opaque ordinary functions, because that would present a no-op as successful

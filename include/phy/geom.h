@@ -393,9 +393,10 @@ phy_status phy_form_wedge(phy_cas *cas, const phy_form *left,
  *
  * WHERE d(d alpha) = 0 HOLDS, AND WHERE IT DOES NOT. It holds exactly where
  * the CAS can take the mixed partials: components built from exact numbers,
- * coordinates, +, *, integer powers, and sin/cos/tan/exp/log. There d^2 alpha
- * is componentwise zero on the nose, and the test suite checks it at every
- * degree from n = 2 to n = 4.
+ * coordinates, +, *, integer powers, and any scalar function with an exact
+ * derivative rule in include/phy/cas.h. There d^2 alpha is componentwise zero
+ * on the nose, and the test suite checks it at every degree from n = 2 to
+ * n = 4.
  *
  * It does NOT hold for a component the CAS defers on — an unknown function, a
  * tensor, an operator. phy_cas_diff appends variables to a PHY_IR_DERIVATIVE

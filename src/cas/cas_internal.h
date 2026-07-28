@@ -86,6 +86,33 @@ typedef struct {
     size_t capacity;
 } phy_cas_pool;
 
+/*
+ * Scalar functions whose semantics the CAS can see. Reader aliases are
+ * normalized before they reach this registry.
+ */
+typedef enum {
+    PHY_CAS_FN_INVALID = 0,
+    PHY_CAS_FN_SIN,
+    PHY_CAS_FN_COS,
+    PHY_CAS_FN_TAN,
+    PHY_CAS_FN_EXP,
+    PHY_CAS_FN_LOG,
+    PHY_CAS_FN_ASIN,
+    PHY_CAS_FN_ACOS,
+    PHY_CAS_FN_ATAN,
+    PHY_CAS_FN_SINH,
+    PHY_CAS_FN_COSH,
+    PHY_CAS_FN_TANH,
+    PHY_CAS_FN_ASINH,
+    PHY_CAS_FN_ACOSH,
+    PHY_CAS_FN_ATANH,
+    PHY_CAS_FN_GAMMA,
+    PHY_CAS_FN_LOGGAMMA,
+    PHY_CAS_FN_ERF,
+    PHY_CAS_FN_ERFC,
+    PHY_CAS_FN_COUNT
+} phy_cas_function;
+
 struct phy_cas {
     phy_ir_context *ir;
     phy_cas_limits limits;
@@ -101,16 +128,16 @@ struct phy_cas {
     phy_cas_pool scratch; /* phy_ir_ref, LIFO arena; count is the top */
 
     /* Heads of the functions this layer knows, interned at creation. */
-    phy_ir_symbol fn_sin;
-    phy_ir_symbol fn_cos;
-    phy_ir_symbol fn_tan;
-    phy_ir_symbol fn_exp;
-    phy_ir_symbol fn_log;
+    phy_ir_symbol functions[PHY_CAS_FN_COUNT];
     phy_ir_symbol fn_integrate;
 
     phy_ir_ref zero;
     phy_ir_ref one;
     phy_ir_ref minus_one;
+    phy_ir_ref constant_pi;
+    phy_ir_ref constant_e;
+    phy_ir_ref constant_i;
+    phy_ir_ref constant_euler_gamma;
 
     uint32_t subst_epoch;
 };
@@ -180,6 +207,8 @@ bool phy_cas_known_nonzero(const phy_cas *cas, phy_ir_ref ref);
    application of exactly one argument. */
 phy_ir_symbol phy_cas_known_function(const phy_cas *cas, phy_ir_ref ref);
 bool phy_cas_is_known_head(const phy_cas *cas, phy_ir_symbol head);
+phy_cas_function phy_cas_function_id(const phy_cas *cas, phy_ir_symbol head);
+phy_cas_function phy_cas_function_of(const phy_cas *cas, phy_ir_ref ref);
 
 /* True for kinds this scalar layer treats as opaque: tensors, operators,
    noncommutative products, wedges, unevaluated derivatives, indices. */

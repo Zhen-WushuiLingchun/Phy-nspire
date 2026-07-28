@@ -2,6 +2,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
 
 #include "phy/phy.h"
 
@@ -14,6 +15,35 @@ typedef struct {
     phy_math_box box;
     bool valid;
 } measured;
+
+static const char *function_display_name(const char *name)
+{
+    if (strcmp(name, "asin") == 0) {
+        return "arcsin";
+    }
+    if (strcmp(name, "acos") == 0) {
+        return "arccos";
+    }
+    if (strcmp(name, "atan") == 0) {
+        return "arctan";
+    }
+    if (strcmp(name, "asinh") == 0) {
+        return "arcsinh";
+    }
+    if (strcmp(name, "acosh") == 0) {
+        return "arccosh";
+    }
+    if (strcmp(name, "atanh") == 0) {
+        return "arctanh";
+    }
+    if (strcmp(name, "gammafn") == 0) {
+        return "Gamma";
+    }
+    if (strcmp(name, "loggamma") == 0) {
+        return "LogGamma";
+    }
+    return name;
+}
 
 static int bounded_add(int left, int right)
 {
@@ -176,6 +206,8 @@ static measured measure_function(const phy_ir_context *ir,
     const char *name = phy_ir_symbol_name(ir, phy_ir_head(ir, expression));
     if (name == NULL) {
         name = "?";
+    } else {
+        name = function_display_name(name);
     }
     int width = bounded_add(phy_gfx_text_width(name), phy_gfx_text_width("("));
     int baseline = PHY_GLYPH_HEIGHT - 1;
@@ -399,6 +431,8 @@ static void draw_function(const phy_surface *surface, int x, int y,
     const char *name = phy_ir_symbol_name(ir, phy_ir_head(ir, expression));
     if (name == NULL) {
         name = "?";
+    } else {
+        name = function_display_name(name);
     }
     const int text_y =
         y + parent.box.baseline - (PHY_GLYPH_HEIGHT - 1);

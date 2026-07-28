@@ -45,6 +45,12 @@ static const tour_cell kTour[] = {
     {TOUR_INPUT, "Denominator[(x+y)/(x*y)]", NULL},
     {TOUR_INPUT, "D[Sin[x]^2+Tan[x]+Exp[x]+Log[x],x]", NULL},
     {TOUR_INPUT, "Integrate[3*x^2+Cos[x]+Exp[x],x]", NULL},
+    {TOUR_INPUT, "Sin[Pi/6]+Cos[Pi/3]+Tan[Pi/4]", NULL},
+    {TOUR_INPUT, "Sqrt[72]", NULL},
+    {TOUR_INPUT, "D[ArcTan[x]+Sinh[x]+Erf[x],x]", NULL},
+    {TOUR_INPUT, "Integrate[1/(1+x^2)+Exp[-x^2],x]", NULL},
+    {TOUR_INPUT, "Cancel[(x^2-1)/(x^2-2*x+1)]", NULL},
+    {TOUR_INPUT, "Gamma[6]+LogGamma[2]+Erfc[0]", NULL},
     {TOUR_INPUT, "EquivalentQ[Sin[x]^2+Cos[x]^2,1]", NULL},
 
     {TOUR_MARKDOWN, "Manifolds and component tensors",
@@ -405,8 +411,8 @@ int main(int argc, char **argv)
 
     /*
      * The distributable document intentionally contains source cells only.
-     * Persisting all 84 cached input IR trees and all 84 output trees makes
-     * opening the 175-card validation document rebuild the entire physics
+     * Persisting all 101 cached input IR trees and all 101 output trees makes
+     * opening the 211-card validation document rebuild the entire physics
      * session at once. The cached artifact round-trips on the host, but the
      * byte-identical file was reported as corrupt by a CX II at open time. The
      * eager IR/heap reconstruction is the platform-specific part of that path.

@@ -1,0 +1,125 @@
+# CAS foundation stabilization
+
+This is the dependency-ordered plan for turning the existing narrow scalar
+kernel into a dependable base for tensor calculus, GR, and QFT. New physics
+domains are frozen while the foundation milestones below are active.
+
+The goal is not to imitate every Mathematica command. It is to provide an exact,
+typed, interruptible core whose supported class is large enough that upper
+layers do not fail on routine algebra.
+
+## Non-negotiable contracts
+
+1. **Exact before approximate.** A rewrite either proves an exact result,
+   returns an unevaluated typed expression, or returns a typed resource/domain
+   error. It never samples floating-point values to guess an identity.
+2. **One semantic path.** Reader syntax, evaluator dispatch, the public CAS API,
+   and notebook display use the same typed IR. A command is not implemented
+   until all four agree.
+3. **Canonical internal names.** Mathematica-style spelling is accepted by the
+   reader, while scalar function heads have one lowercase internal spelling.
+   Mathematical constants have one protected spelling (`Pi`, `E`, `I`,
+   `EulerGamma`).
+4. **Principal branches, conservative rewrites.** Powers, roots, logarithms,
+   inverse trigonometric functions, and inverse hyperbolic functions use their
+   principal branches. Rewrites that need positivity, reality, or nonzero facts
+   require corresponding assumptions; otherwise the expression stays explicit.
+5. **Bounded algorithms.** Every walk charges the CAS step budget, every
+   expansion charges the IR/CAS memory budgets, and potentially expensive
+   integer or polynomial algorithms have documented degree/coefficient limits.
+6. **Failure is transactional.** Resource exhaustion may invalidate one cell,
+   but must not leave the notebook, memo cache, scratch arena, or bindings in a
+   state that changes later mathematics.
+
+## Milestone dependency order
+
+### F0 — capability contract and regression matrix
+
+- Freeze this document and a machine-readable/compiled test matrix.
+- Pin positive and negative cases for every claimed command.
+- Keep registered-but-unimplemented commands returning
+  `PHY_ERR_UNSUPPORTED`; an inert head is not an implementation.
+
+### F1 — exact elementary-function layer
+
+Status: implemented in the current branch; physical-device timing/heap
+acceptance remains required.
+
+- Protected constants and exact elementary special values.
+- Square-root/radical normalization inside the existing power IR.
+- Inverse trigonometric and hyperbolic function heads.
+- Chain-rule derivatives and the corresponding bounded elementary
+  antiderivative rules.
+- Source aliases, 2D display, palette entries, and notebook end-to-end tests.
+
+This milestone deliberately does **not** introduce complex-number rewrites.
+For example, `Sqrt[-1]` remains explicit until `I` has Gaussian-rational
+semantics.
+
+### F2 — polynomial and rational algebra
+
+Status: the bounded univariate `Q[x]` GCD and reader-facing `Cancel` are
+implemented. Multivariate GCD, square-free decomposition, `Factor`, and `Apart`
+remain open.
+
+- A bounded polynomial view with explicit variable order.
+- Content/primitive-part extraction and exact coefficient division.
+- Univariate polynomial GCD, then multivariate GCD by a separately validated
+  algorithm.
+- `Cancel`, robust `Together`, square-free decomposition, `Factor`, and
+  `Apart`, in that order.
+
+Polynomial algorithms initially use checked `int64` rationals and return
+`PHY_ERR_OVERFLOW` outside that coefficient domain. They must be isolated
+behind coefficient operations so F3 can replace the representation without
+rewriting the algorithms.
+
+### F3 — exact number domains
+
+- Native bounded-memory arbitrary-precision integers and rationals, or a
+  measured compact Giac boundary if that is smaller and faster on the CX II.
+- Gaussian rationals and exact `I`, `Conjugate`, `Re`, `Im`, and `Abs`.
+- Algebraic-number/radical representation sufficient for safe root
+  comparisons and denominator rationalization.
+
+No choice between native big integers and Giac is accepted without an ARM size,
+heap, timing, serialization, and licence report.
+
+### F4 — series, limits, and equations
+
+- Truncated formal power-series arithmetic before reader-facing `Series`.
+- Limits driven by series/rational order, with explicit one-sided direction.
+- Polynomial `Solve` before transcendental solving; solutions carry conditions
+  rather than silently dropping branches.
+
+### F5 — special-function kernel
+
+Status: first bounded pack implemented (`Gamma`, `LogGamma`, `Erf`, `Erfc`);
+Bessel families, polylogarithms, recurrence metadata, and a numerical layer
+remain open.
+
+- `Gamma`, factorial/rising factorial, `Erf`/`Erfc`, Bessel families, and
+  polylogarithms are added by a descriptor table.
+- Each function starts with exact special values, derivatives, symmetries,
+  recurrences, and domain metadata. Numerical evaluation is a later,
+  separately bounded interval/ball layer.
+- An unsupported transform or integral remains explicit; table lookup never
+  masquerades as a general integration algorithm.
+
+## Acceptance matrix
+
+Every milestone must supply all of the following evidence:
+
+| Boundary | Required evidence |
+| --- | --- |
+| IR | stable serialize/read round trip and validator pass |
+| scalar CAS | exact normal-form tests, negative controls, budget failures |
+| calculus | differentiate every new antiderivative back to the input |
+| source/evaluator | Mathematica-style input reaches the same CAS result |
+| display | typed result renders without reparsing source text |
+| notebook | save/open/replay and IR-saturation recovery |
+| host | strict Windows suite and WSL ASan/UBSan/leak suite |
+| device | ARM link/size/symbol report, then explicit CX II timing/heap run |
+
+Host and byte-identical transfer evidence do not count as physical-device
+runtime acceptance.

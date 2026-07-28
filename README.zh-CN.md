@@ -34,12 +34,12 @@ Phy-nspire 是运行在 TI-Nspire CX II CAS 计算器上的**原生符号物理�
 
 ## 屏幕上能做什么
 
-打开 `examples/phy-nspire-cas-tour.tns`(104 个源 cell、95 个已验证输入,
+打开 `examples/phy-nspire-cas-tour.tns`(110 个源 cell、101 个已验证输入,
 随版本持续再生成)可以完整走一遍当前能力:
 
 | 领域 | 可执行的输入 |
 | --- | --- |
-| 标量 CAS | 精确表达式、赋值、`Simplify`、`FullSimplify`、`Expand`、`Together`、`Numerator`、`Denominator`、`D`、`Integrate` |
+| 标量 CAS | 精确表达式、赋值、`Simplify`、`FullSimplify`、`Expand`、`Together`、`Cancel`、`Numerator`、`Denominator`、`D`、`Integrate` |
 | 张量/流形 | `Manifold`、`ComponentTensor`(0–4 阶、全 Up/Down 价态)、`Metric`、`VectorField`、`Component`、`Rank`、`Dimension` |
 | 外微分几何 | `DifferentialForm`、`Wedge`、`ExteriorD`、`InteriorProduct`、`LieDerivative`(Cartan 公式)、`HodgeStar`、`Volume`、`Degree` |
 | 李代数 / Yang–Mills | `LieGroup[SU2]`、`LieAlgebra`、`Generator`、`LieBracket`、`StructureConstant`、`Killing`、`GaugeConnection`、`FieldStrength`、`CovariantD`、`GaugeVariation`、`Bianchi`、`YangMillsLagrangian` |
@@ -124,13 +124,18 @@ Mathematica / Maple / SymPy / TI 自带 CAS 这一档的通用系统。这份清
 ### 已经做到的
 
 - 精确有理算术与规范正规形(收集、折叠、幂规则、奇偶性);
-- `Together` 即 LCD 有理归约,能消去可见公因子:
-  `Together[(x²−1)/(x−1)] → 1+x`;
+- `Together` / `Cancel` 先做 LCD 与可见因子精确除法,再用有界
+  `Q[x]` 欧几里得 GCD(最高 48 次幂)消去隐藏的一元多项式公因子:
+  `(x²−1)/(x²−2x+1) → (x+1)/(x−1)`;
 - `FullSimplify` 接入判零级三角基:`cos²x − sin²x − cos2x → 0`、
   `tan x·cos x − sin x → 0`、`sin²+cos² → 1`(后者在普通正规形中即成立);
-- `D` 覆盖多项式、sin/cos/tan/exp/log 及其复合(`D[x^x,x]` 正确);
-- `Integrate` 覆盖文档化的线性内层类(含 `∫log x`、`∫1/x`),
-  类外诚实地返回未求值的 `Integrate`;
+- `D` 覆盖多项式、初等/反三角/双曲函数及
+  `Gamma`、`LogGamma`、`Erf`、`Erfc` 的首批精确规则;
+- `Integrate` 除线性内层类外,已覆盖
+  `1/(1±u²)`、`1/√(1±u²)`、高斯 `exp(-u²)` 与 `Erf/Erfc`;
+  每条新规则均以“再求导得到原式”验收,类外返回未求值的 `Integrate`;
+- `Pi/E/I/EulerGamma` 为受保护常量;支持常用三角特殊角、
+  `Sqrt[72] → 6√2`、`Gamma[n]`、`Gamma[1/2]` 与误差函数零值;
 - 判零/等价决策:多生成元有理函数域上的精确判定,带资源预算与
   增量降级策略;
 - 假设系统雏形:非零与符号假设参与判零(`PHY_ERR_ASSUMPTION` 路径);
@@ -140,23 +145,23 @@ Mathematica / Maple / SymPy / TI 自带 CAS 这一档的通用系统。这份清
 
 | 能力 | 现状 | 主流 CAS 的做法 |
 | --- | --- | --- |
-| 多项式因式分解 / GCD | `Factor`、`Cancel`、`Apart` 注册但返回 UNSUPPORTED;消去仅限"已知因子"结构匹配 | 模素数 Zassenhaus/LLL 因式分解、子结果式 GCD、部分分式 |
+| 多项式因式分解 / GCD | `Cancel` 已有最高 48 次幂的 `Q[x]` GCD;多元 GCD、`Factor`、`Apart` 尚未实现 | 模素数 Zassenhaus/LLL 因式分解、子结果式 GCD、部分分式 |
 | 方程求解 | `Solve` 未实现 | 多项式求根、有理化、Gröbner 基、超越方程分支 |
 | 极限与级数 | `Limit`、`Series` 未实现 | Gruntz 算法、渐近级数环 |
-| 积分覆盖面 | `∫x·eˣ`、`∫1/(1+x²)` 等留在类外 | Risch 结构定理、Meijer-G 表驱动 |
-| 根式化简 | `Sqrt[8]` 不化为 `2√2`;`Sqrt[x²]` 保守保留(缺 `Abs`) | 根式正规形 + 分母有理化 + 假设驱动的 `|x|` |
-| 特殊值/常数表 | `Sin[Pi/6]` 不折叠;`Pi` 只是符号 | π/e 常数语义 + 三角特殊角表 |
-| 反三角/双曲函数 | 解析为不透明函数;`D[ArcTan[x],x]` 留未求值导数 | 完整导数/恒等式/特殊值表 |
+| 积分覆盖面 | 已覆盖反三角核、双曲线性核和高斯/误差函数;分部积分、一般有理函数/Risch 尚缺 | Risch 结构定理、Meijer-G 表驱动 |
+| 根式化简 | 小型正有理根式可抽平方因子;`Sqrt[x²]` 仍保守保留(缺 `Abs`) | 根式正规形 + 分母有理化 + 假设驱动的 `|x|` |
+| 特殊值/常数表 | 常量和常见角已实现,尚无大规模恒等式/解析延拓表 | π/e 常数语义 + 大型特殊值表 |
+| 反三角/双曲函数 | 导数、奇偶性、零值与四个积分核已实现;完整恒等式族尚缺 | 完整导数/恒等式/特殊值表 |
 | 对称参数三角恒等式 | `sin(x+y)` 不展开(倍角 `sin(kx)` 已覆盖) | 完整 TrigExpand/TrigReduce 重写族 |
 | 复数 | `I` 只是符号,`I² ≠ −1`;无 `Conjugate/Re/Im/Abs` | 高斯有理域 + 复域假设 |
 | 数值层 | 完全没有浮点:`N[]` 不求值,小数字面量精确化为有理数 | 任意精度球算术 / 机器浮点双轨 |
 | 大整数 | int64 之外保持符号(精确但不可折叠) | GMP 任意精度 |
 | 模式匹配语言 | 仅结构替换,无 `x_` 通配/条件规则 | 完整规则重写语言 |
-| 特殊函数 | 无 Γ/erf/Bessel/多对数 | 大规模特殊函数库 |
+| 特殊函数 | 首批 Γ/LogGamma/erf/erfc 已实现;Bessel/多对数与数值算法尚缺 | 大规模特殊函数库 |
 | Kerr 级表达式膨胀 | 稠密 Riemann 展开超设备预算一个量级(实测 190 万节点/144 MiB),Kerr 曲率暂缓 | 不透明标量(Σ、Δ)+ 边关系的定向归约;见 `docs/references/GENERAL_RELATIVITY.md` |
 
 设计立场需要说明:**没有浮点是刻意的**(精确性是整个判零体系的地基),
-但一个"求个数值看看"的受控数值层(区间或定点)在路线图上;`Factor` 一族
+但一个"求个数值看看"的受控数值层(区间或定点)在路线图上;`Factor/Apart` 一族
 返回 UNSUPPORTED 而不是伪装成不透明函数,也是刻意的——宁可诚实失败,
 不做看起来成功的空操作。
 
@@ -185,6 +190,7 @@ Mathematica / Maple / SymPy / TI 自带 CAS 这一档的通用系统。这份清
 | --- | --- |
 | `docs/ARCHITECTURE.md` | 分层与依赖规则 |
 | `docs/CAS.md` | 标量 CAS:正规形与判零的完整设计 |
+| `docs/CAS_FOUNDATION.md` | CAS 地基加固:依赖顺序、语义合同与验收矩阵 |
 | `docs/EVALUATOR.md` | 类型化求值器与全部读者语法 |
 | `docs/SOURCE_LANGUAGE.md` | 输入语言与命令表 |
 | `docs/NOTEBOOK.md` | 笔记本 UI、文档格式、恢复机制 |

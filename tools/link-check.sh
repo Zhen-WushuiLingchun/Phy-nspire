@@ -56,6 +56,7 @@ CAS_SOURCES=(
     src/cas/diff.c
     src/cas/integrate.c
     src/cas/normal.c
+    src/cas/reduce.c
 )
 
 # Everything the evaluator dispatches onto. It is the first layer whose probe

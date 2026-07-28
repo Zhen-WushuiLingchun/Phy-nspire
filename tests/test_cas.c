@@ -334,6 +334,15 @@ static void test_power_rules(void)
     PHY_CHECK_EQ_STR(normal(&f, "(^ (^ x 2) (rat 1 2))"),
                      "(^ (^ x 2) (rat 1 2))");
 
+    /* Bounded exact radical extraction, without the unsound sqrt(x^2) -> x. */
+    PHY_CHECK_EQ_STR(normal(&f, "(^ 4 (rat 1 2))"), "2");
+    PHY_CHECK_EQ_STR(normal(&f, "(^ 8 (rat 1 2))"),
+                     "(* 2 (^ 2 (rat 1 2)))");
+    PHY_CHECK_EQ_STR(normal(&f, "(^ (rat 8 9) (rat 1 2))"),
+                     "(* (rat 2 3) (^ 2 (rat 1 2)))");
+    PHY_CHECK_EQ_STR(normal(&f, "(^ -4 (rat 1 2))"),
+                     "(^ -4 (rat 1 2))");
+
     close_fixture(&f);
 }
 
@@ -347,6 +356,46 @@ static void test_known_functions(void)
     PHY_CHECK_EQ_STR(normal(&f, "(fn exp 0)"), "1");
     PHY_CHECK_EQ_STR(normal(&f, "(fn log 1)"), "0");
     PHY_CHECK_EQ_STR(normal(&f, "(fn exp (fn log x))"), "x");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn exp 1)"), "E");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn log E)"), "1");
+
+    /* Exact values are limited to angles the table proves. */
+    PHY_CHECK_EQ_STR(normal(&f, "(fn sin (* (rat 1 6) Pi))"),
+                     "(rat 1 2)");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn cos (* (rat 1 3) Pi))"),
+                     "(rat 1 2)");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn tan (* (rat 1 4) Pi))"), "1");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn sin (* (rat 7 6) Pi))"),
+                     "(rat -1 2)");
+    PHY_CHECK_EQ_INT(
+        simplify_status(&f, "(fn tan (* (rat 1 2) Pi))"),
+        PHY_ERR_DOMAIN);
+    PHY_CHECK_EQ_STR(normal(&f, "(fn sin (* (rat 1 12) Pi))"),
+                     "(fn sin (* (rat 1 12) Pi))");
+
+    PHY_CHECK_EQ_STR(normal(&f, "(fn sinh 0)"), "0");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn cosh 0)"), "1");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn tanh (* -1 x))"),
+                     "(* -1 (fn tanh x))");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn asin 0)"), "0");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn acos 0)"),
+                     "(* (rat 1 2) Pi)");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn acosh 1)"), "0");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn gammafn 1)"), "1");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn gammafn 6)"), "120");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn gammafn (rat 1 2))"),
+                     "(^ Pi (rat 1 2))");
+    PHY_CHECK_EQ_INT(simplify_status(&f, "(fn gammafn 0)"),
+                     PHY_ERR_DOMAIN);
+    PHY_CHECK_EQ_STR(normal(&f, "(fn loggamma 2)"), "0");
+    PHY_CHECK_EQ_INT(simplify_status(&f, "(fn loggamma 0)"),
+                     PHY_ERR_DOMAIN);
+    PHY_CHECK_EQ_STR(normal(&f, "(fn erf 0)"), "0");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn erfc 0)"), "1");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn erf (* -1 x))"),
+                     "(* -1 (fn erf x))");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn erfc (* -1 x))"),
+                     "(+ 2 (* -1 (fn erfc x)))");
 
     /* Parity, which is what lets sin(-u) + sin(u) collect. */
     PHY_CHECK_EQ_STR(normal(&f, "(fn sin (* -1 x))"), "(* -1 (fn sin x))");
@@ -535,6 +584,33 @@ static void test_differentiation(void)
     PHY_CHECK_EQ_STR(derivative(&f, "(fn log x)", "x"), "(^ x -1)");
     PHY_CHECK_EQ_STR(derivative(&f, "(fn sin (^ x 2))", "x"),
                      "(* 2 x (fn cos (^ x 2)))");
+    PHY_CHECK_EQ_STR(derivative(&f, "(fn sinh x)", "x"), "(fn cosh x)");
+    PHY_CHECK_EQ_STR(derivative(&f, "(fn cosh x)", "x"), "(fn sinh x)");
+    PHY_CHECK_EQ_STR(derivative(&f, "(fn tanh x)", "x"),
+                     "(^ (fn cosh x) -2)");
+    PHY_CHECK_EQ_STR(derivative(&f, "(fn asin x)", "x"),
+                     "(^ (+ 1 (* -1 (^ x 2))) (rat -1 2))");
+    PHY_CHECK_EQ_STR(derivative(&f, "(fn acos x)", "x"),
+                     "(* -1 (^ (+ 1 (* -1 (^ x 2))) (rat -1 2)))");
+    PHY_CHECK_EQ_STR(derivative(&f, "(fn atan x)", "x"),
+                     "(^ (+ 1 (^ x 2)) -1)");
+    PHY_CHECK_EQ_STR(derivative(&f, "(fn asinh x)", "x"),
+                     "(^ (+ 1 (^ x 2)) (rat -1 2))");
+    PHY_CHECK_EQ_STR(derivative(&f, "(fn acosh x)", "x"),
+                     "(* (^ (+ -1 x) (rat -1 2)) "
+                     "(^ (+ 1 x) (rat -1 2)))");
+    PHY_CHECK_EQ_STR(derivative(&f, "(fn atanh x)", "x"),
+                     "(^ (+ 1 (* -1 (^ x 2))) -1)");
+    PHY_CHECK_EQ_STR(derivative(&f, "(fn gammafn x)", "x"),
+                     "(* (fn digamma x) (fn gammafn x))");
+    PHY_CHECK_EQ_STR(derivative(&f, "(fn loggamma x)", "x"),
+                     "(fn digamma x)");
+    PHY_CHECK_EQ_STR(
+        derivative(&f, "(fn erf x)", "x"),
+        "(* 2 (^ Pi (rat -1 2)) (fn exp (* -1 (^ x 2))))");
+    PHY_CHECK_EQ_STR(
+        derivative(&f, "(fn erfc x)", "x"),
+        "(* -2 (^ Pi (rat -1 2)) (fn exp (* -1 (^ x 2))))");
 
     /* x^x needs the general rule, which is where the logarithm appears. The
        sum sorts before the power: canonical order is by kind rank, not by the
@@ -607,6 +683,38 @@ static void test_exact_symbolic_integration(void)
         "(* (rat 1 3) (fn exp (+ 1 (* 3 x))))");
     PHY_CHECK_EQ_STR(antiderivative(&f, "(fn log x)", "x"),
                      "(+ (* -1 x) (* x (fn log x)))");
+    PHY_CHECK_EQ_STR(antiderivative(&f, "(fn sinh (* 2 x))", "x"),
+                     "(* (rat 1 2) (fn cosh (* 2 x)))");
+    PHY_CHECK_EQ_STR(antiderivative(&f, "(fn cosh (* 3 x))", "x"),
+                     "(* (rat 1 3) (fn sinh (* 3 x)))");
+    PHY_CHECK_EQ_STR(antiderivative(&f, "(fn tanh x)", "x"),
+                     "(fn log (fn cosh x))");
+    PHY_CHECK_EQ_STR(antiderivative(&f, "(^ (+ 1 (^ x 2)) -1)", "x"),
+                     "(fn atan x)");
+    PHY_CHECK_EQ_STR(
+        antiderivative(&f, "(^ (+ 1 (* -1 (^ x 2))) -1)", "x"),
+        "(fn atanh x)");
+    PHY_CHECK_EQ_STR(
+        antiderivative(&f, "(^ (+ 1 (^ x 2)) (rat -1 2))", "x"),
+        "(fn asinh x)");
+    PHY_CHECK_EQ_STR(
+        antiderivative(
+            &f, "(^ (+ 1 (* -1 (^ x 2))) (rat -1 2))", "x"),
+        "(fn asin x)");
+    PHY_CHECK_EQ_STR(
+        antiderivative(&f, "(fn exp (* -1 (^ x 2)))", "x"),
+        "(* (rat 1 2) (^ Pi (rat 1 2)) (fn erf x))");
+    PHY_CHECK_EQ_STR(
+        antiderivative(&f, "(fn exp (* -4 (^ x 2)))", "x"),
+        "(* (rat 1 4) (^ Pi (rat 1 2)) (fn erf (* 2 x)))");
+    PHY_CHECK_EQ_STR(
+        antiderivative(&f, "(fn erf x)", "x"),
+        "(+ (* x (fn erf x)) "
+        "(* (^ Pi (rat -1 2)) (fn exp (* -1 (^ x 2)))))");
+    PHY_CHECK_EQ_STR(
+        antiderivative(&f, "(fn erfc x)", "x"),
+        "(+ (* x (fn erfc x)) (* -1 (^ Pi (rat -1 2)) "
+        "(fn exp (* -1 (^ x 2)))))");
     PHY_CHECK_EQ_STR(
         antiderivative(&f, "(+ 3 x (^ x 2))", "x"),
         "(+ (* (rat 1 3) (^ x 3)) (* (rat 1 2) (^ x 2)) (* 3 x))");
@@ -638,6 +746,17 @@ static void test_supported_integrals_differentiate_back(void)
         "(^ (+ 1 (* 4 x)) (rat 3 2))",
         "(^ (+ 2 (* 5 x)) -1)",
         "(fn log (+ 3 (* 2 x)))",
+        "(fn sinh (+ 1 (* 2 x)))",
+        "(fn cosh (* 3 x))",
+        "(fn tanh (* 2 x))",
+        "(^ (+ 1 (^ (* 3 x) 2)) -1)",
+        "(^ (+ 1 (* -1 (^ (* 2 x) 2))) -1)",
+        "(^ (+ 1 (^ (* 3 x) 2)) (rat -1 2))",
+        "(^ (+ 1 (* -1 (^ (* 2 x) 2))) (rat -1 2))",
+        "(fn exp (* -1 (^ x 2)))",
+        "(fn exp (* -4 (^ x 2)))",
+        "(fn erf (* 2 x))",
+        "(fn erfc (* 3 x))",
     };
     const phy_ir_ref x = parse(f.ir, "x");
     for (size_t index = 0u; index < sizeof cases / sizeof cases[0]; ++index) {
@@ -652,6 +771,13 @@ static void test_supported_integrals_differentiate_back(void)
         PHY_CHECK_EQ_INT(
             phy_cas_equivalent(f.cas, original, derivative_result, &decision),
             PHY_OK);
+        if (decision != PHY_CAS_ZERO) {
+            fprintf(stderr, "  integral derivative-back failed for %s\n",
+                    cases[index]);
+            fprintf(stderr, "    integral: %s\n", render(f.ir, integral));
+            fprintf(stderr, "    derivative: %s\n",
+                    render(f.ir, derivative_result));
+        }
         PHY_CHECK_EQ_INT(decision, PHY_CAS_ZERO);
     }
     close_fixture(&f);
@@ -799,6 +925,35 @@ static void test_reduce_cancels_known_factors(void)
             parse(f.ir, "(* (+ (^ x 2) -1) (^ (+ x -1) -1))"), &reduced),
         PHY_OK);
     PHY_CHECK_EQ_STR(render(f.ir, reduced), "(+ 1 x)");
+
+    /*
+     * The denominator is (x-1)^2 but arrives expanded. Its whole spelling
+     * does not divide x^2-1, so this cancellation requires a real Q[x] GCD.
+     */
+    PHY_CHECK_EQ_INT(
+        phy_cas_reduce(
+            f.cas,
+            parse(f.ir,
+                  "(* (+ (^ x 2) -1) "
+                  "(^ (+ 1 (* -2 x) (^ x 2)) -1))"),
+            &reduced),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(
+        render(f.ir, reduced),
+        "(* (+ 1 x) (^ (+ -1 x) -1))");
+
+    /* Rational coefficients use the same Euclidean algorithm over Q. */
+    PHY_CHECK_EQ_INT(
+        phy_cas_reduce(
+            f.cas,
+            parse(f.ir,
+                  "(* (+ (rat -1 4) (^ x 2)) "
+                  "(^ (+ (rat 1 4) (* -1 x) (^ x 2)) -1))"),
+            &reduced),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(
+        render(f.ir, reduced),
+        "(* (+ (rat 1 2) x) (^ (+ (rat -1 2) x) -1))");
 
     /* 1/x + 1/x^2 combines over x^2, not x^3. */
     PHY_CHECK_EQ_INT(

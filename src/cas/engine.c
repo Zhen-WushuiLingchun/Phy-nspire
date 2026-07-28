@@ -147,21 +147,55 @@ phy_cas *phy_cas_create(phy_ir_context *ir, const phy_cas_limits *limits)
      * comparison; building 0, 1 and -1 here keeps the rules from re-deriving
      * them on every fold.
      */
-    cas->fn_sin = phy_ir_intern(ir, "sin");
-    cas->fn_cos = phy_ir_intern(ir, "cos");
-    cas->fn_tan = phy_ir_intern(ir, "tan");
-    cas->fn_exp = phy_ir_intern(ir, "exp");
-    cas->fn_log = phy_ir_intern(ir, "log");
+    static const char *const kFunctionNames[PHY_CAS_FN_COUNT] = {
+        NULL,   "sin",  "cos",  "tan",   "exp",
+        "log",  "asin", "acos", "atan",  "sinh",
+        "cosh", "tanh", "asinh", "acosh", "atanh",
+        "gammafn", "loggamma", "erf", "erfc",
+    };
+    for (size_t index = 1u; index < PHY_CAS_FN_COUNT; ++index) {
+        cas->functions[index] = phy_ir_intern(ir, kFunctionNames[index]);
+    }
     cas->fn_integrate = phy_ir_intern(ir, "Integrate");
     cas->zero = phy_ir_integer(ir, 0);
     cas->one = phy_ir_integer(ir, 1);
     cas->minus_one = phy_ir_integer(ir, -1);
 
-    if (cas->fn_sin == PHY_IR_NO_SYMBOL || cas->fn_cos == PHY_IR_NO_SYMBOL ||
-        cas->fn_tan == PHY_IR_NO_SYMBOL || cas->fn_exp == PHY_IR_NO_SYMBOL ||
-        cas->fn_log == PHY_IR_NO_SYMBOL ||
-        cas->fn_integrate == PHY_IR_NO_SYMBOL || cas->zero == PHY_IR_NULL ||
-        cas->one == PHY_IR_NULL || cas->minus_one == PHY_IR_NULL) {
+    const phy_ir_symbol pi = phy_ir_intern(ir, "Pi");
+    const phy_ir_symbol e = phy_ir_intern(ir, "E");
+    const phy_ir_symbol imaginary = phy_ir_intern(ir, "I");
+    const phy_ir_symbol euler_gamma = phy_ir_intern(ir, "EulerGamma");
+    cas->constant_pi = phy_ir_symbol_ref(ir, pi);
+    cas->constant_e = phy_ir_symbol_ref(ir, e);
+    cas->constant_i = phy_ir_symbol_ref(ir, imaginary);
+    cas->constant_euler_gamma = phy_ir_symbol_ref(ir, euler_gamma);
+
+    const uint32_t positive_constant =
+        (uint32_t)PHY_IR_ASSUME_CONSTANT | (uint32_t)PHY_IR_ASSUME_REAL |
+        (uint32_t)PHY_IR_ASSUME_POSITIVE | (uint32_t)PHY_IR_ASSUME_NONZERO;
+    const uint32_t exact_constant =
+        (uint32_t)PHY_IR_ASSUME_CONSTANT | (uint32_t)PHY_IR_ASSUME_NONZERO;
+    const bool constants_ok =
+        pi != PHY_IR_NO_SYMBOL && e != PHY_IR_NO_SYMBOL &&
+        imaginary != PHY_IR_NO_SYMBOL &&
+        euler_gamma != PHY_IR_NO_SYMBOL &&
+        cas->constant_pi != PHY_IR_NULL && cas->constant_e != PHY_IR_NULL &&
+        cas->constant_i != PHY_IR_NULL &&
+        cas->constant_euler_gamma != PHY_IR_NULL &&
+        phy_ir_assume(ir, pi, positive_constant) == PHY_OK &&
+        phy_ir_assume(ir, e, positive_constant) == PHY_OK &&
+        phy_ir_assume(ir, imaginary, exact_constant) == PHY_OK &&
+        phy_ir_assume(ir, euler_gamma, positive_constant) == PHY_OK;
+
+    bool functions_ok = true;
+    for (size_t index = 1u; index < PHY_CAS_FN_COUNT; ++index) {
+        functions_ok =
+            functions_ok && cas->functions[index] != PHY_IR_NO_SYMBOL;
+    }
+    if (!functions_ok || !constants_ok ||
+        cas->fn_integrate == PHY_IR_NO_SYMBOL ||
+        cas->zero == PHY_IR_NULL || cas->one == PHY_IR_NULL ||
+        cas->minus_one == PHY_IR_NULL) {
         phy_cas_destroy(cas);
         return NULL;
     }
@@ -534,8 +568,29 @@ bool phy_cas_kind_is_opaque(phy_ir_kind kind)
 
 bool phy_cas_is_known_head(const phy_cas *cas, phy_ir_symbol head)
 {
-    return head == cas->fn_sin || head == cas->fn_cos || head == cas->fn_tan ||
-           head == cas->fn_exp || head == cas->fn_log;
+    return phy_cas_function_id(cas, head) != PHY_CAS_FN_INVALID;
+}
+
+phy_cas_function phy_cas_function_id(const phy_cas *cas, phy_ir_symbol head)
+{
+    if (cas == NULL || head == PHY_IR_NO_SYMBOL) {
+        return PHY_CAS_FN_INVALID;
+    }
+    for (size_t index = 1u; index < PHY_CAS_FN_COUNT; ++index) {
+        if (head == cas->functions[index]) {
+            return (phy_cas_function)index;
+        }
+    }
+    return PHY_CAS_FN_INVALID;
+}
+
+phy_cas_function phy_cas_function_of(const phy_cas *cas, phy_ir_ref ref)
+{
+    if (cas == NULL || phy_ir_kind_of(cas->ir, ref) != PHY_IR_FUNCTION ||
+        phy_ir_child_count(cas->ir, ref) != 1u) {
+        return PHY_CAS_FN_INVALID;
+    }
+    return phy_cas_function_id(cas, phy_ir_head(cas->ir, ref));
 }
 
 phy_ir_symbol phy_cas_known_function(const phy_cas *cas, phy_ir_ref ref)
@@ -545,7 +600,9 @@ phy_ir_symbol phy_cas_known_function(const phy_cas *cas, phy_ir_ref ref)
         return PHY_IR_NO_SYMBOL;
     }
     const phy_ir_symbol head = phy_ir_head(cas->ir, ref);
-    return phy_cas_is_known_head(cas, head) ? head : PHY_IR_NO_SYMBOL;
+    return phy_cas_function_id(cas, head) != PHY_CAS_FN_INVALID
+               ? head
+               : PHY_IR_NO_SYMBOL;
 }
 
 bool phy_cas_known_nonzero(const phy_cas *cas, phy_ir_ref ref)
@@ -584,7 +641,7 @@ bool phy_cas_known_nonzero(const phy_cas *cas, phy_ir_ref ref)
 
     case PHY_IR_FUNCTION:
         /* exp never vanishes. The other known functions do. */
-        return phy_cas_known_function(cas, ref) == cas->fn_exp;
+        return phy_cas_function_of(cas, ref) == PHY_CAS_FN_EXP;
 
     default:
         /* Sums included: deciding a sum is the zero decision, and answering it

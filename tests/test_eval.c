@@ -178,6 +178,42 @@ static void test_scalar_state_flows_between_cells(void)
     fixture_close(&f);
 }
 
+static void test_scalar_elementary_foundation(void)
+{
+    fixture f = fixture_open();
+
+    expect_scalar(&f, "Sin[Pi/6]", "(rat 1 2)");
+    expect_scalar(&f, "Cos[Pi/3]", "(rat 1 2)");
+    expect_scalar(&f, "Tan[Pi/4]", "1");
+    expect_scalar(&f, "Sqrt[8]", "(* 2 (^ 2 (rat 1 2)))");
+    expect_scalar(&f, "Log[E]", "1");
+    expect_scalar(&f, "Gamma[6]", "120");
+    expect_scalar(&f, "Gamma[1/2]", "(^ Pi (rat 1 2))");
+    expect_scalar(&f, "Erf[0] + Erfc[0]", "1");
+
+    expect_scalar(&f, "D[ArcTan[x],x]", "(^ (+ 1 (^ x 2)) -1)");
+    expect_scalar(
+        &f, "D[ArcSinh[x],x]",
+        "(^ (+ 1 (^ x 2)) (rat -1 2))");
+    expect_scalar(&f, "Integrate[1/(1+x^2),x]", "(fn atan x)");
+    expect_scalar(
+        &f, "Integrate[1/Sqrt[1-x^2],x]", "(fn asin x)");
+    expect_scalar(&f, "Integrate[Sinh[2x],x]",
+                  "(* (rat 1 2) (fn cosh (* 2 x)))");
+    expect_scalar(
+        &f, "Integrate[Exp[-x^2],x]",
+        "(* (rat 1 2) (^ Pi (rat 1 2)) (fn erf x))");
+    expect_scalar(
+        &f, "Cancel[(x^2-1)/(x^2-2x+1)]",
+        "(* (+ 1 x) (^ (+ -1 x) -1))");
+
+    expect_status(&f, "Tan[Pi/2]", PHY_ERR_DOMAIN);
+    expect_status(&f, "D[x,Pi]", PHY_ERR_TYPE);
+    expect_status(&f, "Integrate[x,E]", PHY_ERR_TYPE);
+
+    fixture_close(&f);
+}
+
 static void test_clear_and_reset(void)
 {
     fixture f = fixture_open();
@@ -1147,6 +1183,7 @@ int main(void)
         return 1;
     }
     PHY_TEST_CASE(test_scalar_state_flows_between_cells);
+    PHY_TEST_CASE(test_scalar_elementary_foundation);
     PHY_TEST_CASE(test_clear_and_reset);
     PHY_TEST_CASE(test_binding_rejects_reserved_and_captured_names);
     PHY_TEST_CASE(test_manifolds_and_forms);

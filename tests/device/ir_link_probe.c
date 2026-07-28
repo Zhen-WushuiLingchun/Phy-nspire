@@ -120,6 +120,11 @@ static void probe_serialization(phy_ir_context *ctx)
     sink((unsigned)offset);
 }
 
+static void probe_destroy_observer(const phy_ir_context *ctx)
+{
+    sink(ctx != 0 ? 1u : 0u);
+}
+
 int main(void)
 {
     phy_ir_context *ctx = phy_ir_context_create(0);
@@ -132,6 +137,8 @@ int main(void)
     probe_serialization(ctx);
     sink((unsigned)phy_ir_validate(ctx));
 
+    phy_ir_set_destroy_observer(probe_destroy_observer);
     phy_ir_context_destroy(ctx);
+    phy_ir_set_destroy_observer(0);
     return (g_phy_ir_probe_sink != 0u) ? 0 : 2;
 }

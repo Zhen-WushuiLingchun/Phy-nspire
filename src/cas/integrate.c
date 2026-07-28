@@ -140,6 +140,117 @@ static phy_status integrate_product(phy_cas *cas, phy_ir_ref expr,
     return status;
 }
 
+static uint64_t integer_square_root(uint64_t value)
+{
+    uint64_t root = 0u;
+    for (uint64_t low = 0u, high = 3037000500u; low <= high;) {
+        const uint64_t middle = low + (high - low) / 2u;
+        if (middle != 0u && middle > value / middle) {
+            high = middle - 1u;
+        } else {
+            root = middle;
+            low = middle + 1u;
+        }
+    }
+    return root;
+}
+
+static bool exact_positive_square_root(phy_cas_rat value,
+                                       phy_cas_rat *out_root)
+{
+    if (value.num <= 0 || value.den <= 0) {
+        return false;
+    }
+    const uint64_t numerator = (uint64_t)value.num;
+    const uint64_t denominator = (uint64_t)value.den;
+    const uint64_t numerator_root = integer_square_root(numerator);
+    const uint64_t denominator_root = integer_square_root(denominator);
+    if (numerator_root * numerator_root != numerator ||
+        denominator_root * denominator_root != denominator ||
+        numerator_root > (uint64_t)INT64_MAX ||
+        denominator_root > (uint64_t)INT64_MAX) {
+        return false;
+    }
+    *out_root = (phy_cas_rat){
+        (int64_t)numerator_root, (int64_t)denominator_root};
+    return true;
+}
+
+/*
+ * Recognize exactly 1 + u^2 or 1 - u^2 after scalar normalization.  This is
+ * intentionally structural: accepting a merely similar expression would turn
+ * a bounded integration rule into an unsound heuristic.
+ */
+static phy_status quadratic_kernel(phy_cas *cas, phy_ir_ref base,
+                                   phy_ir_ref *out_inner, int *out_sign,
+                                   bool *out_matched)
+{
+    *out_inner = PHY_IR_NULL;
+    *out_sign = 0;
+    *out_matched = false;
+    if (phy_ir_kind_of(cas->ir, base) != PHY_IR_ADD ||
+        phy_ir_child_count(cas->ir, base) != 2u) {
+        return PHY_OK;
+    }
+
+    phy_ir_ref quadratic = PHY_IR_NULL;
+    bool found_one = false;
+    for (size_t index = 0u; index < 2u; ++index) {
+        const phy_ir_ref term = phy_ir_child(cas->ir, base, index);
+        if (phy_cas_is_integer(cas, term, 1)) {
+            found_one = true;
+        } else {
+            quadratic = term;
+        }
+    }
+    if (!found_one || quadratic == PHY_IR_NULL) {
+        return PHY_OK;
+    }
+
+    phy_ir_ref coefficient = PHY_IR_NULL;
+    phy_ir_ref rest = PHY_IR_NULL;
+    phy_status status =
+        phy_cas_split_coefficient(cas, quadratic, &coefficient, &rest);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_cas_rat value;
+    if (!phy_cas_exact_value(cas, coefficient, &value) ||
+        value.num == INT64_MIN ||
+        phy_ir_kind_of(cas->ir, rest) != PHY_IR_POW ||
+        !phy_cas_is_integer(cas, phy_ir_child(cas->ir, rest, 1u), 2)) {
+        return PHY_OK;
+    }
+
+    phy_cas_rat magnitude = value;
+    if (magnitude.num < 0) {
+        magnitude.num = -magnitude.num;
+    }
+    phy_cas_rat root;
+    if (!exact_positive_square_root(magnitude, &root)) {
+        return PHY_OK;
+    }
+
+    const phy_ir_ref unit = phy_ir_child(cas->ir, rest, 0u);
+    if (phy_cas_rat_cmp_int(root, 1) == 0) {
+        *out_inner = unit;
+    } else {
+        phy_ir_ref scale = PHY_IR_NULL;
+        status = phy_cas_number_node(cas, root, &scale);
+        if (status != PHY_OK) {
+            return status;
+        }
+        const phy_ir_ref factors[2] = {scale, unit};
+        status = phy_cas_mul_node(cas, factors, 2u, out_inner);
+        if (status != PHY_OK) {
+            return status;
+        }
+    }
+    *out_sign = value.num > 0 ? 1 : -1;
+    *out_matched = true;
+    return PHY_OK;
+}
+
 static phy_status integrate_power(phy_cas *cas, phy_ir_ref expr,
                                   phy_ir_ref var, phy_ir_ref *out_ref)
 {
@@ -148,6 +259,42 @@ static phy_status integrate_power(phy_cas *cas, phy_ir_ref expr,
     phy_cas_rat power;
     if (!phy_cas_exact_value(cas, exponent, &power)) {
         return defer_integral(cas, expr, var, out_ref);
+    }
+
+    const bool inverse_kernel = phy_cas_rat_cmp_int(power, -1) == 0;
+    const bool root_kernel = power.num == -1 && power.den == 2;
+    if (inverse_kernel || root_kernel) {
+        phy_ir_ref inner = PHY_IR_NULL;
+        int sign = 0;
+        bool matched = false;
+        phy_status status =
+            quadratic_kernel(cas, base, &inner, &sign, &matched);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (matched) {
+            phy_ir_ref inner_derivative = PHY_IR_NULL;
+            bool usable = false;
+            status = constant_inner_derivative(
+                cas, inner, var, &inner_derivative, &usable);
+            if (status != PHY_OK) {
+                return status;
+            }
+            if (usable) {
+                const phy_cas_function primitive =
+                    inverse_kernel
+                        ? (sign > 0 ? PHY_CAS_FN_ATAN
+                                    : PHY_CAS_FN_ATANH)
+                        : (sign > 0 ? PHY_CAS_FN_ASINH
+                                    : PHY_CAS_FN_ASIN);
+                phy_ir_ref call = PHY_IR_NULL;
+                status = call_one(cas, cas->functions[primitive], inner,
+                                  &call);
+                return status == PHY_OK
+                           ? divide_node(cas, call, inner_derivative, out_ref)
+                           : status;
+            }
+        }
     }
 
     phy_ir_ref inner_derivative = PHY_IR_NULL;
@@ -163,7 +310,8 @@ static phy_status integrate_power(phy_cas *cas, phy_ir_ref expr,
 
     if (phy_cas_rat_cmp_int(power, -1) == 0) {
         phy_ir_ref logarithm = PHY_IR_NULL;
-        status = call_one(cas, cas->fn_log, base, &logarithm);
+        status = call_one(cas, cas->functions[PHY_CAS_FN_LOG], base,
+                          &logarithm);
         return status == PHY_OK
                    ? divide_node(cas, logarithm, inner_derivative, out_ref)
                    : status;
@@ -187,6 +335,111 @@ static phy_status integrate_power(phy_cas *cas, phy_ir_ref expr,
                             : status;
 }
 
+static phy_status gaussian_parts(phy_cas *cas, phy_ir_ref argument,
+                                 phy_ir_ref *out_exponential,
+                                 phy_ir_ref *out_pi_inverse_sqrt)
+{
+    phy_ir_ref two = PHY_IR_NULL;
+    phy_ir_ref square = PHY_IR_NULL;
+    phy_ir_ref negated = PHY_IR_NULL;
+    phy_ir_ref minus_half = PHY_IR_NULL;
+    phy_status status =
+        phy_cas_number_node(cas, (phy_cas_rat){2, 1}, &two);
+    if (status == PHY_OK) {
+        status = phy_cas_pow_node(cas, argument, two, &square);
+    }
+    if (status == PHY_OK) {
+        status = phy_cas_neg_node(cas, square, &negated);
+    }
+    if (status == PHY_OK) {
+        status = call_one(cas, cas->functions[PHY_CAS_FN_EXP], negated,
+                          out_exponential);
+    }
+    if (status == PHY_OK) {
+        status = phy_cas_number_node(
+            cas, (phy_cas_rat){-1, 2}, &minus_half);
+    }
+    if (status == PHY_OK) {
+        status = phy_cas_pow_node(
+            cas, cas->constant_pi, minus_half, out_pi_inverse_sqrt);
+    }
+    return status;
+}
+
+static phy_status integrate_gaussian(phy_cas *cas, phy_ir_ref argument,
+                                     phy_ir_ref var, phy_ir_ref *out_ref,
+                                     bool *out_matched)
+{
+    *out_matched = false;
+    phy_ir_ref coefficient = PHY_IR_NULL;
+    phy_ir_ref square = PHY_IR_NULL;
+    phy_status status =
+        phy_cas_split_coefficient(cas, argument, &coefficient, &square);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_cas_rat coefficient_value;
+    if (!phy_cas_exact_value(cas, coefficient, &coefficient_value) ||
+        coefficient_value.num >= 0 ||
+        coefficient_value.num == INT64_MIN ||
+        phy_ir_kind_of(cas->ir, square) != PHY_IR_POW ||
+        !phy_cas_is_integer(cas, phy_ir_child(cas->ir, square, 1u), 2)) {
+        return PHY_OK;
+    }
+    coefficient_value.num = -coefficient_value.num;
+    phy_cas_rat scale_value;
+    if (!exact_positive_square_root(coefficient_value, &scale_value)) {
+        return PHY_OK;
+    }
+    const phy_ir_ref unit = phy_ir_child(cas->ir, square, 0u);
+    phy_ir_ref inner = unit;
+    if (phy_cas_rat_cmp_int(scale_value, 1) != 0) {
+        phy_ir_ref scale = PHY_IR_NULL;
+        status = phy_cas_number_node(cas, scale_value, &scale);
+        if (status != PHY_OK) {
+            return status;
+        }
+        const phy_ir_ref factors[2] = {scale, unit};
+        status = phy_cas_mul_node(cas, factors, 2u, &inner);
+        if (status != PHY_OK) {
+            return status;
+        }
+    }
+    phy_ir_ref inner_derivative = PHY_IR_NULL;
+    bool usable = false;
+    status = constant_inner_derivative(
+        cas, inner, var, &inner_derivative, &usable);
+    if (status != PHY_OK || !usable) {
+        return status;
+    }
+
+    phy_ir_ref half = PHY_IR_NULL;
+    phy_ir_ref pi_half = PHY_IR_NULL;
+    phy_ir_ref error_function = PHY_IR_NULL;
+    phy_ir_ref numerator = PHY_IR_NULL;
+    status = phy_cas_number_node(cas, (phy_cas_rat){1, 2}, &half);
+    if (status == PHY_OK) {
+        status =
+            phy_cas_pow_node(cas, cas->constant_pi, half, &pi_half);
+    }
+    if (status == PHY_OK) {
+        status = call_one(cas, cas->functions[PHY_CAS_FN_ERF], inner,
+                          &error_function);
+    }
+    if (status == PHY_OK) {
+        const phy_ir_ref factors[3] = {half, pi_half, error_function};
+        status = phy_cas_mul_node(cas, factors, 3u, &numerator);
+    }
+    if (status == PHY_OK) {
+        status =
+            divide_node(cas, numerator, inner_derivative, out_ref);
+    }
+    if (status == PHY_OK) {
+        *out_matched = true;
+    }
+    return status;
+}
+
 static phy_status integrate_function(phy_cas *cas, phy_ir_ref expr,
                                      phy_ir_ref var, phy_ir_ref *out_ref)
 {
@@ -195,6 +448,15 @@ static phy_status integrate_function(phy_cas *cas, phy_ir_ref expr,
         return defer_integral(cas, expr, var, out_ref);
     }
     const phy_ir_ref argument = phy_ir_child(cas->ir, expr, 0u);
+    const phy_cas_function function = phy_cas_function_id(cas, head);
+    if (function == PHY_CAS_FN_EXP) {
+        bool matched = false;
+        phy_status status =
+            integrate_gaussian(cas, argument, var, out_ref, &matched);
+        if (status != PHY_OK || matched) {
+            return status;
+        }
+    }
     phy_ir_ref inner_derivative = PHY_IR_NULL;
     bool usable = false;
     phy_status status = constant_inner_derivative(
@@ -207,27 +469,32 @@ static phy_status integrate_function(phy_cas *cas, phy_ir_ref expr,
     }
 
     phy_ir_ref primitive = PHY_IR_NULL;
-    if (head == cas->fn_sin) {
-        status = call_one(cas, cas->fn_cos, argument, &primitive);
+    if (function == PHY_CAS_FN_SIN) {
+        status = call_one(cas, cas->functions[PHY_CAS_FN_COS], argument,
+                          &primitive);
         if (status == PHY_OK) {
             status = phy_cas_neg_node(cas, primitive, &primitive);
         }
-    } else if (head == cas->fn_cos) {
-        status = call_one(cas, cas->fn_sin, argument, &primitive);
-    } else if (head == cas->fn_exp) {
+    } else if (function == PHY_CAS_FN_COS) {
+        status = call_one(cas, cas->functions[PHY_CAS_FN_SIN], argument,
+                          &primitive);
+    } else if (function == PHY_CAS_FN_EXP) {
         primitive = expr;
-    } else if (head == cas->fn_tan) {
+    } else if (function == PHY_CAS_FN_TAN) {
         phy_ir_ref cosine = PHY_IR_NULL;
-        status = call_one(cas, cas->fn_cos, argument, &cosine);
+        status = call_one(cas, cas->functions[PHY_CAS_FN_COS], argument,
+                          &cosine);
         if (status == PHY_OK) {
-            status = call_one(cas, cas->fn_log, cosine, &primitive);
+            status = call_one(cas, cas->functions[PHY_CAS_FN_LOG], cosine,
+                              &primitive);
         }
         if (status == PHY_OK) {
             status = phy_cas_neg_node(cas, primitive, &primitive);
         }
-    } else if (head == cas->fn_log) {
+    } else if (function == PHY_CAS_FN_LOG) {
         phy_ir_ref logarithm = PHY_IR_NULL;
-        status = call_one(cas, cas->fn_log, argument, &logarithm);
+        status = call_one(cas, cas->functions[PHY_CAS_FN_LOG], argument,
+                          &logarithm);
         if (status == PHY_OK) {
             const phy_ir_ref factors[2] = {argument, logarithm};
             status = phy_cas_mul_node(cas, factors, 2u, &primitive);
@@ -238,6 +505,44 @@ static phy_status integrate_function(phy_cas *cas, phy_ir_ref expr,
             if (status == PHY_OK) {
                 const phy_ir_ref addends[2] = {primitive, negated};
                 status = phy_cas_add_node(cas, addends, 2u, &primitive);
+            }
+        }
+    } else if (function == PHY_CAS_FN_SINH) {
+        status = call_one(cas, cas->functions[PHY_CAS_FN_COSH], argument,
+                          &primitive);
+    } else if (function == PHY_CAS_FN_COSH) {
+        status = call_one(cas, cas->functions[PHY_CAS_FN_SINH], argument,
+                          &primitive);
+    } else if (function == PHY_CAS_FN_TANH) {
+        phy_ir_ref cosine = PHY_IR_NULL;
+        status = call_one(cas, cas->functions[PHY_CAS_FN_COSH], argument,
+                          &cosine);
+        if (status == PHY_OK) {
+            status = call_one(cas, cas->functions[PHY_CAS_FN_LOG], cosine,
+                              &primitive);
+        }
+    } else if (function == PHY_CAS_FN_ERF ||
+               function == PHY_CAS_FN_ERFC) {
+        phy_ir_ref exponential = PHY_IR_NULL;
+        phy_ir_ref pi_inverse_sqrt = PHY_IR_NULL;
+        status = gaussian_parts(
+            cas, argument, &exponential, &pi_inverse_sqrt);
+        phy_ir_ref tail = PHY_IR_NULL;
+        if (status == PHY_OK) {
+            const phy_ir_ref factors[2] = {
+                exponential, pi_inverse_sqrt};
+            status = phy_cas_mul_node(cas, factors, 2u, &tail);
+        }
+        if (status == PHY_OK && function == PHY_CAS_FN_ERFC) {
+            status = phy_cas_neg_node(cas, tail, &tail);
+        }
+        if (status == PHY_OK) {
+            const phy_ir_ref factors[2] = {argument, expr};
+            phy_ir_ref leading = PHY_IR_NULL;
+            status = phy_cas_mul_node(cas, factors, 2u, &leading);
+            if (status == PHY_OK) {
+                const phy_ir_ref terms[2] = {leading, tail};
+                status = phy_cas_add_node(cas, terms, 2u, &primitive);
             }
         }
     } else {
@@ -328,6 +633,11 @@ phy_status phy_cas_integrate(phy_cas *cas, phy_ir_ref expr, phy_ir_ref var,
         return PHY_ERR_INVALID_ARGUMENT;
     }
     if (phy_ir_kind_of(cas->ir, var) != PHY_IR_SYMBOL) {
+        return PHY_ERR_TYPE;
+    }
+    const phy_ir_symbol variable = phy_ir_head(cas->ir, var);
+    if ((phy_ir_assumptions(cas->ir, variable) &
+         (uint32_t)PHY_IR_ASSUME_CONSTANT) != 0u) {
         return PHY_ERR_TYPE;
     }
     phy_ir_ref reduced = PHY_IR_NULL;

@@ -2,6 +2,12 @@
 
 Each phase must leave a runnable or independently testable artifact.
 
+New domain-level physics features are frozen while the dependency-ordered
+scalar work in [`CAS_FOUNDATION.md`](CAS_FOUNDATION.md) is active. That plan
+puts exact elementary functions, polynomial/GCD cancellation, exact number
+domains, and only then series/solve/special functions beneath the existing
+tensor, GR, and QFT layers.
+
 ## Phase 0 — reproducible native baseline
 
 Status: implemented, with the first on-device execution and clean-exit
@@ -22,9 +28,9 @@ Verification:
 - host smoke test — done; the suite covers the platform, relative pointer,
   source language, drawing, notebook, the stateful evaluator, IR, tensor
   storage, differential forms, GR, Lie/QFT foundations, CAS, QFT oracle, and
-  full lifecycle: Windows 30/30, WSL ASan/UBSan/leak 32/32, and 94,814
+  full lifecycle: Windows 30/30, WSL ASan/UBSan/leak 32/32, and 95,416
   explicit checks;
-- generated `.tns` size report — 1,105,773 bytes, 17.6% of the 6 MiB ceiling,
+- generated `.tns` size report — 1,121,131 bytes, 17.8% of the 6 MiB ceiling,
   with the current evaluator and physics stack linked;
 - launch of a Phy-nspire artifact on the real CX II — done on 2026-07-26 with
   the observable CAS smoke screen;
@@ -137,9 +143,9 @@ observable `phy-cas-smoke.tns` then ran seven symbolic cases on the physical
 CX II on 2026-07-26, displayed 7/7 PASS, and returned cleanly to Documents.
 
 The evaluator's real Ndless check now compiles 33 portable sources, retains
-15/15 public evaluator entry points, packages a 130,176-byte isolated probe,
+15/15 public evaluator entry points, packages a 151,396-byte isolated probe,
 and contains no float formatter, libm call, or ARM soft-float helper. The
-product is 1,105,773 bytes. The independent SU(N) colour probe retains 23/23
+product is 1,121,131 bytes. The independent SU(N) colour probe retains 23/23
 public APIs, 4,924 bytes of layer text, and packages to 43,176 bytes under the
 same no-float rule. These establish ARM link/package and size, not
 physical-device runtime or performance.

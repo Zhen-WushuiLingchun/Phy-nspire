@@ -75,6 +75,8 @@ static void test_commands_and_functions(void)
 
     command = parse(ir, "Together[(x+1)/(x-1)]");
     PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_TOGETHER);
+    command = parse(ir, "Cancel[(x^2-1)/(x^2-2x+1)]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_CANCEL);
     command = parse(ir, "Numerator[x/y]");
     PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_NUMERATOR);
     command = parse(ir, "Denominator[x/y]");
@@ -89,6 +91,19 @@ static void test_commands_and_functions(void)
     PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_INTEGRATE);
     PHY_CHECK_EQ_INT(command.variable_count, 1);
     PHY_CHECK_EQ_STR(render(ir, command.expression), "(fn sin (* 2 x))");
+
+    command = parse(ir, "ArcTan[Sinh[x]] + ArcSinh[TanH[y]]");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(+ (fn asinh (fn tanh y)) (fn atan (fn sinh x)))");
+    command = parse(ir, "ArcCos[x] + ArcCosh[y] + ArcTanh[z]");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(+ (fn acos x) (fn acosh y) (fn atanh z))");
+    command = parse(ir, "Gamma[x] + LogGamma[y] + Erf[z] + Erfc[w]");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(+ (fn erf z) (fn erfc w) (fn gammafn x) (fn loggamma y))");
 
     command = parse(ir, "2x + (x+1)(x-1) == {x, y}");
     PHY_CHECK_EQ_STR(
@@ -284,6 +299,39 @@ static void test_assignment_and_reserved_heads(void)
                      PHY_ERR_TYPE);
     PHY_CHECK_EQ_INT(phy_source_parse(ir, "Set[Sin, 1]", &command, &error),
                      PHY_ERR_TYPE);
+    PHY_CHECK_EQ_INT(phy_source_parse(ir, "Pi = 3", &command, &error),
+                     PHY_ERR_TYPE);
+    PHY_CHECK_EQ_INT(phy_source_parse(ir, "E = 2", &command, &error),
+                     PHY_ERR_TYPE);
+    PHY_CHECK_EQ_INT(phy_source_parse(ir, "I = 0", &command, &error),
+                     PHY_ERR_TYPE);
+    PHY_CHECK_EQ_INT(
+        phy_source_parse(ir, "EulerGamma = 1", &command, &error),
+        PHY_ERR_TYPE);
+    PHY_CHECK_EQ_INT(phy_source_parse(ir, "Sqrt = 2", &command, &error),
+                     PHY_ERR_TYPE);
+
+    /* Mathematica constants are case-sensitive; e and i remain normal names. */
+    command = parse(ir, "e = 2");
+    PHY_CHECK_EQ_STR(phy_ir_symbol_name(ir, command.target), "e");
+    PHY_CHECK_EQ_STR(render(ir, command.expression), "2");
+    command = parse(ir, "i = 3");
+    PHY_CHECK_EQ_STR(phy_ir_symbol_name(ir, command.target), "i");
+    PHY_CHECK_EQ_STR(render(ir, command.expression), "3");
+    command = parse(ir, "gamma = 4");
+    PHY_CHECK_EQ_STR(phy_ir_symbol_name(ir, command.target), "gamma");
+    PHY_CHECK_EQ_STR(render(ir, command.expression), "4");
+
+    command = parse(ir, "Pi + E + I + EulerGamma");
+    const uint32_t constant_mask = (uint32_t)PHY_IR_ASSUME_CONSTANT;
+    PHY_CHECK((phy_ir_assumptions(ir, phy_ir_intern(ir, "Pi")) &
+               constant_mask) != 0u);
+    PHY_CHECK((phy_ir_assumptions(ir, phy_ir_intern(ir, "E")) &
+               constant_mask) != 0u);
+    PHY_CHECK((phy_ir_assumptions(ir, phy_ir_intern(ir, "I")) &
+               constant_mask) != 0u);
+    PHY_CHECK((phy_ir_assumptions(ir, phy_ir_intern(ir, "EulerGamma")) &
+               constant_mask) != 0u);
     PHY_CHECK_EQ_INT(phy_source_parse(ir, "2 = x", &command, &error),
                      PHY_ERR_PARSE);
     PHY_CHECK_EQ_INT(phy_source_parse(ir, "Set[a]", &command, &error),

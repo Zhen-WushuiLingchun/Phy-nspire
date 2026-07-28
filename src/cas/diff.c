@@ -80,6 +80,24 @@ phy_status phy_cas_may_depend(phy_cas *cas, phy_ir_ref expr, phy_ir_ref var,
 
 /* ------------------------------------------------------------ known rules */
 
+static phy_status unary_call(phy_cas *cas, phy_ir_symbol head,
+                             phy_ir_ref argument, phy_ir_ref *out_ref)
+{
+    if (head == PHY_IR_NO_SYMBOL) {
+        return phy_cas_ir_failure(cas);
+    }
+    const size_t mark = phy_cas_scratch_mark(cas);
+    size_t offset = 0u;
+    phy_status status = phy_cas_scratch_alloc(cas, 1u, &offset);
+    if (status == PHY_OK) {
+        phy_cas_scratch_at(cas, offset)[0] = argument;
+        status = phy_cas_rebuild_at(
+            cas, PHY_IR_FUNCTION, head, offset, 1u, out_ref);
+    }
+    phy_cas_scratch_release(cas, mark);
+    return status;
+}
+
 /* The derivative of a known function at its argument, before the chain rule
    multiplies in the argument's own derivative. */
 static phy_status outer_derivative(phy_cas *cas, phy_ir_symbol head,
@@ -94,30 +112,34 @@ static phy_status outer_derivative(phy_cas *cas, phy_ir_symbol head,
     phy_cas_scratch_at(cas, offset)[0] = argument;
 
     phy_ir_ref call = PHY_IR_NULL;
-    if (head == cas->fn_sin) {
+    const phy_cas_function function = phy_cas_function_id(cas, head);
+    if (function == PHY_CAS_FN_SIN) {
         /* d sin(u) = cos(u) */
-        status = phy_cas_rebuild_at(cas, PHY_IR_FUNCTION, cas->fn_cos, offset,
-                                    1u, out_ref);
+        status = phy_cas_rebuild_at(
+            cas, PHY_IR_FUNCTION, cas->functions[PHY_CAS_FN_COS], offset, 1u,
+            out_ref);
         goto done;
     }
-    if (head == cas->fn_cos) {
+    if (function == PHY_CAS_FN_COS) {
         /* d cos(u) = -sin(u) */
-        status = phy_cas_rebuild_at(cas, PHY_IR_FUNCTION, cas->fn_sin, offset,
-                                    1u, &call);
+        status = phy_cas_rebuild_at(
+            cas, PHY_IR_FUNCTION, cas->functions[PHY_CAS_FN_SIN], offset, 1u,
+            &call);
         if (status == PHY_OK) {
             status = phy_cas_neg_node(cas, call, out_ref);
         }
         goto done;
     }
-    if (head == cas->fn_tan) {
+    if (function == PHY_CAS_FN_TAN) {
         /*
          * d tan(u) = 1/cos(u)^2. Written as a power rather than as
          * 1 + tan(u)^2 so that a derivative of tan lands on the same sin/cos
          * basis the zero decision reduces to; the alternative form would need
          * the identity applied before anything could cancel against it.
          */
-        status = phy_cas_rebuild_at(cas, PHY_IR_FUNCTION, cas->fn_cos, offset,
-                                    1u, &call);
+        status = phy_cas_rebuild_at(
+            cas, PHY_IR_FUNCTION, cas->functions[PHY_CAS_FN_COS], offset, 1u,
+            &call);
         if (status == PHY_OK) {
             phy_ir_ref minus_two;
             status = phy_cas_number_node(cas, (phy_cas_rat){-2, 1}, &minus_two);
@@ -127,15 +149,181 @@ static phy_status outer_derivative(phy_cas *cas, phy_ir_symbol head,
         }
         goto done;
     }
-    if (head == cas->fn_exp) {
+    if (function == PHY_CAS_FN_EXP) {
         /* d exp(u) = exp(u) */
-        status = phy_cas_rebuild_at(cas, PHY_IR_FUNCTION, cas->fn_exp, offset,
-                                    1u, out_ref);
+        status = phy_cas_rebuild_at(
+            cas, PHY_IR_FUNCTION, cas->functions[PHY_CAS_FN_EXP], offset, 1u,
+            out_ref);
         goto done;
     }
-    if (head == cas->fn_log) {
+    if (function == PHY_CAS_FN_LOG) {
         /* d log(u) = 1/u */
         status = phy_cas_pow_node(cas, argument, cas->minus_one, out_ref);
+        goto done;
+    }
+    if (function == PHY_CAS_FN_SINH || function == PHY_CAS_FN_COSH) {
+        const phy_cas_function result_function =
+            function == PHY_CAS_FN_SINH ? PHY_CAS_FN_COSH
+                                        : PHY_CAS_FN_SINH;
+        status = phy_cas_rebuild_at(
+            cas, PHY_IR_FUNCTION, cas->functions[result_function], offset, 1u,
+            out_ref);
+        goto done;
+    }
+    if (function == PHY_CAS_FN_TANH) {
+        status = phy_cas_rebuild_at(
+            cas, PHY_IR_FUNCTION, cas->functions[PHY_CAS_FN_COSH], offset, 1u,
+            &call);
+        if (status == PHY_OK) {
+            phy_ir_ref minus_two = PHY_IR_NULL;
+            status =
+                phy_cas_number_node(cas, (phy_cas_rat){-2, 1}, &minus_two);
+            if (status == PHY_OK) {
+                status = phy_cas_pow_node(cas, call, minus_two, out_ref);
+            }
+        }
+        goto done;
+    }
+
+    /*
+     * Inverse-function derivatives. Square roots use the existing power IR,
+     * so the same principal-branch and non-integer-power rules govern every
+     * layer.
+     */
+    if (function == PHY_CAS_FN_ASIN || function == PHY_CAS_FN_ACOS ||
+        function == PHY_CAS_FN_ATAN || function == PHY_CAS_FN_ASINH ||
+        function == PHY_CAS_FN_ACOSH || function == PHY_CAS_FN_ATANH) {
+        phy_ir_ref two = PHY_IR_NULL;
+        phy_ir_ref square = PHY_IR_NULL;
+        status = phy_cas_number_node(cas, (phy_cas_rat){2, 1}, &two);
+        if (status == PHY_OK) {
+            status = phy_cas_pow_node(cas, argument, two, &square);
+        }
+
+        phy_ir_ref denominator = PHY_IR_NULL;
+        if (status == PHY_OK && function == PHY_CAS_FN_ACOSH) {
+            phy_ir_ref lower = PHY_IR_NULL;
+            phy_ir_ref upper = PHY_IR_NULL;
+            phy_ir_ref half = PHY_IR_NULL;
+            const phy_ir_ref lower_terms[2] = {argument, cas->minus_one};
+            const phy_ir_ref upper_terms[2] = {argument, cas->one};
+            status = phy_cas_add_node(cas, lower_terms, 2u, &lower);
+            if (status == PHY_OK) {
+                status = phy_cas_add_node(cas, upper_terms, 2u, &upper);
+            }
+            if (status == PHY_OK) {
+                status =
+                    phy_cas_number_node(cas, (phy_cas_rat){1, 2}, &half);
+            }
+            phy_ir_ref lower_root = PHY_IR_NULL;
+            phy_ir_ref upper_root = PHY_IR_NULL;
+            if (status == PHY_OK) {
+                status = phy_cas_pow_node(cas, lower, half, &lower_root);
+            }
+            if (status == PHY_OK) {
+                status = phy_cas_pow_node(cas, upper, half, &upper_root);
+            }
+            if (status == PHY_OK) {
+                const phy_ir_ref factors[2] = {lower_root, upper_root};
+                status =
+                    phy_cas_mul_node(cas, factors, 2u, &denominator);
+            }
+        } else if (status == PHY_OK) {
+            const bool plus =
+                function == PHY_CAS_FN_ATAN ||
+                function == PHY_CAS_FN_ASINH;
+            const phy_ir_ref terms[2] = {
+                cas->one,
+                square,
+            };
+            if (plus) {
+                status = phy_cas_add_node(cas, terms, 2u, &denominator);
+            } else {
+                phy_ir_ref negated_square = PHY_IR_NULL;
+                status = phy_cas_neg_node(cas, square, &negated_square);
+                if (status == PHY_OK) {
+                    const phy_ir_ref difference[2] = {
+                        cas->one, negated_square};
+                    status = phy_cas_add_node(cas, difference, 2u,
+                                              &denominator);
+                }
+            }
+            if (status == PHY_OK &&
+                (function == PHY_CAS_FN_ASIN ||
+                 function == PHY_CAS_FN_ACOS ||
+                 function == PHY_CAS_FN_ASINH)) {
+                phy_ir_ref half = PHY_IR_NULL;
+                status =
+                    phy_cas_number_node(cas, (phy_cas_rat){1, 2}, &half);
+                if (status == PHY_OK) {
+                    status =
+                        phy_cas_pow_node(cas, denominator, half, &denominator);
+                }
+            }
+        }
+        if (status == PHY_OK) {
+            status = phy_cas_pow_node(
+                cas, denominator, cas->minus_one, out_ref);
+        }
+        if (status == PHY_OK && function == PHY_CAS_FN_ACOS) {
+            status = phy_cas_neg_node(cas, *out_ref, out_ref);
+        }
+        goto done;
+    }
+    if (function == PHY_CAS_FN_GAMMA ||
+        function == PHY_CAS_FN_LOGGAMMA) {
+        phy_ir_ref digamma = PHY_IR_NULL;
+        status = unary_call(
+            cas, phy_ir_intern(cas->ir, "digamma"), argument, &digamma);
+        if (status == PHY_OK && function == PHY_CAS_FN_GAMMA) {
+            phy_ir_ref gamma = PHY_IR_NULL;
+            status = unary_call(
+                cas, cas->functions[PHY_CAS_FN_GAMMA], argument, &gamma);
+            if (status == PHY_OK) {
+                const phy_ir_ref factors[2] = {digamma, gamma};
+                status = phy_cas_mul_node(cas, factors, 2u, out_ref);
+            }
+        } else if (status == PHY_OK) {
+            *out_ref = digamma;
+        }
+        goto done;
+    }
+    if (function == PHY_CAS_FN_ERF || function == PHY_CAS_FN_ERFC) {
+        phy_ir_ref two = PHY_IR_NULL;
+        phy_ir_ref square = PHY_IR_NULL;
+        phy_ir_ref negated_square = PHY_IR_NULL;
+        phy_ir_ref exponential = PHY_IR_NULL;
+        phy_ir_ref minus_half = PHY_IR_NULL;
+        phy_ir_ref pi_factor = PHY_IR_NULL;
+        status =
+            phy_cas_number_node(cas, (phy_cas_rat){2, 1}, &two);
+        if (status == PHY_OK) {
+            status = phy_cas_pow_node(cas, argument, two, &square);
+        }
+        if (status == PHY_OK) {
+            status =
+                phy_cas_neg_node(cas, square, &negated_square);
+        }
+        if (status == PHY_OK) {
+            status = unary_call(
+                cas, cas->functions[PHY_CAS_FN_EXP], negated_square,
+                &exponential);
+        }
+        if (status == PHY_OK) {
+            status = phy_cas_number_node(
+                cas, (phy_cas_rat){-1, 2}, &minus_half);
+        }
+        if (status == PHY_OK) {
+            status = phy_cas_pow_node(
+                cas, cas->constant_pi, minus_half, &pi_factor);
+        }
+        if (status == PHY_OK) {
+            const phy_ir_ref factors[3] = {two, pi_factor, exponential};
+            status = phy_cas_mul_node(cas, factors, 3u, out_ref);
+        }
+        if (status == PHY_OK && function == PHY_CAS_FN_ERFC) {
+            status = phy_cas_neg_node(cas, *out_ref, out_ref);
+        }
         goto done;
     }
     status = PHY_ERR_UNSUPPORTED;
@@ -315,8 +503,9 @@ static phy_status diff_power(phy_cas *cas, phy_ir_ref expr, phy_ir_ref var,
         status = phy_cas_scratch_alloc(cas, 1u, &argument);
         if (status == PHY_OK) {
             phy_cas_scratch_at(cas, argument)[0] = base;
-            status = phy_cas_rebuild_at(cas, PHY_IR_FUNCTION, cas->fn_log,
-                                        argument, 1u, &logarithm);
+            status = phy_cas_rebuild_at(
+                cas, PHY_IR_FUNCTION, cas->functions[PHY_CAS_FN_LOG],
+                argument, 1u, &logarithm);
         }
         phy_cas_scratch_release(cas, call);
     }
@@ -483,6 +672,11 @@ phy_status phy_cas_diff(phy_cas *cas, phy_ir_ref expr, phy_ir_ref var,
     /* An index is not a scalar variable: differentiating with respect to one is
        tensor calculus, and this layer would have to guess what it meant. */
     if (phy_ir_kind_of(cas->ir, var) != PHY_IR_SYMBOL) {
+        return PHY_ERR_TYPE;
+    }
+    const phy_ir_symbol variable = phy_ir_head(cas->ir, var);
+    if ((phy_ir_assumptions(cas->ir, variable) &
+         (uint32_t)PHY_IR_ASSUME_CONSTANT) != 0u) {
         return PHY_ERR_TYPE;
     }
 

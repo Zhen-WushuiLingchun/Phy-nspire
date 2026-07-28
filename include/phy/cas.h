@@ -80,10 +80,10 @@ void phy_cas_limits_defaults(phy_cas_limits *out_limits);
  * Create a CAS over `ir`. Passing NULL limits uses the defaults. Returns NULL
  * if `ir` is NULL, the limits are unusable, or the initial allocation fails.
  *
- * Creation interns the names of the functions this layer knows -- "sin", "cos",
- * "tan", "exp", "log" -- into `ir`, so that recognizing one is a symbol-id
- * comparison rather than a string compare per visit. A caller that interns the
- * same names later gets the same ids, because interning is by bytes.
+ * Creation interns the elementary, inverse, hyperbolic, and bounded special
+ * functions this layer knows into `ir`, so recognizing one is a symbol-id
+ * comparison rather than a string compare per visit. A caller that interns
+ * the same names later gets the same ids, because interning is by bytes.
  *
  * All memory is taken through phy_alloc/phy_free, so CAS usage shows up in
  * phy_telemetry alongside the IR's.
@@ -256,8 +256,9 @@ phy_status phy_cas_substitute(phy_cas *cas, phy_ir_ref expr,
  * PHY_IR_SYMBOL; an index is PHY_ERR_TYPE, because differentiating with
  * respect to an index is tensor calculus and not this layer's business.
  *
- * Known functions -- sin, cos, tan, exp, log -- differentiate through the chain
- * rule. Anything whose dependence on `var` this layer cannot see through --
+ * Known elementary/inverse/hyperbolic functions plus Gamma, LogGamma, Erf,
+ * and Erfc differentiate through the chain rule. Anything whose dependence on
+ * `var` this layer cannot see through --
  * an unknown function, a tensor, an operator, a noncommutative product --
  * yields an unevaluated PHY_IR_DERIVATIVE node rather than a wrong zero. That
  * distinction is the whole point of the typed IR: a tensor component may well
@@ -269,9 +270,12 @@ phy_status phy_cas_diff(phy_cas *cas, phy_ir_ref expr, phy_ir_ref var,
 /*
  * Exact symbolic antiderivative on the currently decidable class:
  * constants and sums, products with a variable-independent coefficient,
- * rational powers of a linear inner expression, and Sin/Cos/Tan/Exp/Log of
- * a linear inner expression. Anything outside that class is returned as an
- * unevaluated Integrate[expr,var] IR function, never guessed numerically.
+ * rational powers of a linear inner expression; elementary and hyperbolic
+ * functions with linear inner expressions; the four inverse-function kernels
+ * 1/(1+u^2), 1/(1-u^2), 1/sqrt(1+u^2), 1/sqrt(1-u^2); Erf/Erfc with linear
+ * inner expressions; and exact Gaussian exp(-(a*x+b)^2) cases. Anything
+ * outside that class is returned as an unevaluated Integrate[expr,var] IR
+ * function, never guessed numerically.
  */
 phy_status phy_cas_integrate(phy_cas *cas, phy_ir_ref expr, phy_ir_ref var,
                              phy_ir_ref *out_ref);
@@ -316,9 +320,10 @@ typedef enum {
  * the forms a curvature pass actually computes.
  *
  * The numerator is divided exactly by each of the denominator's own factors
- * wherever the remainder vanishes, so shared factors that the rational walk
- * itself created do cancel. No general multivariate GCD is taken beyond that:
- * a common factor invisible in the denominator's factorization stays.
+ * wherever the remainder vanishes. A bounded Euclidean GCD over Q[x] then
+ * cancels hidden common factors of univariate polynomials through degree 48.
+ * Multivariate polynomial GCD is not claimed: a common factor that requires
+ * treating another symbol as a coefficient stays explicit.
  */
 phy_status phy_cas_rational_form(phy_cas *cas, phy_ir_ref expr,
                                  phy_ir_ref *out_numerator,
