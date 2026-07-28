@@ -22,7 +22,8 @@
 # Nothing here touches dist/. The probe is built into its own directory and
 # is never linked into the product.
 #
-# Usage: tools/link-check.sh [ir|cas|geom|ym|color|eval]   (default ir)
+# Usage: tools/link-check.sh [ir|exact|cas|algebraic|geom|ym|color|eval]
+#        (default ir)
 #        after eval "$(tools/bootstrap-ndless.sh --env-only)"
 
 set -euo pipefail
@@ -50,7 +51,11 @@ COMMON_SOURCES=(
 # the entry-point check below is derived from that header: omitting the
 # translation unit that defines it fails the link rather than going unnoticed.
 CAS_SOURCES=(
+    src/exact/context.c
+    src/exact/integer.c
+    src/exact/rational.c
     src/cas/num.c
+    src/cas/big_num.c
     src/cas/engine.c
     src/cas/simplify.c
     src/cas/diff.c
@@ -98,6 +103,19 @@ ir)
     MIN_ENTRY_POINTS=30
     SOURCES=("${COMMON_SOURCES[@]}")
     ;;
+exact)
+    LABEL="exact number"
+    PROBE="tests/device/exact_link_probe.c"
+    HEADER="include/phy/exact.h"
+    OBJECT_GLOB="src_exact_*.o"
+    SYMBOL_RE='phy_(exact|bigint|bigrat)_'
+    EXCLUDE='^$'
+    MIN_ENTRY_POINTS=40
+    SOURCES=("${COMMON_SOURCES[@]}"
+             src/exact/context.c
+             src/exact/integer.c
+             src/exact/rational.c)
+    ;;
 cas)
     LABEL="CAS"
     PROBE="tests/device/cas_link_probe.c"
@@ -106,6 +124,20 @@ cas)
     EXCLUDE='^$'
     MIN_ENTRY_POINTS=20
     SOURCES=("${COMMON_SOURCES[@]}" "${CAS_SOURCES[@]}")
+    ;;
+algebraic)
+    LABEL="real algebraic"
+    PROBE="tests/device/algebraic_link_probe.c"
+    HEADER="include/phy/algebraic.h"
+    OBJECT_GLOB="src_exact_algebraic.o"
+    SYMBOL_RE='phy_(algebraic|real_algebraic)_'
+    EXCLUDE='^$'
+    MIN_ENTRY_POINTS=15
+    SOURCES=("${COMMON_SOURCES[@]}"
+             src/exact/context.c
+             src/exact/integer.c
+             src/exact/rational.c
+             src/exact/algebraic.c)
     ;;
 geom)
     LABEL="geometry"
@@ -171,7 +203,7 @@ eval)
              src/eval/display.c)
     ;;
 *)
-    echo "usage: tools/link-check.sh [ir|cas|geom|ym|color|eval]" >&2
+    echo "usage: tools/link-check.sh [ir|exact|cas|algebraic|geom|ym|color|eval]" >&2
     exit 2
     ;;
 esac
@@ -321,7 +353,9 @@ printf '  ok    %d/%d public entry points retained\n' \
 # form operation that reached libm would defeat the point of it.
 BANNED_PATTERN='(^|[[:space:]_])(_dtoa|_strtod|_printf_float|_scanf_float|_vfprintf|__sf_fake)'
 STRICT_FLOAT=0
-if [ "$LAYER" = "cas" ] || [ "$LAYER" = "geom" ] ||
+if [ "$LAYER" = "exact" ] || [ "$LAYER" = "cas" ] ||
+   [ "$LAYER" = "algebraic" ] ||
+   [ "$LAYER" = "geom" ] ||
    [ "$LAYER" = "ym" ] || [ "$LAYER" = "color" ] ||
    [ "$LAYER" = "eval" ]; then
     STRICT_FLOAT=1

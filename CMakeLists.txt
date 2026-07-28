@@ -153,6 +153,7 @@ add_library(phy_core STATIC
     src/exact/context.c
     src/exact/integer.c
     src/exact/rational.c
+    src/exact/algebraic.c
     src/cas/num.c
     src/cas/big_num.c
     src/cas/engine.c
@@ -223,7 +224,7 @@ if(BUILD_TESTING)
                   test_notebook test_ir test_tensor test_gr test_lie
                   test_qft_scalar test_yang_mills test_cas test_geom
                   test_geom_metric test_eval test_lorentz test_mandelstam
-                  test_color test_exact)
+                  test_color test_exact test_algebraic)
         add_executable(${suite} tests/${suite}.c)
         target_link_libraries(${suite} PRIVATE phy_core phy_platform_host phy_warnings)
         target_include_directories(${suite} PRIVATE tests)

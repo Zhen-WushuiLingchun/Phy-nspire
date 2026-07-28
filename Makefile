@@ -12,8 +12,10 @@
 #   size-report    installed size against the 5-6 MB budget
 #   symbol-report  largest symbols in the ELF
 #   ir-link-check  prove the expression IR links on device
+#   exact-link-check prove every bigint/bigrat entry point links on device
 #   tensor-link-check  prove the component tensor core links on device
 #   cas-link-check prove the scalar CAS links on device
+#   algebraic-link-check prove certified real algebraic arithmetic links
 #   geom-link-check    prove manifolds and differential forms link on device
 #   ym-link-check      prove Yang-Mills and all dependencies link on device
 #   color-link-check   prove exact SU(N) colour algebra links on device
@@ -111,6 +113,7 @@ SOURCES := \
     src/exact/context.c \
     src/exact/integer.c \
     src/exact/rational.c \
+    src/exact/algebraic.c \
     src/cas/num.c \
     src/cas/big_num.c \
     src/cas/engine.c \
@@ -223,8 +226,9 @@ QFT_BENCH_OBJECTS := \
 QFT_BENCH_ELF := $(DISTDIR)/$(QFT_BENCH_EXE).elf
 QFT_BENCH_TNS := $(DISTDIR)/$(QFT_BENCH_EXE).tns
 
-.PHONY: all clean size-report symbol-report ir-link-check tensor-link-check \
-        cas-link-check geom-link-check ym-link-check color-link-check \
+.PHONY: all clean size-report symbol-report ir-link-check exact-link-check \
+        tensor-link-check \
+        cas-link-check algebraic-link-check geom-link-check ym-link-check \
         eval-link-check \
         cas-smoke qft-bench check-sdk
 
@@ -285,8 +289,14 @@ symbol-report: $(ELF)
 ir-link-check: check-sdk
 	@tools/link-check.sh ir
 
+exact-link-check: check-sdk
+	@tools/link-check.sh exact
+
 cas-link-check: check-sdk
 	@tools/link-check.sh cas
+
+algebraic-link-check: check-sdk
+	@tools/link-check.sh algebraic
 
 geom-link-check: check-sdk
 	@tools/link-check.sh geom

@@ -396,6 +396,61 @@ phy_status phy_bigrat_add(const phy_bigrat *left, const phy_bigrat *right,
     return phy_exact_operation_end(context, status);
 }
 
+phy_status phy_bigrat_negate(const phy_bigrat *value,
+                             phy_bigrat *out_negated)
+{
+    if (!compatible2(value, out_negated)) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    phy_exact_context *context = rational_context(value);
+    phy_status status = phy_exact_operation_begin(context);
+    phy_bigrat temporary;
+    memset(&temporary, 0, sizeof temporary);
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context, &temporary);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigint_negate(
+            &value->numerator, &temporary.numerator);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigint_copy(
+            &value->denominator, &temporary.denominator);
+    }
+    if (status == PHY_OK) {
+        status = commit(out_negated, &temporary, status);
+    } else if (temporary.private_magic == PHY_BIGRAT_MAGIC) {
+        phy_bigrat_destroy(&temporary);
+    }
+    return phy_exact_operation_end(context, status);
+}
+
+phy_status phy_bigrat_subtract(const phy_bigrat *left,
+                               const phy_bigrat *right,
+                               phy_bigrat *out_difference)
+{
+    if (!compatible3(left, right, out_difference)) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    phy_exact_context *context = rational_context(left);
+    phy_status status = phy_exact_operation_begin(context);
+    phy_bigrat negated;
+    memset(&negated, 0, sizeof negated);
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context, &negated);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_negate(right, &negated);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_add(left, &negated, out_difference);
+    }
+    if (negated.private_magic == PHY_BIGRAT_MAGIC) {
+        phy_bigrat_destroy(&negated);
+    }
+    return phy_exact_operation_end(context, status);
+}
+
 phy_status phy_bigrat_multiply(const phy_bigrat *left,
                                const phy_bigrat *right,
                                phy_bigrat *out_product)
@@ -519,6 +574,33 @@ phy_status phy_bigrat_reciprocal(const phy_bigrat *value,
     return phy_exact_operation_end(context, status);
 }
 
+phy_status phy_bigrat_divide(const phy_bigrat *dividend,
+                             const phy_bigrat *divisor,
+                             phy_bigrat *out_quotient)
+{
+    if (!compatible3(dividend, divisor, out_quotient)) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    phy_exact_context *context = rational_context(dividend);
+    phy_status status = phy_exact_operation_begin(context);
+    phy_bigrat reciprocal;
+    memset(&reciprocal, 0, sizeof reciprocal);
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context, &reciprocal);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_reciprocal(divisor, &reciprocal);
+    }
+    if (status == PHY_OK) {
+        status =
+            phy_bigrat_multiply(dividend, &reciprocal, out_quotient);
+    }
+    if (reciprocal.private_magic == PHY_BIGRAT_MAGIC) {
+        phy_bigrat_destroy(&reciprocal);
+    }
+    return phy_exact_operation_end(context, status);
+}
+
 phy_status phy_bigrat_pow_i32(const phy_bigrat *base, int32_t exponent,
                               phy_bigrat *out_power)
 {
@@ -596,6 +678,46 @@ phy_status phy_bigrat_compare(const phy_bigrat *left,
     phy_bigint_destroy(&right_cross);
     phy_bigint_destroy(&left_cross);
     return phy_exact_operation_end(context, status);
+}
+
+int phy_bigrat_sign(const phy_bigrat *value)
+{
+    return rational_valid_shallow(value) ? value->numerator.sign : 0;
+}
+
+phy_status phy_bigrat_set_bigint(const phy_bigint *integer,
+                                 phy_bigrat *out_value)
+{
+    if (!phy_bigint_is_initialized(integer) ||
+        rational_context(out_value) != integer->context) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    phy_exact_context *context = integer->context;
+    phy_status status = phy_exact_operation_begin(context);
+    phy_bigrat temporary;
+    memset(&temporary, 0, sizeof temporary);
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context, &temporary);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigint_copy(
+            integer, &temporary.numerator);
+    }
+    if (status == PHY_OK) {
+        status = commit(out_value, &temporary, status);
+    } else if (temporary.private_magic == PHY_BIGRAT_MAGIC) {
+        phy_bigrat_destroy(&temporary);
+    }
+    return phy_exact_operation_end(context, status);
+}
+
+phy_status phy_bigrat_swap(phy_bigrat *left, phy_bigrat *right)
+{
+    if (!compatible2(left, right)) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    swap_payload(left, right);
+    return PHY_OK;
 }
 
 const phy_bigint *phy_bigrat_numerator(const phy_bigrat *value)

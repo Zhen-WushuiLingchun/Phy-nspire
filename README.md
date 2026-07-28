@@ -137,6 +137,7 @@ Start here:
 - [Exact symbolic SU(N) colour algebra](docs/COLOR.md)
 - [Yang--Mills symbolic layer](docs/YANG_MILLS.md)
 - [Scalar computer algebra](docs/CAS.md)
+- [Certified real algebraic foundation](docs/ALGEBRAIC.md)
 - [Notebook shell and 2D layout](docs/NOTEBOOK.md)
 - [Reader-facing symbolic source language](docs/SOURCE_LANGUAGE.md)
 - [Stateful notebook evaluator](docs/EVALUATOR.md)
@@ -156,6 +157,7 @@ Start here:
 include/phy/      public headers: platform boundary, drawing, app shell
 src/core/         portable, backend-neutral core
 src/ir/           typed expression IR: interning, ordering, serialization
+src/exact/        bounded bigint/bigrat arithmetic and algebraic certificates
 src/cas/          scalar algebra: normal form, calculus, the zero decision
 src/tensor/       component tensors: charts, storage, slot symmetries
 src/gr/           coordinate-metric GR curvature pipeline

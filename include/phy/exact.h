@@ -126,15 +126,31 @@ phy_status phy_bigrat_copy(const phy_bigrat *source,
 
 phy_status phy_bigrat_add(const phy_bigrat *left, const phy_bigrat *right,
                           phy_bigrat *out_sum);
+phy_status phy_bigrat_negate(const phy_bigrat *value,
+                             phy_bigrat *out_negated);
+phy_status phy_bigrat_subtract(const phy_bigrat *left,
+                               const phy_bigrat *right,
+                               phy_bigrat *out_difference);
 phy_status phy_bigrat_multiply(const phy_bigrat *left,
                                const phy_bigrat *right,
                                phy_bigrat *out_product);
 phy_status phy_bigrat_reciprocal(const phy_bigrat *value,
                                  phy_bigrat *out_reciprocal);
+phy_status phy_bigrat_divide(const phy_bigrat *dividend,
+                             const phy_bigrat *divisor,
+                             phy_bigrat *out_quotient);
 phy_status phy_bigrat_pow_i32(const phy_bigrat *base, int32_t exponent,
                               phy_bigrat *out_power);
 phy_status phy_bigrat_compare(const phy_bigrat *left,
                               const phy_bigrat *right, int *out_comparison);
+int phy_bigrat_sign(const phy_bigrat *value);
+
+/* Set a rational to an integer already held in the same exact context. */
+phy_status phy_bigrat_set_bigint(const phy_bigint *integer,
+                                 phy_bigrat *out_value);
+
+/* No-fail payload exchange; both values must be valid and share a context. */
+phy_status phy_bigrat_swap(phy_bigrat *left, phy_bigrat *right);
 
 const phy_bigint *phy_bigrat_numerator(const phy_bigrat *value);
 const phy_bigint *phy_bigrat_denominator(const phy_bigrat *value);

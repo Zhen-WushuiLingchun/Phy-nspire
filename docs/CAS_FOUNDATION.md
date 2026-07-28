@@ -79,20 +79,24 @@ operations so F3 can replace their storage without rewriting their logic.
 
 Status: native bounded-memory arbitrary-precision integers/rationals are
 implemented and flow through IR, source, scalar folding, evaluator,
-serialization, and MathTree display. Algebraic numbers and migration of the
-polynomial coefficient containers remain open.
+serialization, and MathTree display. The certified real-algebraic foundation
+(primitive square-free defining polynomial, rational isolating interval, Sturm
+count/refinement/comparison) is implemented and documented in
+[`ALGEBRAIC.md`](ALGEBRAIC.md). Algebraic arithmetic, Gaussian rationals, and
+migration of the polynomial coefficient containers remain open.
 
 - Native bounded-memory arbitrary-precision integers and rationals.
 - Gaussian rationals and exact `I`, `Conjugate`, `Re`, `Im`, and `Abs`.
-- Algebraic numbers represented by a primitive square-free defining polynomial
+- Real algebraic numbers represented by a primitive square-free defining polynomial
   plus a certified rational isolating interval; canonical minimal-polynomial
   equality follows after modular factorization can certify irreducibility.
 - Safe root comparison and denominator rationalization on that certified
   domain.
 
-The native choice has host strict/ASan, serialization, and allocation-failure
-evidence. ARM link/size and physical CX II timing/heap acceptance are still
-required before F3 can be closed.
+The native choice has host strict/ASan, serialization, allocation-failure, and
+complete public-API ARM link/size evidence. Physical CX II timing/peak-heap
+acceptance, algebraic arithmetic, and polynomial coefficient migration are
+still required before F3 can be closed.
 
 ### F4 — series, limits, and equations
 

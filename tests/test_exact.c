@@ -447,9 +447,27 @@ static void test_rational_normalization_and_arithmetic(void)
         rational_text(&result),
         "979815785812267292866941015/1097393690109739369");
 
+    PHY_CHECK_EQ_INT(phy_bigrat_negate(&b, &result), PHY_OK);
+    PHY_CHECK_EQ_STR(rational_text(&result), "-5/7");
+    PHY_CHECK_EQ_INT(phy_bigrat_sign(&result), -1);
+    PHY_CHECK_EQ_INT(phy_bigrat_subtract(&b, &result, &result), PHY_OK);
+    PHY_CHECK_EQ_STR(rational_text(&result), "10/7");
+    PHY_CHECK_EQ_INT(phy_bigrat_divide(&result, &b, &result), PHY_OK);
+    PHY_CHECK_EQ_STR(rational_text(&result), "2");
+
     PHY_CHECK_EQ_INT(phy_bigrat_reciprocal(&a, &result), PHY_OK);
     PHY_CHECK_EQ_INT(phy_bigrat_multiply(&a, &result, &result), PHY_OK);
     PHY_CHECK_EQ_STR(rational_text(&result), "1");
+
+    phy_bigint integer;
+    PHY_CHECK_EQ_INT(phy_bigint_init(f.exact, &integer), PHY_OK);
+    read_integer(&integer, "18446744073709551616");
+    PHY_CHECK_EQ_INT(phy_bigrat_set_bigint(&integer, &result), PHY_OK);
+    PHY_CHECK_EQ_STR(rational_text(&result), "18446744073709551616");
+    PHY_CHECK_EQ_INT(phy_bigrat_swap(&result, &b), PHY_OK);
+    PHY_CHECK_EQ_STR(rational_text(&b), "18446744073709551616");
+    PHY_CHECK_EQ_STR(rational_text(&result), "5/7");
+    phy_bigint_destroy(&integer);
 
     read_rational(&a, "-111111111111111111111111111111",
                   "-222222222222222222222222222222");
@@ -457,7 +475,7 @@ static void test_rational_normalization_and_arithmetic(void)
     PHY_CHECK_EQ_INT(phy_bigrat_pow_i32(&a, -3, &a), PHY_OK);
     PHY_CHECK_EQ_STR(rational_text(&a), "8");
     int comparison = 0;
-    PHY_CHECK_EQ_INT(phy_bigrat_compare(&a, &b, &comparison), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_bigrat_compare(&a, &result, &comparison), PHY_OK);
     PHY_CHECK_EQ_INT(comparison, 1);
     int64_t numerator = 0;
     int64_t denominator = 0;
