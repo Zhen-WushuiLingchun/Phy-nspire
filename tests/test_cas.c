@@ -236,17 +236,29 @@ static void test_exact_arithmetic(void)
     PHY_CHECK_EQ_STR(normal(&f, "(^ 2 -1)"), "(rat 1 2)");
     PHY_CHECK_EQ_STR(normal(&f, "(^ (rat 2 3) -2)"), "(rat 9 4)");
 
-    /* Exact means exact: leaving int64 is an error, not a wrap and not a
-       silent promotion to double. */
-    PHY_CHECK_EQ_INT(simplify_status(&f, "(* 4611686018427387904 4)"),
-                     PHY_ERR_OVERFLOW);
-    PHY_CHECK_EQ_INT(
-        simplify_status(&f, "(+ 9223372036854775807 9223372036854775807)"),
-        PHY_ERR_OVERFLOW);
-
-    /* An exact power that does not fit stays symbolic instead: unlike a product
-       of two numbers, it is still a normal form. */
-    PHY_CHECK_EQ_STR(normal(&f, "(^ 2 200)"), "(^ 2 200)");
+    /* Exact arithmetic promotes across the old int64 cliff without wrapping
+       or falling back to a double. */
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(* 4611686018427387904 4)"),
+        "18446744073709551616");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(+ 9223372036854775807 9223372036854775807)"),
+        "18446744073709551614");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(^ 2 200)"),
+        "1606938044258990275541962092341162602522202993782792835301376");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(+ (rat 18446744073709551616 3) "
+                   "(rat 18446744073709551616 3))"),
+        "(rat 36893488147419103232 3)");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(* (rat 18446744073709551616 3) "
+                   "(rat 3 18446744073709551616))"),
+        "1");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(+ (* 18446744073709551616 x) "
+                   "(* 18446744073709551616 x))"),
+        "(* 36893488147419103232 x)");
 
     close_fixture(&f);
 }
@@ -884,7 +896,7 @@ static void test_zero_decision_stays_honest(void)
                              "(+ (* (fn sin a) (fn cos b)) "
                              "   (* (fn cos a) (fn sin b)))"),
                      PHY_CAS_UNKNOWN);
-    PHY_CHECK_EQ_INT(compare(&f, "(^ 4 500)", "(^ 2 1000)"), PHY_CAS_UNKNOWN);
+    PHY_CHECK_EQ_INT(compare(&f, "(^ 4 500)", "(^ 2 1000)"), PHY_CAS_ZERO);
     PHY_CHECK_EQ_INT(compare(&f, "(tensor g (idx mu dn) (idx nu dn))",
                              "(tensor g (idx nu dn) (idx mu dn))"),
                      PHY_CAS_UNKNOWN);
@@ -1512,6 +1524,88 @@ static void test_allocation_failure_unwinds_scratch(void)
     phy_platform_shutdown();
 }
 
+/*
+ * The promoted-number bridge allocates an operation-local exact context,
+ * decimal publication buffers, and possibly new IR pools. Inject failure at
+ * every allocation in that route, then retry in the same contexts. This pins
+ * both scratch unwinding and the "failed cell cannot poison later maths"
+ * contract.
+ */
+static void test_promoted_exact_allocation_failure_is_transactional(void)
+{
+    static const char expression[] =
+        "(+ 340282366920938463463374607431768211456 1)";
+    static const char expected[] =
+        "340282366920938463463374607431768211457";
+
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+
+    phy_ir_context *calibration_ir = phy_ir_context_create(NULL);
+    PHY_CHECK(calibration_ir != NULL);
+    phy_cas *calibration_cas = phy_cas_create(calibration_ir, NULL);
+    PHY_CHECK(calibration_cas != NULL);
+    const phy_ir_ref calibration_expr =
+        parse(calibration_ir, expression);
+    const uint32_t attempts_before = phy_host_alloc_attempts();
+    phy_ir_ref calibration_out = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_simplify(
+            calibration_cas, calibration_expr, &calibration_out),
+        PHY_OK);
+    const uint32_t allocations =
+        phy_host_alloc_attempts() - attempts_before;
+    PHY_CHECK_EQ_STR(
+        render(calibration_ir, calibration_out), expected);
+    phy_cas_destroy(calibration_cas);
+    phy_ir_context_destroy(calibration_ir);
+    PHY_CHECK(allocations > 8u);
+
+    unsigned failures = 0u;
+    for (uint32_t nth = 1u; nth <= allocations; ++nth) {
+        phy_ir_context *ir = phy_ir_context_create(NULL);
+        PHY_CHECK(ir != NULL);
+        phy_cas *cas = phy_cas_create(ir, NULL);
+        PHY_CHECK(cas != NULL);
+        const phy_ir_ref expr = parse(ir, expression);
+
+        phy_host_fail_alloc_after(nth);
+        phy_ir_ref out = PHY_IR_NULL;
+        const phy_status status =
+            phy_cas_simplify(cas, expr, &out);
+        phy_host_fail_alloc_after(0u);
+        if (status != PHY_OK && status != PHY_ERR_OUT_OF_MEMORY &&
+            status != PHY_ERR_MEMORY_LIMIT) {
+            fprintf(stderr, "  promoted CAS alloc #%u returned %s\n",
+                    (unsigned)nth, phy_status_name(status));
+        }
+        PHY_CHECK(status == PHY_OK ||
+                  status == PHY_ERR_OUT_OF_MEMORY ||
+                  status == PHY_ERR_MEMORY_LIMIT);
+        if (status != PHY_OK) {
+            failures++;
+        }
+        PHY_CHECK_EQ_INT(phy_cas_validate(cas), PHY_OK);
+        PHY_CHECK_EQ_INT(phy_ir_validate(ir), PHY_OK);
+
+        phy_ir_clear_error(ir);
+        out = PHY_IR_NULL;
+        PHY_CHECK_EQ_INT(phy_cas_simplify(cas, expr, &out), PHY_OK);
+        PHY_CHECK_EQ_STR(render(ir, out), expected);
+        PHY_CHECK_EQ_INT(phy_cas_validate(cas), PHY_OK);
+        PHY_CHECK_EQ_INT(phy_ir_validate(ir), PHY_OK);
+
+        phy_cas_destroy(cas);
+        phy_ir_context_destroy(ir);
+        phy_telemetry telemetry;
+        phy_telemetry_get(&telemetry);
+        PHY_CHECK_EQ_INT(telemetry.bytes_live, 0);
+    }
+    PHY_CHECK(failures > 4u);
+
+    phy_host_fail_alloc_after(0u);
+    phy_platform_shutdown();
+}
+
 /* ---------------------------------------------------------------- driver */
 
 int main(void)
@@ -1549,5 +1643,6 @@ int main(void)
     PHY_TEST_CASE(test_memoization_pays);
     PHY_TEST_CASE(test_cache_survives_a_tight_byte_ceiling);
     PHY_TEST_CASE(test_allocation_failure_unwinds_scratch);
+    PHY_TEST_CASE(test_promoted_exact_allocation_failure_is_transactional);
     return PHY_TEST_REPORT("test_cas");
 }

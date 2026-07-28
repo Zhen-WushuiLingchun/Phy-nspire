@@ -190,6 +190,15 @@ static void test_scalar_elementary_foundation(void)
     expect_scalar(&f, "Gamma[6]", "120");
     expect_scalar(&f, "Gamma[1/2]", "(^ Pi (rat 1 2))");
     expect_scalar(&f, "Erf[0] + Erfc[0]", "1");
+    expect_scalar(
+        &f, "9223372036854775807 + 9223372036854775807",
+        "18446744073709551614");
+    expect_scalar(
+        &f, "2^200",
+        "1606938044258990275541962092341162602522202993782792835301376");
+    expect_scalar(
+        &f, "Rational[18446744073709551616,3] * 3",
+        "18446744073709551616");
 
     expect_scalar(&f, "D[ArcTan[x],x]", "(^ (+ 1 (^ x 2)) -1)");
     expect_scalar(

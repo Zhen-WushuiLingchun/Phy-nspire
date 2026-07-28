@@ -29,18 +29,53 @@
 
 /* --------------------------------------------------------------- utilities */
 
+static phy_status add_exact_nodes(phy_cas *cas, phy_ir_ref left,
+                                  phy_ir_ref right, phy_ir_ref *out_ref)
+{
+    phy_cas_rat a;
+    phy_cas_rat b;
+    phy_cas_rat sum;
+    if (phy_cas_exact_value(cas, left, &a) &&
+        phy_cas_exact_value(cas, right, &b)) {
+        if (!phy_cas_rat_add(a, b, &sum)) {
+            return phy_cas_exact_add_refs(
+                cas, left, right, out_ref);
+        }
+        return phy_cas_number_node(cas, sum, out_ref);
+    }
+    return phy_cas_exact_add_refs(cas, left, right, out_ref);
+}
+
+static phy_status multiply_exact_nodes(phy_cas *cas, phy_ir_ref left,
+                                       phy_ir_ref right,
+                                       phy_ir_ref *out_ref)
+{
+    phy_cas_rat a;
+    phy_cas_rat b;
+    phy_cas_rat product;
+    if (phy_cas_exact_value(cas, left, &a) &&
+        phy_cas_exact_value(cas, right, &b)) {
+        if (!phy_cas_rat_mul(a, b, &product)) {
+            return phy_cas_exact_mul_refs(
+                cas, left, right, out_ref);
+        }
+        return phy_cas_number_node(cas, product, out_ref);
+    }
+    return phy_cas_exact_mul_refs(cas, left, right, out_ref);
+}
+
 /* True when `ref` is an exact number that is negative. */
 static bool negative_lead(const phy_cas *cas, phy_ir_ref ref)
 {
-    phy_cas_rat value;
-    if (phy_cas_exact_value(cas, ref, &value)) {
-        return value.num < 0;
+    if (phy_cas_is_exact(cas, ref)) {
+        return phy_cas_exact_sign_ref(cas, ref) < 0;
     }
     /* A simplified product carries its coefficient first, so this is the whole
        of "syntactically negative" for a normalized expression. */
     if (phy_ir_kind_of(cas->ir, ref) == PHY_IR_MUL &&
-        phy_cas_exact_value(cas, phy_ir_child(cas->ir, ref, 0u), &value)) {
-        return value.num < 0;
+        phy_cas_is_exact(cas, phy_ir_child(cas->ir, ref, 0u))) {
+        return phy_cas_exact_sign_ref(
+                   cas, phy_ir_child(cas->ir, ref, 0u)) < 0;
     }
     return false;
 }
@@ -314,7 +349,7 @@ static phy_status pythagorean_partner(phy_cas *cas, phy_ir_ref key,
  * terminates because every collapse removes one term.
  */
 static phy_status collapse_pythagorean(phy_cas *cas, size_t pairs,
-                                       size_t count, phy_cas_rat *total)
+                                       size_t count, phy_ir_ref *total)
 {
     bool changed = true;
     while (changed) {
@@ -342,19 +377,22 @@ static phy_status collapse_pythagorean(phy_cas *cas, size_t pairs,
                     if (j == i || slot[2u * j] != partner) {
                         continue;
                     }
-                    phy_cas_rat mine, theirs;
-                    if (!phy_cas_exact_value(cas, slot[2u * i + 1u],
-                                             &mine) ||
-                        !phy_cas_exact_value(cas, slot[2u * j + 1u],
-                                             &theirs) ||
-                        mine.num != theirs.num || mine.den != theirs.den) {
+                    const phy_ir_ref mine = slot[2u * i + 1u];
+                    const phy_ir_ref theirs = slot[2u * j + 1u];
+                    if (!phy_cas_is_exact(cas, mine) ||
+                        !phy_cas_is_exact(cas, theirs) ||
+                        mine != theirs) {
                         break;
                     }
                     slot[2u * j] = PHY_IR_NULL;
                     if (base == PHY_IR_NULL) {
-                        if (!phy_cas_rat_add(*total, mine, total)) {
-                            return PHY_ERR_OVERFLOW;
+                        phy_ir_ref sum = PHY_IR_NULL;
+                        status = add_exact_nodes(
+                            cas, *total, mine, &sum);
+                        if (status != PHY_OK) {
+                            return status;
                         }
+                        *total = sum;
                         slot[2u * i] = PHY_IR_NULL;
                     } else {
                         /* The freed key may already be in the sum; fold the
@@ -368,16 +406,11 @@ static phy_status collapse_pythagorean(phy_cas *cas, size_t pairs,
                             }
                         }
                         if (existing < count) {
-                            phy_cas_rat other, sum;
-                            if (!phy_cas_exact_value(
-                                    cas, slot[2u * existing + 1u],
-                                    &other) ||
-                                !phy_cas_rat_add(mine, other, &sum)) {
-                                return PHY_ERR_OVERFLOW;
-                            }
-                            phy_ir_ref coefficient;
-                            status =
-                                phy_cas_number_node(cas, sum, &coefficient);
+                            const phy_ir_ref other =
+                                slot[2u * existing + 1u];
+                            phy_ir_ref coefficient = PHY_IR_NULL;
+                            status = add_exact_nodes(
+                                cas, mine, other, &coefficient);
                             if (status != PHY_OK) {
                                 return status;
                             }
@@ -413,17 +446,18 @@ static phy_status collect_sum(phy_cas *cas, size_t terms, size_t count,
 
     /* Exact terms accumulate here rather than in the pair array: there is one
        numeric term in the result and it has no key to merge on. */
-    phy_cas_rat total = {0, 1};
+    phy_ir_ref total = cas->zero;
     size_t used = 0u;
 
     for (size_t i = 0u; i < count; i++) {
         const phy_ir_ref term = phy_cas_scratch_at(cas, terms)[i];
-        phy_cas_rat value;
-        if (phy_cas_exact_value(cas, term, &value)) {
-            if (!phy_cas_rat_add(total, value, &total)) {
-                status = PHY_ERR_OVERFLOW;
+        if (phy_cas_is_exact(cas, term)) {
+            phy_ir_ref sum = PHY_IR_NULL;
+            status = add_exact_nodes(cas, total, term, &sum);
+            if (status != PHY_OK) {
                 goto done;
             }
+            total = sum;
             continue;
         }
 
@@ -445,15 +479,11 @@ static phy_status collect_sum(phy_cas *cas, size_t terms, size_t count,
     for (size_t i = 0u; i < used; i++) {
         phy_ir_ref *slot = phy_cas_scratch_at(cas, pairs);
         if (merged > 0u && slot[2u * (merged - 1u)] == slot[2u * i]) {
-            phy_cas_rat left, right, sum;
-            if (!phy_cas_exact_value(cas, slot[2u * (merged - 1u) + 1u], &left) ||
-                !phy_cas_exact_value(cas, slot[2u * i + 1u], &right) ||
-                !phy_cas_rat_add(left, right, &sum)) {
-                status = PHY_ERR_OVERFLOW;
-                goto done;
-            }
-            phy_ir_ref coeff;
-            status = phy_cas_number_node(cas, sum, &coeff);
+            const phy_ir_ref left =
+                slot[2u * (merged - 1u) + 1u];
+            const phy_ir_ref right = slot[2u * i + 1u];
+            phy_ir_ref coeff = PHY_IR_NULL;
+            status = add_exact_nodes(cas, left, right, &coeff);
             if (status != PHY_OK) {
                 goto done;
             }
@@ -501,13 +531,8 @@ static phy_status collect_sum(phy_cas *cas, size_t terms, size_t count,
         phy_cas_scratch_at(cas, built)[terms_out++] = term;
     }
 
-    if (total.num != 0) {
-        phy_ir_ref number;
-        status = phy_cas_number_node(cas, total, &number);
-        if (status != PHY_OK) {
-            goto done;
-        }
-        phy_cas_scratch_at(cas, built)[terms_out++] = number;
+    if (total != cas->zero) {
+        phy_cas_scratch_at(cas, built)[terms_out++] = total;
     }
 
     if (terms_out == 0u) {
@@ -536,13 +561,9 @@ done:
 static phy_status add_exponents(phy_cas *cas, phy_ir_ref left, phy_ir_ref right,
                                 phy_ir_ref *out_ref)
 {
-    phy_cas_rat a, b, sum;
-    if (phy_cas_exact_value(cas, left, &a) &&
-        phy_cas_exact_value(cas, right, &b)) {
-        if (!phy_cas_rat_add(a, b, &sum)) {
-            return PHY_ERR_OVERFLOW;
-        }
-        return phy_cas_number_node(cas, sum, out_ref);
+    if (phy_cas_is_exact(cas, left) &&
+        phy_cas_is_exact(cas, right)) {
+        return add_exact_nodes(cas, left, right, out_ref);
     }
     const phy_ir_ref terms[2] = {left, right};
     return phy_cas_add_node(cas, terms, 2u, out_ref);
@@ -600,7 +621,7 @@ static phy_status negate_sum(phy_cas *cas, phy_ir_ref sum, phy_ir_ref *out_ref)
  * (-1)^(1/2) * A^(1/2).
  */
 static phy_status merge_negated_bases(phy_cas *cas, size_t pairs, size_t count,
-                                      phy_cas_rat *coefficient)
+                                      phy_ir_ref *coefficient)
 {
     phy_ir_context *ir = cas->ir;
 
@@ -626,10 +647,21 @@ static phy_status merge_negated_bases(phy_cas *cas, size_t pairs, size_t count,
             }
             phy_cas_rat sign;
             const phy_cas_rat minus_one = {-1, 1};
-            if (!phy_cas_rat_pow(minus_one, exponent.num, &sign) ||
-                !phy_cas_rat_mul(*coefficient, sign, coefficient)) {
+            if (!phy_cas_rat_pow(minus_one, exponent.num, &sign)) {
                 return PHY_ERR_OVERFLOW;
             }
+            phy_ir_ref sign_ref = PHY_IR_NULL;
+            status = phy_cas_number_node(cas, sign, &sign_ref);
+            if (status != PHY_OK) {
+                return status;
+            }
+            phy_ir_ref product = PHY_IR_NULL;
+            status = multiply_exact_nodes(
+                cas, *coefficient, sign_ref, &product);
+            if (status != PHY_OK) {
+                return status;
+            }
+            *coefficient = product;
             phy_ir_ref combined;
             status = add_exponents(cas, slot[2u * i + 1u],
                                    slot[2u * j + 1u], &combined);
@@ -672,16 +704,19 @@ static phy_status collect_product_pass(phy_cas *cas, size_t factors, size_t coun
         return status;
     }
 
-    phy_cas_rat coefficient = {1, 1};
+    phy_ir_ref coefficient = cas->one;
     size_t used = 0u;
 
     for (size_t i = 0u; i < count; i++) {
         const phy_ir_ref factor = phy_cas_scratch_at(cas, factors)[i];
-        phy_cas_rat value;
-        if (phy_cas_exact_value(cas, factor, &value)) {
-            if (!phy_cas_rat_mul(coefficient, value, &coefficient)) {
-                return PHY_ERR_OVERFLOW;
+        if (phy_cas_is_exact(cas, factor)) {
+            phy_ir_ref product = PHY_IR_NULL;
+            status = multiply_exact_nodes(
+                cas, coefficient, factor, &product);
+            if (status != PHY_OK) {
+                return status;
             }
+            coefficient = product;
             continue;
         }
 
@@ -742,13 +777,16 @@ static phy_status collect_product_pass(phy_cas *cas, size_t factors, size_t coun
             return status;
         }
 
-        phy_cas_rat value;
-        if (phy_cas_exact_value(cas, power, &value)) {
+        if (phy_cas_is_exact(cas, power)) {
             /* A folded power joins the coefficient; 2^a * 2^b becomes 8 rather
                than a numeric factor the next pass would have to collect. */
-            if (!phy_cas_rat_mul(coefficient, value, &coefficient)) {
-                return PHY_ERR_OVERFLOW;
+            phy_ir_ref product = PHY_IR_NULL;
+            status = multiply_exact_nodes(
+                cas, coefficient, power, &product);
+            if (status != PHY_OK) {
+                return status;
             }
+            coefficient = product;
             continue;
         }
         if (phy_ir_kind_of(ir, power) == PHY_IR_MUL) {
@@ -757,19 +795,14 @@ static phy_status collect_product_pass(phy_cas *cas, size_t factors, size_t coun
         phy_cas_scratch_at(cas, built)[factors_out++] = power;
     }
 
-    if (coefficient.num == 0) {
+    if (coefficient == cas->zero) {
         /* Zero annihilates. */
         *out_ref = cas->zero;
         return PHY_OK;
     }
 
-    if (phy_cas_rat_cmp_int(coefficient, 1) != 0) {
-        phy_ir_ref number;
-        status = phy_cas_number_node(cas, coefficient, &number);
-        if (status != PHY_OK) {
-            return status;
-        }
-        phy_cas_scratch_at(cas, built)[factors_out++] = number;
+    if (coefficient != cas->one) {
+        phy_cas_scratch_at(cas, built)[factors_out++] = coefficient;
     }
 
     *out_offset = built;
@@ -970,14 +1003,17 @@ phy_status phy_cas_pow_node(phy_cas *cas, phy_ir_ref base, phy_ir_ref exponent,
             if (phy_cas_rat_pow(exact_base, integer_exponent, &folded)) {
                 return phy_cas_number_node(cas, folded, out_ref);
             }
-            /*
-             * Too large for int64. Unlike a product of two numbers, an
-             * unevaluated exact power is still in normal form -- there is
-             * nothing to collect -- so this stays symbolic rather than failing
-             * a rewrite that has no other problem. The zero decision then treats
-             * it as an opaque generator, which is why 4^500 - 2^1000 answers
-             * UNKNOWN instead of ZERO.
-             */
+            const phy_status promoted = phy_cas_exact_pow_ref(
+                cas, base, integer_exponent, out_ref);
+            if (promoted != PHY_ERR_UNSUPPORTED) {
+                return promoted;
+            }
+        } else if (phy_cas_is_exact(cas, base)) {
+            const phy_status promoted = phy_cas_exact_pow_ref(
+                cas, base, integer_exponent, out_ref);
+            if (promoted != PHY_ERR_UNSUPPORTED) {
+                return promoted;
+            }
         } else if (phy_ir_kind_of(ir, base) == PHY_IR_POW) {
             /* (u^a)^k = u^(a*k) for integer k, on the principal branch. The
                restriction matters: (u^2)^(1/2) is not u. */

@@ -214,6 +214,68 @@ static void test_integer_and_rational_normalization(void)
     phy_ir_context_destroy(ctx);
 }
 
+static void test_promoted_exact_atoms(void)
+{
+    phy_ir_context *ctx = fresh();
+    static const char big_value[] =
+        "184467440737095516160000000000000000001";
+    const phy_ir_ref big = phy_ir_integer_text(ctx, big_value);
+    PHY_CHECK(big != PHY_IR_NULL);
+    PHY_CHECK_EQ_INT(phy_ir_kind_of(ctx, big), PHY_IR_INTEGER);
+    int64_t small = 0;
+    PHY_CHECK(!phy_ir_integer_value(ctx, big, &small));
+
+    phy_ir_exact_view view;
+    PHY_CHECK(phy_ir_exact_decimal_view(ctx, big, &view));
+    PHY_CHECK_EQ_INT(view.numerator_length, strlen(big_value));
+    PHY_CHECK_EQ_INT(
+        memcmp(view.numerator, big_value, strlen(big_value)), 0);
+    PHY_CHECK_EQ_INT(view.denominator_length, 1);
+    PHY_CHECK_EQ_INT(view.denominator[0], '1');
+
+    /* Canonicalization crosses the small/big boundary in both directions. */
+    PHY_CHECK_EQ_INT(
+        phy_ir_integer_text(ctx, "+00000000000000000042"),
+        phy_ir_integer(ctx, 42));
+    const phy_ir_ref reduced = phy_ir_rational_text(
+        ctx, "184467440737095516160", "10");
+    PHY_CHECK_EQ_INT(
+        reduced, phy_ir_integer_text(ctx, "18446744073709551616"));
+
+    const phy_ir_ref rational = phy_ir_rational_text(
+        ctx, "-36893488147419103232", "-6");
+    PHY_CHECK(rational != PHY_IR_NULL);
+    PHY_CHECK_EQ_INT(phy_ir_kind_of(ctx, rational), PHY_IR_RATIONAL);
+    PHY_CHECK(phy_ir_exact_decimal_view(ctx, rational, &view));
+    static const char expected_numerator[] = "18446744073709551616";
+    PHY_CHECK_EQ_INT(
+        view.numerator_length, strlen(expected_numerator));
+    PHY_CHECK_EQ_INT(
+        memcmp(view.numerator, expected_numerator,
+               strlen(expected_numerator)),
+        0);
+    PHY_CHECK_EQ_INT(view.denominator_length, 1);
+    PHY_CHECK_EQ_INT(view.denominator[0], '3');
+
+    char text[256];
+    PHY_CHECK_EQ_STR(
+        render(ctx, rational, text, sizeof text),
+        "(rat 18446744073709551616 3)");
+    phy_ir_context *copy = fresh();
+    char roundtrip[256];
+    const phy_ir_ref rebuilt =
+        round_trip(ctx, rational, copy, roundtrip, sizeof roundtrip);
+    PHY_CHECK(rebuilt != PHY_IR_NULL);
+    PHY_CHECK_EQ_STR(roundtrip, "(rat 18446744073709551616 3)");
+    PHY_CHECK_EQ_INT(phy_ir_hash(ctx, rational),
+                     phy_ir_hash(copy, rebuilt));
+    PHY_CHECK_EQ_INT(phy_ir_validate(ctx), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_ir_validate(copy), PHY_OK);
+
+    phy_ir_context_destroy(copy);
+    phy_ir_context_destroy(ctx);
+}
+
 static void test_real_atoms(void)
 {
     phy_ir_context *ctx = fresh();
@@ -838,6 +900,76 @@ static void test_allocation_failure_leaves_no_orphans(void)
     phy_platform_shutdown();
 }
 
+/*
+ * Promoted exact construction has a second transactional boundary: parsing and
+ * reducing happen in a temporary exact context, then two decimal payloads and
+ * one record are published into the IR. Sweep every host allocation in that
+ * route so a failure between those stages cannot strand pool entries.
+ */
+static void test_promoted_exact_allocation_failure_is_transactional(void)
+{
+    static const char numerator[] =
+        "340282366920938463463374607431768211507";
+    static const char denominator[] =
+        "18446744073709551629";
+
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+
+    const uint32_t attempts_before = phy_host_alloc_attempts();
+    phy_ir_context *calibration = phy_ir_context_create(NULL);
+    PHY_CHECK(calibration != NULL);
+    PHY_CHECK(phy_ir_rational_text(
+                  calibration, numerator, denominator) != PHY_IR_NULL);
+    PHY_CHECK_EQ_INT(phy_ir_validate(calibration), PHY_OK);
+    const uint32_t allocations =
+        phy_host_alloc_attempts() - attempts_before;
+    phy_ir_context_destroy(calibration);
+    PHY_CHECK(allocations > 8u);
+
+    unsigned failed_inside_builder = 0u;
+    for (uint32_t nth = 1u; nth <= allocations; ++nth) {
+        phy_host_fail_alloc_after(nth);
+        phy_ir_context *ctx = phy_ir_context_create(NULL);
+        if (ctx == NULL) {
+            phy_host_fail_alloc_after(0u);
+            continue;
+        }
+
+        const phy_ir_ref value =
+            phy_ir_rational_text(ctx, numerator, denominator);
+        phy_host_fail_alloc_after(0u);
+        if (value == PHY_IR_NULL) {
+            failed_inside_builder++;
+            PHY_CHECK_EQ_INT(
+                phy_ir_last_error(ctx), PHY_ERR_OUT_OF_MEMORY);
+        }
+        PHY_CHECK_EQ_INT(phy_ir_validate(ctx), PHY_OK);
+
+        phy_ir_clear_error(ctx);
+        const phy_ir_ref recovered =
+            phy_ir_integer_text(ctx, "18446744073709551616");
+        PHY_CHECK(recovered != PHY_IR_NULL);
+        PHY_CHECK_EQ_INT(phy_ir_validate(ctx), PHY_OK);
+        phy_ir_context_destroy(ctx);
+
+        phy_telemetry iteration_telemetry;
+        phy_telemetry_get(&iteration_telemetry);
+        if (iteration_telemetry.bytes_live != 0u) {
+            fprintf(stderr,
+                    "  promoted exact alloc #%u leaked %zu bytes\n",
+                    (unsigned)nth, iteration_telemetry.bytes_live);
+        }
+        PHY_CHECK_EQ_INT(iteration_telemetry.bytes_live, 0);
+    }
+    PHY_CHECK(failed_inside_builder > 4u);
+
+    phy_telemetry telemetry;
+    phy_telemetry_get(&telemetry);
+    PHY_CHECK_EQ_INT(telemetry.bytes_live, 0);
+    phy_host_fail_alloc_after(0u);
+    phy_platform_shutdown();
+}
+
 static void test_failed_intern_does_not_accumulate(void)
 {
     /*
@@ -1260,7 +1392,7 @@ static void test_parse_errors(void)
                      PHY_ERR_PARSE);
     PHY_CHECK_EQ_INT(phy_ir_read(ctx, "(err PHY_NOT_A_STATUS)", &ref, &offset),
                      PHY_ERR_PARSE);
-    PHY_CHECK_EQ_INT(phy_ir_read(ctx, "99999999999999999999", &ref, &offset),
+    PHY_CHECK_EQ_INT(phy_ir_read(ctx, "99999999999999999999x", &ref, &offset),
                      PHY_ERR_PARSE);
     PHY_CHECK_EQ_INT(phy_ir_read(ctx, "|unterminated", &ref, &offset),
                      PHY_ERR_PARSE);
@@ -1437,6 +1569,7 @@ int main(void)
     PHY_TEST_CASE(test_context_returns_all_memory);
     PHY_TEST_CASE(test_symbol_interning);
     PHY_TEST_CASE(test_integer_and_rational_normalization);
+    PHY_TEST_CASE(test_promoted_exact_atoms);
     PHY_TEST_CASE(test_real_atoms);
     PHY_TEST_CASE(test_index_and_error_atoms);
     PHY_TEST_CASE(test_structural_interning);
@@ -1453,6 +1586,7 @@ int main(void)
     PHY_TEST_CASE(test_term_and_node_limits);
     PHY_TEST_CASE(test_memory_limit_is_enforced);
     PHY_TEST_CASE(test_allocation_failure_leaves_no_orphans);
+    PHY_TEST_CASE(test_promoted_exact_allocation_failure_is_transactional);
     PHY_TEST_CASE(test_failed_intern_does_not_accumulate);
     PHY_TEST_CASE(test_validate_accepts_healthy_contexts);
     PHY_TEST_CASE(test_failed_parse_retains_prefix_but_stays_valid);

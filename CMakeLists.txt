@@ -154,6 +154,7 @@ add_library(phy_core STATIC
     src/exact/integer.c
     src/exact/rational.c
     src/cas/num.c
+    src/cas/big_num.c
     src/cas/engine.c
     src/cas/simplify.c
     src/cas/diff.c

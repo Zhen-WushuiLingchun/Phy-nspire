@@ -24,11 +24,19 @@
 
 /* Same reasoning applied to the fields that must fit the node layout. */
 #define PHY_IR_MAX_CHILDREN_CEILING 65535u
+#define PHY_IR_EXACT_BIG 0x80u
 
 typedef struct {
     int64_t numerator;
     int64_t denominator; /* always > 1; a unit denominator becomes an integer */
 } phy_ir_rat;
+
+typedef struct {
+    uint32_t numerator_offset;
+    uint32_t numerator_length;
+    uint32_t denominator_offset;
+    uint32_t denominator_length; /* zero only for an integer */
+} phy_ir_big_exact;
 
 /*
  * 32 bytes on both targets. Refs are indices, so the pools below may move;
@@ -85,6 +93,8 @@ struct phy_ir_context {
     phy_pool nodes;      /* phy_ir_node */
     phy_pool children;   /* phy_ir_ref */
     phy_pool rationals;  /* phy_ir_rat */
+    phy_pool big_exacts; /* phy_ir_big_exact */
+    phy_pool exact_text; /* canonical decimal bytes, no terminators */
     phy_pool symbols;    /* phy_ir_symbol_record */
     phy_pool strings;    /* char */
     phy_pool symmetries; /* phy_ir_symmetry_record */
@@ -120,6 +130,8 @@ const phy_ir_symbol_record *phy_ir_symbol_at(const phy_ir_context *ctx,
                                              phy_ir_symbol sym);
 
 const phy_ir_rat *phy_ir_rat_at(const phy_ir_context *ctx, uint32_t index);
+const phy_ir_big_exact *phy_ir_big_exact_at(const phy_ir_context *ctx,
+                                            uint32_t index);
 
 /* Children of a compound node. Invalidated by allocation. */
 const phy_ir_ref *phy_ir_children_of(const phy_ir_context *ctx,

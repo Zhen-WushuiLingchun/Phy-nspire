@@ -48,6 +48,39 @@ static void test_operator_precedence_and_exact_numbers(void)
     phy_platform_shutdown();
 }
 
+static void test_promoted_exact_source(void)
+{
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    phy_ir_context *ir = phy_ir_context_create(NULL);
+    PHY_CHECK(ir != NULL);
+
+    phy_source_command command =
+        parse(ir, "184467440737095516160000000000000000001");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "184467440737095516160000000000000000001");
+
+    command = parse(ir, "-184467440737095516160000000000000000001");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "-184467440737095516160000000000000000001");
+
+    command = parse(ir, "1.000000000000000000001");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(rat 1000000000000000000001 1000000000000000000000)");
+
+    command = parse(
+        ir, "Rational[36893488147419103232, 6]");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(rat 18446744073709551616 3)");
+
+    PHY_CHECK_EQ_INT(phy_ir_validate(ir), PHY_OK);
+    phy_ir_context_destroy(ir);
+    phy_platform_shutdown();
+}
+
 static void test_commands_and_functions(void)
 {
     PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
@@ -347,6 +380,7 @@ static void test_assignment_and_reserved_heads(void)
 int main(void)
 {
     PHY_TEST_CASE(test_operator_precedence_and_exact_numbers);
+    PHY_TEST_CASE(test_promoted_exact_source);
     PHY_TEST_CASE(test_commands_and_functions);
     PHY_TEST_CASE(test_diagnostics_and_bounds);
     PHY_TEST_CASE(test_assignment_and_reserved_heads);

@@ -79,9 +79,12 @@ Output:
   insertion entries; graphical particle/diagram palettes are not yet done;
 - backend-neutral typed expression IR — done, `include/phy/ir.h`, `src/ir`,
   documented in [`docs/IR.md`](IR.md);
-- native scalar algebra and rewriting — done, `include/phy/cas.h`, `src/cas`,
-  documented in [`docs/CAS.md`](CAS.md): exact rational arithmetic, a normal
-  form, expansion, substitution, differentiation, and an exact zero decision;
+- native scalar algebra and rewriting — done for the documented bounded class,
+  `include/phy/cas.h`, `src/cas`, documented in
+  [`docs/CAS.md`](CAS.md): native arbitrary-precision integer/rational atom
+  folding with an `int64` fast path, a normal form, expansion, substitution,
+  differentiation, and an exact zero decision. The older polynomial
+  coefficient containers remain checked `int64` pending F3 migration;
 - native Giac adapter for a small scalar command set — **not needed for the
   scalar operations the tensor and curvature phases require**, which the layer
   above now supplies natively. The backend boundary in
@@ -103,10 +106,10 @@ Verification:
 - cancellation and expression-limit tests — done for the CAS, `tests/test_cas.c`:
   the step budget, the cancellation hook, and the IR's term limit each surface as
   a typed status and leave both layers validating;
-- IR unit tests — done, `tests/test_ir.c`, 2,586 checks covering interning,
+- IR unit tests — done, `tests/test_ir.c`, 2,843 checks covering interning,
   canonical ordering, the construction ceilings, and text round-trips;
-- CAS unit tests — done, `tests/test_cas.c`, 1,226 checks covering the normal
-  form, exact arithmetic and its overflow statuses, differentiation, bounded
+- CAS unit tests — done, `tests/test_cas.c`, 2,076 checks covering the normal
+  form, exact arithmetic and arbitrary-precision promotion, differentiation, bounded
   exact factorization, and the zero decision, including the four `sphere_2d`
   corpus entries whose stated trigonometric form differs from the computed one.
 - notebook tests — done, `tests/test_notebook.c`, 215 checks covering bounded

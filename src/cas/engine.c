@@ -639,6 +639,9 @@ bool phy_cas_known_nonzero(const phy_cas *cas, phy_ir_ref ref)
     if (phy_cas_exact_value(cas, ref, &value)) {
         return value.num != 0;
     }
+    if (phy_cas_is_exact(cas, ref)) {
+        return phy_cas_exact_sign_ref(cas, ref) != 0;
+    }
 
     switch (phy_ir_kind_of(ir, ref)) {
     case PHY_IR_SYMBOL: {

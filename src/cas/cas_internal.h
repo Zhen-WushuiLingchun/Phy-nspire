@@ -6,7 +6,8 @@
  *
  * The layer is deliberately split the way src/ir is:
  *
- *   num.c       exact int64 rational arithmetic, no IR, no allocation;
+ *   num.c       checked int64 rational fast path, no IR, no allocation;
+ *   big_num.c   bounded arbitrary-precision promotion for exact IR atoms;
  *   engine.c    context, budget, memo cache, scratch arena, small predicates;
  *   simplify.c  the rewrite rules and the simplifying constructors;
  *   diff.c      differentiation and the dependence test it needs;
@@ -29,11 +30,9 @@
  * An exact rational in flight. Reduced, denominator strictly positive, so
  * `den == 1` is an integer and the pair is unique for a value.
  *
- * The IR stores numbers as nodes; this is the arithmetic form, used between
- * reading operands and building the result. Every operation on it reports
- * overflow rather than wrapping, because the alternative to an int64 ceiling is
- * a bignum, and docs/IR.md is explicit that bignums are a later addition with a
- * known shape.
+ * The IR stores numbers as nodes; this is the allocation-free fast arithmetic
+ * form used while every operand and result fits. Overflow here is a request to
+ * use big_num.c's bounded promotion bridge, not permission to wrap.
  */
 typedef struct {
     int64_t num;
@@ -47,6 +46,18 @@ bool phy_cas_rat_pow(phy_cas_rat base, int64_t exponent, phy_cas_rat *out);
 
 /* Sign of a - value, where `value` is an integer. */
 int phy_cas_rat_cmp_int(phy_cas_rat a, int64_t value);
+
+/*
+ * Promotion bridge for exact IR atoms. These preserve the small int64 fast
+ * path but evaluate wider operands through the bounded exact-number context.
+ */
+phy_status phy_cas_exact_add_refs(phy_cas *cas, phy_ir_ref left,
+                                  phy_ir_ref right, phy_ir_ref *out_ref);
+phy_status phy_cas_exact_mul_refs(phy_cas *cas, phy_ir_ref left,
+                                  phy_ir_ref right, phy_ir_ref *out_ref);
+phy_status phy_cas_exact_pow_ref(phy_cas *cas, phy_ir_ref base,
+                                 int64_t exponent, phy_ir_ref *out_ref);
+int phy_cas_exact_sign_ref(const phy_cas *cas, phy_ir_ref ref);
 
 /* ------------------------------------------------------------ memo cache */
 

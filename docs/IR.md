@@ -107,22 +107,25 @@ Phase 2 work in the rewriter, not construction.
 
 ## Numbers
 
-Integers are exact `int64`. Rationals are exact `int64` pairs, reduced, with
-the sign on the numerator and a denominator greater than one; a unit
-denominator yields an integer instead, so no rational ever equals an integer.
-That normalization is canonical form, not simplification — the IR performs no
-arithmetic beyond it.
+Integers and rationals are exact. Values that fit use the original inline
+`int64` integer or reduced `int64` pair. Wider values keep the same
+`PHY_IR_INTEGER`/`PHY_IR_RATIONAL` kinds and use a canonical signed-decimal
+payload. The sign is on the numerator, the denominator is positive, the
+fraction is reduced, and a unit denominator yields an integer instead, so no
+rational ever equals an integer. This preserves compact small expressions and
+the existing text format while removing a fixed mathematical word-size limit.
+Normalization is canonical form, not general simplification.
 
 Reals are IEEE-754 `binary64`, for numeric fallback only. Infinities and NaN
 are rejected as `PHY_ERR_DOMAIN`, and negative zero is folded to positive zero
 so the two cannot intern apart. The checks read the bit pattern rather than
 calling `isfinite`, which keeps libm out of the device binary.
 
-Arbitrary-precision integers, which `docs/SCIENTIFIC_SCOPE.md` calls for, are
-**not** implemented. Construction that would leave the `int64` range reports
-`PHY_ERR_OVERFLOW` rather than wrapping. Adding a bignum is a new atom kind and
-a new payload arm; nothing in the ordering or interning machinery assumes 64
-bits beyond the two comparison paths in `src/ir/order.c`.
+Arbitrary-precision construction is native and bounded. Decimal input is parsed
+through `include/phy/exact.h`; the context byte, limb, and step ceilings turn an
+oversized value into a typed error instead of truncation. Serialization writes
+wide integers as the same bare decimal and wide rationals as `(rat n d)`, so
+old documents remain readable and new documents do not need a second syntax.
 
 ## Canonical order
 
@@ -138,9 +141,12 @@ against a `double` exactly would need arithmetic wider than the device offers,
 and an approximate comparison would be an *intransitive* comparator — which
 does not fail loudly, it just silently produces a non-canonical order.
 
-Exact numbers are compared by cross-multiplication in 128 bits, assembled from
-32-bit pieces in `src/ir/order.c` because the device is 32-bit and has no
-`__int128`.
+Inline exact numbers are compared numerically by cross-multiplication in 128
+bits assembled from 32-bit pieces, because the device is 32-bit and has no
+`__int128`. Promoted exact atoms use a canonical structural suborder
+(sign/width/decimal bytes). This keeps `phy_ir_compare` allocation-free and
+infallible. Mathematical comparison of promoted rationals belongs to the exact
+arithmetic layer, where resource exhaustion can be reported honestly.
 
 Sorting is heapsort: `O(n log n)` unconditionally, iterative, and needs no
 scratch buffer. The term limit permits several thousand operands, which rules

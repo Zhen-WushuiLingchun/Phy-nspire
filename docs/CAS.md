@@ -10,9 +10,13 @@ is not repeated here.
 
 ## What the layer guarantees
 
-**Exact.** All arithmetic is `int64` integers and reduced `int64` rationals.
-Leaving that range is `PHY_ERR_OVERFLOW` — never a wrap, never a silent
-promotion to `double`. `PHY_IR_REAL` atoms are carried but never folded.
+**Exact.** Integer and reduced-rational atoms use an `int64` fast path and
+promote to the native bounded arbitrary-precision layer when necessary. They
+never wrap and never silently promote to `double`. `PHY_IR_REAL` atoms are
+carried but never folded. The older polynomial coefficient containers remain
+checked `int64` until the F2 algorithms are migrated to coefficient operations;
+those entry points still return `PHY_ERR_OVERFLOW` beyond their documented
+class.
 
 **Decidable.** `phy_cas_is_zero` *decides* zero on a documented class and
 answers `PHY_CAS_UNKNOWN` outside it. It never estimates.
@@ -26,11 +30,12 @@ rewritten once however many times the expression mentions it.
 
 ## Every entry point returns a status
 
-Failure is ordinary here — a budget runs out, exact arithmetic overflows, a
-denominator is zero — and a caller that must distinguish those cases should not
-have to consult a sticky flag to do it. So unlike the IR's builders, which
-return `PHY_IR_NULL` and record the reason, each function here returns a
-`phy_status` and writes its result through an out parameter.
+Failure is ordinary here — a budget runs out, a denominator is zero, or a
+bounded algorithm leaves its supported coefficient class — and a caller that
+must distinguish those cases should not have to consult a sticky flag to do
+it. So unlike the IR's builders, which return `PHY_IR_NULL` and record the
+reason, each function here returns a `phy_status` and writes its result through
+an out parameter.
 
 The two conventions meet at one place: when an IR builder fails inside this
 layer, `phy_cas_ir_failure` reads the IR's sticky error and returns it as this
@@ -123,17 +128,20 @@ condition.
 for a single base on one principal branch: both sides are
 `exp((a+b) log x)`.
 
-### Overflow: an error for products, symbolic for powers
+### Exact-number promotion
 
 Two numeric operands of a product or sum *must* fold — the normal form permits
-only one numeric operand — so overflow there is `PHY_ERR_OVERFLOW` and the whole
-rewrite fails. An unevaluated exact power, on the other hand, is still a normal
-form: nothing is left to collect. So `2^200` stays symbolic rather than failing
-an expression that has no other problem.
+only one numeric operand. If the checked `int64` fast path overflows, the
+operation is repeated in the bounded arbitrary-precision domain and published
+as a canonical exact atom. Integer powers use the same route, so `2^200`
+evaluates exactly and `4^500 - 2^1000` is proved zero. A limb, byte, step, or
+cancellation ceiling still fails transactionally with its typed status.
 
-The consequence for the decision procedure is stated rather than hidden: an
-unfolded power is an opaque generator, so `4^500 - 2^1000` answers `UNKNOWN`, not
-`ZERO`.
+This promotion currently covers atom normalization, sum/product collection,
+integer powers, source/evaluator flow, serialization, and MathTree display.
+The univariate polynomial view used by rational reduction and `Factor` still
+has checked `int64` coefficient storage. F3 is not complete until those
+algorithms use a coefficient-generic interface.
 
 ## The zero decision
 

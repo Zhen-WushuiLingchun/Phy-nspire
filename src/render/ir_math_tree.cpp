@@ -30,31 +30,14 @@ constexpr int kPrecedenceProduct = 40;
 constexpr int kPrecedencePower = 60;
 constexpr int kPrecedenceAtom = 100;
 
-std::string format_integer(std::int64_t value)
+std::string display_decimal(std::string_view value)
 {
-    const bool negative = value < 0;
-    std::uint64_t magnitude = static_cast<std::uint64_t>(value);
-    if (negative) {
-        magnitude = 0U - magnitude;
+    if (!value.empty() && value.front() == '-') {
+        std::string result(u8"−");
+        result.append(value.data() + 1U, value.size() - 1U);
+        return result;
     }
-
-    char reversed[21];
-    std::size_t count = 0;
-    do {
-        reversed[count++] =
-            static_cast<char>('0' + static_cast<char>(magnitude % 10U));
-        magnitude /= 10U;
-    } while (magnitude != 0U);
-
-    std::string result;
-    result.reserve(count + (negative ? 1U : 0U));
-    if (negative) {
-        result += u8"−";
-    }
-    while (count != 0U) {
-        result.push_back(reversed[--count]);
-    }
-    return result;
+    return std::string(value);
 }
 
 std::string_view display_symbol(std::string_view name)
@@ -419,16 +402,12 @@ private:
     bool negative_lead(phy_ir_ref expression) const
     {
         const phy_ir_kind kind = phy_ir_kind_of(context_, expression);
-        std::int64_t numerator = 0;
-        std::int64_t denominator = 1;
-        if (kind == PHY_IR_INTEGER) {
-            return phy_ir_integer_value(context_, expression, &numerator) &&
-                   numerator < 0 && numerator != INT64_MIN;
-        }
-        if (kind == PHY_IR_RATIONAL) {
-            return phy_ir_rational_value(context_, expression, &numerator,
-                                         &denominator) &&
-                   numerator < 0 && numerator != INT64_MIN;
+        if (kind == PHY_IR_INTEGER || kind == PHY_IR_RATIONAL) {
+            phy_ir_exact_view exact{};
+            return phy_ir_exact_decimal_view(
+                       context_, expression, &exact) &&
+                   exact.numerator_length != 0U &&
+                   exact.numerator[0] == '-';
         }
         if (kind == PHY_IR_MUL &&
             phy_ir_child_count(context_, expression) > 1U) {
@@ -448,24 +427,25 @@ private:
      */
     MathNodeId number_magnitude(phy_ir_ref expression)
     {
-        std::int64_t value = 0;
-        if (phy_ir_integer_value(context_, expression, &value)) {
-            return value == -1 ? kInvalidMathNode
-                               : text(MathNodeKind::Symbol,
-                                      format_integer(-value));
-        }
-        std::int64_t numerator = 0;
-        std::int64_t denominator = 1;
-        if (phy_ir_rational_value(context_, expression, &numerator,
-                                  &denominator)) {
+        phy_ir_exact_view exact{};
+        if (phy_ir_exact_decimal_view(context_, expression, &exact) &&
+            exact.numerator_length > 1U && exact.numerator[0] == '-') {
+            const std::string_view numerator(
+                exact.numerator + 1U, exact.numerator_length - 1U);
+            const std::string_view denominator(
+                exact.denominator, exact.denominator_length);
+            if (numerator == "1" && denominator == "1") {
+                return kInvalidMathNode;
+            }
+            if (denominator == "1") {
+                return text(MathNodeKind::Symbol, numerator);
+            }
             MathNode fraction;
             fraction.kind = MathNodeKind::Fraction;
             fraction.atom_class = AtomClass::Inner;
             return add(fraction,
-                       {text(MathNodeKind::Symbol,
-                             format_integer(-numerator)),
-                        text(MathNodeKind::Symbol,
-                             format_integer(denominator))});
+                       {text(MathNodeKind::Symbol, numerator),
+                        text(MathNodeKind::Symbol, denominator)});
         }
         fail("stripped a sign from a term without a numeric lead");
         return kInvalidMathNode;
@@ -505,12 +485,17 @@ private:
                 leading_magnitude = true;
             }
         } else {
-            std::int64_t value = 0;
-            if (count > 1U &&
-                phy_ir_integer_value(
+            phy_ir_exact_view exact{};
+            const bool minus_one =
+                count > 1U &&
+                phy_ir_exact_decimal_view(
                     context_, phy_ir_child(context_, expression, 0U),
-                    &value) &&
-                value == -1) {
+                    &exact) &&
+                std::string_view(exact.numerator,
+                                 exact.numerator_length) == "-1" &&
+                std::string_view(exact.denominator,
+                                 exact.denominator_length) == "1";
+            if (minus_one) {
                 items.push_back(text(MathNodeKind::Symbol, u8"−"));
                 start = 1U;
             }
@@ -555,18 +540,21 @@ private:
         const phy_ir_kind kind = phy_ir_kind_of(context_, expression);
         switch (kind) {
         case PHY_IR_INTEGER: {
-            std::int64_t value = 0;
-            if (!phy_ir_integer_value(context_, expression, &value)) {
+            phy_ir_exact_view exact{};
+            if (!phy_ir_exact_decimal_view(
+                    context_, expression, &exact)) {
                 fail("integer payload is invalid");
                 return kInvalidMathNode;
             }
-            return text(MathNodeKind::Symbol, format_integer(value));
+            return text(
+                MathNodeKind::Symbol,
+                display_decimal(std::string_view(
+                    exact.numerator, exact.numerator_length)));
         }
         case PHY_IR_RATIONAL: {
-            std::int64_t numerator = 0;
-            std::int64_t denominator = 0;
-            if (!phy_ir_rational_value(context_, expression, &numerator,
-                                       &denominator)) {
+            phy_ir_exact_view exact{};
+            if (!phy_ir_exact_decimal_view(
+                    context_, expression, &exact)) {
                 fail("rational payload is invalid");
                 return kInvalidMathNode;
             }
@@ -575,8 +563,13 @@ private:
             fraction.atom_class = AtomClass::Inner;
             return add(
                 fraction,
-                {text(MathNodeKind::Symbol, format_integer(numerator)),
-                 text(MathNodeKind::Symbol, format_integer(denominator))});
+                {text(MathNodeKind::Symbol,
+                      display_decimal(std::string_view(
+                          exact.numerator, exact.numerator_length))),
+                 text(MathNodeKind::Symbol,
+                      std::string_view(
+                          exact.denominator,
+                          exact.denominator_length))});
         }
         case PHY_IR_REAL:
             return styled(text(MathNodeKind::Text, "real"), MathVariant::Roman);

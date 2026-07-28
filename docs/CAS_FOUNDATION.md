@@ -70,21 +70,29 @@ factorization, and `Apart` remain open.
 - `Cancel`, robust `Together`, square-free decomposition, `Factor`, and
   `Apart`, in that order.
 
-Polynomial algorithms initially use checked `int64` rationals and return
-`PHY_ERR_OVERFLOW` outside that coefficient domain. They must be isolated
-behind coefficient operations so F3 can replace the representation without
-rewriting the algorithms.
+Polynomial algorithms currently use checked `int64` rationals and return
+`PHY_ERR_OVERFLOW` outside that coefficient domain. Scalar folding has already
+promoted, but these algorithms still must be isolated behind coefficient
+operations so F3 can replace their storage without rewriting their logic.
 
 ### F3 — exact number domains
 
-- Native bounded-memory arbitrary-precision integers and rationals, or a
-  measured compact Giac boundary if that is smaller and faster on the CX II.
-- Gaussian rationals and exact `I`, `Conjugate`, `Re`, `Im`, and `Abs`.
-- Algebraic-number/radical representation sufficient for safe root
-  comparisons and denominator rationalization.
+Status: native bounded-memory arbitrary-precision integers/rationals are
+implemented and flow through IR, source, scalar folding, evaluator,
+serialization, and MathTree display. Algebraic numbers and migration of the
+polynomial coefficient containers remain open.
 
-No choice between native big integers and Giac is accepted without an ARM size,
-heap, timing, serialization, and licence report.
+- Native bounded-memory arbitrary-precision integers and rationals.
+- Gaussian rationals and exact `I`, `Conjugate`, `Re`, `Im`, and `Abs`.
+- Algebraic numbers represented by a primitive square-free defining polynomial
+  plus a certified rational isolating interval; canonical minimal-polynomial
+  equality follows after modular factorization can certify irreducibility.
+- Safe root comparison and denominator rationalization on that certified
+  domain.
+
+The native choice has host strict/ASan, serialization, and allocation-failure
+evidence. ARM link/size and physical CX II timing/heap acceptance are still
+required before F3 can be closed.
 
 ### F4 — series, limits, and equations
 

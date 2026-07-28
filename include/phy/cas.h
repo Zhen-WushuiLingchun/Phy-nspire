@@ -7,9 +7,10 @@
  *
  * Four properties define it:
  *
- *   exact            all arithmetic is int64 integers and reduced int64
- *                    rationals. Leaving that range is PHY_ERR_OVERFLOW, never a
- *                    wrap and never a silent promotion to double. PHY_IR_REAL
+ *   exact            integers and reduced rationals use an int64 fast path and
+ *                    a bounded native arbitrary-precision promotion path.
+ *                    Exhausting the configured exact-number budget is a typed
+ *                    error, never a wrap or promotion to double. PHY_IR_REAL
  *                    atoms are carried, not folded -- see "Reals" below;
  *
  *   decidable        phy_cas_is_zero() DECIDES zero on a documented class of
@@ -25,9 +26,10 @@
  *                    expression mentions it.
  *
  * Every entry point returns a phy_status and writes its result through an out
- * parameter. Failure is ordinary here -- a budget runs out, exact arithmetic
- * overflows, a denominator is zero -- and a caller that must distinguish those
- * cases should not have to consult a sticky flag to do it.
+ * parameter. Failure is ordinary here -- a budget runs out, a denominator is
+ * zero, or a still-int64-only polynomial algorithm reaches its coefficient
+ * ceiling -- and a caller that must distinguish those cases should not have to
+ * consult a sticky flag to do it.
  *
  * A phy_cas borrows its phy_ir_context; it does not own it. Destroy the CAS
  * before the context. Every input phy_ir_ref must come from that same context;
@@ -227,8 +229,9 @@ phy_status phy_cas_expand(phy_cas *cas, phy_ir_ref expr, phy_ir_ref *out_ref);
  * factors that the next contraction multiplies in, so the denominators
  * accumulate instead of collapsing. In the curvature pipeline that is the
  * difference between a Riemann component of a few dozen nodes and one whose
- * rational form reaches degree 33 with coefficients past the int64 ceiling --
- * which is PHY_ERR_OVERFLOW deciding something that was small four stages ago.
+ * rational form reaches degree 33 with large coefficients. Factored expansion
+ * prevents that avoidable growth even though scalar number folding itself now
+ * promotes beyond the int64 fast path.
  *
  * Both are exact and both are bounded by the IR's term limit.
  */

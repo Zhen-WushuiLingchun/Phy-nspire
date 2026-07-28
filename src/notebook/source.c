@@ -5,6 +5,8 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "phy/platform.h"
+
 #define SOURCE_NAME_CAPACITY 32u
 #define SOURCE_MAX_ARGUMENTS 16u
 
@@ -321,6 +323,36 @@ static phy_ir_ref build_neg(source_reader *reader, phy_ir_ref value)
         numerator != INT64_MIN) {
         return phy_ir_rational(reader->ir, -numerator, denominator);
     }
+    phy_ir_exact_view exact;
+    if (phy_ir_exact_decimal_view(reader->ir, value, &exact)) {
+        const bool negative =
+            exact.numerator_length != 0u && exact.numerator[0] == '-';
+        const size_t magnitude_length =
+            exact.numerator_length - (negative ? 1u : 0u);
+        const size_t result_length =
+            magnitude_length + (negative ? 0u : 1u);
+        char *signed_numerator = (char *)phy_alloc(result_length + 1u);
+        if (signed_numerator == NULL) {
+            fail(reader, PHY_ERR_OUT_OF_MEMORY);
+            return PHY_IR_NULL;
+        }
+        size_t at = 0u;
+        if (!negative) {
+            signed_numerator[at++] = '-';
+        }
+        memcpy(signed_numerator + at,
+               exact.numerator + (negative ? 1u : 0u),
+               magnitude_length);
+        signed_numerator[result_length] = '\0';
+        const phy_ir_ref result = phy_ir_rational_text_n(
+            reader->ir, signed_numerator, result_length,
+            exact.denominator, exact.denominator_length);
+        phy_free(signed_numerator, result_length + 1u);
+        if (result == PHY_IR_NULL) {
+            fail(reader, phy_ir_last_error(reader->ir));
+        }
+        return result;
+    }
     const phy_ir_ref minus_one = phy_ir_integer(reader->ir, -1);
     return build_mul(reader, minus_one, value);
 }
@@ -328,60 +360,67 @@ static phy_ir_ref build_neg(source_reader *reader, phy_ir_ref value)
 static phy_ir_ref parse_number(source_reader *reader)
 {
     skip_space(reader);
-    uint64_t whole = 0u;
-    bool saw_digit = false;
+    const size_t whole_start = reader->at;
     while (reader->at < reader->length &&
            reader->source[reader->at] >= '0' &&
            reader->source[reader->at] <= '9') {
-        const unsigned digit =
-            (unsigned)(reader->source[reader->at] - '0');
-        if (whole > ((uint64_t)INT64_MAX - digit) / 10u) {
-            fail(reader, PHY_ERR_OVERFLOW);
-            return PHY_IR_NULL;
-        }
-        whole = whole * 10u + digit;
         reader->at++;
-        saw_digit = true;
     }
-    if (!saw_digit) {
+    const size_t whole_length = reader->at - whole_start;
+    if (whole_length == 0u) {
         fail(reader, PHY_ERR_PARSE);
         return PHY_IR_NULL;
     }
 
-    uint64_t fraction = 0u;
-    uint64_t scale = 1u;
+    size_t fraction_start = reader->at;
+    size_t fraction_length = 0u;
     if (reader->at < reader->length && reader->source[reader->at] == '.') {
         reader->at++;
-        bool saw_fraction = false;
+        fraction_start = reader->at;
         while (reader->at < reader->length &&
                reader->source[reader->at] >= '0' &&
                reader->source[reader->at] <= '9') {
-            const unsigned digit =
-                (unsigned)(reader->source[reader->at] - '0');
-            if (scale > (uint64_t)INT64_MAX / 10u ||
-                fraction > ((uint64_t)INT64_MAX - digit) / 10u) {
-                fail(reader, PHY_ERR_OVERFLOW);
-                return PHY_IR_NULL;
-            }
-            scale *= 10u;
-            fraction = fraction * 10u + digit;
             reader->at++;
-            saw_fraction = true;
         }
-        if (!saw_fraction) {
+        fraction_length = reader->at - fraction_start;
+        if (fraction_length == 0u) {
             fail(reader, PHY_ERR_PARSE);
             return PHY_IR_NULL;
         }
     }
-    if (whole > ((uint64_t)INT64_MAX - fraction) / scale) {
-        fail(reader, PHY_ERR_OVERFLOW);
-        return PHY_IR_NULL;
+
+    phy_ir_ref result = PHY_IR_NULL;
+    if (fraction_length == 0u) {
+        result = phy_ir_integer_text_n(
+            reader->ir, reader->source + whole_start, whole_length);
+    } else {
+        const size_t numerator_length = whole_length + fraction_length;
+        const size_t denominator_length = fraction_length + 1u;
+        char *numerator = (char *)phy_alloc(numerator_length + 1u);
+        char *denominator = (char *)phy_alloc(denominator_length + 1u);
+        if (numerator == NULL || denominator == NULL) {
+            if (denominator != NULL) {
+                phy_free(denominator, denominator_length + 1u);
+            }
+            if (numerator != NULL) {
+                phy_free(numerator, numerator_length + 1u);
+            }
+            fail(reader, PHY_ERR_OUT_OF_MEMORY);
+            return PHY_IR_NULL;
+        }
+        memcpy(numerator, reader->source + whole_start, whole_length);
+        memcpy(numerator + whole_length,
+               reader->source + fraction_start, fraction_length);
+        numerator[numerator_length] = '\0';
+        denominator[0] = '1';
+        memset(denominator + 1u, '0', fraction_length);
+        denominator[denominator_length] = '\0';
+        result = phy_ir_rational_text_n(
+            reader->ir, numerator, numerator_length, denominator,
+            denominator_length);
+        phy_free(denominator, denominator_length + 1u);
+        phy_free(numerator, numerator_length + 1u);
     }
-    const uint64_t combined = whole * scale + fraction;
-    const phy_ir_ref result =
-        scale == 1u
-            ? phy_ir_integer(reader->ir, (int64_t)combined)
-            : phy_ir_rational(reader->ir, (int64_t)combined, (int64_t)scale);
     if (result == PHY_IR_NULL) {
         fail(reader, phy_ir_last_error(reader->ir));
     }
@@ -503,14 +542,20 @@ static phy_ir_ref parse_primary(source_reader *reader)
         const phy_ir_ref half = phy_ir_rational(reader->ir, 1, 2);
         result = phy_ir_pow(reader->ir, arguments[0], half);
     } else if (name_equals(name, "Rational") && count == 2u) {
-        int64_t numerator = 0;
-        int64_t denominator = 0;
-        if (!phy_ir_integer_value(reader->ir, arguments[0], &numerator) ||
-            !phy_ir_integer_value(reader->ir, arguments[1], &denominator)) {
+        phy_ir_exact_view numerator;
+        phy_ir_exact_view denominator;
+        if (phy_ir_kind_of(reader->ir, arguments[0]) != PHY_IR_INTEGER ||
+            phy_ir_kind_of(reader->ir, arguments[1]) != PHY_IR_INTEGER ||
+            !phy_ir_exact_decimal_view(
+                reader->ir, arguments[0], &numerator) ||
+            !phy_ir_exact_decimal_view(
+                reader->ir, arguments[1], &denominator)) {
             fail(reader, PHY_ERR_TYPE);
             return PHY_IR_NULL;
         }
-        result = phy_ir_rational(reader->ir, numerator, denominator);
+        result = phy_ir_rational_text_n(
+            reader->ir, numerator.numerator, numerator.numerator_length,
+            denominator.numerator, denominator.numerator_length);
     } else if ((name_equals(name, "Up") || name_equals(name, "Down")) &&
                (count == 1u || count == 2u)) {
         if (phy_ir_kind_of(reader->ir, arguments[0]) != PHY_IR_SYMBOL ||
