@@ -394,6 +394,169 @@ private:
         return base;
     }
 
+    MathNodeId series_data(phy_ir_ref expression, unsigned depth)
+    {
+        if (phy_ir_child_count(context_, expression) != 5U ||
+            phy_ir_kind_of(
+                context_, phy_ir_child(context_, expression, 0U)) !=
+                PHY_IR_SYMBOL ||
+            (phy_ir_kind_of(
+                 context_, phy_ir_child(context_, expression, 1U)) !=
+                 PHY_IR_INTEGER &&
+             phy_ir_kind_of(
+                 context_, phy_ir_child(context_, expression, 1U)) !=
+                 PHY_IR_RATIONAL) ||
+            phy_ir_kind_of(
+                context_, phy_ir_child(context_, expression, 2U)) !=
+                PHY_IR_INTEGER ||
+            phy_ir_kind_of(
+                context_, phy_ir_child(context_, expression, 3U)) !=
+                PHY_IR_INTEGER ||
+            phy_ir_kind_of(
+                context_, phy_ir_child(context_, expression, 4U)) !=
+                PHY_IR_FUNCTION) {
+            fail("SeriesData metadata is malformed");
+            return kInvalidMathNode;
+        }
+
+        const phy_ir_ref variable_ref =
+            phy_ir_child(context_, expression, 0U);
+        const phy_ir_ref center_ref =
+            phy_ir_child(context_, expression, 1U);
+        const phy_ir_ref valuation_ref =
+            phy_ir_child(context_, expression, 2U);
+        const phy_ir_ref order_ref =
+            phy_ir_child(context_, expression, 3U);
+        const phy_ir_ref coefficients_ref =
+            phy_ir_child(context_, expression, 4U);
+        const char *coefficient_head = phy_ir_symbol_name(
+            context_, phy_ir_head(context_, coefficients_ref));
+        int64_t valuation = 0;
+        int64_t order = 0;
+        const std::size_t coefficient_count =
+            phy_ir_child_count(context_, coefficients_ref);
+        if (coefficient_head == nullptr ||
+            std::string_view(coefficient_head) != "List" ||
+            !phy_ir_integer_value(
+                context_, valuation_ref, &valuation) ||
+            !phy_ir_integer_value(context_, order_ref, &order) ||
+            valuation > order || valuation < -32 || order > 64 ||
+            coefficient_count !=
+                static_cast<std::size_t>(order - valuation)) {
+            fail("SeriesData coefficient metadata is inconsistent");
+            return kInvalidMathNode;
+        }
+
+        MathNodeId shift = build(variable_ref, depth + 1U, 0);
+        phy_ir_exact_view center{};
+        const bool center_is_zero =
+            phy_ir_exact_decimal_view(context_, center_ref, &center) &&
+            std::string_view(center.numerator,
+                             center.numerator_length) == "0";
+        if (!center_is_zero) {
+            std::vector<MathNodeId> shifted{shift};
+            if (negative_lead(center_ref)) {
+                shifted.push_back(text(
+                    MathNodeKind::Symbol, "+", AtomClass::Binary));
+                MathNodeId magnitude = number_magnitude(center_ref);
+                if (magnitude == kInvalidMathNode) {
+                    magnitude = text(MathNodeKind::Symbol, "1");
+                }
+                shifted.push_back(magnitude);
+            } else {
+                shifted.push_back(text(
+                    MathNodeKind::Symbol, u8"−", AtomClass::Binary));
+                shifted.push_back(build(center_ref, depth + 1U, 0));
+            }
+            shift = delimited(row(shifted));
+        }
+
+        std::vector<MathNodeId> polynomial;
+        polynomial.reserve(coefficient_count * 3U + 1U);
+        for (std::size_t index = 0U; index < coefficient_count;
+             ++index) {
+            const phy_ir_ref coefficient =
+                phy_ir_child(context_, coefficients_ref, index);
+            phy_ir_exact_view exact{};
+            if (!phy_ir_exact_decimal_view(
+                    context_, coefficient, &exact)) {
+                fail("SeriesData contains a non-exact coefficient");
+                return kInvalidMathNode;
+            }
+            const std::string_view numerator(
+                exact.numerator, exact.numerator_length);
+            if (numerator == "0") {
+                continue;
+            }
+            const int64_t exponent =
+                valuation + static_cast<int64_t>(index);
+            const bool negative = negative_lead(coefficient);
+            if (!polynomial.empty()) {
+                polynomial.push_back(text(
+                    MathNodeKind::Symbol,
+                    negative ? u8"−" : "+", AtomClass::Binary));
+            } else if (negative) {
+                polynomial.push_back(
+                    text(MathNodeKind::Symbol, u8"−"));
+            }
+
+            MathNodeId coefficient_node = kInvalidMathNode;
+            if (negative) {
+                coefficient_node = number_magnitude(coefficient);
+            } else if (
+                numerator != "1" ||
+                std::string_view(
+                    exact.denominator,
+                    exact.denominator_length) != "1") {
+                coefficient_node =
+                    build(coefficient, depth + 1U, 0);
+            }
+
+            MathNodeId power = kInvalidMathNode;
+            if (exponent != 0) {
+                power = shift;
+                if (exponent != 1) {
+                    power = scripts(
+                        shift, kInvalidMathNode,
+                        text(
+                            MathNodeKind::Symbol,
+                            display_decimal(
+                                std::to_string(exponent))));
+                }
+            }
+            if (coefficient_node != kInvalidMathNode &&
+                power != kInvalidMathNode) {
+                polynomial.push_back(
+                    row({coefficient_node, power}));
+            } else if (coefficient_node != kInvalidMathNode) {
+                polynomial.push_back(coefficient_node);
+            } else if (power != kInvalidMathNode) {
+                polynomial.push_back(power);
+            } else {
+                polynomial.push_back(
+                    text(MathNodeKind::Symbol, "1"));
+            }
+        }
+        if (polynomial.empty()) {
+            polynomial.push_back(text(MathNodeKind::Symbol, "0"));
+        }
+
+        const MathNodeId powered = scripts(
+            shift, kInvalidMathNode,
+            build(order_ref, depth + 1U, 0));
+        const MathNodeId order_term = row({
+            styled(text(MathNodeKind::Symbol, "O"), MathVariant::Roman),
+            delimited(powered),
+        });
+
+        std::vector<MathNodeId> result{
+            row(polynomial),
+            text(MathNodeKind::Symbol, "+", AtomClass::Binary),
+            order_term,
+        };
+        return row(result);
+    }
+
     /*
      * True when a sum term wears a minus sign a reader would move onto the
      * separator: a negative number, or a product led by one. INT64_MIN is
@@ -654,8 +817,15 @@ private:
         }
         case PHY_IR_TENSOR:
             return indexed_head(expression, depth, false, false);
-        case PHY_IR_OPERATOR:
+        case PHY_IR_OPERATOR: {
+            const char *head = phy_ir_symbol_name(
+                context_, phy_ir_head(context_, expression));
+            if (head != nullptr &&
+                std::string_view(head) == "SeriesData") {
+                return series_data(expression, depth);
+            }
             return indexed_head(expression, depth, true, true);
+        }
         case PHY_IR_DERIVATIVE: {
             std::vector<MathNodeId> items;
             items.push_back(styled(text(MathNodeKind::Symbol, "D"),

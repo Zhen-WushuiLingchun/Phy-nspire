@@ -8,6 +8,7 @@
 #ifndef PHY_SOURCE_H
 #define PHY_SOURCE_H
 
+#include <stdbool.h>
 #include <stddef.h>
 
 #include "phy/ir.h"
@@ -34,6 +35,8 @@ typedef enum {
     PHY_SOURCE_DENOMINATOR,
     PHY_SOURCE_DIFFERENTIATE,
     PHY_SOURCE_INTEGRATE,
+    PHY_SOURCE_SERIES,
+    PHY_SOURCE_NORMAL,
 
     /*
      * The two operations that read and write the notebook environment rather
@@ -50,13 +53,22 @@ typedef struct {
     phy_source_operation operation;
     phy_ir_ref expression;
     phy_ir_ref variables[PHY_SOURCE_MAX_VARIABLES];
-    size_t variable_count; /* only for DIFFERENTIATE / INTEGRATE */
+    /* DIFFERENTIATE / INTEGRATE, or one expansion symbol for SERIES. */
+    size_t variable_count;
     /*
      * The name an ASSIGN binds or a CLEAR unbinds. PHY_IR_NO_SYMBOL for every
      * other operation, and for `ClearAll[]`, which clears the whole
      * environment. `expression` is PHY_IR_NULL for CLEAR and only for CLEAR.
      */
     phy_ir_symbol target;
+    /*
+     * Typed Series specification. For SERIES, variables[0] is the expansion
+     * symbol, parameter is the exact center, and series_order is the highest
+     * retained power. Other operations leave these fields zero/null.
+     */
+    phy_ir_ref parameter;
+    unsigned series_order;
+    bool normal_series; /* Normal[Series[...]] combined reader action */
 } phy_source_command;
 
 /*

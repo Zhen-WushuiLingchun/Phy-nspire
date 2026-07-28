@@ -97,16 +97,16 @@ survived a round trip and nothing computed.
 
 The generated
 [`examples/phy-nspire-cas-tour.tns`](examples/phy-nspire-cas-tour.tns)
-notebook combines nine Markdown/LaTeX explanations with 103 executable examples
-that touch every implemented evaluator head. Its distributable form contains 112
+notebook combines ten Markdown/LaTeX explanations with 106 executable examples
+that touch every implemented evaluator head. Its distributable form contains 116
 source cells so opening does not eagerly rebuild all cached results; a separate
 fully evaluated copy is serialized, reopened, and replayed during generation.
 
-The strict Windows host suite passes 33/33. The WSL ASan/UBSan/leak suite
-passes 35/35, and the assertion-bearing executables contain 199,526 explicit
+The strict Windows host suite passes 34/34. The WSL ASan/UBSan/leak suite
+passes 36/36, and the assertion-bearing executables contain 212,985 explicit
 checks.
 
-The current native build is measured at 1,145,490 bytes, 18.2% of the 6 MiB
+The current native build is measured at 1,153,412 bytes, 18.3% of the 6 MiB
 ceiling. Its evaluator ARM probe links the complete current physics stack,
 retains 15/15 public evaluator entry points, packages to a `.tns`, and imports
 no libm, floating-point formatter, or ARM soft-float helper.
@@ -120,8 +120,8 @@ verified byte-for-byte by calculator readback. The evaluator build still
 requires an explicit calculator acceptance run after transfer; an ARM link and
 byte-identical upload do not establish on-device runtime or performance. That
 cached tour exposed a CX II load-time failure consistent with eager IR/heap
-pressure and has since been replaced by the 6,102-byte source-only tour; the
-replacement and the current 1,145,490-byte program have not been uploaded in
+pressure and has since been replaced by the 6,342-byte source-only tour; the
+replacement and the current 1,153,412-byte program have not been uploaded in
 this build and still require explicit calculator open/run checks. The
 separate baseline channel-order check remains tracked in
 [docs/BUILD.md](docs/BUILD.md).

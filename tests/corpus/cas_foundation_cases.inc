@@ -9,13 +9,13 @@
  */
 PHY_FOUNDATION_CASE(
     series_polynomial, "Series", "Series[(1+x)^5,{x,0,3}]",
-    PHY_ERR_UNSUPPORTED, "truncated_exact_series")
+    PHY_OK, "truncated_exact_series")
 PHY_FOUNDATION_CASE(
     series_laurent, "Series", "Series[1/(x^2(1+x)),{x,0,4}]",
-    PHY_ERR_UNSUPPORTED, "truncated_exact_laurent_series")
+    PHY_OK, "truncated_exact_laurent_series")
 PHY_FOUNDATION_CASE(
     series_analytic, "Series", "Series[Exp[x] Sin[x],{x,0,7}]",
-    PHY_ERR_UNSUPPORTED, "composed_analytic_series")
+    PHY_OK, "composed_analytic_series")
 PHY_FOUNDATION_CASE(
     limit_removable, "Limit", "Limit[(x^2-1)/(x-1),{x,1}]",
     PHY_ERR_UNSUPPORTED, "finite_exact_limit")

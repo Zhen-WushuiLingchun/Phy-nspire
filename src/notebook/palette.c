@@ -52,6 +52,8 @@ static const phy_palette_entry kCasCalculus[] = {
     {"D[..., x]", "D[, x]", 2u},
     {"D[..., x, y]", "D[, x, y]", 2u},
     {"Integrate[..., x]", "Integrate[, x]", 10u},
+    {"Series[..., {x,0,n}]", "Series[,{x,0,4}]", 7u},
+    {"Normal[series]", "Normal[]", 7u},
     {"Power[..., ...]", "Power[,]", 6u},
     {"Plus[..., ...]", "Plus[,]", 5u},
     {"Times[..., ...]", "Times[,]", 6u},

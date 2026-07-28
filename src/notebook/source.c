@@ -5,6 +5,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "phy/cas.h"
 #include "phy/platform.h"
 
 #define SOURCE_NAME_CAPACITY 32u
@@ -38,6 +39,8 @@ static const command_descriptor kCommands[] = {
     {"Denominator", PHY_SOURCE_DENOMINATOR, true, false},
     {"D", PHY_SOURCE_DIFFERENTIATE, true, true},
     {"Integrate", PHY_SOURCE_INTEGRATE, true, true},
+    {"Series", PHY_SOURCE_SERIES, true, false},
+    {"Normal", PHY_SOURCE_NORMAL, true, false},
     {"Set", PHY_SOURCE_ASSIGN, true, false},
     {"Clear", PHY_SOURCE_CLEAR, true, false},
     {"ClearAll", PHY_SOURCE_CLEAR, true, false},
@@ -48,7 +51,6 @@ static const command_descriptor kCommands[] = {
      * successful while doing no limit computation.
      */
     {"Limit", PHY_SOURCE_SIMPLIFY, false, false},
-    {"Series", PHY_SOURCE_SIMPLIFY, false, false},
     {"Solve", PHY_SOURCE_SIMPLIFY, false, false},
     {"NSolve", PHY_SOURCE_SIMPLIFY, false, false},
     {"Reduce", PHY_SOURCE_SIMPLIFY, false, false},
@@ -780,6 +782,57 @@ static const command_descriptor *begin_command(source_reader *reader,
     return descriptor;
 }
 
+static void parse_series_body(source_reader *reader, char closer,
+                              phy_source_command *command)
+{
+    command->expression = parse_expression(reader);
+    if (reader->status == PHY_OK && !take(reader, ',')) {
+        fail(reader, PHY_ERR_PARSE);
+    }
+    phy_ir_ref specification = PHY_IR_NULL;
+    if (reader->status == PHY_OK) {
+        specification = parse_expression(reader);
+    }
+    const char *head_name =
+        specification == PHY_IR_NULL
+            ? NULL
+            : phy_ir_symbol_name(
+                  reader->ir, phy_ir_head(reader->ir, specification));
+    if (reader->status == PHY_OK &&
+        (phy_ir_kind_of(reader->ir, specification) != PHY_IR_FUNCTION ||
+         head_name == NULL || strcmp(head_name, "List") != 0 ||
+         phy_ir_child_count(reader->ir, specification) != 3u)) {
+        fail(reader, PHY_ERR_TYPE);
+    }
+    if (reader->status == PHY_OK) {
+        const phy_ir_ref variable =
+            phy_ir_child(reader->ir, specification, 0u);
+        const phy_ir_ref center =
+            phy_ir_child(reader->ir, specification, 1u);
+        const phy_ir_ref order_ref =
+            phy_ir_child(reader->ir, specification, 2u);
+        int64_t order = -1;
+        if (phy_ir_kind_of(reader->ir, variable) != PHY_IR_SYMBOL ||
+            (phy_ir_kind_of(reader->ir, center) != PHY_IR_INTEGER &&
+             phy_ir_kind_of(reader->ir, center) != PHY_IR_RATIONAL) ||
+            !phy_ir_integer_value(reader->ir, order_ref, &order)) {
+            fail(reader, PHY_ERR_TYPE);
+        } else if (
+            order < 0 ||
+            (uint64_t)order > PHY_CAS_SERIES_MAX_ORDER) {
+            fail(reader, PHY_ERR_TERM_LIMIT);
+        } else {
+            command->variables[0] = variable;
+            command->variable_count = 1u;
+            command->parameter = center;
+            command->series_order = (unsigned)order;
+        }
+    }
+    if (reader->status == PHY_OK && !take(reader, closer)) {
+        fail(reader, PHY_ERR_PARSE);
+    }
+}
+
 phy_status phy_source_parse(phy_ir_context *ir, const char *source,
                             phy_source_command *out_command,
                             size_t *out_error_offset)
@@ -796,13 +849,12 @@ phy_status phy_source_parse(phy_ir_context *ir, const char *source,
         0u,
         PHY_OK,
     };
-    phy_source_command command = {
-        PHY_SOURCE_SIMPLIFY,
-        PHY_IR_NULL,
-        {PHY_IR_NULL},
-        0u,
-        PHY_IR_NO_SYMBOL,
-    };
+    phy_source_command command;
+    memset(&command, 0, sizeof command);
+    command.operation = PHY_SOURCE_SIMPLIFY;
+    command.expression = PHY_IR_NULL;
+    command.target = PHY_IR_NO_SYMBOL;
+    command.parameter = PHY_IR_NULL;
 
     char closer = '\0';
     const command_descriptor *descriptor = begin_command(&reader, &closer);
@@ -845,9 +897,33 @@ phy_status phy_source_parse(phy_ir_context *ir, const char *source,
         if (reader.status == PHY_OK && !take(&reader, closer)) {
             fail(&reader, PHY_ERR_PARSE);
         }
+    } else if (descriptor != NULL && reader.status == PHY_OK &&
+               descriptor->operation == PHY_SOURCE_NORMAL) {
+        command.operation = PHY_SOURCE_NORMAL;
+        const size_t nested_start = reader.at;
+        char nested_closer = '\0';
+        const command_descriptor *nested =
+            begin_command(&reader, &nested_closer);
+        if (nested != NULL && reader.status == PHY_OK &&
+            nested->operation == PHY_SOURCE_SERIES) {
+            parse_series_body(&reader, nested_closer, &command);
+            command.normal_series = true;
+        } else {
+            reader.at = nested_start;
+            if (reader.status == PHY_OK) {
+                command.expression = parse_expression(&reader);
+            }
+        }
+        if (reader.status == PHY_OK && !take(&reader, closer)) {
+            fail(&reader, PHY_ERR_PARSE);
+        }
     } else if (descriptor != NULL && reader.status == PHY_OK) {
         command.operation = descriptor->operation;
-        command.expression = parse_expression(&reader);
+        if (descriptor->operation == PHY_SOURCE_SERIES) {
+            parse_series_body(&reader, closer, &command);
+        } else {
+            command.expression = parse_expression(&reader);
+        }
         if (descriptor->derivative) {
             while (reader.status == PHY_OK && take(&reader, ',')) {
                 if (command.variable_count >= PHY_SOURCE_MAX_VARIABLES) {
@@ -865,7 +941,8 @@ phy_status phy_source_parse(phy_ir_context *ir, const char *source,
                 fail(&reader, PHY_ERR_PARSE);
             }
         }
-        if (!take(&reader, closer)) {
+        if (descriptor->operation != PHY_SOURCE_SERIES &&
+            !take(&reader, closer)) {
             fail(&reader, PHY_ERR_PARSE);
         }
     } else if (descriptor == NULL) {

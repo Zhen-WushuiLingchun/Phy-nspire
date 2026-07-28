@@ -363,13 +363,13 @@ palette that inserts something the evaluator rejects is worse than no palette.
 The ARM link check is `make eval-link-check` and
 `tests/device/eval_link_probe.c`: 15 declared entry points, the whole physics
 stack behind one dispatcher, and the same no-float/no-libm/no-soft-float
-standard the CAS and geometry layers are held to. It now links 34 portable
+standard the CAS and geometry layers are held to. It now links 40 portable
 sources, retains 15/15 public evaluator entry points, contains no forbidden
-float/libm/soft-float dependency, and packages as a 156,328-byte isolated
+float/libm/soft-float dependency, and packages as a 207,004-byte isolated
 probe. That probe size includes its dependencies and is not an incremental
 product-size measurement.
 
 One consequence of this phase that the earlier link-check reports called out as
 future work has now happened: the application genuinely calls the geometry,
 Lie, Yang--Mills, and QFT layers, so `--gc-sections` no longer drops them.
-`dist/phy-nspire.tns` is currently 1,145,490 bytes.
+`dist/phy-nspire.tns` is currently 1,153,412 bytes.

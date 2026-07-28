@@ -129,6 +129,24 @@ static void test_commands_and_functions(void)
     PHY_CHECK_EQ_INT(command.variable_count, 1);
     PHY_CHECK_EQ_STR(render(ir, command.expression), "(fn sin (* 2 x))");
 
+    command = parse(ir, "Series[(1+x)^5,{x,2,7}]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_SERIES);
+    PHY_CHECK_EQ_INT(command.variable_count, 1);
+    PHY_CHECK_EQ_STR(render(ir, command.expression), "(^ (+ 1 x) 5)");
+    PHY_CHECK_EQ_STR(render(ir, command.variables[0]), "x");
+    PHY_CHECK_EQ_STR(render(ir, command.parameter), "2");
+    PHY_CHECK_EQ_INT(command.series_order, 7);
+    command = parse(ir, "Normal[x]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_NORMAL);
+    PHY_CHECK_EQ_STR(render(ir, command.expression), "x");
+    command = parse(
+        ir, "Normal[Series[Exp[x],{x,0,5}]]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_NORMAL);
+    PHY_CHECK(command.normal_series);
+    PHY_CHECK_EQ_STR(render(ir, command.expression), "(fn exp x)");
+    PHY_CHECK_EQ_STR(render(ir, command.variables[0]), "x");
+    PHY_CHECK_EQ_INT(command.series_order, 5);
+
     command = parse(ir, "ArcTan[Sinh[x]] + ArcSinh[TanH[y]]");
     PHY_CHECK_EQ_STR(
         render(ir, command.expression),
@@ -232,6 +250,21 @@ static void test_diagnostics_and_bounds(void)
     PHY_CHECK_EQ_INT(
         phy_source_parse(ir, "Limit[1/x]", &command, &error),
         PHY_ERR_UNSUPPORTED);
+    PHY_CHECK_EQ_INT(
+        phy_source_parse(ir, "Series[x,x]", &command, &error),
+        PHY_ERR_TYPE);
+    PHY_CHECK_EQ_INT(
+        phy_source_parse(ir, "Series[x,{x,0}]", &command, &error),
+        PHY_ERR_TYPE);
+    PHY_CHECK_EQ_INT(
+        phy_source_parse(ir, "Series[x,{x,y,4}]", &command, &error),
+        PHY_ERR_TYPE);
+    PHY_CHECK_EQ_INT(
+        phy_source_parse(ir, "Series[x,{x,0,-1}]", &command, &error),
+        PHY_ERR_TERM_LIMIT);
+    PHY_CHECK_EQ_INT(
+        phy_source_parse(ir, "Series[x,{x,0,64}]", &command, &error),
+        PHY_ERR_TERM_LIMIT);
     PHY_CHECK_EQ_INT(
         phy_source_parse(ir, "Commutator[A]", &command, &error),
         PHY_ERR_TYPE);

@@ -12,6 +12,8 @@
 
 #include "phy/cas.h"
 #include "phy/ir.h"
+#include "phy/platform.h"
+#include "phy/platform_host.h"
 #include "phy_test.h"
 #include "series_internal.h"
 
@@ -88,6 +90,20 @@ static const char *render_ref(fixture *f, phy_ir_ref ref)
         return "<write failed>";
     }
     return text;
+}
+
+static phy_ir_ref parse_ir(fixture *f, const char *text)
+{
+    phy_ir_ref ref = PHY_IR_NULL;
+    size_t offset = 0u;
+    const phy_status status =
+        phy_ir_read(f->ir, text, &ref, &offset);
+    if (status != PHY_OK) {
+        fprintf(stderr, "  parse failed at %u: %s\n",
+                (unsigned)offset, text);
+    }
+    PHY_CHECK_EQ_INT(status, PHY_OK);
+    return ref;
 }
 
 static void check_coefficient(fixture *f, const phy_series *series,
@@ -518,8 +534,138 @@ static void test_cancellation_is_transactional(void)
     close_fixture(&f);
 }
 
+static void check_public_series(fixture *f, const char *expression,
+                                phy_ir_ref center, unsigned order,
+                                const char *expected_normal,
+                                int expected_valuation)
+{
+    phy_ir_ref data = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_series(
+            f->cas, parse_ir(f, expression), f->x, center, order, &data),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(phy_ir_kind_of(f->ir, data), PHY_IR_OPERATOR);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f->ir, phy_ir_head(f->ir, data)),
+        "SeriesData");
+    PHY_CHECK_EQ_INT(phy_ir_child_count(f->ir, data), 5);
+    int64_t valuation = 0;
+    int64_t exclusive_order = 0;
+    PHY_CHECK(phy_ir_integer_value(
+        f->ir, phy_ir_child(f->ir, data, 2u), &valuation));
+    PHY_CHECK(phy_ir_integer_value(
+        f->ir, phy_ir_child(f->ir, data, 3u), &exclusive_order));
+    PHY_CHECK_EQ_INT(valuation, expected_valuation);
+    PHY_CHECK_EQ_INT(exclusive_order, (int64_t)order + 1);
+
+    phy_ir_ref normal = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_series_normal(f->cas, data, &normal), PHY_OK);
+    phy_cas_decision decision = PHY_CAS_UNKNOWN;
+    PHY_CHECK_EQ_INT(
+        phy_cas_equivalent(
+            f->cas, normal, parse_ir(f, expected_normal), &decision),
+        PHY_OK);
+    if (decision != PHY_CAS_ZERO) {
+        fprintf(stderr, "  Series[%s] normal -> %s\n", expression,
+                render_ref(f, normal));
+    }
+    PHY_CHECK_EQ_INT(decision, PHY_CAS_ZERO);
+}
+
+static void test_public_rational_and_analytic_series(void)
+{
+    fixture f = open_fixture();
+    check_public_series(
+        &f, "(^ (+ 1 (* -1 x)) -1)", f.zero, 4u,
+        "(+ 1 x (^ x 2) (^ x 3) (^ x 4))", 0);
+    check_public_series(
+        &f, "(^ x -2)", f.zero, 3u, "(^ x -2)", -2);
+    check_public_series(&f, "x", exact(&f, 2, 1), 3u, "x", 0);
+    check_public_series(
+        &f, "(fn exp x)", f.zero, 5u,
+        "(+ 1 x (* (rat 1 2) (^ x 2)) "
+        "(* (rat 1 6) (^ x 3)) (* (rat 1 24) (^ x 4)) "
+        "(* (rat 1 120) (^ x 5)))",
+        0);
+    check_public_series(
+        &f, "(fn sin x)", f.zero, 5u,
+        "(+ x (* (rat -1 6) (^ x 3)) "
+        "(* (rat 1 120) (^ x 5)))",
+        1);
+    check_public_series(
+        &f, "(fn log (+ 1 x))", f.zero, 5u,
+        "(+ x (* (rat -1 2) (^ x 2)) "
+        "(* (rat 1 3) (^ x 3)) "
+        "(* (rat -1 4) (^ x 4)) "
+        "(* (rat 1 5) (^ x 5)))",
+        1);
+    check_public_series(
+        &f, "(^ (+ 1 x) (rat 1 2))", f.zero, 4u,
+        "(+ 1 (* (rat 1 2) x) (* (rat -1 8) (^ x 2)) "
+        "(* (rat 1 16) (^ x 3)) "
+        "(* (rat -5 128) (^ x 4)))",
+        0);
+    check_public_series(
+        &f, "(fn tan x)", f.zero, 5u,
+        "(+ x (* (rat 1 3) (^ x 3)) "
+        "(* (rat 2 15) (^ x 5)))",
+        1);
+
+    phy_ir_ref output = f.one;
+    PHY_CHECK_EQ_INT(
+        phy_cas_series(
+            f.cas, parse_ir(&f, "(fn exp x)"), f.x, f.one, 4u,
+            &output),
+        PHY_ERR_UNSUPPORTED);
+    PHY_CHECK(output == f.one);
+    PHY_CHECK_EQ_INT(
+        phy_cas_series(
+            f.cas, f.x, f.one, f.zero, 4u, &output),
+        PHY_ERR_INVALID_ARGUMENT);
+    PHY_CHECK_EQ_INT(
+        phy_cas_series(
+            f.cas, f.x, f.x, f.zero,
+            PHY_CAS_SERIES_MAX_ORDER + 1u, &output),
+        PHY_ERR_INVALID_ARGUMENT);
+
+    output = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_series_normal(f.cas, f.x, &output), PHY_OK);
+    PHY_CHECK(output == f.x);
+    close_fixture(&f);
+}
+
+static void test_public_series_allocation_failure_is_transactional(void)
+{
+    unsigned failures = 0u;
+    for (size_t fail_after = 1u; fail_after <= 24u; ++fail_after) {
+        fixture f = open_fixture();
+        const phy_ir_ref expression = parse_ir(
+            &f, "(^ (+ 1 (* -1 x)) -1)");
+        phy_ir_ref output = f.one;
+        phy_host_fail_alloc_after((unsigned)fail_after);
+        const phy_status status = phy_cas_series(
+            f.cas, expression, f.x, f.zero, 8u, &output);
+        phy_host_fail_alloc_after(0u);
+        if (status != PHY_OK) {
+            failures++;
+            PHY_CHECK(
+                status == PHY_ERR_OUT_OF_MEMORY ||
+                status == PHY_ERR_MEMORY_LIMIT);
+            PHY_CHECK(output == f.one);
+        }
+        phy_ir_clear_error(f.ir);
+        close_fixture(&f);
+    }
+    PHY_CHECK(failures >= 4u);
+}
+
 int main(void)
 {
+    if (phy_platform_init() != PHY_OK) {
+        return 1;
+    }
     PHY_TEST_CASE(test_storage_and_validation);
     PHY_TEST_CASE(test_add_subtract_and_aliasing);
     PHY_TEST_CASE(test_multiply_divide_and_reciprocal);
@@ -530,5 +676,10 @@ int main(void)
     PHY_TEST_CASE(test_exhaustive_small_ring_identities);
     PHY_TEST_CASE(test_step_budget);
     PHY_TEST_CASE(test_cancellation_is_transactional);
-    return PHY_TEST_REPORT("test_series");
+    PHY_TEST_CASE(test_public_rational_and_analytic_series);
+    PHY_TEST_CASE(
+        test_public_series_allocation_failure_is_transactional);
+    const int result = PHY_TEST_REPORT("test_series");
+    phy_platform_shutdown();
+    return result;
 }

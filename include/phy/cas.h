@@ -283,6 +283,33 @@ phy_status phy_cas_diff(phy_cas *cas, phy_ir_ref expr, phy_ir_ref var,
 phy_status phy_cas_integrate(phy_cas *cas, phy_ir_ref expr, phy_ir_ref var,
                              phy_ir_ref *out_ref);
 
+/* --------------------------------------------------------- formal series */
+
+/*
+ * Exact bounded Taylor/Laurent expansion over Q.
+ *
+ * `order` is Mathematica-style: order 4 retains powers through four and
+ * records O((var-center)^5). Rational functions are expanded at every exact
+ * rational center where a Laurent expansion exists. Supported analytic heads
+ * use exact Maclaurin recurrences and composition; a coefficient that would
+ * require an inexact or presently unsupported constant returns
+ * PHY_ERR_UNSUPPORTED rather than sampling.
+ *
+ * The result is a typed
+ * SeriesData[var,center,valuation,exclusive_order,List[coefficients...]]
+ * operator. It serializes as IR, survives notebook reopen, and retains its
+ * order term. phy_cas_series_normal() reconstructs the finite expression only
+ * from a well-formed SeriesData value; on an ordinary expression it is the
+ * identity.
+ */
+#define PHY_CAS_SERIES_MAX_ORDER 63u
+
+phy_status phy_cas_series(phy_cas *cas, phy_ir_ref expr, phy_ir_ref var,
+                          phy_ir_ref center, unsigned order,
+                          phy_ir_ref *out_ref);
+phy_status phy_cas_series_normal(phy_cas *cas, phy_ir_ref expr,
+                                 phy_ir_ref *out_ref);
+
 /* ------------------------------------------------------------ the zero decision */
 
 /*

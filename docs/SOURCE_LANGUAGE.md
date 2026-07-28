@@ -126,12 +126,14 @@ semantics implicitly.
 | `Numerator`, `Denominator` | selected part of native rational form |
 | `D[expr,x,...]` | repeated exact symbolic differentiation |
 | `Integrate[expr,x,...]` | exact symbolic antiderivative on the documented linear-inner class; otherwise an explicit unevaluated `Integrate` |
+| `Series[expr,{x,a,n}]` | exact bounded Taylor/Laurent expansion through power `n`, retaining `O((x-a)^(n+1))` in typed `SeriesData` |
+| `Normal[series]` | remove a well-formed series order term; `Normal[Series[...]]` is supported as one combined reader action |
 
 Every command except assignment, a bare expression, and the two simplifies is
 scalar algebra, so `Expand[M]` on a manifold is `PHY_ERR_TYPE` rather than a
 silently ignored request.
 
-Registered but not implemented commands include `Limit`, `Series`, `Solve`,
+Registered but not implemented commands include `Limit`, `Solve`,
 `NSolve`, `Reduce`, `Refine`, and the
 `Trig*` family. They return `PHY_ERR_UNSUPPORTED`. They are never accepted as
 opaque ordinary functions, because that would present a no-op as successful
@@ -142,7 +144,8 @@ Their promotion cases are compiled from
 updating that matrix and adding evaluator/backend tests fails the strict suite.
 
 The same rule applies when such a command is nested. General nested command
-scheduling is future work; until then it fails explicitly.
+scheduling is future work; the explicitly implemented
+`Normal[Series[...]]` composition is the only current nested command action.
 
 ## Current boundaries
 

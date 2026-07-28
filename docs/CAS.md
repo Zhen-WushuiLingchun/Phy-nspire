@@ -269,6 +269,33 @@ reaches `sin(u)^-2`, while `1/tan(q)` keeps the reader's spelling. A rational
 pass that exhausts a resource budget falls back to the plain result; an
 identically zero denominator is still `PHY_ERR_DOMAIN`.
 
+### Exact bounded `Series`
+
+`phy_cas_series` and reader-facing `Series[expr,{x,a,n}]` share one explicit
+truncated Laurent representation:
+
+```text
+(variable, exact center, valuation, exclusive order, exact coefficients[])
+```
+
+The internal ring implements exact addition, subtraction, Cauchy product,
+reciprocal/division, integer powers, differentiation, Laurent integration, and
+zero-constant composition. Precision propagation uses valuations: multiplying
+`O(u^p)` by a series of valuation `v` yields `O(u^(p+v))`; no missing
+coefficient is treated as computed. The public result is
+`SeriesData[var,center,valuation,order,List[coefficients...]]`, so every
+coefficient and the order term are typed metadata rather than display text.
+`Normal` returns the reconstructed finite expression only after validating
+that metadata.
+
+Rational functions expand at any exact rational center where the bounded
+Laurent recurrence proves a nonzero leading denominator coefficient.
+Maclaurin coefficient recurrences and exact composition currently cover
+`Exp`, circular/hyperbolic sine, cosine and tangent, `ArcSin`, `ArcTan`,
+`Log[1+u]`, and rational binomial powers. A nonzero-center analytic expansion
+that would introduce an unavailable transcendental coefficient is explicitly
+unsupported; it is never estimated with floating point.
+
 ### Why trigonometry is reduced, and to what
 
 `research/corpus/gr_golden.json` forced this. Four `sphere_2d` entries — in the
@@ -502,14 +529,14 @@ counts are recorded in `CAS_ACCEPTANCE.md` after each clean build.
 
 Built with the pinned Ndless r2022 SDK and ARM GNU 14.3 toolchain using
 `-Os -marm`. The isolated link check compiles the complete scalar layer to
-76,155 bytes of ARM text; its dependency-complete probe packages to 109,588
+85,697 bytes of ARM text; its dependency-complete probe packages to 119,436
 bytes. These figures are deliberately measured by the link-check target rather
 than maintained as a hand-summed per-object table.
 
 The application now calls the CAS and the typed physics backends through
 editable notebook cells. The current product, including persistence,
-nMarkdown's math typesetter, and the reachable evaluator stack, is 1,145,490
-bytes (18.2% of the 6 MiB ceiling).
+nMarkdown's math typesetter, and the reachable evaluator stack, is 1,153,412
+bytes (18.3% of the 6 MiB ceiling).
 
 `make cas-link-check` closes the gap that leaves. It is the same guard as
 `make ir-link-check`, and `tools/link-check.sh` now serves both layers from one
@@ -526,8 +553,8 @@ dependency through its own gcd and its check passes, which is good evidence but
 not the check itself.
 
 `make cas-link-check` has been run with the real Ndless linker and packager:
-all **30/30** public entry points derived from `include/phy/cas.h` survive
-`--gc-sections`; the CAS+IR+platform probe packages to a **109,588-byte `.tns`**;
+all **32/32** public entry points derived from `include/phy/cas.h` survive
+`--gc-sections`; the CAS+IR+platform probe packages to a **119,436-byte `.tns`**;
 and no `_dtoa`, `_strtod`, `_printf_float`, libm, `stdio` formatting, or ARM
 soft-float helper reaches the image. Real IR atoms are ordered by their
 IEEE-754 bit keys rather than by executing a floating-point comparison. The

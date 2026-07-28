@@ -568,6 +568,34 @@ static phy_status apply_scalar_operation(phy_env *env,
         *out_ref = result;
         return PHY_OK;
     }
+    case PHY_SOURCE_SERIES:
+        if (command->variable_count != 1u ||
+            command->parameter == PHY_IR_NULL) {
+            return PHY_ERR_CORRUPT_DOCUMENT;
+        }
+        if (eval_lookup(
+                env, phy_ir_head(env->ir, command->variables[0]), NULL)) {
+            return PHY_ERR_TYPE;
+        }
+        return phy_cas_series(
+            env->cas, value, command->variables[0], command->parameter,
+            command->series_order, out_ref);
+    case PHY_SOURCE_NORMAL:
+        if (command->normal_series) {
+            if (eval_lookup(
+                    env, phy_ir_head(env->ir, command->variables[0]),
+                    NULL)) {
+                return PHY_ERR_TYPE;
+            }
+            phy_ir_ref data = PHY_IR_NULL;
+            phy_status status = phy_cas_series(
+                env->cas, value, command->variables[0],
+                command->parameter, command->series_order, &data);
+            return status == PHY_OK
+                       ? phy_cas_series_normal(env->cas, data, out_ref)
+                       : status;
+        }
+        return phy_cas_series_normal(env->cas, value, out_ref);
     default:
         break;
     }

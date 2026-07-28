@@ -299,8 +299,11 @@ phy_status phy_series_mul_node(phy_cas *cas, const phy_series *left,
     }
     const int left_bound = left->order + right->valuation;
     const int right_bound = right->order + left->valuation;
-    const int order =
+    int order =
         left_bound < right_bound ? left_bound : right_bound;
+    if (order > PHY_SERIES_MAX_EXPONENT) {
+        order = PHY_SERIES_MAX_EXPONENT;
+    }
     return multiply_to_order(cas, left, right, order, out_series);
 }
 
@@ -316,7 +319,10 @@ phy_status phy_series_reciprocal_node(phy_cas *cas,
         return PHY_ERR_DOMAIN;
     }
     const int valuation = -series->valuation;
-    const int order = series->order - 2 * series->valuation;
+    int order = series->order - 2 * series->valuation;
+    if (order > PHY_SERIES_MAX_EXPONENT) {
+        order = PHY_SERIES_MAX_EXPONENT;
+    }
     if (!exponent_bounds(valuation, order)) {
         return PHY_ERR_TERM_LIMIT;
     }
@@ -401,8 +407,8 @@ phy_status phy_series_pow_int_node(phy_cas *cas, const phy_series *series,
     }
     phy_series result;
     status = phy_series_constant(
-        cas, series->variable, series->center, series->order, cas->one,
-        &result);
+        cas, series->variable, series->center,
+        PHY_SERIES_MAX_EXPONENT, cas->one, &result);
     if (status != PHY_OK || exponent == 0) {
         if (status == PHY_OK) {
             *out_series = result;
@@ -608,4 +614,633 @@ phy_status phy_series_compose_node(phy_cas *cas, const phy_series *outer,
         *out_series = result;
     }
     return status;
+}
+
+/* ------------------------------------------------------- reader expansion */
+
+#define PHY_SERIES_MAX_RECURSION 48u
+
+typedef enum {
+    SERIES_ANALYTIC_EXP = 0,
+    SERIES_ANALYTIC_SIN,
+    SERIES_ANALYTIC_COS,
+    SERIES_ANALYTIC_SINH,
+    SERIES_ANALYTIC_COSH,
+    SERIES_ANALYTIC_ATAN,
+    SERIES_ANALYTIC_ASIN,
+    SERIES_ANALYTIC_LOG1P
+} series_analytic;
+
+static phy_ir_ref constant_coefficient(const phy_cas *cas,
+                                       const phy_series *series)
+{
+    return series->valuation <= 0 && series->order > 0
+               ? phy_series_coefficient(cas, series, 0)
+               : cas->zero;
+}
+
+static phy_status exact_small(phy_cas *cas, int64_t value,
+                              phy_ir_ref *out_ref)
+{
+    return phy_cas_number_node(
+        cas, (phy_cas_rat){value, 1}, out_ref);
+}
+
+static phy_status make_maclaurin(phy_cas *cas, phy_ir_ref variable,
+                                 int order, series_analytic analytic,
+                                 phy_series *out_series)
+{
+    if (cas == NULL || out_series == NULL || order <= 0 ||
+        order > PHY_SERIES_MAX_EXPONENT) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    phy_ir_ref coefficients[PHY_SERIES_MAX_TERMS];
+    for (int exponent = 0; exponent < order; ++exponent) {
+        coefficients[exponent] = cas->zero;
+    }
+
+    phy_status status = PHY_OK;
+    phy_ir_ref factorial = cas->one;
+    for (int exponent = 0; exponent < order && status == PHY_OK;
+         ++exponent) {
+        status = phy_cas_step(cas);
+        if (status != PHY_OK) {
+            break;
+        }
+        if (exponent > 0) {
+            phy_ir_ref exponent_ref = PHY_IR_NULL;
+            status = exact_small(cas, exponent, &exponent_ref);
+            if (status == PHY_OK) {
+                status = phy_cas_exact_mul_refs(
+                    cas, factorial, exponent_ref, &factorial);
+            }
+        }
+        if (status != PHY_OK) {
+            break;
+        }
+
+        bool factorial_term = false;
+        bool negative = false;
+        switch (analytic) {
+        case SERIES_ANALYTIC_EXP:
+            factorial_term = true;
+            break;
+        case SERIES_ANALYTIC_SIN:
+            factorial_term = (exponent & 1) != 0;
+            negative = factorial_term &&
+                       (((exponent - 1) / 2) & 1) != 0;
+            break;
+        case SERIES_ANALYTIC_COS:
+            factorial_term = (exponent & 1) == 0;
+            negative = factorial_term &&
+                       ((exponent / 2) & 1) != 0;
+            break;
+        case SERIES_ANALYTIC_SINH:
+            factorial_term = (exponent & 1) != 0;
+            break;
+        case SERIES_ANALYTIC_COSH:
+            factorial_term = (exponent & 1) == 0;
+            break;
+        case SERIES_ANALYTIC_ATAN:
+            if ((exponent & 1) != 0) {
+                phy_ir_ref denominator = PHY_IR_NULL;
+                status = exact_small(cas, exponent, &denominator);
+                if (status == PHY_OK) {
+                    status = phy_cas_exact_div_refs(
+                        cas, cas->one, denominator,
+                        &coefficients[exponent]);
+                }
+                if ((((exponent - 1) / 2) & 1) != 0 &&
+                    status == PHY_OK) {
+                    status = phy_cas_exact_sub_refs(
+                        cas, cas->zero, coefficients[exponent],
+                        &coefficients[exponent]);
+                }
+            }
+            continue;
+        case SERIES_ANALYTIC_LOG1P:
+            if (exponent > 0) {
+                phy_ir_ref denominator = PHY_IR_NULL;
+                status = exact_small(cas, exponent, &denominator);
+                if (status == PHY_OK) {
+                    status = phy_cas_exact_div_refs(
+                        cas, cas->one, denominator,
+                        &coefficients[exponent]);
+                }
+                if ((exponent & 1) == 0 && status == PHY_OK) {
+                    status = phy_cas_exact_sub_refs(
+                        cas, cas->zero, coefficients[exponent],
+                        &coefficients[exponent]);
+                }
+            }
+            continue;
+        case SERIES_ANALYTIC_ASIN:
+            /*
+             * c_1 = 1 and
+             * c_(2k+1) / c_(2k-1) =
+             *     (2k-1)^2 / ((2k)(2k+1)).
+             */
+            if (exponent == 1) {
+                coefficients[exponent] = cas->one;
+            } else if (exponent > 1 && (exponent & 1) != 0) {
+                const int64_t k = (int64_t)(exponent - 1) / 2;
+                phy_ir_ref numerator = PHY_IR_NULL;
+                phy_ir_ref denominator = PHY_IR_NULL;
+                phy_ir_ref scaled = PHY_IR_NULL;
+                status = exact_small(
+                    cas, (2 * k - 1) * (2 * k - 1), &numerator);
+                if (status == PHY_OK) {
+                    status = exact_small(
+                        cas, (2 * k) * (2 * k + 1), &denominator);
+                }
+                if (status == PHY_OK) {
+                    status = phy_cas_exact_mul_refs(
+                        cas, coefficients[exponent - 2], numerator,
+                        &scaled);
+                }
+                if (status == PHY_OK) {
+                    status = phy_cas_exact_div_refs(
+                        cas, scaled, denominator,
+                        &coefficients[exponent]);
+                }
+            }
+            continue;
+        }
+        if (factorial_term) {
+            status = phy_cas_exact_div_refs(
+                cas, negative ? cas->minus_one : cas->one, factorial,
+                &coefficients[exponent]);
+        }
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    return phy_series_set(
+        cas, variable, cas->zero, 0, order, coefficients,
+        (size_t)order, out_series);
+}
+
+static phy_status compose_analytic(phy_cas *cas,
+                                   const phy_series *argument,
+                                   series_analytic analytic,
+                                   phy_series *out_series)
+{
+    phy_series outer;
+    phy_status status = make_maclaurin(
+        cas, argument->variable, argument->order, analytic, &outer);
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (phy_series_is_zero(argument)) {
+        return phy_series_constant(
+            cas, argument->variable, argument->center, argument->order,
+            constant_coefficient(cas, &outer), out_series);
+    }
+    return phy_series_compose_node(cas, &outer, argument, out_series);
+}
+
+static phy_status binomial_outer(phy_cas *cas, phy_ir_ref variable,
+                                 int order, phy_ir_ref exponent,
+                                 phy_series *out_series)
+{
+    phy_ir_ref coefficients[PHY_SERIES_MAX_TERMS];
+    coefficients[0] = cas->one;
+    phy_status status = PHY_OK;
+    for (int n = 1; n < order && status == PHY_OK; ++n) {
+        phy_ir_ref n_minus_one = PHY_IR_NULL;
+        phy_ir_ref factor = PHY_IR_NULL;
+        phy_ir_ref numerator = PHY_IR_NULL;
+        phy_ir_ref denominator = PHY_IR_NULL;
+        status = exact_small(cas, n - 1, &n_minus_one);
+        if (status == PHY_OK) {
+            status = phy_cas_exact_sub_refs(
+                cas, exponent, n_minus_one, &factor);
+        }
+        if (status == PHY_OK) {
+            status = phy_cas_exact_mul_refs(
+                cas, coefficients[n - 1], factor, &numerator);
+        }
+        if (status == PHY_OK) {
+            status = exact_small(cas, n, &denominator);
+        }
+        if (status == PHY_OK) {
+            status = phy_cas_exact_div_refs(
+                cas, numerator, denominator, &coefficients[n]);
+        }
+    }
+    return status == PHY_OK
+               ? phy_series_set(
+                     cas, variable, cas->zero, 0, order, coefficients,
+                     (size_t)order, out_series)
+               : status;
+}
+
+static phy_status series_from_expr(phy_cas *cas, phy_ir_ref expression,
+                                   phy_ir_ref variable, phy_ir_ref center,
+                                   int order, unsigned depth,
+                                   phy_series *out_series)
+{
+    if (depth >= PHY_SERIES_MAX_RECURSION) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    phy_status status = phy_cas_step(cas);
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (phy_cas_is_exact(cas, expression)) {
+        return phy_series_constant(
+            cas, variable, center, PHY_SERIES_MAX_EXPONENT, expression,
+            out_series);
+    }
+    const phy_ir_kind kind = phy_ir_kind_of(cas->ir, expression);
+    if (kind == PHY_IR_SYMBOL) {
+        if (expression != variable) {
+            return PHY_ERR_UNSUPPORTED;
+        }
+        phy_ir_ref coefficients[PHY_SERIES_MAX_TERMS];
+        for (int exponent = 0; exponent < PHY_SERIES_MAX_EXPONENT;
+             ++exponent) {
+            coefficients[exponent] = cas->zero;
+        }
+        coefficients[0] = center;
+        coefficients[1] = cas->one;
+        return phy_series_set(
+            cas, variable, center, 0, PHY_SERIES_MAX_EXPONENT,
+            coefficients, PHY_SERIES_MAX_EXPONENT, out_series);
+    }
+    if (kind == PHY_IR_ADD || kind == PHY_IR_MUL) {
+        phy_series result;
+        status = kind == PHY_IR_ADD
+                     ? phy_series_zero(
+                           cas, variable, center,
+                           PHY_SERIES_MAX_EXPONENT, &result)
+                     : phy_series_constant(
+                           cas, variable, center,
+                           PHY_SERIES_MAX_EXPONENT, cas->one, &result);
+        const size_t count = phy_ir_child_count(cas->ir, expression);
+        for (size_t index = 0u; index < count && status == PHY_OK;
+             ++index) {
+            phy_series child;
+            status = series_from_expr(
+                cas, phy_ir_child(cas->ir, expression, index), variable,
+                center, order, depth + 1u, &child);
+            if (status == PHY_OK) {
+                status =
+                    kind == PHY_IR_ADD
+                        ? phy_series_add_node(
+                              cas, &result, &child, &result)
+                        : phy_series_mul_node(
+                              cas, &result, &child, &result);
+            }
+        }
+        if (status == PHY_OK) {
+            *out_series = result;
+        }
+        return status;
+    }
+    if (kind == PHY_IR_POW) {
+        phy_series base;
+        status = series_from_expr(
+            cas, phy_ir_child(cas->ir, expression, 0u), variable, center,
+            order, depth + 1u, &base);
+        if (status != PHY_OK) {
+            return status;
+        }
+        const phy_ir_ref exponent =
+            phy_ir_child(cas->ir, expression, 1u);
+        int64_t integer = 0;
+        if (phy_ir_integer_value(cas->ir, exponent, &integer)) {
+            if (integer < INT_MIN || integer > INT_MAX) {
+                return PHY_ERR_TERM_LIMIT;
+            }
+            return phy_series_pow_int_node(
+                cas, &base, (int)integer, out_series);
+        }
+        if (!phy_cas_is_exact(cas, exponent) ||
+            constant_coefficient(cas, &base) != cas->one) {
+            return PHY_ERR_UNSUPPORTED;
+        }
+        phy_series one;
+        phy_series delta;
+        phy_series outer;
+        status = phy_series_constant(
+            cas, variable, center, order, cas->one, &one);
+        if (status == PHY_OK) {
+            status =
+                phy_series_sub_node(cas, &base, &one, &delta);
+        }
+        if (status == PHY_OK) {
+            status = binomial_outer(
+                cas, variable, order, exponent, &outer);
+        }
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (phy_series_is_zero(&delta)) {
+            return phy_series_constant(
+                cas, variable, center, order, cas->one, out_series);
+        }
+        return phy_series_compose_node(
+            cas, &outer, &delta, out_series);
+    }
+    if (kind == PHY_IR_FUNCTION &&
+        phy_ir_child_count(cas->ir, expression) == 1u) {
+        phy_series argument;
+        status = series_from_expr(
+            cas, phy_ir_child(cas->ir, expression, 0u), variable, center,
+            order, depth + 1u, &argument);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (argument.order > order) {
+            if (argument.valuation >= order) {
+                status = phy_series_zero(
+                    cas, variable, center, order, &argument);
+            } else {
+                status = scale_to_order(
+                    cas, &argument, cas->one, order, &argument);
+            }
+            if (status != PHY_OK) {
+                return status;
+            }
+        }
+        const phy_cas_function function =
+            phy_cas_function_of(cas, expression);
+        if (function == PHY_CAS_FN_LOG) {
+            if (constant_coefficient(cas, &argument) != cas->one) {
+                return PHY_ERR_UNSUPPORTED;
+            }
+            phy_series one;
+            phy_series delta;
+            status = phy_series_constant(
+                cas, variable, center, order, cas->one, &one);
+            if (status == PHY_OK) {
+                status = phy_series_sub_node(
+                    cas, &argument, &one, &delta);
+            }
+            return status == PHY_OK
+                       ? compose_analytic(
+                             cas, &delta, SERIES_ANALYTIC_LOG1P,
+                             out_series)
+                       : status;
+        }
+        if (!exact_zero(
+                cas, constant_coefficient(cas, &argument)) ||
+            argument.valuation < 0) {
+            return PHY_ERR_UNSUPPORTED;
+        }
+        switch (function) {
+        case PHY_CAS_FN_EXP:
+            return compose_analytic(
+                cas, &argument, SERIES_ANALYTIC_EXP, out_series);
+        case PHY_CAS_FN_SIN:
+            return compose_analytic(
+                cas, &argument, SERIES_ANALYTIC_SIN, out_series);
+        case PHY_CAS_FN_COS:
+            return compose_analytic(
+                cas, &argument, SERIES_ANALYTIC_COS, out_series);
+        case PHY_CAS_FN_SINH:
+            return compose_analytic(
+                cas, &argument, SERIES_ANALYTIC_SINH, out_series);
+        case PHY_CAS_FN_COSH:
+            return compose_analytic(
+                cas, &argument, SERIES_ANALYTIC_COSH, out_series);
+        case PHY_CAS_FN_ATAN:
+            return compose_analytic(
+                cas, &argument, SERIES_ANALYTIC_ATAN, out_series);
+        case PHY_CAS_FN_ASIN:
+            return compose_analytic(
+                cas, &argument, SERIES_ANALYTIC_ASIN, out_series);
+        case PHY_CAS_FN_TAN: {
+            phy_series numerator;
+            phy_series denominator;
+            status = compose_analytic(
+                cas, &argument, SERIES_ANALYTIC_SIN, &numerator);
+            if (status == PHY_OK) {
+                status = compose_analytic(
+                    cas, &argument, SERIES_ANALYTIC_COS, &denominator);
+            }
+            return status == PHY_OK
+                       ? phy_series_div_node(
+                             cas, &numerator, &denominator, out_series)
+                       : status;
+        }
+        case PHY_CAS_FN_TANH: {
+            phy_series numerator;
+            phy_series denominator;
+            status = compose_analytic(
+                cas, &argument, SERIES_ANALYTIC_SINH, &numerator);
+            if (status == PHY_OK) {
+                status = compose_analytic(
+                    cas, &argument, SERIES_ANALYTIC_COSH, &denominator);
+            }
+            return status == PHY_OK
+                       ? phy_series_div_node(
+                             cas, &numerator, &denominator, out_series)
+                       : status;
+        }
+        default:
+            break;
+        }
+    }
+    return PHY_ERR_UNSUPPORTED;
+}
+
+static phy_status series_normal_expression(phy_cas *cas,
+                                           const phy_series *series,
+                                           phy_ir_ref *out_ref)
+{
+    phy_status status = phy_series_validate(cas, series);
+    if (status != PHY_OK || out_ref == NULL) {
+        return status != PHY_OK ? status : PHY_ERR_INVALID_ARGUMENT;
+    }
+    phy_ir_ref negative_center = PHY_IR_NULL;
+    phy_ir_ref shift = PHY_IR_NULL;
+    status =
+        phy_cas_neg_node(cas, series->center, &negative_center);
+    if (status == PHY_OK) {
+        const phy_ir_ref terms[2] = {
+            series->variable, negative_center};
+        status = phy_cas_add_node(cas, terms, 2u, &shift);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+
+    phy_ir_ref terms[PHY_SERIES_MAX_TERMS];
+    size_t count = 0u;
+    for (int exponent = series->valuation;
+         exponent < series->order; ++exponent) {
+        const phy_ir_ref coefficient =
+            phy_series_coefficient(cas, series, exponent);
+        if (exact_zero(cas, coefficient)) {
+            continue;
+        }
+        phy_ir_ref term = coefficient;
+        if (exponent != 0) {
+            phy_ir_ref exponent_ref = PHY_IR_NULL;
+            phy_ir_ref power = PHY_IR_NULL;
+            status = exact_small(cas, exponent, &exponent_ref);
+            if (status == PHY_OK) {
+                status =
+                    phy_cas_pow_node(cas, shift, exponent_ref, &power);
+            }
+            if (status == PHY_OK) {
+                if (coefficient == cas->one) {
+                    term = power;
+                } else {
+                    const phy_ir_ref factors[2] = {
+                        coefficient, power};
+                    status = phy_cas_mul_node(
+                        cas, factors, 2u, &term);
+                }
+            }
+        }
+        if (status != PHY_OK) {
+            return status;
+        }
+        terms[count++] = term;
+    }
+    if (count == 0u) {
+        *out_ref = cas->zero;
+        return PHY_OK;
+    }
+    return phy_cas_add_node(cas, terms, count, out_ref);
+}
+
+static phy_status series_data(phy_cas *cas, const phy_series *series,
+                              phy_ir_ref *out_ref)
+{
+    phy_ir_ref valuation = PHY_IR_NULL;
+    phy_ir_ref order = PHY_IR_NULL;
+    phy_status status =
+        exact_small(cas, series->valuation, &valuation);
+    if (status == PHY_OK) {
+        status = exact_small(cas, series->order, &order);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    const phy_ir_symbol head =
+        phy_ir_intern(cas->ir, "SeriesData");
+    if (head == PHY_IR_NO_SYMBOL) {
+        return phy_cas_ir_failure(cas);
+    }
+    const phy_ir_symbol list_head =
+        phy_ir_intern(cas->ir, "List");
+    if (list_head == PHY_IR_NO_SYMBOL) {
+        return phy_cas_ir_failure(cas);
+    }
+    const phy_ir_ref coefficients = phy_ir_function(
+        cas->ir, list_head, series->coefficients, series->count);
+    if (coefficients == PHY_IR_NULL) {
+        return phy_cas_ir_failure(cas);
+    }
+    const phy_ir_ref children[5] = {
+        series->variable, series->center, valuation, order, coefficients};
+    const phy_ir_ref result =
+        phy_ir_operator(cas->ir, head, children, 5u);
+    if (result == PHY_IR_NULL) {
+        return phy_cas_ir_failure(cas);
+    }
+    *out_ref = result;
+    return PHY_OK;
+}
+
+phy_status phy_cas_series(phy_cas *cas, phy_ir_ref expression,
+                          phy_ir_ref variable, phy_ir_ref center,
+                          unsigned order, phy_ir_ref *out_ref)
+{
+    if (cas == NULL || out_ref == NULL || expression == PHY_IR_NULL ||
+        phy_ir_kind_of(cas != NULL ? cas->ir : NULL, variable) !=
+            PHY_IR_SYMBOL ||
+        !phy_cas_is_exact(cas, center) ||
+        order > PHY_CAS_SERIES_MAX_ORDER) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    phy_cas_begin(cas);
+    phy_series expansion;
+    const int exclusive_order = (int)order + 1;
+    phy_status status = series_from_expr(
+        cas, expression, variable, center, exclusive_order, 0u,
+        &expansion);
+    if (status == PHY_OK && expansion.order > exclusive_order) {
+        if (expansion.valuation >= exclusive_order) {
+            status = phy_series_zero(
+                cas, variable, center, exclusive_order, &expansion);
+        } else {
+            status = scale_to_order(
+                cas, &expansion, cas->one, exclusive_order, &expansion);
+        }
+    } else if (status == PHY_OK && expansion.order < exclusive_order) {
+        status = PHY_ERR_TERM_LIMIT;
+    }
+    if (status == PHY_OK) {
+        status = series_data(cas, &expansion, out_ref);
+    }
+    return status;
+}
+
+phy_status phy_cas_series_normal(phy_cas *cas, phy_ir_ref expression,
+                                 phy_ir_ref *out_ref)
+{
+    if (cas == NULL || out_ref == NULL || expression == PHY_IR_NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    phy_cas_begin(cas);
+    if (phy_ir_kind_of(cas->ir, expression) != PHY_IR_OPERATOR) {
+        *out_ref = expression;
+        return PHY_OK;
+    }
+    const char *head =
+        phy_ir_symbol_name(cas->ir, phy_ir_head(cas->ir, expression));
+    if (head == NULL || strcmp(head, "SeriesData") != 0) {
+        *out_ref = expression;
+        return PHY_OK;
+    }
+    if (phy_ir_child_count(cas->ir, expression) != 5u ||
+        phy_ir_kind_of(
+            cas->ir, phy_ir_child(cas->ir, expression, 0u)) !=
+            PHY_IR_SYMBOL ||
+        !phy_cas_is_exact(
+            cas, phy_ir_child(cas->ir, expression, 1u))) {
+        return PHY_ERR_CORRUPT_DOCUMENT;
+    }
+    int64_t valuation = 0;
+    int64_t order = 0;
+    if (!phy_ir_integer_value(
+            cas->ir, phy_ir_child(cas->ir, expression, 2u),
+            &valuation) ||
+        !phy_ir_integer_value(
+            cas->ir, phy_ir_child(cas->ir, expression, 3u), &order) ||
+        valuation < PHY_SERIES_MIN_EXPONENT ||
+        order > PHY_SERIES_MAX_EXPONENT || valuation > order ||
+        (uint64_t)(order - valuation) > PHY_SERIES_MAX_TERMS) {
+        return PHY_ERR_CORRUPT_DOCUMENT;
+    }
+    const phy_ir_ref coefficients =
+        phy_ir_child(cas->ir, expression, 4u);
+    const char *list_name =
+        phy_ir_symbol_name(cas->ir, phy_ir_head(cas->ir, coefficients));
+    const size_t count =
+        phy_ir_child_count(cas->ir, coefficients);
+    if (phy_ir_kind_of(cas->ir, coefficients) != PHY_IR_FUNCTION ||
+        list_name == NULL || strcmp(list_name, "List") != 0 ||
+        count != (size_t)(order - valuation)) {
+        return PHY_ERR_CORRUPT_DOCUMENT;
+    }
+    phy_ir_ref coefficient_refs[PHY_SERIES_MAX_TERMS];
+    for (size_t index = 0u; index < count; ++index) {
+        coefficient_refs[index] =
+            phy_ir_child(cas->ir, coefficients, index);
+    }
+    phy_series series;
+    phy_status status = phy_series_set(
+        cas, phy_ir_child(cas->ir, expression, 0u),
+        phy_ir_child(cas->ir, expression, 1u), (int)valuation,
+        (int)order, coefficient_refs, count, &series);
+    if (status != PHY_OK) {
+        return status == PHY_ERR_TYPE ? PHY_ERR_CORRUPT_DOCUMENT : status;
+    }
+    return series_normal_expression(cas, &series, out_ref);
 }

@@ -98,6 +98,10 @@ static void probe_rewrites(phy_cas *cas, phy_ir_context *ir)
                                 &out));
     sink((unsigned)phy_cas_integrate(
         cas, expr, phy_ir_symbol_ref(ir, phy_ir_intern(ir, "x")), &out));
+    sink((unsigned)phy_cas_series(
+        cas, expr, phy_ir_symbol_ref(ir, phy_ir_intern(ir, "x")),
+        phy_ir_integer(ir, 0), 4u, &out));
+    sink((unsigned)phy_cas_series_normal(cas, out, &out));
 
     const phy_cas_rule rule = {phy_ir_symbol_ref(ir, phy_ir_intern(ir, "x")),
                                phy_ir_integer(ir, 3)};

@@ -52,6 +52,13 @@ static const tour_cell kTour[] = {
     {TOUR_INPUT, "Cancel[(x^2-1)/(x^2-2*x+1)]", NULL},
     {TOUR_INPUT, "Factor[x^4-1]", NULL},
     {TOUR_INPUT, "Apart[1/(x^2-1)]", NULL},
+    {TOUR_MARKDOWN, "Exact series",
+     "$$e^x\\sin x=x+x^2+\\frac{x^3}{3}"
+     "-\\frac{x^5}{30}+O(x^6)$$"},
+    {TOUR_INPUT, "Series[Exp[x]*Sin[x],{x,0,7}]", NULL},
+    {TOUR_INPUT, "Series[1/(x^2*(1+x)),{x,0,4}]", NULL},
+    {TOUR_INPUT,
+     "Normal[Series[(1+x)^(1/2),{x,0,5}]]", NULL},
     {TOUR_INPUT, "Gamma[6]+LogGamma[2]+Erfc[0]", NULL},
     {TOUR_INPUT, "EquivalentQ[Sin[x]^2+Cos[x]^2,1]", NULL},
 

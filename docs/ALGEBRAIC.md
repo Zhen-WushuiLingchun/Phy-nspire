@@ -90,8 +90,8 @@ Current reproducible evidence:
 
 - `test_exact`: 76,051 checks, zero failures;
 - `test_algebraic`: 6,401 checks, zero failures;
-- strict Windows suite: 33/33 tests;
-- ASan/UBSan/leak suite: 35/35 tests;
+- strict Windows suite: 34/34 tests;
+- ASan/UBSan/leak suite: 36/36 tests;
 - Ndless exact-number link probe: 51/51 public entry points, 14,516 bytes of
   exact-layer ARM text, 19,912-byte packaged probe;
 - Ndless real-algebraic link probe: 19/19 public entry points, 9,196 bytes of

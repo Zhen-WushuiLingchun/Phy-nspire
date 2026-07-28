@@ -1,5 +1,6 @@
 #include <string.h>
 
+#include "phy/cas.h"
 #include "phy/formula.h"
 #include "phy/platform.h"
 #include "phy_test.h"
@@ -130,6 +131,27 @@ static void test_typed_ir_uses_the_shared_math_tree_pipeline(void)
     PHY_CHECK(metrics.width > 100);
     PHY_CHECK(metrics.descent > 0);
 
+    phy_cas *cas = phy_cas_create(ir, NULL);
+    PHY_CHECK(cas != NULL);
+    phy_ir_ref rational = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_ir_read(
+            ir, "(^ (+ 1 (* -1 x)) -1)", &rational, NULL),
+        PHY_OK);
+    phy_ir_ref series = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_series(
+            cas, rational, x, phy_ir_integer(ir, 0), 5u, &series),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_formula_measure_ir(
+            ir, series, PHY_FORMULA_STYLE_DISPLAY, 16, 1000, &metrics),
+        PHY_OK);
+    PHY_CHECK(metrics.valid);
+    PHY_CHECK(metrics.width > 100);
+    PHY_CHECK(metrics.ascent > 0);
+    PHY_CHECK(metrics.descent > 0);
+
     memset(g_pixels, 0, sizeof g_pixels);
     const phy_surface surface = {g_pixels, 320, 240};
     PHY_CHECK_EQ_INT(
@@ -157,6 +179,7 @@ static void test_typed_ir_uses_the_shared_math_tree_pipeline(void)
             NULL, expression, PHY_FORMULA_STYLE_TEXT, 15, 200, &metrics),
         PHY_ERR_INVALID_ARGUMENT);
 
+    phy_cas_destroy(cas);
     phy_ir_context_destroy(ir);
     phy_platform_shutdown();
 }

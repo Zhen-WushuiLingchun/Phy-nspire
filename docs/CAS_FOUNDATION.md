@@ -132,12 +132,22 @@ minimal-polynomial equality are still required before F3 can be closed.
 
 ### F4 — series, limits, and equations
 
-Status: implementation is governed by
+Status: the exact bounded Taylor/Laurent ring and reader-facing `Series` /
+`Normal` path are implemented. Rational expressions expand about arbitrary
+exact rational centers; exact Maclaurin recurrence/composition covers
+`Exp`, `Sin`, `Cos`, `Tan`, `Sinh`, `Cosh`, `Tanh`, `ArcSin`, `ArcTan`,
+`Log[1+u]`, and rational binomial powers. Results are typed `SeriesData`
+operators, preserve the order term across save/open, and render through the
+shared MathTree backend. Coefficients presently remain rational: an expansion
+whose coefficients require an unsupported transcendental constant returns a
+typed unsupported result.
+
+The remaining implementation is governed by
 [`plans/2026-07-28-cas-foundation-f4-f5.md`](plans/2026-07-28-cas-foundation-f4-f5.md).
-The compiled reader matrix is `tests/corpus/cas_foundation_cases.inc`. Until
-the corresponding exact backend, evaluator, display, and negative controls
-land together, `Series`, `Limit`, `Solve`, `NSolve`, and `Reduce` remain typed
-unsupported commands.
+The compiled reader matrix is `tests/corpus/cas_foundation_cases.inc`.
+`Limit`, `Solve`, `NSolve`, and `Reduce` remain typed unsupported until their
+corresponding exact backend, evaluator, display, and negative controls land
+together.
 
 - Truncated formal power-series arithmetic before reader-facing `Series`.
 - Limits driven by series/rational order, with explicit one-sided direction.

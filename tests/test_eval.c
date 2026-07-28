@@ -239,6 +239,49 @@ static void test_scalar_elementary_foundation(void)
     fixture_close(&f);
 }
 
+static void test_series_reader_and_evaluator(void)
+{
+    fixture f = fixture_open();
+    const phy_value series = run(
+        &f, "Series[Exp[x] Sin[x],{x,0,7}]");
+    PHY_CHECK_EQ_INT(series.kind, PHY_VALUE_SCALAR);
+    PHY_CHECK_EQ_INT(
+        phy_ir_kind_of(f.ir, series.as.scalar), PHY_IR_OPERATOR);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(
+            f.ir, phy_ir_head(f.ir, series.as.scalar)),
+        "SeriesData");
+
+    phy_ir_ref normal = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_series_normal(f.cas, series.as.scalar, &normal), PHY_OK);
+    phy_ir_ref expected = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_ir_read(
+            f.ir,
+            "(+ x (^ x 2) (* (rat 1 3) (^ x 3)) "
+            "(* (rat -1 30) (^ x 5)) "
+            "(* (rat -1 90) (^ x 6)) "
+            "(* (rat -1 630) (^ x 7)))",
+            &expected, NULL),
+        PHY_OK);
+    phy_cas_decision decision = PHY_CAS_UNKNOWN;
+    PHY_CHECK_EQ_INT(
+        phy_cas_equivalent(
+            f.cas, normal, expected, &decision), PHY_OK);
+    PHY_CHECK_EQ_INT(decision, PHY_CAS_ZERO);
+
+    expect_scalar(&f, "Normal[x+1]", "(+ 1 x)");
+    expect_scalar(
+        &f, "Normal[Series[1/(1-x),{x,0,4}]]",
+        "(+ 1 x (^ x 2) (^ x 3) (^ x 4))");
+    expect_status(
+        &f, "Series[Exp[x],{x,1,4}]", PHY_ERR_UNSUPPORTED);
+    expect_status(
+        &f, "Series[x,{x,0,64}]", PHY_ERR_TERM_LIMIT);
+    fixture_close(&f);
+}
+
 static void test_clear_and_reset(void)
 {
     fixture f = fixture_open();
@@ -1201,6 +1244,55 @@ static void test_notebook_round_trip_keeps_descriptors(void)
     phy_notebook_destroy(notebook);
 }
 
+static void test_notebook_round_trip_keeps_series_data(void)
+{
+    phy_notebook *notebook = phy_notebook_create();
+    PHY_CHECK(notebook != NULL);
+    PHY_CHECK_EQ_INT(
+        phy_notebook_add_input(
+            notebook, "Series[1/(1-x),{x,0,5}]", NULL),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(phy_notebook_evaluate_all(notebook), PHY_OK);
+
+    phy_notebook_cell_view view;
+    PHY_CHECK(phy_notebook_cell(notebook, 1u, &view));
+    PHY_CHECK_EQ_INT(
+        phy_ir_kind_of(phy_notebook_ir(notebook), view.expression),
+        PHY_IR_OPERATOR);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(
+            phy_notebook_ir(notebook),
+            phy_ir_head(phy_notebook_ir(notebook), view.expression)),
+        "SeriesData");
+
+    uint8_t buffer[PHY_NOTEBOOK_DOCUMENT_MAX_BYTES];
+    size_t size = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_notebook_serialize(
+            notebook, buffer, sizeof buffer, &size),
+        PHY_OK);
+    phy_notebook *loaded = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_notebook_deserialize(buffer, size, &loaded), PHY_OK);
+    PHY_CHECK(loaded != NULL);
+    PHY_CHECK(phy_notebook_cell(loaded, 1u, &view));
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(
+            phy_notebook_ir(loaded),
+            phy_ir_head(phy_notebook_ir(loaded), view.expression)),
+        "SeriesData");
+    phy_ir_ref normal = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_series_normal(
+            phy_env_cas(phy_notebook_environment(loaded)),
+            view.expression, &normal),
+        PHY_OK);
+    PHY_CHECK(normal != PHY_IR_NULL);
+
+    phy_notebook_destroy(loaded);
+    phy_notebook_destroy(notebook);
+}
+
 int main(void)
 {
     if (phy_platform_init() != PHY_OK) {
@@ -1209,6 +1301,7 @@ int main(void)
     }
     PHY_TEST_CASE(test_scalar_state_flows_between_cells);
     PHY_TEST_CASE(test_scalar_elementary_foundation);
+    PHY_TEST_CASE(test_series_reader_and_evaluator);
     PHY_TEST_CASE(test_clear_and_reset);
     PHY_TEST_CASE(test_binding_rejects_reserved_and_captured_names);
     PHY_TEST_CASE(test_manifolds_and_forms);
@@ -1228,6 +1321,7 @@ int main(void)
     PHY_TEST_CASE(test_environment_bounds);
     PHY_TEST_CASE(test_notebook_shares_state_between_cells);
     PHY_TEST_CASE(test_notebook_round_trip_keeps_descriptors);
+    PHY_TEST_CASE(test_notebook_round_trip_keeps_series_data);
     const int result = PHY_TEST_REPORT("test_eval");
     phy_platform_shutdown();
     return result;
