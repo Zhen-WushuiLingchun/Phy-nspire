@@ -114,6 +114,7 @@ SOURCES := \
     src/abstract/young.c \
     src/component/basis.c \
     src/component/component.c \
+    src/component/map.c \
     src/permutation/perm.c \
     src/permutation/bsgs.c \
     src/permutation/orbit.c \

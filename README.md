@@ -59,7 +59,16 @@ real roots, verified exact linear systems,
 and an exact zero decision;
 the component tensor core with charts, dense storage, valence, signed slot
 symmetries, contraction, metric inversion, index raising/lowering, and
-component derivatives; and the differential-geometry layer with oriented
+component derivatives. A new abstract-index layer adds runtime-rank typed
+index spaces and tensor heads, exact free/dummy census, signed BSGS
+double-coset canonicalization, metric-aware zero detection, identical-factor
+exchange, and normalized Young projectors with exact multi-term collection.
+Its explicit component bridge binds runtime-dimension coordinate or internal
+bases to bounded sparse component tables, while validated coordinate maps add
+exact Jacobians, proved two-way transitions, and scalar/covector pullbacks.
+These new library APIs are host-tested and ARM-compiled but are not yet wired
+to notebook evaluator heads or the existing GR pipeline.
+The differential-geometry layer with oriented
 manifolds, canonical antisymmetric forms, exact wedge, exterior derivative,
 interior product, Lie derivative, and both orthonormal/general-metric Hodge duals. The native
 GR layer computes Christoffel, Riemann, Ricci, scalar-curvature and Einstein
@@ -168,6 +177,8 @@ src/ir/           typed expression IR: interning, ordering, serialization
 src/exact/        bounded bigint/bigrat arithmetic and algebraic certificates
 src/cas/          scalar algebra: normal form, calculus, the zero decision
 src/tensor/       component tensors: charts, storage, slot symmetries
+src/abstract/     abstract indices, signed canonicalization, Young projectors
+src/component/    dynamic bases, sparse components, coordinate maps/pullbacks
 src/gr/           coordinate-metric GR curvature pipeline
 src/geom/         manifolds and differential forms: wedge, d, iota, Hodge
 src/lie/          exact finite Lie algebras and built-in group metadata

@@ -12,17 +12,22 @@ The notebook surface is not Lorentz-only. `Manifold[{x,y},Riemannian]` and
 `Euclidean` select positive signature; `Lorentzian` and `Minkowski` select the
 documented mostly-plus convention; an explicit list such as `{-1,-1,1,1}`
 selects any supported pseudo-Riemannian signature. Orientation is independently
-`Positive`, `Negative`, or `Unoriented`. The current native scope is dimension
-1 through 4 and one coordinate chart per manifold; transition maps and
-pullbacks are not implemented.
+`Positive`, `Negative`, or `Unoriented`. The legacy `phy_form` surface remains
+dimension 1 through 4. The dynamic basis surface now supports validated
+coordinate maps, exact Jacobians, proved two-way chart transitions, scalar
+pullback and 1-form/covector pullback at runtime dimensions; general p-form
+pullback and migration of `phy_manifold` ownership are still pending.
 
 ## What has landed, and what has not
 
 | Landed | Deferred, with the blocking dependency named |
 | --- | --- |
-| manifold metadata: name, dimension ≤ 4, orientation, signature | pullback — needs a validated coordinate-map object |
-| bounded list of borrowed, validated charts | transition maps between registered charts |
-| canonical antisymmetric `C(n,p)` component storage | pullback |
+| manifold metadata: name, dimension ≤ 4, orientation, signature | migrate legacy manifold/form storage to dynamic bases |
+| bounded legacy charts plus dynamic coordinate bases | general atlas cocycle registry |
+| validated coordinate maps and exact Jacobians | general p-form/tensor pullback |
+| two-way transitions proved inverse by substitution | vector pushforward |
+| scalar and covector pullback | singular-locus/domain certificates |
+| canonical antisymmetric `C(n,p)` component storage | dynamic sparse forms |
 | exact wedge product | vector-field Lie bracket |
 | exact exterior derivative | connection, torsion, curvature 2-forms |
 | exact interior product by a contravariant vector | integration, Stokes, cohomology |
@@ -82,41 +87,34 @@ the memo cache means a shared subterm is simplified once however many
 components mention it. `test_cancellation_and_budget` checks the propagation
 rather than assuming it.
 
-## Charts are registered, not related
+## Legacy charts and the dynamic map layer
 
 A manifold borrows up to `PHY_MANIFOLD_MAX_CHARTS` charts. It validates each
 one — matching dimension, same IR context, not already registered — and then
-does nothing further with it. There are no transition maps.
+does nothing further with it. The legacy form object therefore still requires
+one chart identity.
 
 A form therefore names its chart, and every binary operation requires its
 operands to agree on it. Mixing charts is `PHY_ERR_TYPE`.
 
-That refusal is the honest form of the missing feature. Two components on two
-charts are related by a transition map, and identifying them without one is
-not a convenience, it is a wrong answer. `test_charts_do_not_mix` pins it.
+The new `phy_component_basis`/`phy_coordinate_map` layer does relate coordinate
+bases explicitly. It enforces disjoint source/target coordinate symbols,
+rejects direct target-coordinate capture in map components, differentiates the
+map once into an exact dynamic Jacobian, and rejects an unevaluated derivative
+at construction. `phy_basis_transition` additionally proves both compositions
+are identities through exact substitution and zero decision.
 
-### Why pullback is deferred
+For `F: x -> y=phi(x)`, the implemented operations are
 
-`F*(dy^a) = sum_j (d phi^a / d x^j) dx^j` is not hard to compute — the CAS has
-`phy_cas_diff` and `phy_cas_substitute`, and the components are small. What is
-missing is a *safe* object to compute it from. Two requirements make a
-coordinate map a real design rather than a call to `phy_cas_substitute`:
+```
+F*(f)(x)       = f(phi(x))
+F*(alpha)_i(x) = sum_a alpha_a(phi(x)) d phi^a / d x^i
+```
 
-- **Disjoint coordinate symbols.** Substituting the target chart's coordinates
-  with expressions in the source chart's coordinates captures the source ones
-  whenever the two charts share a name. Both `{"x","y"}` charts in this
-  repository's own tests would collide. Nothing detects it; the result is
-  simply wrong. A map object has to own the disjointness, either by
-  construction or by rejecting an overlap.
-- **Validation before differentiation.** A map component that mentions a symbol
-  belonging to neither chart differentiates to an unevaluated
-  `PHY_IR_DERIVATIVE`, which then propagates into every pulled-back component
-  as something that *looks* like a legitimate deferred answer. A malformed map
-  should be one typed error at construction, not a residue in the output.
-
-Neither is difficult; both are design, not effort. Until a `phy_map` supplies
-them, this layer has no pullback and says so, rather than shipping one that is
-right for the cases its tests happen to use.
+The tests cover a proved affine chart transition and the rectangular map
+`t -> (t,t^2)`, including pullback of `x dy` to `2 t^2 dt`. Converting a
+legacy `phy_form` directly through this map remains deferred so the old chart
+object is not silently identified with a dynamic basis.
 
 ## Conventions
 
@@ -428,11 +426,13 @@ The probe retained 45/45 public APIs, compiled the geometry translation units
 to 8,957 bytes of ARM text, packaged a 62,428-byte dependency-complete `.tns`,
 and retained no float formatter, libm call, or ARM soft-float helper.
 
-## Not in this layer
+## Not in the legacy form layer
 
-Pullback and transition maps, for the reason above. Vector-field Lie brackets.
-Connections, torsion, and curvature 2-forms — the Cartan structure
+Direct dynamic-to-`phy_form` conversion, general p-form/tensor pullback, and
+vector pushforward. Vector-field Lie brackets. Connections, torsion, and
+curvature 2-forms — the Cartan structure
 equations are the natural next step and need only the wedge and the exterior
 derivative, both of which are here. Integration, Stokes' theorem, and anything
 cohomological. Frames and tetrads other than a chart's coordinate coframe.
-Dimensions above 4.
+Dimensions above 4 in `phy_form`; dynamic bases and maps do not share that
+semantic ceiling.

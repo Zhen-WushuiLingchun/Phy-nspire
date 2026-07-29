@@ -8,6 +8,28 @@ The substrate the Phase 3 curvature pipeline computes on. It is defined by
 This document covers the design decisions. The header is the API reference and
 is not repeated here.
 
+## Two component backends during migration
+
+The original `include/phy/tensor.h` backend remains the dense, dimension/rank
+four implementation used by the current GR evaluator. A separate exact stack
+now removes those limits without destabilizing that path:
+
+- `include/phy/abstract_tensor.h` defines runtime-rank `IndexSpace`,
+  `TensorHead`, abstract indices, Einstein census, signed slot generators,
+  dummy double-coset canonicalization, and normalized Young projectors;
+- `include/phy/component_tensor.h` binds an abstract index space to an
+  explicit runtime-dimension basis and stores only assigned canonical
+  components in a bounded sparse table;
+- `include/phy/map.h` owns validated coordinate maps, exact Jacobians,
+  two-way transitions, and scalar/covector pullbacks.
+
+An abstract rank does not allocate components. A concrete rank-nine tensor can
+therefore carry one assigned component without allocating `dimension^9`
+handles. Configured rank, BSGS, candidate, sparse-entry and memory ceilings are
+resource limits; they are no longer mathematical rank-four semantics. The
+legacy dense backend is deleted only after evaluator and GR parity tests have
+migrated.
+
 ## Notebook construction surface
 
 The reader-facing evaluator can construct every supported dense component
@@ -33,15 +55,18 @@ native tensor API.
 
 | Landed | Deliberately deferred |
 | --- | --- |
-| charts, coordinate symbols, rank, valence, head metadata | dimensions above 4 or ranks above 4 |
-| dense `n^r` storage, encode/decode, signed slot symmetries | abstract dummy-index canonicalization |
+| legacy charts, coordinate symbols, rank, valence, head metadata | evaluator migration from legacy dense values |
+| dense `n^r` storage plus runtime-rank sparse component binding | general abstract expression evaluator heads |
+| abstract free/dummy census and signed double-coset canonicalization | full Garnir-basis reduction beyond explicit Young projection |
+| normalized Young row/column projectors with exact term collection | tensor pushforward and general p-form pullback |
 | exact contraction, inverse metric, raise/lower, component derivatives | first-Bianchi orbit canonicalization |
 | canonical lookup, fill validation, allocation-failure unwind | optional xPerm integration |
 
 The scalar-dependent entries use the native exact CAS and its three-valued zero
-decision; they are not numerical fallbacks. The deferred abstract-index work is
-different from dense component arithmetic and is left absent rather than
-represented by a misleading no-op head.
+decision; they are not numerical fallbacks. xPerm remains a host-side primary
+oracle rather than a linked dependency: the native monoterm implementation is
+bounded, allocation-accounted and specialized to Phy-nspire's typed Einstein
+model.
 
 ## The scalar boundary, and why it falls on negation
 
@@ -207,7 +232,7 @@ needed:
 | status | when |
 | --- | --- |
 | `PHY_ERR_INVALID_ARGUMENT` | null pointer, index `>=` dimension, slot `>=` rank, repeated slot, malformed permutation, sign other than `±1` |
-| `PHY_ERR_UNSUPPORTED` | dimension or rank beyond the compiled ceilings — `n = 5` is not wrong, it is not implemented |
+| `PHY_ERR_UNSUPPORTED` | legacy dense dimension/rank beyond its compiled ceilings; the dynamic sparse API instead reports configured resource ceilings |
 | `PHY_ERR_TYPE` | a slot's variance rejects the operation |
 | `PHY_ERR_ASSUMPTION` | declared symmetries cannot all hold, or an assignment contradicts one |
 | `PHY_ERR_OUT_OF_MEMORY` | `phy_alloc` failed |
