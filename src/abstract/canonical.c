@@ -32,7 +32,9 @@ typedef struct {
     phy_canonical_key *best_key;
     size_t *dummy_ordinal;
     uint8_t *dummy_occurrence;
+    uint8_t *processed_points;
     uint16_t *permutation_stack;
+    uint16_t *choice_permutation;
     size_t degree;
     uint32_t steps;
     uint64_t candidates;
@@ -282,17 +284,44 @@ static int compare_keys(const phy_canonical_search *search)
     return 0;
 }
 
-static phy_status evaluate_candidate(phy_canonical_search *search,
-                                     const uint16_t *permutation,
-                                     int slot_sign)
+static int compare_key_entry(const phy_canonical_search *search,
+                             const phy_canonical_key *left,
+                             const phy_canonical_key *right)
 {
-    if (search->candidates >= search->limits->max_candidates) {
-        return PHY_ERR_TIMEOUT;
+    if (left->role != right->role) {
+        return left->role < right->role ? -1 : 1;
     }
-    ++search->candidates;
-    for (size_t slot = 0u; slot < search->degree; ++slot) {
-        search->candidate_indices[permutation[slot]] =
-            search->base_indices[slot];
+    if (left->role == (uint8_t)PHY_ABSTRACT_INDEX_FREE) {
+        const int name_order = strcmp(
+            phy_ir_symbol_name(search->ir, left->free_name),
+            phy_ir_symbol_name(search->ir, right->free_name));
+        if (name_order != 0) {
+            return name_order;
+        }
+    } else if (left->ordinal != right->ordinal) {
+        return left->ordinal < right->ordinal ? -1 : 1;
+    }
+    if (left->orientation != right->orientation) {
+        return left->orientation < right->orientation ? -1 : 1;
+    }
+    return 0;
+}
+
+/*
+ * The search traverses inverse slot permutations.  The group is closed under
+ * inversion and a +/- character has the same sign on an element and its
+ * inverse.  In this orientation permutation[slot] directly selects the source
+ * index for that output slot, so a BSGS base 0,1,... fixes the canonical key
+ * from left to right and admits exact lexicographic pruning.
+ */
+static phy_status normalize_prefix(phy_canonical_search *search,
+                                   const uint16_t *permutation,
+                                   size_t prefix_count,
+                                   int *out_dummy_sign)
+{
+    for (size_t slot = 0u; slot < prefix_count; ++slot) {
+        search->candidate_indices[slot] =
+            search->base_indices[permutation[slot]];
     }
     for (size_t use = 0u; use < search->input->use_count; ++use) {
         search->dummy_ordinal[use] = SIZE_MAX;
@@ -300,7 +329,7 @@ static phy_status evaluate_candidate(phy_canonical_search *search,
     }
 
     int dummy_sign = 1;
-    for (size_t slot = 0u; slot < search->degree; ++slot) {
+    for (size_t slot = 0u; slot < prefix_count; ++slot) {
         phy_abstract_index *index = &search->candidate_indices[slot];
         const size_t use = find_index_use(search->input, index);
         if (use == SIZE_MAX) {
@@ -345,6 +374,38 @@ static phy_status evaluate_candidate(phy_canonical_search *search,
                                  : PHY_IR_INDEX_LOWER;
         }
     }
+    *out_dummy_sign = dummy_sign;
+    return PHY_OK;
+}
+
+static int compare_prefix_to_best(const phy_canonical_search *search,
+                                  size_t prefix_count)
+{
+    for (size_t slot = 0u; slot < prefix_count; ++slot) {
+        const int order = compare_key_entry(
+            search, &search->candidate_key[slot],
+            &search->best_key[slot]);
+        if (order != 0) {
+            return order;
+        }
+    }
+    return 0;
+}
+
+static phy_status evaluate_candidate(phy_canonical_search *search,
+                                     const uint16_t *permutation,
+                                     int slot_sign)
+{
+    if (search->candidates >= search->limits->max_candidates) {
+        return PHY_ERR_TIMEOUT;
+    }
+    ++search->candidates;
+    int dummy_sign = 1;
+    const phy_status normalized = normalize_prefix(
+        search, permutation, search->degree, &dummy_sign);
+    if (normalized != PHY_OK) {
+        return normalized;
+    }
 
     const int total_sign = slot_sign * dummy_sign;
     if (!search->best_found) {
@@ -384,23 +445,72 @@ static phy_status traverse_slot_group(phy_canonical_search *search,
     const size_t n = search->degree;
     const uint16_t *current =
         &search->permutation_stack[level * n];
-    for (size_t point = 0u; point < n; ++point) {
-        if (search->chain->valid[level * n + point] == 0u) {
-            continue;
+    uint8_t *processed = &search->processed_points[level * n];
+    memset(processed, 0, n * sizeof(*processed));
+    const size_t choices = search->chain->orbit_count[level];
+    for (size_t choice = 0u; choice < choices; ++choice) {
+        size_t best_point = SIZE_MAX;
+        phy_canonical_key best_entry;
+        memset(&best_entry, 0, sizeof best_entry);
+
+        /*
+         * Visit this stabilizer orbit in canonical-key order.  Once the first
+         * leaf is known, every greater prefix can be discarded exactly.
+         */
+        for (size_t point = 0u; point < n; ++point) {
+            if (processed[point] != 0u ||
+                search->chain->valid[level * n + point] == 0u) {
+                continue;
+            }
+            if ((uint64_t)n >
+                (uint64_t)search->limits->max_steps -
+                    (uint64_t)search->steps) {
+                return PHY_ERR_TIMEOUT;
+            }
+            search->steps += (uint32_t)n;
+            const uint16_t *transversal =
+                &search->chain->transversal[(level * n + point) * n];
+            phy_perm_compose_unchecked(
+                current, transversal, n, search->choice_permutation);
+            int ignored_sign = 1;
+            const phy_status normalized = normalize_prefix(
+                search, search->choice_permutation, level + 1u,
+                &ignored_sign);
+            if (normalized != PHY_OK) {
+                return normalized;
+            }
+            if (best_point == SIZE_MAX ||
+                compare_key_entry(
+                    search, &search->candidate_key[level],
+                    &best_entry) < 0) {
+                best_point = point;
+                best_entry = search->candidate_key[level];
+            }
         }
-        if (n > search->limits->max_steps - search->steps) {
-            return PHY_ERR_TIMEOUT;
+        if (best_point == SIZE_MAX) {
+            return PHY_ERR_CORRUPT_DOCUMENT;
         }
-        search->steps += (uint32_t)n;
+        processed[best_point] = 1u;
         const uint16_t *transversal =
-            &search->chain->transversal[(level * n + point) * n];
+            &search->chain->transversal[
+                (level * n + best_point) * n];
         uint16_t *next =
             &search->permutation_stack[(level + 1u) * n];
         phy_perm_compose_unchecked(current, transversal, n, next);
+
+        int ignored_sign = 1;
+        phy_status status = normalize_prefix(
+            search, next, level + 1u, &ignored_sign);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (search->best_found &&
+            compare_prefix_to_best(search, level + 1u) > 0) {
+            continue;
+        }
         const int next_sign =
-            sign * search->chain->sign[level * n + point];
-        const phy_status status =
-            traverse_slot_group(search, level + 1u, next_sign);
+            sign * search->chain->sign[level * n + best_point];
+        status = traverse_slot_group(search, level + 1u, next_sign);
         if (status != PHY_OK || search->zero) {
             return status;
         }
@@ -579,7 +689,9 @@ phy_status phy_tensor_monomial_canonicalize(
     size_t best_key_offset = 0u;
     size_t dummy_ordinal_offset = 0u;
     size_t dummy_occurrence_offset = 0u;
+    size_t processed_points_offset = 0u;
     size_t stack_offset = 0u;
+    size_t choice_permutation_offset = 0u;
     size_t image_offset = 0u;
     size_t symbols_offset = 0u;
     size_t factors_offset = 0u;
@@ -604,8 +716,13 @@ phy_status phy_tensor_monomial_canonicalize(
         reserve_array(&scratch_bytes, monomial->use_count,
                       sizeof(uint8_t), &dummy_occurrence_offset) &&
         reserve_array(&scratch_bytes,
+                      degree == 0u ? 0u : degree * degree,
+                      sizeof(uint8_t), &processed_points_offset) &&
+        reserve_array(&scratch_bytes,
                       degree == 0u ? 0u : (degree + 1u) * degree,
                       sizeof(uint16_t), &stack_offset) &&
+        reserve_array(&scratch_bytes, degree, sizeof(uint16_t),
+                      &choice_permutation_offset) &&
         reserve_array(&scratch_bytes, degree, sizeof(uint16_t),
                       &image_offset) &&
         reserve_array(&scratch_bytes, degree, sizeof(phy_ir_symbol),
@@ -637,8 +754,12 @@ phy_status phy_tensor_monomial_canonicalize(
         (size_t *)(scratch + dummy_ordinal_offset);
     uint8_t *dummy_occurrence =
         (uint8_t *)(scratch + dummy_occurrence_offset);
+    uint8_t *processed_points =
+        (uint8_t *)(scratch + processed_points_offset);
     uint16_t *permutation_stack =
         (uint16_t *)(scratch + stack_offset);
+    uint16_t *choice_permutation =
+        (uint16_t *)(scratch + choice_permutation_offset);
     uint16_t *image = (uint16_t *)(scratch + image_offset);
     phy_ir_symbol *symbols =
         (phy_ir_symbol *)(scratch + symbols_offset);
@@ -691,10 +812,6 @@ phy_status phy_tensor_monomial_canonicalize(
     bool zero = phy_perm_group_has_negative_identity(group);
     phy_canonical_search search;
     memset(&search, 0, sizeof search);
-    if (!zero && phy_perm_group_order(group) > limits.max_candidates) {
-        status = PHY_ERR_TIMEOUT;
-    }
-
     phy_perm_chain chain;
     memset(&chain, 0, sizeof chain);
     if (status == PHY_OK && !zero) {
@@ -717,7 +834,9 @@ phy_status phy_tensor_monomial_canonicalize(
         search.best_key = best_key;
         search.dummy_ordinal = dummy_ordinal;
         search.dummy_occurrence = dummy_occurrence;
+        search.processed_points = processed_points;
         search.permutation_stack = permutation_stack;
+        search.choice_permutation = choice_permutation;
         search.degree = degree;
         phy_permutation_identity(permutation_stack, degree);
         status = traverse_slot_group(&search, 0u, 1);

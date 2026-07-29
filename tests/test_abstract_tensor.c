@@ -522,7 +522,8 @@ static void test_free_index_and_factor_canonicalization(void)
         phy_tensor_monomial_canonicalize(
             input, NULL, &canonical, &stats), PHY_OK);
     PHY_CHECK_EQ_INT(stats.slot_group_order, 2);
-    PHY_CHECK_EQ_INT(stats.candidates_visited, 2);
+    PHY_CHECK(stats.candidates_visited >= 1u);
+    PHY_CHECK(stats.candidates_visited <= stats.slot_group_order);
     PHY_CHECK_EQ_INT(
         exact_integer(
             &f, phy_tensor_monomial_coefficient(canonical)), -3);
@@ -800,7 +801,8 @@ static void test_xperm_rank_six_oracle_and_work_limit(void)
         phy_tensor_monomial_canonicalize(
             input, NULL, &canonical, &stats), PHY_OK);
     PHY_CHECK_EQ_INT(stats.slot_group_order, 6);
-    PHY_CHECK_EQ_INT(stats.candidates_visited, 6);
+    PHY_CHECK(stats.candidates_visited >= 1u);
+    PHY_CHECK(stats.candidates_visited < stats.slot_group_order);
     PHY_CHECK_EQ_INT(
         exact_integer(
             &f, phy_tensor_monomial_coefficient(canonical)), -1);
@@ -825,12 +827,82 @@ static void test_xperm_rank_six_oracle_and_work_limit(void)
     phy_tensor_monomial_destroy(canonical);
 
     phy_tensor_canonical_limits limits = {0};
-    limits.max_candidates = 5u;
+    limits.max_candidates = 1u;
     PHY_CHECK_EQ_INT(
         phy_tensor_monomial_canonicalize(
             input, &limits, &canonical, &stats), PHY_ERR_TIMEOUT);
     PHY_CHECK(canonical == NULL);
     PHY_CHECK_EQ_INT(stats.slot_group_order, 6);
+    phy_tensor_monomial_destroy(input);
+    fixture_close(&f);
+}
+
+static void test_symmetric_rank_nine_is_pruned_not_enumerated(void)
+{
+    fixture f = fixture_open(NULL);
+    phy_index_space *space = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_index_space_create(
+            f.abstract, "M", phy_ir_integer(f.ir, 9),
+            PHY_METRIC_NONE, &space),
+        PHY_OK);
+    const phy_index_space *slots[9] = {
+        space, space, space, space, space, space, space, space, space};
+    phy_tensor_head *symmetric = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_create(
+            f.abstract, "S", slots, 9u, PHY_TENSOR_COMMUTING,
+            &symmetric),
+        PHY_OK);
+    for (size_t adjacent = 0u; adjacent + 1u < 9u; ++adjacent) {
+        uint16_t swap[9];
+        for (size_t i = 0u; i < 9u; ++i) {
+            swap[i] = (uint16_t)i;
+        }
+        swap[adjacent] = (uint16_t)(adjacent + 1u);
+        swap[adjacent + 1u] = (uint16_t)adjacent;
+        PHY_CHECK_EQ_INT(
+            phy_tensor_head_add_symmetry(
+                symmetric, swap, 1), PHY_OK);
+    }
+
+    static const char *const reversed_names[9] = {
+        "i", "h", "g", "f", "e", "d", "c", "b", "a"};
+    phy_abstract_index indices[9] = {{0}};
+    for (size_t i = 0u; i < 9u; ++i) {
+        PHY_CHECK_EQ_INT(
+            phy_abstract_index_make(
+                space, reversed_names[i], PHY_IR_INDEX_LOWER,
+                &indices[i]),
+            PHY_OK);
+    }
+    const phy_abstract_factor factor = {symmetric, indices, 9u};
+    phy_tensor_monomial *input = NULL;
+    phy_tensor_monomial *canonical = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_create(
+            f.abstract, phy_ir_integer(f.ir, 1), &factor, 1u, &input),
+        PHY_OK);
+    phy_tensor_canonical_stats stats = {0};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_canonicalize(
+            input, NULL, &canonical, &stats), PHY_OK);
+    PHY_CHECK_EQ_INT(stats.slot_group_order, 362880);
+    PHY_CHECK(stats.candidates_visited < 100u);
+
+    const phy_tensor_head *head = NULL;
+    const phy_abstract_index *result = NULL;
+    size_t count = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_factor(
+            canonical, 0u, &head, &result, &count), PHY_OK);
+    PHY_CHECK_EQ_INT(count, 9);
+    for (size_t i = 0u; i < 9u; ++i) {
+        const char expected[2] = {(char)('a' + i), '\0'};
+        PHY_CHECK_EQ_STR(
+            phy_ir_symbol_name(f.ir, result[i].name), expected);
+    }
+    phy_tensor_monomial_destroy(canonical);
     phy_tensor_monomial_destroy(input);
     fixture_close(&f);
 }
@@ -848,5 +920,6 @@ int main(void)
     PHY_TEST_CASE(test_dummy_alpha_renaming_and_metric_zero);
     PHY_TEST_CASE(test_metric_type_controls_dummy_orientation);
     PHY_TEST_CASE(test_xperm_rank_six_oracle_and_work_limit);
+    PHY_TEST_CASE(test_symmetric_rank_nine_is_pruned_not_enumerated);
     return PHY_TEST_REPORT("abstract_tensor");
 }
