@@ -53,12 +53,14 @@ NMARKDOWN_CPPFLAGS := -I$(NMARKDOWN_ROOT)/include \
 
 GCCFLAGS := -Wall -Wextra -Wshadow -Wpointer-arith -std=c11 -marm \
             -ffunction-sections -fdata-sections -Iinclude -Isrc/gfx -Isrc/ir \
-            -Isrc/tensor -Isrc/cas -Isrc/geom -Isrc/eval -Isrc/notebook \
-            -Isrc/render -Isrc/storage \
+            -Isrc/tensor -Isrc/linear -Isrc/abstract -Isrc/permutation \
+            -Isrc/cas -Isrc/geom -Isrc/eval -Isrc/notebook -Isrc/render \
+            -Isrc/storage \
             $(NMARKDOWN_CPPFLAGS)
 CXXFLAGS := -Wall -Wextra -Wpedantic -std=c++17 -marm \
             -ffunction-sections -fdata-sections -fexceptions -fno-rtti \
-            -Iinclude -Isrc/gfx -Isrc/ir -Isrc/tensor -Isrc/cas -Isrc/geom \
+            -Iinclude -Isrc/gfx -Isrc/ir -Isrc/tensor -Isrc/linear \
+            -Isrc/abstract -Isrc/permutation -Isrc/cas -Isrc/geom \
             -Isrc/eval -Isrc/notebook -Isrc/render -Isrc/storage \
             $(NMARKDOWN_CPPFLAGS)
 # The Ndless ldscript intentionally produces a single RWX load segment, which
@@ -103,6 +105,14 @@ SOURCES := \
     src/tensor/symmetry.c \
     src/tensor/tensor.c \
     src/tensor/ops.c \
+    src/linear/matrix.c \
+    src/linear/elimination.c \
+    src/abstract/index.c \
+    src/abstract/head.c \
+    src/abstract/monomial.c \
+    src/permutation/perm.c \
+    src/permutation/bsgs.c \
+    src/permutation/orbit.c \
     src/gr/gr.c \
     src/lie/lie.c \
     src/qft/scalar.c \

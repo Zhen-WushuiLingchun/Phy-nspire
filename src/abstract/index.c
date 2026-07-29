@@ -225,8 +225,7 @@ phy_status phy_index_space_create(phy_abstract_context *context,
                                   phy_index_space **out_space)
 {
     if (context == NULL || name == NULL || name[0] == '\0' ||
-        out_space == NULL || metric < PHY_METRIC_NONE ||
-        metric > PHY_METRIC_ANTISYMMETRIC) {
+        out_space == NULL || metric > PHY_METRIC_ANTISYMMETRIC) {
         return PHY_ERR_INVALID_ARGUMENT;
     }
     *out_space = NULL;

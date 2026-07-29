@@ -248,9 +248,12 @@ phy_status phy_matrix_determinant(const phy_matrix *matrix,
         phy_ir_ref determinant =
             work->entries[(work->rows - 1u) * work->columns +
                           (work->columns - 1u)];
-        status = negate
-                     ? phy_cas_neg(matrix->cas, determinant, out_value)
-                     : ((*out_value = determinant), PHY_OK);
+        if (negate) {
+            status =
+                phy_cas_neg(matrix->cas, determinant, out_value);
+        } else {
+            *out_value = determinant;
+        }
     }
     phy_matrix_destroy(work);
     return status;

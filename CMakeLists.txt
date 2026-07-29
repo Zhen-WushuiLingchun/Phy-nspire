@@ -148,6 +148,9 @@ add_library(phy_core STATIC
     src/abstract/index.c
     src/abstract/head.c
     src/abstract/monomial.c
+    src/permutation/perm.c
+    src/permutation/bsgs.c
+    src/permutation/orbit.c
     src/gr/gr.c
     src/lie/lie.c
     src/qft/scalar.c
@@ -182,7 +185,8 @@ add_library(phy_core STATIC
     src/qft/yang_mills.c
 )
 target_include_directories(phy_core PUBLIC include PRIVATE
-    src/gfx src/ir src/tensor src/linear src/abstract src/cas src/geom src/eval)
+    src/gfx src/ir src/tensor src/linear src/abstract src/permutation
+    src/cas src/geom src/eval)
 target_link_libraries(phy_core PRIVATE phy_warnings nmarkdown_math)
 if(MSVC)
     target_compile_options(phy_core PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/EHsc>
@@ -238,7 +242,7 @@ if(BUILD_TESTING)
                   test_qft_scalar test_yang_mills test_cas test_geom
                   test_geom_metric test_eval test_lorentz test_mandelstam
                   test_color test_exact test_algebraic test_finite_poly
-                  test_linear test_abstract_tensor)
+                  test_linear test_abstract_tensor test_permutation)
         # test_series is appended below because it also sees the internal
         # bounded-series contract.
         add_executable(${suite} tests/${suite}.c)
