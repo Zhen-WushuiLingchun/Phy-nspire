@@ -159,6 +159,7 @@ add_library(phy_core STATIC
     src/permutation/bsgs.c
     src/permutation/orbit.c
     src/gr/gr.c
+    src/gr/bridge.c
     src/lie/lie.c
     src/qft/scalar.c
     src/qft/lorentz.c
@@ -251,6 +252,7 @@ if(BUILD_TESTING)
                   test_color test_exact test_algebraic test_finite_poly
                   test_linear test_abstract_tensor test_permutation
                   test_component_tensor test_component_bridge
+                  test_gr_bridge
                   test_coordinate_map test_atlas)
         # test_series is appended below because it also sees the internal
         # bounded-series contract.

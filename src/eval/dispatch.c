@@ -355,6 +355,8 @@ static phy_status publish_many(phy_env *env, phy_value_kind kind,
             (const phy_basis_transition *)object;
     } else if (kind == PHY_VALUE_ATLAS) {
         value.as.atlas = (phy_atlas *)object;
+    } else if (kind == PHY_VALUE_GR_COMPONENTS) {
+        value.as.gr_components = (const phy_gr_component_view *)object;
     } else {
         return PHY_ERR_INVALID_ARGUMENT;
     }
@@ -1205,6 +1207,154 @@ static phy_status eval_component_lift(
                      env, PHY_VALUE_COMPONENT_TENSOR, lifted,
                      dependencies, rank + 2u, out_value)
                : status;
+}
+
+/* ----------------------------------------- general-relativity component view */
+
+/*
+ * GRComponents[c] and GRComponents[c,{Weyl,RiemannUpper}].
+ *
+ * One view holds one IndexSpace, one coordinate basis and one realization per
+ * curvature quantity, so that `GRHead[gr,Ricci]` in two different cells names
+ * the same abstract head. Rebuilding the view instead would give two heads of
+ * the same name that no monomial can mix, which is exactly the failure the
+ * typed layer exists to prevent.
+ */
+static phy_status eval_gr_components(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    const size_t count = arg_count(env, expr);
+    if (count < 1u || count > 2u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value bundle;
+    phy_status status =
+        arg_typed(env, expr, 0u, PHY_VALUE_CURVATURE, &bundle);
+    if (status != PHY_OK) {
+        return status;
+    }
+    unsigned options = 0u;
+    if (count == 2u) {
+        phy_ir_ref raw[EVAL_ABSTRACT_MAX_SLOTS];
+        size_t requested = 0u;
+        status = list_refs(env, arg_ref(env, expr, 1u), raw,
+                           EVAL_ABSTRACT_MAX_SLOTS, &requested);
+        if (status != PHY_OK) {
+            return status;
+        }
+        for (size_t which = 0u; which < requested; ++which) {
+            if (phy_ir_kind_of(env->ir, raw[which]) != PHY_IR_SYMBOL) {
+                return PHY_ERR_TYPE;
+            }
+            const char *name = phy_ir_symbol_name(
+                env->ir, phy_ir_head(env->ir, raw[which]));
+            if (keyword_is(name, "Weyl")) {
+                options |= PHY_GR_BRIDGE_WEYL;
+            } else if (keyword_is(name, "RiemannUpper")) {
+                options |= PHY_GR_BRIDGE_RIEMANN_UPPER;
+            } else {
+                return PHY_ERR_PARSE;
+            }
+        }
+    }
+    status = ensure_abstract_context(env);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_gr_component_view *view = NULL;
+    status = phy_gr_component_view_create(
+        env->cas, env->abstract, bundle.as.curvature,
+        pending_name(env, "M"), options, NULL, &view);
+    return status == PHY_OK
+               ? publish_many(env, PHY_VALUE_GR_COMPONENTS, view, &bundle,
+                              1u, out_value)
+               : status;
+}
+
+static phy_status read_gr_quantity(const phy_env *env, phy_ir_ref ref,
+                                   phy_gr_quantity *out_quantity)
+{
+    if (phy_ir_kind_of(env->ir, ref) != PHY_IR_SYMBOL) {
+        return PHY_ERR_TYPE;
+    }
+    const char *name =
+        phy_ir_symbol_name(env->ir, phy_ir_head(env->ir, ref));
+    for (unsigned quantity = 0u;
+         quantity < (unsigned)PHY_GR_QUANTITY_COUNT; ++quantity) {
+        if (keyword_is(name,
+                       phy_gr_quantity_name((phy_gr_quantity)quantity))) {
+            *out_quantity = (phy_gr_quantity)quantity;
+            return PHY_OK;
+        }
+    }
+    return PHY_ERR_PARSE;
+}
+
+/*
+ * GRSpace[gr], GRBasis[gr], GRHead[gr,Ricci] and GRTensor[gr,Ricci].
+ *
+ * All four are borrowed views of objects the GRComponents handle owns, so
+ * each is registered against it and the sweep keeps the owner alive for as
+ * long as any of them is reachable. A quantity the view did not lift is
+ * PHY_ERR_NOT_INITIALIZED rather than a null handle: `Weyl` is absent because
+ * it was not asked for, and saying so is more useful than a type error.
+ */
+static phy_status eval_gr_part(phy_env *env, phy_ir_ref expr, eval_head head,
+                               phy_value *out_value)
+{
+    const bool needs_quantity =
+        head == EVAL_HEAD_GR_HEAD || head == EVAL_HEAD_GR_TENSOR;
+    if (arg_count(env, expr) != (needs_quantity ? 2u : 1u)) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value view;
+    phy_status status =
+        arg_typed(env, expr, 0u, PHY_VALUE_GR_COMPONENTS, &view);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_gr_quantity quantity = PHY_GR_METRIC;
+    if (needs_quantity) {
+        status =
+            read_gr_quantity(env, arg_ref(env, expr, 1u), &quantity);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (!phy_gr_component_view_holds(view.as.gr_components,
+                                         quantity)) {
+            return PHY_ERR_NOT_INITIALIZED;
+        }
+    }
+
+    phy_value part;
+    switch (head) {
+    case EVAL_HEAD_GR_SPACE:
+        part.kind = PHY_VALUE_INDEX_SPACE;
+        part.as.index_space =
+            phy_gr_component_view_space(view.as.gr_components);
+        break;
+    case EVAL_HEAD_GR_BASIS:
+        part.kind = PHY_VALUE_COMPONENT_BASIS;
+        part.as.component_basis =
+            phy_gr_component_view_basis(view.as.gr_components);
+        break;
+    case EVAL_HEAD_GR_HEAD:
+        part.kind = PHY_VALUE_TENSOR_HEAD;
+        part.as.tensor_head =
+            phy_gr_component_view_head(view.as.gr_components, quantity);
+        break;
+    case EVAL_HEAD_GR_TENSOR:
+        part.kind = PHY_VALUE_COMPONENT_TENSOR;
+        part.as.component_tensor =
+            phy_gr_component_view_tensor(view.as.gr_components, quantity);
+        break;
+    default:
+        return PHY_ERR_UNSUPPORTED;
+    }
+    if (eval_value_pointer(&part) == NULL) {
+        return PHY_ERR_CORRUPT_DOCUMENT;
+    }
+    return publish_borrowed(env, part, &view, out_value);
 }
 
 /* ------------------------------------------------ exact linear frontend */
@@ -4673,6 +4823,13 @@ static phy_status eval_operator(phy_env *env, phy_ir_ref expr,
         return eval_component_lift(env, expr, out_value);
     case EVAL_HEAD_COMPONENT_VALUE:
         return eval_component_value(env, expr, out_value);
+    case EVAL_HEAD_GR_COMPONENTS:
+        return eval_gr_components(env, expr, out_value);
+    case EVAL_HEAD_GR_SPACE:
+    case EVAL_HEAD_GR_BASIS:
+    case EVAL_HEAD_GR_HEAD:
+    case EVAL_HEAD_GR_TENSOR:
+        return eval_gr_part(env, expr, which, out_value);
 
     case EVAL_HEAD_VECTOR:
         return eval_vector_constructor(env, expr, out_value);

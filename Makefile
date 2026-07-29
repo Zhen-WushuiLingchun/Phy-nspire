@@ -122,6 +122,7 @@ SOURCES := \
     src/permutation/bsgs.c \
     src/permutation/orbit.c \
     src/gr/gr.c \
+    src/gr/bridge.c \
     src/lie/lie.c \
     src/qft/scalar.c \
     src/qft/lorentz.c \

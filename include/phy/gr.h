@@ -20,6 +20,15 @@ phy_status phy_gr_compute(phy_cas *cas, const phy_tensor *metric,
                           phy_gr_result **out_result);
 void phy_gr_result_destroy(phy_gr_result *result);
 
+/*
+ * The metric phy_gr_compute() was given, borrowed rather than owned. It is
+ * reported because every consumer that wants to rebuild a curvature identity
+ * -- G_ab = R_ab - g_ab R/2 is the first one -- needs g_ab alongside the
+ * outputs, and asking the caller to carry it separately is how the two drift
+ * apart.
+ */
+const phy_tensor *phy_gr_metric(const phy_gr_result *result);
+
 const phy_tensor *phy_gr_inverse_metric(const phy_gr_result *result);
 const phy_tensor *phy_gr_christoffel(const phy_gr_result *result);
 const phy_tensor *phy_gr_riemann_mixed(const phy_gr_result *result);

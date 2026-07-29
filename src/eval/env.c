@@ -20,6 +20,9 @@ static const char *const kEvalHeadNames[EVAL_HEAD_COUNT] = {
     "YoungProject", "ComponentBasis",   "TensorComponents",
     "ComponentLift", "ComponentValue",
 
+    "GRComponents", "GRSpace",          "GRBasis",
+    "GRHead",       "GRTensor",
+
     "Vector",       "Matrix",           "Transpose",   "Dot",
     "Determinant",  "Inverse",          "RowReduce",   "MatrixRank",
     "LinearSolve",
@@ -108,6 +111,8 @@ const char *phy_value_kind_name(phy_value_kind kind)
         return "BasisTransition";
     case PHY_VALUE_ATLAS:
         return "Atlas";
+    case PHY_VALUE_GR_COMPONENTS:
+        return "GRComponents";
     default:
         break;
     }
@@ -158,6 +163,8 @@ const void *eval_value_pointer(const phy_value *value)
         return value->as.coordinate_map;
     case PHY_VALUE_BASIS_TRANSITION:
         return value->as.basis_transition;
+    case PHY_VALUE_GR_COMPONENTS:
+        return value->as.gr_components;
     case PHY_VALUE_ATLAS:
         return value->as.atlas;
     default:
@@ -226,6 +233,10 @@ static void destroy_owned(phy_value_kind kind, void *owned)
         break;
     case PHY_VALUE_ATLAS:
         phy_atlas_destroy((phy_atlas *)owned);
+        break;
+    case PHY_VALUE_GR_COMPONENTS:
+        phy_gr_component_view_destroy(
+            (phy_gr_component_view *)owned);
         break;
     default:
         /* Scalars and borrowed algebras never own anything. */

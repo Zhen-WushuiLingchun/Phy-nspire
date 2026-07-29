@@ -515,6 +515,7 @@ phy_status phy_eval_value_expression(phy_env *env, phy_value value,
     case PHY_VALUE_COORDINATE_MAP:
     case PHY_VALUE_BASIS_TRANSITION:
     case PHY_VALUE_ATLAS:
+    case PHY_VALUE_GR_COMPONENTS:
         /* These are handles; phy_eval_describe provides their display. */
         return PHY_OK;
     case PHY_VALUE_VECTOR:
@@ -801,6 +802,28 @@ phy_status phy_eval_describe(const phy_env *env, phy_value value, char *buffer,
             &writer,
             (unsigned)phy_atlas_transition_count(value.as.atlas));
         break;
+    case PHY_VALUE_GR_COMPONENTS: {
+        const phy_gr_component_view *view = value.as.gr_components;
+        size_t held = 0u;
+        for (unsigned quantity = 0u;
+             quantity < (unsigned)PHY_GR_QUANTITY_COUNT; ++quantity) {
+            if (phy_gr_component_view_holds(
+                    view, (phy_gr_quantity)quantity)) {
+                ++held;
+            }
+        }
+        write_text(&writer, " ");
+        write_text(
+            &writer,
+            phy_index_space_name(phy_gr_component_view_space(view)));
+        write_text(&writer, " dim ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_gr_component_view_dimension(view));
+        write_text(&writer, " lifted ");
+        write_unsigned(&writer, (unsigned)held);
+        break;
+    }
     default:
         break;
     }

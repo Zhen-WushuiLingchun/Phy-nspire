@@ -264,6 +264,9 @@ static const char *const kObjectHeads[] = {
     "YoungProject", "ComponentBasis",   "TensorComponents",
     "ComponentLift", "ComponentValue",
 
+    "GRComponents", "GRSpace",          "GRBasis",
+    "GRHead",       "GRTensor",
+
     "Vector",       "Matrix",           "Transpose",    "Dot",
     "Determinant",  "Inverse",          "RowReduce",    "MatrixRank",
     "LinearSolve",

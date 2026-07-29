@@ -952,6 +952,57 @@ static void test_curvature_pipeline(void)
         &f, "ComponentLift[Christoffel[c],Rabs,{e,e,e,e}]",
         PHY_ERR_TYPE);
 
+    /*
+     * The same crossing without transcribing a slot group by hand.
+     * GRComponents lifts the whole curvature suite at once, declaring the
+     * textbook symmetry of each quantity and proving it against every dense
+     * component. Its heads are ordinary abstract heads, so they compose with
+     * the ones the reader declared above.
+     */
+    phy_value view = run(&f, "gr = GRComponents[c,{Weyl,RiemannUpper}]");
+    PHY_CHECK_EQ_INT(view.kind, PHY_VALUE_GR_COMPONENTS);
+    PHY_CHECK_EQ_STR(describe(&f, view), "GRComponents gr dim 2 lifted 9");
+    PHY_CHECK_EQ_INT(run(&f, "GRSpace[gr]").kind, PHY_VALUE_INDEX_SPACE);
+    PHY_CHECK_EQ_INT(run(&f, "GRBasis[gr]").kind,
+                     PHY_VALUE_COMPONENT_BASIS);
+    PHY_CHECK_EQ_INT(run(&f, "Ric = GRHead[gr,Ricci]").kind,
+                     PHY_VALUE_TENSOR_HEAD);
+    PHY_CHECK_EQ_INT(run(&f, "Rc2 = GRTensor[gr,Ricci]").kind,
+                     PHY_VALUE_COMPONENT_TENSOR);
+    (void)run(&f, "Rm = GRHead[gr,RiemannMixed]");
+    (void)run(&f, "Rmc = GRTensor[gr,RiemannMixed]");
+    expect_scalar(&f, "Rank[Ric]", "2");
+    expect_scalar(&f, "Dimensions[Rc2]", "(fn List 2 2)");
+
+    /* R^a_bad == Ricci_bd, contracted through the bridge. */
+    expect_scalar(
+        &f,
+        "ComponentValue[Rm[Up[a],Down[b],Down[a],Down[d]],{Rmc},{1,1}]",
+        "(^ (fn sin theta) 2)");
+    expect_decision(
+        &f,
+        "EquivalentQ["
+        "ComponentValue[Rm[Up[a],Down[b],Down[a],Down[d]],{Rmc},{1,1}],"
+        "ComponentValue[Ric[Down[b],Down[d]],{Rc2},{1,1}]]",
+        "True");
+
+    /* g^bd R_bd == the pipeline's scalar curvature. */
+    (void)run(&f, "Gi = GRHead[gr,InverseMetric]");
+    (void)run(&f, "Gic = GRTensor[gr,InverseMetric]");
+    expect_decision(
+        &f,
+        "EquivalentQ["
+        "ComponentValue[Gi[Up[b],Up[d]]*Ric[Down[b],Down[d]],"
+        "{Gic,Rc2},{}], RicciScalar[c]]",
+        "True");
+
+    /* Absent because it was not asked for, and typed accordingly. */
+    (void)run(&f, "bare = GRComponents[c]");
+    expect_status(&f, "GRTensor[bare,Weyl]", PHY_ERR_NOT_INITIALIZED);
+    expect_status(&f, "GRHead[gr,NotAQuantity]", PHY_ERR_PARSE);
+    expect_status(&f, "GRComponents[c,{Nope}]", PHY_ERR_PARSE);
+    expect_status(&f, "GRSpace[c]", PHY_ERR_TYPE);
+
     expect_scalar(&f, "Kretschmann[c]", "(* 4 (^ a -4))");
     expect_decision(&f, "ZeroQ[Weyl[c]]", "True");
     expect_scalar(&f, "WeylSquared[c]", "0");
