@@ -151,6 +151,7 @@ add_library(phy_core STATIC
     src/abstract/canonical.c
     src/abstract/dgs.c
     src/abstract/young.c
+    src/abstract/garnir.c
     src/component/basis.c
     src/component/component.c
     src/component/bridge.c
@@ -252,6 +253,7 @@ if(BUILD_TESTING)
                   test_geom_metric test_eval test_lorentz test_mandelstam
                   test_color test_exact test_algebraic test_finite_poly
                   test_linear test_abstract_tensor test_permutation
+                  test_young_garnir
                   test_component_tensor test_component_bridge
                   test_gr_bridge
                   test_coordinate_map test_atlas)

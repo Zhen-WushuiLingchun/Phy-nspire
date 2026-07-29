@@ -79,6 +79,10 @@ void phy_abstract_head_destroy(phy_abstract_tensor_head *head)
     }
     phy_abstract_free(
         context, head->generators, head->generator_bytes);
+    phy_abstract_free(
+        context, head->young_slots, head->young_slots_bytes);
+    phy_abstract_free(
+        context, head->young_row_lengths, head->young_row_bytes);
     phy_abstract_free(context, head->slot_spaces, head->slot_bytes);
     phy_abstract_free(context, head, sizeof *head);
 }
@@ -167,6 +171,17 @@ phy_status phy_tensor_head_add_symmetry(phy_abstract_tensor_head *head,
         if (head->generators[i].sign == sign &&
             same_image(&head->generators[i], image, head->slot_count)) {
             return PHY_OK;
+        }
+    }
+    if (head->has_young) {
+        bool manifest = false;
+        phy_status status = phy_young_generator_is_manifest(
+            &head->young, image, sign, NULL, &manifest);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (!manifest) {
+            return PHY_ERR_TYPE;
         }
     }
     if (head->generator_count >= head->context->limits.max_generators) {

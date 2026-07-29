@@ -1737,6 +1737,86 @@ static void test_young_project_frontend(void)
     fixture_close(&f);
 }
 
+static void test_young_garnir_frontend(void)
+{
+    fixture f = fixture_open();
+    (void)run(&f, "V = IndexSpace[4, SymmetricMetric]");
+    phy_value value = run(
+        &f,
+        "R = TensorHead[{V,V,V,V},Commuting,{"
+        "Symmetry[{2,1,3,4},-1],"
+        "Symmetry[{1,2,4,3},-1],"
+        "Symmetry[{3,4,1,2},1]}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_TENSOR_HEAD);
+    PHY_CHECK(!phy_tensor_head_has_young_symmetry(value.as.tensor_head));
+
+    value = run(
+        &f, "YoungDeclare[R,{{1,3},{2,4}},RowLast]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_TENSOR_HEAD);
+    PHY_CHECK(phy_tensor_head_has_young_symmetry(value.as.tensor_head));
+    phy_young_tableau declared = {0};
+    phy_young_tableau_info info = {0};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_young_symmetry(
+            value.as.tensor_head, &declared, &info),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(info.hook_product, 12);
+    PHY_CHECK_EQ_INT(declared.order, PHY_YOUNG_ROW_SYMMETRY_LAST);
+    expect_scalar(&f, "YoungDimension[{{1,3},{2,4}},4]", "20");
+    expect_scalar(
+        &f,
+        "YoungDimension[{{1,2,3,4,5,6,7,8,9,10,11,12}},196]",
+        "9336812873630705295");
+
+    value = run(
+        &f,
+        "B = R[Down[a],Down[b],Down[c],Down[d]]"
+        "+R[Down[a],Down[c],Down[d],Down[b]]"
+        "+R[Down[a],Down[d],Down[b],Down[c]]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_ABSTRACT_EXPRESSION);
+    value = run(&f, "YoungReduce[B]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_ABSTRACT_EXPRESSION);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_term_count(
+            value.as.abstract_expression),
+        0);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_free_count(
+            value.as.abstract_expression),
+        4);
+
+    value = run(
+        &f,
+        "G = GarnirRelation["
+        "R[Down[a],Down[b],Down[c],Down[d]],1,1]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_ABSTRACT_EXPRESSION);
+    PHY_CHECK(
+        phy_tensor_expression_term_count(
+            value.as.abstract_expression) > 0u);
+    value = run(&f, "YoungReduce[G]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_ABSTRACT_EXPRESSION);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_term_count(
+            value.as.abstract_expression),
+        0);
+
+    expect_status(
+        &f, "YoungDeclare[R,{{1,3},{2,4}},RowLast]",
+        PHY_ERR_ALREADY_INITIALIZED);
+    expect_status(
+        &f, "YoungDimension[{{1,1},{2,4}},4]", PHY_ERR_TYPE);
+    value = run(&f, "S = TensorHead[{V,V},Symmetric]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_TENSOR_HEAD);
+    expect_status(
+        &f, "YoungDeclare[S,{{1},{2}},ColumnLast]",
+        PHY_ERR_TYPE);
+    PHY_CHECK(!phy_tensor_head_has_young_symmetry(value.as.tensor_head));
+
+    phy_env_reset(f.env);
+    PHY_CHECK_EQ_INT(phy_env_object_count(f.env), 0);
+    fixture_close(&f);
+}
+
 static void test_dynamic_component_frontend_and_bridge(void)
 {
     fixture f = fixture_open();
@@ -2077,6 +2157,7 @@ int main(void)
     PHY_TEST_CASE(test_notebook_round_trip_keeps_series_data);
     PHY_TEST_CASE(test_abstract_tensor_frontend_and_canonicalization);
     PHY_TEST_CASE(test_young_project_frontend);
+    PHY_TEST_CASE(test_young_garnir_frontend);
     PHY_TEST_CASE(test_dynamic_component_frontend_and_bridge);
     PHY_TEST_CASE(test_dynamic_exact_linear_algebra_frontend);
     PHY_TEST_CASE(test_coordinate_map_transition_and_atlas_frontend);

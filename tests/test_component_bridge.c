@@ -624,7 +624,8 @@ static void test_young_expression_component_bridge(void)
     static const uint16_t tableau_slots[2] = {0u, 1u};
     static const uint16_t row_lengths[1] = {2u};
     const phy_young_tableau tableau = {
-        tableau_slots, 2u, row_lengths, 1u};
+        tableau_slots, 2u, row_lengths, 1u,
+        PHY_YOUNG_ROW_SYMMETRY_LAST};
     phy_tensor_expression *symmetric = NULL;
     PHY_CHECK_EQ_INT(
         phy_tensor_monomial_young_project(

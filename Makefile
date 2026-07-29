@@ -114,6 +114,7 @@ SOURCES := \
     src/abstract/canonical.c \
     src/abstract/dgs.c \
     src/abstract/young.c \
+    src/abstract/garnir.c \
     src/component/basis.c \
     src/component/component.c \
     src/component/bridge.c \

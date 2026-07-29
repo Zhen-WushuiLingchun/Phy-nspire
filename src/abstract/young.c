@@ -12,51 +12,6 @@
 #define PHY_TENSOR_ALGEBRA_DEFAULT_GENERATED 4096u
 #define PHY_TENSOR_ALGEBRA_DEFAULT_BYTES (512u * 1024u)
 
-typedef struct {
-    size_t degree;
-    const uint16_t *block_slots;
-    const uint16_t *block_lengths;
-    const size_t *block_offsets;
-    size_t block_count;
-    bool alternating;
-    uint16_t *state;
-    uint16_t *work;
-    uint16_t *images;
-    int8_t *signs;
-    size_t capacity;
-    size_t produced;
-} phy_block_enumerator;
-
-static bool checked_product(size_t left, size_t right, size_t *out)
-{
-    if (left != 0u && right > SIZE_MAX / left) {
-        return false;
-    }
-    *out = left * right;
-    return true;
-}
-
-static void *temporary_alloc(size_t bytes, size_t *used, size_t limit)
-{
-    if (bytes == 0u || used == NULL || bytes > limit - *used) {
-        return NULL;
-    }
-    void *memory = phy_alloc(bytes);
-    if (memory != NULL) {
-        *used += bytes;
-    }
-    return memory;
-}
-
-static void temporary_free(void *memory, size_t bytes, size_t *used)
-{
-    if (memory == NULL) {
-        return;
-    }
-    phy_free(memory, bytes);
-    *used -= bytes;
-}
-
 void phy_young_limits_defaults(phy_young_limits *out_limits)
 {
     if (out_limits == NULL) {
@@ -68,8 +23,8 @@ void phy_young_limits_defaults(phy_young_limits *out_limits)
     phy_tensor_canonical_limits_defaults(&out_limits->canonical);
 }
 
-static phy_status resolve_limits(const phy_young_limits *requested,
-                                 phy_young_limits *out)
+phy_status phy_young_resolve_limits(const phy_young_limits *requested,
+                                    phy_young_limits *out)
 {
     phy_young_limits_defaults(out);
     if (requested != NULL) {
@@ -165,7 +120,7 @@ phy_status phy_tensor_expression_free_use(
     return PHY_OK;
 }
 
-static phy_status expression_create_with_signature(
+phy_status phy_expression_create_with_signature(
     phy_abstract_context *context, size_t capacity,
     const phy_abstract_index_use *free_uses, size_t free_count,
     phy_tensor_expression **out)
@@ -221,13 +176,13 @@ static phy_status expression_create_with_signature(
     return PHY_OK;
 }
 
-static phy_status expression_create(
+phy_status phy_expression_create_like(
     phy_abstract_context *context, size_t capacity,
     const phy_tensor_monomial *signature,
     phy_tensor_expression **out)
 {
     if (signature->free_count == 0u) {
-        return expression_create_with_signature(
+        return phy_expression_create_with_signature(
             context, capacity, NULL, 0u, out);
     }
     const size_t bytes =
@@ -244,227 +199,11 @@ static phy_status expression_create(
     }
     const phy_status status =
         free_ordinal == signature->free_count
-            ? expression_create_with_signature(
+            ? phy_expression_create_with_signature(
                   context, capacity, free_uses, free_ordinal, out)
             : PHY_ERR_CORRUPT_DOCUMENT;
     phy_free(free_uses, bytes);
     return status;
-}
-
-static phy_status validate_tableau(
-    const phy_tensor_monomial *monomial, size_t factor,
-    const phy_young_tableau *tableau, size_t *out_max_columns)
-{
-    if (tableau == NULL || tableau->slots == NULL ||
-        tableau->row_lengths == NULL || tableau->row_count == 0u ||
-        factor >= monomial->factor_count) {
-        return PHY_ERR_INVALID_ARGUMENT;
-    }
-    const phy_abstract_tensor_head *head = monomial->factors[factor].head;
-    if (tableau->slot_count != head->slot_count ||
-        tableau->slot_count == 0u) {
-        return PHY_ERR_INVALID_ARGUMENT;
-    }
-    size_t sum = 0u;
-    for (size_t row = 0u; row < tableau->row_count; ++row) {
-        const size_t length = tableau->row_lengths[row];
-        if (length == 0u ||
-            (row != 0u &&
-             length > tableau->row_lengths[row - 1u]) ||
-            sum > tableau->slot_count - length) {
-            return PHY_ERR_TYPE;
-        }
-        sum += length;
-    }
-    if (sum != tableau->slot_count) {
-        return PHY_ERR_TYPE;
-    }
-    for (size_t i = 0u; i < tableau->slot_count; ++i) {
-        if ((size_t)tableau->slots[i] >= tableau->slot_count) {
-            return PHY_ERR_TYPE;
-        }
-        for (size_t prior = 0u; prior < i; ++prior) {
-            if (tableau->slots[prior] == tableau->slots[i]) {
-                return PHY_ERR_TYPE;
-            }
-        }
-    }
-
-    size_t row_offset = 0u;
-    for (size_t row = 0u; row < tableau->row_count; ++row) {
-        const phy_index_space *space =
-            head->slot_spaces[tableau->slots[row_offset]];
-        for (size_t cell = 1u; cell < tableau->row_lengths[row]; ++cell) {
-            if (head->slot_spaces[
-                    tableau->slots[row_offset + cell]] != space) {
-                return PHY_ERR_TYPE;
-            }
-        }
-        row_offset += tableau->row_lengths[row];
-    }
-    const size_t columns = tableau->row_lengths[0];
-    for (size_t column = 0u; column < columns; ++column) {
-        const phy_index_space *space = NULL;
-        row_offset = 0u;
-        for (size_t row = 0u; row < tableau->row_count; ++row) {
-            if (column < tableau->row_lengths[row]) {
-                const phy_index_space *cell_space =
-                    head->slot_spaces[
-                        tableau->slots[row_offset + column]];
-                if (space != NULL && cell_space != space) {
-                    return PHY_ERR_TYPE;
-                }
-                space = cell_space;
-            }
-            row_offset += tableau->row_lengths[row];
-        }
-    }
-    *out_max_columns = columns;
-    return PHY_OK;
-}
-
-static phy_status factorial_product(const uint16_t *lengths,
-                                    size_t count, size_t ceiling,
-                                    uint64_t *out)
-{
-    uint64_t product = 1u;
-    for (size_t group = 0u; group < count; ++group) {
-        for (uint16_t factor = 2u; factor <= lengths[group]; ++factor) {
-            if (product > UINT64_MAX / factor) {
-                return PHY_ERR_OVERFLOW;
-            }
-            product *= factor;
-            if (product > ceiling) {
-                return PHY_ERR_TERM_LIMIT;
-            }
-        }
-    }
-    *out = product;
-    return PHY_OK;
-}
-
-static phy_status hook_product(const phy_young_tableau *tableau,
-                               uint64_t *out)
-{
-    uint64_t product = 1u;
-    for (size_t row = 0u; row < tableau->row_count; ++row) {
-        for (size_t column = 0u;
-             column < tableau->row_lengths[row]; ++column) {
-            uint64_t hook =
-                (uint64_t)tableau->row_lengths[row] -
-                (uint64_t)column;
-            for (size_t below = row + 1u;
-                 below < tableau->row_count; ++below) {
-                if (column < tableau->row_lengths[below]) {
-                    ++hook;
-                }
-            }
-            if (hook != 0u && product > UINT64_MAX / hook) {
-                return PHY_ERR_OVERFLOW;
-            }
-            product *= hook;
-        }
-    }
-    if (product > (uint64_t)INT64_MAX) {
-        return PHY_ERR_OVERFLOW;
-    }
-    *out = product;
-    return PHY_OK;
-}
-
-static phy_status emit_group_element(phy_block_enumerator *enumerator,
-                                     int sign)
-{
-    if (enumerator->produced >= enumerator->capacity) {
-        return PHY_ERR_TERM_LIMIT;
-    }
-    memcpy(
-        &enumerator->images[enumerator->produced * enumerator->degree],
-        enumerator->state, enumerator->degree * sizeof(*enumerator->state));
-    enumerator->signs[enumerator->produced] =
-        (int8_t)(enumerator->alternating ? sign : 1);
-    ++enumerator->produced;
-    return PHY_OK;
-}
-
-static phy_status enumerate_blocks(phy_block_enumerator *enumerator,
-                                   size_t block, int sign);
-
-static phy_status enumerate_one_block(phy_block_enumerator *enumerator,
-                                      size_t block, size_t position,
-                                      int sign)
-{
-    const size_t offset = enumerator->block_offsets[block];
-    const size_t length = enumerator->block_lengths[block];
-    if (position == length) {
-        const uint16_t *slots = &enumerator->block_slots[offset];
-        for (size_t i = 0u; i < length; ++i) {
-            enumerator->state[slots[i]] =
-                enumerator->work[offset + i];
-        }
-        return enumerate_blocks(enumerator, block + 1u, sign);
-    }
-    for (size_t choice = position; choice < length; ++choice) {
-        const size_t left = offset + position;
-        const size_t right = offset + choice;
-        const uint16_t held = enumerator->work[left];
-        enumerator->work[left] = enumerator->work[right];
-        enumerator->work[right] = held;
-        const int next_sign =
-            choice == position ? sign : -sign;
-        const phy_status status = enumerate_one_block(
-            enumerator, block, position + 1u, next_sign);
-        enumerator->work[right] = enumerator->work[left];
-        enumerator->work[left] = held;
-        if (status != PHY_OK) {
-            return status;
-        }
-    }
-    return PHY_OK;
-}
-
-static phy_status enumerate_blocks(phy_block_enumerator *enumerator,
-                                   size_t block, int sign)
-{
-    if (block == enumerator->block_count) {
-        return emit_group_element(enumerator, sign);
-    }
-    const size_t offset = enumerator->block_offsets[block];
-    const size_t length = enumerator->block_lengths[block];
-    memcpy(&enumerator->work[offset],
-           &enumerator->block_slots[offset],
-           length * sizeof(*enumerator->work));
-    return enumerate_one_block(enumerator, block, 0u, sign);
-}
-
-static phy_status build_disjoint_group(
-    size_t degree, const uint16_t *block_slots,
-    const uint16_t *block_lengths, const size_t *block_offsets,
-    size_t block_count, bool alternating, size_t capacity,
-    uint16_t *images, int8_t *signs, uint16_t *state, uint16_t *work)
-{
-    for (size_t i = 0u; i < degree; ++i) {
-        state[i] = (uint16_t)i;
-    }
-    phy_block_enumerator enumerator;
-    memset(&enumerator, 0, sizeof enumerator);
-    enumerator.degree = degree;
-    enumerator.block_slots = block_slots;
-    enumerator.block_lengths = block_lengths;
-    enumerator.block_offsets = block_offsets;
-    enumerator.block_count = block_count;
-    enumerator.alternating = alternating;
-    enumerator.state = state;
-    enumerator.work = work;
-    enumerator.images = images;
-    enumerator.signs = signs;
-    enumerator.capacity = capacity;
-    const phy_status status = enumerate_blocks(&enumerator, 0u, 1);
-    if (status != PHY_OK) {
-        return status;
-    }
-    return enumerator.produced == capacity ? PHY_OK
-                                           : PHY_ERR_CORRUPT_DOCUMENT;
 }
 
 static int compare_monomial_structure(const phy_tensor_monomial *left,
@@ -529,8 +268,8 @@ static phy_status coefficient_is_zero(phy_tensor_monomial *monomial,
     return PHY_OK;
 }
 
-static phy_status collect_term(phy_tensor_expression *expression,
-                               phy_tensor_monomial *term)
+phy_status phy_expression_collect_term(phy_tensor_expression *expression,
+                                       phy_tensor_monomial *term)
 {
     bool zero = false;
     phy_status status = coefficient_is_zero(term, &zero);
@@ -576,7 +315,7 @@ static phy_status collect_term(phy_tensor_expression *expression,
     return PHY_OK;
 }
 
-static void sort_expression(phy_tensor_expression *expression)
+void phy_expression_sort(phy_tensor_expression *expression)
 {
     for (size_t i = 1u; i < expression->term_count; ++i) {
         phy_tensor_monomial *value = expression->terms[i];
@@ -734,7 +473,7 @@ static phy_status append_scaled_expression(
         phy_status status = clone_canonical_scaled(
             source->terms[i], scale, limits, &term);
         if (status == PHY_OK) {
-            status = collect_term(destination, term);
+            status = phy_expression_collect_term(destination, term);
         }
         if (status != PHY_OK) {
             return status;
@@ -759,7 +498,7 @@ phy_status phy_tensor_expression_from_monomial(
         return status;
     }
     phy_tensor_expression *result = NULL;
-    status = expression_create(
+    status = phy_expression_create_like(
         monomial->context, limits.max_result_terms,
         monomial, &result);
     phy_ir_ref one = PHY_IR_NULL;
@@ -773,17 +512,16 @@ phy_status phy_tensor_expression_from_monomial(
             monomial, one, &limits, &term);
     }
     if (status == PHY_OK) {
-        status = collect_term(result, term);
+        status = phy_expression_collect_term(result, term);
     }
     if (status != PHY_OK) {
         phy_tensor_expression_destroy(result);
         return status;
     }
-    sort_expression(result);
+    phy_expression_sort(result);
     *out_expression = result;
     return PHY_OK;
 }
-
 phy_status phy_tensor_expression_add(
     const phy_tensor_expression *left,
     const phy_tensor_expression *right,
@@ -806,7 +544,7 @@ phy_status phy_tensor_expression_add(
         return status;
     }
     phy_tensor_expression *result = NULL;
-    status = expression_create_with_signature(
+    status = phy_expression_create_with_signature(
         left->context, limits.max_result_terms,
         left->free_uses, left->free_count, &result);
     phy_ir_ref one = PHY_IR_NULL;
@@ -826,7 +564,7 @@ phy_status phy_tensor_expression_add(
         phy_tensor_expression_destroy(result);
         return status;
     }
-    sort_expression(result);
+    phy_expression_sort(result);
     *out_expression = result;
     return PHY_OK;
 }
@@ -848,7 +586,7 @@ phy_status phy_tensor_expression_scale(
         return status;
     }
     phy_tensor_expression *result = NULL;
-    status = expression_create_with_signature(
+    status = phy_expression_create_with_signature(
         expression->context, limits.max_result_terms,
         expression->free_uses, expression->free_count, &result);
     if (status == PHY_OK) {
@@ -859,7 +597,7 @@ phy_status phy_tensor_expression_scale(
         phy_tensor_expression_destroy(result);
         return status;
     }
-    sort_expression(result);
+    phy_expression_sort(result);
     *out_expression = result;
     return PHY_OK;
 }
@@ -1062,7 +800,7 @@ phy_status phy_tensor_expression_multiply(
         return status;
     }
     phy_tensor_expression *result = NULL;
-    status = expression_create_with_signature(
+    status = phy_expression_create_with_signature(
         left->context, limits.max_result_terms,
         signature, signature_count, &result);
     phy_free(signature, signature_bytes);
@@ -1075,7 +813,7 @@ phy_status phy_tensor_expression_multiply(
                 left->terms[i], right->terms[j],
                 &limits, &term);
             if (status == PHY_OK) {
-                status = collect_term(result, term);
+                status = phy_expression_collect_term(result, term);
             }
         }
     }
@@ -1083,263 +821,7 @@ phy_status phy_tensor_expression_multiply(
         phy_tensor_expression_destroy(result);
         return status;
     }
-    sort_expression(result);
+    phy_expression_sort(result);
     *out_expression = result;
     return PHY_OK;
-}
-
-phy_status phy_tensor_monomial_young_project(
-    const phy_tensor_monomial *monomial, size_t target_factor,
-    const phy_young_tableau *tableau,
-    const phy_young_limits *requested,
-    phy_tensor_expression **out_expression, phy_young_stats *out_stats)
-{
-    if (monomial == NULL || out_expression == NULL) {
-        return PHY_ERR_INVALID_ARGUMENT;
-    }
-    *out_expression = NULL;
-    if (out_stats != NULL) {
-        memset(out_stats, 0, sizeof *out_stats);
-    }
-    phy_young_limits limits;
-    phy_status status = resolve_limits(requested, &limits);
-    if (status != PHY_OK) {
-        return status;
-    }
-    size_t column_count = 0u;
-    status = validate_tableau(
-        monomial, target_factor, tableau, &column_count);
-    if (status != PHY_OK) {
-        return status;
-    }
-    const size_t degree = tableau->slot_count;
-
-    size_t temporary_used = 0u;
-    size_t row_lengths_bytes = tableau->row_count * sizeof(uint16_t);
-    size_t row_offsets_bytes = tableau->row_count * sizeof(size_t);
-    size_t column_lengths_bytes = column_count * sizeof(uint16_t);
-    size_t column_offsets_bytes = column_count * sizeof(size_t);
-    size_t slots_bytes = degree * sizeof(uint16_t);
-    uint16_t *row_lengths = temporary_alloc(
-        row_lengths_bytes, &temporary_used, limits.max_bytes);
-    size_t *row_offsets = temporary_alloc(
-        row_offsets_bytes, &temporary_used, limits.max_bytes);
-    uint16_t *column_lengths = temporary_alloc(
-        column_lengths_bytes, &temporary_used, limits.max_bytes);
-    size_t *column_offsets = temporary_alloc(
-        column_offsets_bytes, &temporary_used, limits.max_bytes);
-    uint16_t *column_slots = temporary_alloc(
-        slots_bytes, &temporary_used, limits.max_bytes);
-    if (row_lengths == NULL || row_offsets == NULL ||
-        column_lengths == NULL || column_offsets == NULL ||
-        column_slots == NULL) {
-        status = PHY_ERR_MEMORY_LIMIT;
-        goto cleanup_shape;
-    }
-
-    size_t row_offset = 0u;
-    for (size_t row = 0u; row < tableau->row_count; ++row) {
-        row_lengths[row] = tableau->row_lengths[row];
-        row_offsets[row] = row_offset;
-        row_offset += row_lengths[row];
-    }
-    size_t column_slot_count = 0u;
-    for (size_t column = 0u; column < column_count; ++column) {
-        column_offsets[column] = column_slot_count;
-        column_lengths[column] = 0u;
-        row_offset = 0u;
-        for (size_t row = 0u; row < tableau->row_count; ++row) {
-            if (column < tableau->row_lengths[row]) {
-                column_slots[column_slot_count++] =
-                    tableau->slots[row_offset + column];
-                ++column_lengths[column];
-            }
-            row_offset += tableau->row_lengths[row];
-        }
-    }
-
-    uint64_t row_order = 0u;
-    uint64_t column_order = 0u;
-    uint64_t hook = 0u;
-    status = factorial_product(
-        row_lengths, tableau->row_count,
-        limits.max_generated_terms, &row_order);
-    if (status == PHY_OK) {
-        status = factorial_product(
-            column_lengths, column_count,
-            limits.max_generated_terms, &column_order);
-    }
-    if (status == PHY_OK &&
-        (row_order > UINT64_MAX / column_order ||
-         row_order * column_order > limits.max_generated_terms)) {
-        status = PHY_ERR_TERM_LIMIT;
-    }
-    if (status == PHY_OK) {
-        status = hook_product(tableau, &hook);
-    }
-    if (status != PHY_OK) {
-        goto cleanup_shape;
-    }
-    if (out_stats != NULL) {
-        out_stats->row_group_order = row_order;
-        out_stats->column_group_order = column_order;
-        out_stats->hook_product = hook;
-    }
-
-    const size_t row_count = (size_t)row_order;
-    const size_t col_count = (size_t)column_order;
-    size_t row_image_count = 0u;
-    size_t col_image_count = 0u;
-    size_t row_images_bytes = 0u;
-    size_t col_images_bytes = 0u;
-    if (!checked_product(row_count, degree, &row_image_count) ||
-        !checked_product(col_count, degree, &col_image_count) ||
-        !checked_product(
-            row_image_count, sizeof(uint16_t), &row_images_bytes) ||
-        !checked_product(
-            col_image_count, sizeof(uint16_t), &col_images_bytes)) {
-        status = PHY_ERR_MEMORY_LIMIT;
-        goto cleanup_shape;
-    }
-    uint16_t *row_images = temporary_alloc(
-        row_images_bytes, &temporary_used, limits.max_bytes);
-    int8_t *row_signs = temporary_alloc(
-        row_count * sizeof(int8_t), &temporary_used, limits.max_bytes);
-    uint16_t *col_images = temporary_alloc(
-        col_images_bytes, &temporary_used, limits.max_bytes);
-    int8_t *col_signs = temporary_alloc(
-        col_count * sizeof(int8_t), &temporary_used, limits.max_bytes);
-    uint16_t *state = temporary_alloc(
-        slots_bytes, &temporary_used, limits.max_bytes);
-    uint16_t *work = temporary_alloc(
-        slots_bytes, &temporary_used, limits.max_bytes);
-    if (row_images == NULL || row_signs == NULL ||
-        col_images == NULL || col_signs == NULL ||
-        state == NULL || work == NULL) {
-        status = PHY_ERR_MEMORY_LIMIT;
-        goto cleanup_groups;
-    }
-    status = build_disjoint_group(
-        degree, tableau->slots, row_lengths, row_offsets,
-        tableau->row_count, false, row_count, row_images, row_signs,
-        state, work);
-    if (status == PHY_OK) {
-        status = build_disjoint_group(
-            degree, column_slots, column_lengths, column_offsets,
-            column_count, true, col_count, col_images, col_signs,
-            state, work);
-    }
-    if (status != PHY_OK) {
-        goto cleanup_groups;
-    }
-
-    size_t factors_bytes =
-        monomial->factor_count * sizeof(phy_abstract_factor);
-    size_t indices_bytes =
-        monomial->index_count * sizeof(phy_abstract_index);
-    phy_abstract_factor *factors = temporary_alloc(
-        factors_bytes, &temporary_used, limits.max_bytes);
-    phy_abstract_index *indices = temporary_alloc(
-        indices_bytes, &temporary_used, limits.max_bytes);
-    uint16_t *composed = temporary_alloc(
-        slots_bytes, &temporary_used, limits.max_bytes);
-    if (factors == NULL || indices == NULL || composed == NULL) {
-        status = PHY_ERR_MEMORY_LIMIT;
-        goto cleanup_terms;
-    }
-
-    phy_tensor_expression *expression = NULL;
-    status = expression_create(
-        monomial->context, limits.max_result_terms, monomial,
-        &expression);
-    if (status != PHY_OK) {
-        goto cleanup_terms;
-    }
-    for (size_t row = 0u; row < row_count && status == PHY_OK; ++row) {
-        for (size_t column = 0u;
-             column < col_count && status == PHY_OK; ++column) {
-            status = phy_permutation_compose(
-                &row_images[row * degree],
-                &col_images[column * degree], degree, composed);
-            if (status != PHY_OK) {
-                break;
-            }
-            memcpy(indices, monomial->indices, indices_bytes);
-            const phy_abstract_factor_record *target =
-                &monomial->factors[target_factor];
-            for (size_t slot = 0u; slot < degree; ++slot) {
-                indices[target->index_offset + composed[slot]] =
-                    monomial->indices[target->index_offset + slot];
-            }
-            for (size_t factor = 0u;
-                 factor < monomial->factor_count; ++factor) {
-                const phy_abstract_factor_record *source =
-                    &monomial->factors[factor];
-                factors[factor].head = source->head;
-                factors[factor].indices =
-                    source->index_count != 0u
-                        ? &indices[source->index_offset]
-                        : NULL;
-                factors[factor].index_count = source->index_count;
-            }
-
-            phy_ir_ref scale = PHY_IR_NULL;
-            status = phy_cas_number(
-                monomial->context->cas, col_signs[column],
-                (int64_t)hook, &scale);
-            phy_ir_ref coefficient = PHY_IR_NULL;
-            if (status == PHY_OK) {
-                const phy_ir_ref product[2] = {
-                    monomial->coefficient, scale};
-                status = phy_cas_mul(
-                    monomial->context->cas, product, 2u, &coefficient);
-            }
-            phy_tensor_monomial *raw = NULL;
-            if (status == PHY_OK) {
-                status = phy_tensor_monomial_create(
-                    monomial->context, coefficient, factors,
-                    monomial->factor_count, &raw);
-            }
-            phy_tensor_monomial *canonical = NULL;
-            if (status == PHY_OK) {
-                status = phy_tensor_monomial_canonicalize(
-                    raw, &limits.canonical, &canonical, NULL);
-            }
-            phy_tensor_monomial_destroy(raw);
-            if (status == PHY_OK) {
-                status = collect_term(expression, canonical);
-            }
-            if (out_stats != NULL) {
-                ++out_stats->generated_terms;
-            }
-        }
-    }
-    if (status == PHY_OK) {
-        sort_expression(expression);
-        if (out_stats != NULL) {
-            out_stats->collected_terms = expression->term_count;
-        }
-        *out_expression = expression;
-    } else {
-        phy_tensor_expression_destroy(expression);
-    }
-
-cleanup_terms:
-    temporary_free(composed, slots_bytes, &temporary_used);
-    temporary_free(indices, indices_bytes, &temporary_used);
-    temporary_free(factors, factors_bytes, &temporary_used);
-cleanup_groups:
-    temporary_free(work, slots_bytes, &temporary_used);
-    temporary_free(state, slots_bytes, &temporary_used);
-    temporary_free(col_signs, col_count * sizeof(int8_t), &temporary_used);
-    temporary_free(col_images, col_images_bytes, &temporary_used);
-    temporary_free(row_signs, row_count * sizeof(int8_t), &temporary_used);
-    temporary_free(row_images, row_images_bytes, &temporary_used);
-cleanup_shape:
-    temporary_free(column_slots, slots_bytes, &temporary_used);
-    temporary_free(column_offsets, column_offsets_bytes, &temporary_used);
-    temporary_free(column_lengths, column_lengths_bytes, &temporary_used);
-    temporary_free(row_offsets, row_offsets_bytes, &temporary_used);
-    temporary_free(row_lengths, row_lengths_bytes, &temporary_used);
-    return status;
 }

@@ -736,22 +736,46 @@ static phy_status read_young_tableau(
     return PHY_OK;
 }
 
+static phy_status read_young_order(const phy_env *env, phy_ir_ref ref,
+                                   phy_young_order *out_order)
+{
+    if (phy_ir_kind_of(env->ir, ref) != PHY_IR_SYMBOL) {
+        return PHY_ERR_TYPE;
+    }
+    const char *name =
+        phy_ir_symbol_name(env->ir, phy_ir_head(env->ir, ref));
+    if (keyword_is(name, "RowLast") ||
+        keyword_is(name, "RowSymmetryLast")) {
+        *out_order = PHY_YOUNG_ROW_SYMMETRY_LAST;
+        return PHY_OK;
+    }
+    if (keyword_is(name, "ColumnLast") ||
+        keyword_is(name, "ColumnAntisymmetryLast")) {
+        *out_order = PHY_YOUNG_COLUMN_ANTISYMMETRY_LAST;
+        return PHY_OK;
+    }
+    return PHY_ERR_DOMAIN;
+}
+
 static phy_status eval_young_project(
     phy_env *env, phy_ir_ref expr, phy_value *out_value)
 {
     const size_t count = arg_count(env, expr);
-    if (count < 2u || count > 3u) {
+    if (count < 2u || count > 4u) {
         return PHY_ERR_PARSE;
     }
     phy_value input;
-    phy_status status = arg_typed(
-        env, expr, 0u, PHY_VALUE_ABSTRACT_TENSOR, &input);
+    phy_status status = arg_value(env, expr, 0u, &input);
     if (status != PHY_OK) {
         return status;
     }
+    if (input.kind != PHY_VALUE_ABSTRACT_TENSOR &&
+        input.kind != PHY_VALUE_ABSTRACT_EXPRESSION) {
+        return PHY_ERR_TYPE;
+    }
     size_t factor = 0u;
     phy_ir_ref tableau_ref = arg_ref(env, expr, 1u);
-    if (count == 3u) {
+    if (count >= 3u) {
         phy_ir_ref factor_ref = PHY_IR_NULL;
         status = arg_scalar(env, expr, 1u, &factor_ref);
         int64_t one_based = 0;
@@ -762,14 +786,24 @@ static phy_status eval_young_project(
                 env->ir, factor_ref, &one_based)) {
             return PHY_ERR_TYPE;
         }
-        if (one_based < 1 ||
-            (uint64_t)one_based >
-                (uint64_t)phy_tensor_monomial_factor_count(
-                    input.as.abstract_tensor)) {
+        if (one_based < 1) {
             return PHY_ERR_DOMAIN;
         }
         factor = (size_t)(one_based - 1);
         tableau_ref = arg_ref(env, expr, 2u);
+    }
+    if (input.kind == PHY_VALUE_ABSTRACT_TENSOR &&
+        factor >= phy_tensor_monomial_factor_count(
+                      input.as.abstract_tensor)) {
+        return PHY_ERR_DOMAIN;
+    }
+    phy_young_order order = PHY_YOUNG_ROW_SYMMETRY_LAST;
+    if (count == 4u) {
+        status =
+            read_young_order(env, arg_ref(env, expr, 3u), &order);
+        if (status != PHY_OK) {
+            return status;
+        }
     }
     uint16_t slots[EVAL_ABSTRACT_MAX_SLOTS];
     uint16_t row_lengths[EVAL_ABSTRACT_MAX_SLOTS];
@@ -782,16 +816,188 @@ static phy_status eval_young_project(
         return status;
     }
     const phy_young_tableau tableau = {
-        slots, slot_count, row_lengths, row_count};
+        slots, slot_count, row_lengths, row_count, order};
     phy_tensor_expression *projected = NULL;
-    status = phy_tensor_monomial_young_project(
-        input.as.abstract_tensor, factor, &tableau, NULL,
-        &projected, NULL);
+    status = input.kind == PHY_VALUE_ABSTRACT_TENSOR
+                 ? phy_tensor_monomial_young_project(
+                       input.as.abstract_tensor, factor, &tableau, NULL,
+                       &projected, NULL)
+                 : phy_tensor_expression_young_project(
+                       input.as.abstract_expression, factor, &tableau, NULL,
+                       &projected, NULL);
     return status == PHY_OK
                ? publish(
                      env, PHY_VALUE_ABSTRACT_EXPRESSION, projected,
                      &input, NULL, out_value)
                : status;
+}
+
+static phy_status eval_young_declare(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    const size_t count = arg_count(env, expr);
+    if (count < 2u || count > 3u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value head;
+    phy_status status =
+        arg_typed(env, expr, 0u, PHY_VALUE_TENSOR_HEAD, &head);
+    if (status != PHY_OK) {
+        return status;
+    }
+    uint16_t slots[EVAL_ABSTRACT_MAX_SLOTS];
+    uint16_t row_lengths[EVAL_ABSTRACT_MAX_SLOTS];
+    size_t slot_count = 0u;
+    size_t row_count = 0u;
+    status = read_young_tableau(
+        env, arg_ref(env, expr, 1u), slots, row_lengths, &slot_count,
+        &row_count);
+    phy_young_order order = PHY_YOUNG_ROW_SYMMETRY_LAST;
+    if (status == PHY_OK && count == 3u) {
+        status =
+            read_young_order(env, arg_ref(env, expr, 2u), &order);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    const phy_young_tableau tableau = {
+        slots, slot_count, row_lengths, row_count, order};
+    status = phy_tensor_head_set_young_symmetry(
+        (phy_abstract_tensor_head *)(uintptr_t)head.as.tensor_head,
+        &tableau, NULL);
+    if (status == PHY_OK) {
+        *out_value = head;
+    }
+    return status;
+}
+
+static phy_status eval_young_reduce(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 1u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value input;
+    phy_status status = arg_value(env, expr, 0u, &input);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_tensor_expression *source = NULL;
+    bool temporary = false;
+    if (input.kind == PHY_VALUE_ABSTRACT_EXPRESSION) {
+        source = (phy_tensor_expression *)(uintptr_t)
+            input.as.abstract_expression;
+    } else if (input.kind == PHY_VALUE_ABSTRACT_TENSOR) {
+        status = phy_tensor_expression_from_monomial(
+            input.as.abstract_tensor, NULL, &source);
+        temporary = status == PHY_OK;
+    } else {
+        return PHY_ERR_TYPE;
+    }
+    phy_tensor_expression *reduced = NULL;
+    if (status == PHY_OK) {
+        status = phy_tensor_expression_young_reduce(
+            source, NULL, &reduced, NULL);
+    }
+    if (temporary) {
+        phy_tensor_expression_destroy(source);
+    }
+    return status == PHY_OK
+               ? publish(
+                     env, PHY_VALUE_ABSTRACT_EXPRESSION, reduced,
+                     &input, NULL, out_value)
+               : status;
+}
+
+static phy_status eval_garnir_relation(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 3u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value input;
+    phy_status status = arg_typed(
+        env, expr, 0u, PHY_VALUE_ABSTRACT_TENSOR, &input);
+    phy_ir_ref factor_ref = PHY_IR_NULL;
+    phy_ir_ref relation_ref = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = arg_scalar(env, expr, 1u, &factor_ref);
+    }
+    if (status == PHY_OK) {
+        status = arg_scalar(env, expr, 2u, &relation_ref);
+    }
+    int64_t factor = 0;
+    int64_t relation = 0;
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (!phy_ir_integer_value(env->ir, factor_ref, &factor) ||
+        !phy_ir_integer_value(env->ir, relation_ref, &relation)) {
+        return PHY_ERR_TYPE;
+    }
+    if (factor < 1 || relation < 1) {
+        return PHY_ERR_DOMAIN;
+    }
+    phy_tensor_expression *result = NULL;
+    status = phy_tensor_monomial_garnir_relation(
+        input.as.abstract_tensor, (size_t)(factor - 1),
+        (size_t)(relation - 1), NULL, &result, NULL);
+    return status == PHY_OK
+               ? publish(
+                     env, PHY_VALUE_ABSTRACT_EXPRESSION, result,
+                     &input, NULL, out_value)
+               : status;
+}
+
+static phy_status eval_young_dimension(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 2u) {
+        return PHY_ERR_PARSE;
+    }
+    uint16_t slots[EVAL_ABSTRACT_MAX_SLOTS];
+    uint16_t row_lengths[EVAL_ABSTRACT_MAX_SLOTS];
+    size_t slot_count = 0u;
+    size_t row_count = 0u;
+    phy_status status = read_young_tableau(
+        env, arg_ref(env, expr, 0u), slots, row_lengths, &slot_count,
+        &row_count);
+    phy_ir_ref dimension_ref = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = arg_scalar(env, expr, 1u, &dimension_ref);
+    }
+    int64_t dimension = 0;
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (!phy_ir_integer_value(env->ir, dimension_ref, &dimension)) {
+        return PHY_ERR_TYPE;
+    }
+    if (dimension < 0) {
+        return PHY_ERR_DOMAIN;
+    }
+    const phy_young_tableau tableau = {
+        slots, slot_count, row_lengths, row_count,
+        PHY_YOUNG_ROW_SYMMETRY_LAST};
+    uint64_t result = 0u;
+    status = phy_young_gl_dimension(
+        &tableau, (size_t)dimension, &result);
+    if (status != PHY_OK) {
+        return status;
+    }
+    char decimal[21];
+    size_t start = sizeof decimal;
+    do {
+        decimal[--start] = (char)('0' + result % 10u);
+        result /= 10u;
+    } while (result != 0u);
+    const phy_ir_ref scalar = phy_ir_integer_text_n(
+        env->ir, &decimal[start], sizeof decimal - start);
+    if (scalar == PHY_IR_NULL) {
+        return phy_ir_last_error(env->ir);
+    }
+    *out_value = scalar_value(scalar);
+    return PHY_OK;
 }
 
 /* ------------------------------------------ abstract/component frontend */
@@ -4815,6 +5021,14 @@ static phy_status eval_operator(phy_env *env, phy_ir_ref expr,
         return eval_tensor_canonicalize(env, expr, out_value);
     case EVAL_HEAD_YOUNG_PROJECT:
         return eval_young_project(env, expr, out_value);
+    case EVAL_HEAD_YOUNG_DECLARE:
+        return eval_young_declare(env, expr, out_value);
+    case EVAL_HEAD_YOUNG_REDUCE:
+        return eval_young_reduce(env, expr, out_value);
+    case EVAL_HEAD_GARNIR_RELATION:
+        return eval_garnir_relation(env, expr, out_value);
+    case EVAL_HEAD_YOUNG_DIMENSION:
+        return eval_young_dimension(env, expr, out_value);
     case EVAL_HEAD_COMPONENT_BASIS:
         return eval_component_basis(env, expr, out_value);
     case EVAL_HEAD_TENSOR_COMPONENTS:

@@ -299,19 +299,112 @@ phy_status phy_tensor_monomial_canonicalize_dgs(
 /* ------------------------------------------------------ multi-term Young layer */
 
 /*
- * A standard Young tableau over the slots of one tensor factor.
+ * Which of the two symmetrizers is applied last:
+ *
+ *   PHY_YOUNG_ROW_SYMMETRY_LAST         P_T = a_T b_T / hook(T)
+ *   PHY_YOUNG_COLUMN_ANTISYMMETRY_LAST  P_T = b_T a_T / hook(T)
+ *
+ * with a_T the row symmetrizer and b_T the signed column antisymmetrizer.
+ * Both are idempotent and both have an image isomorphic to the Schur module of
+ * the shape, but they are different subspaces of the same slot space. Slot
+ * declarations act on the right in this API. Consequently `a_T b_T` has the
+ * column antisymmetries manifest and is the Riemann convention for tableau
+ * [[0,2],[1,3]]; `b_T a_T` has the row symmetries manifest.
+ */
+typedef enum {
+    PHY_YOUNG_ROW_SYMMETRY_LAST = 0,
+    PHY_YOUNG_COLUMN_ANTISYMMETRY_LAST
+} phy_young_order;
+
+/*
+ * A Young tableau over the slots of one tensor factor.
  *
  * `row_lengths` is a non-increasing partition of `slot_count`; `slots`
  * contains each local slot exactly once in row-major tableau order.  Keeping
  * the slot permutation explicit allows tableaux such as [[0,2],[1,3]]
- * without changing the tensor head's declared slot order.
+ * without changing the tensor head's declared slot order. A zero `order`
+ * selects `a_T b_T`, preserving the original projector convention.
  */
 typedef struct {
     const uint16_t *slots;
     size_t slot_count;
     const uint16_t *row_lengths;
     size_t row_count;
+    phy_young_order order;
 } phy_young_tableau;
+
+/*
+ * Everything general validation can decide about a shape and its filling.
+ *
+ * `standard` is true when the slot labels increase left to right along every
+ * row and top to bottom down every column, which is the classical standard
+ * tableau condition; it is reported, never required.  `hook_product` is the
+ * product of the hook lengths, so `standard_tableau_count` is the hook-length
+ * formula f^lambda = n! / hook(lambda) — the number of standard tableaux of
+ * the shape and the rank of the projector on distinctly labelled slots.
+ */
+typedef struct {
+    size_t slot_count;
+    size_t row_count;
+    size_t column_count;
+    uint64_t row_group_order;
+    uint64_t column_group_order;
+    uint64_t hook_product;
+    uint64_t standard_tableau_count;
+    bool standard;
+} phy_young_tableau_info;
+
+/*
+ * General tableau validation, independent of any tensor.  Rejects a shape that
+ * is not a non-increasing partition of `slot_count`, a `slots` array that is
+ * not a permutation of the local slots, and a factorial or hook product that
+ * leaves the exact 64-bit range.
+ */
+phy_status phy_young_tableau_validate(const phy_young_tableau *tableau,
+                                      phy_young_tableau_info *out_info);
+
+/*
+ * The conjugate partition: `out_lengths[c]` is the number of rows reaching
+ * column `c`.  `capacity` counts entries, not bytes.
+ */
+phy_status phy_young_tableau_column_lengths(
+    const phy_young_tableau *tableau, uint16_t *out_lengths,
+    size_t capacity, size_t *out_count);
+
+/*
+ * Validation plus the typing rule that makes the symmetrizers well formed: the
+ * tableau must cover exactly the head's slots, and every row and every column
+ * must be homogeneous in its index space, because a symmetrizer that mixed two
+ * index spaces would produce an ill-typed application.
+ */
+phy_status phy_young_tableau_check_head(
+    const phy_abstract_tensor_head *head,
+    const phy_young_tableau *tableau, phy_young_tableau_info *out_info);
+
+/*
+ * Enumerate the standard Young tableaux of a shape in lexicographic order of
+ * their row-major cell labels.  Each tableau occupies `slot_count` entries of
+ * `out_entries`; `capacity` counts entries.  `out_entries` may be NULL to
+ * count only.  The count is checked against the hook-length formula, so this
+ * and phy_young_tableau_validate are two independent computations of the same
+ * number. Enumeration is device-bounded to 4096 tableaux; larger shapes return
+ * PHY_ERR_TERM_LIMIT without partially filling the caller's buffer.
+ */
+phy_status phy_young_standard_tableaux(
+    const uint16_t *row_lengths, size_t row_count, uint16_t *out_entries,
+    size_t capacity, size_t *out_count);
+
+/*
+ * Dimension of the Schur module S_shape(V) from the hook-content formula.
+ *
+ * This is the number of independent components after all Young relations, not
+ * merely the number left by monoterm slot symmetries. For shape (2,2) in
+ * dimension four it is 20, whereas the Riemann slot group alone leaves 21.
+ * The exact result is bounded to uint64_t; overflow is reported.
+ */
+phy_status phy_young_gl_dimension(const phy_young_tableau *tableau,
+                                  size_t dimension,
+                                  uint64_t *out_dimension);
 
 typedef struct {
     size_t max_generated_terms; /* row group x column group; default 4096 */
@@ -331,9 +424,9 @@ typedef struct {
 void phy_young_limits_defaults(phy_young_limits *out_limits);
 
 /*
- * Apply the normalized Young symmetrizer
+ * Apply the normalized Young symmetrizer selected by `tableau->order`:
  *
- *     P_T = (row symmetrizer)(column antisymmetrizer) / hook(T)
+ *     a_T b_T / hook(T), or b_T a_T / hook(T),
  *
  * to one factor of a monomial.  Each generated term first passes through the
  * monoterm canonicalizer above; structurally equal terms are then collected
@@ -345,6 +438,84 @@ phy_status phy_tensor_monomial_young_project(
     const phy_tensor_monomial *monomial, size_t factor,
     const phy_young_tableau *tableau, const phy_young_limits *limits,
     phy_tensor_expression **out_expression, phy_young_stats *out_stats);
+
+/*
+ * Declare that every tensor with this head lies in the image of P_T.
+ *
+ * This is strictly stronger than the signed slot generators, and the two must
+ * agree: each declared generator g with sign s is accepted only after the
+ * exact group-algebra identity c_T * g = s * c_T is verified term by term over
+ * the |R_T| * |C_T| elements of the Young symmetrizer.  A generator that is
+ * not a manifest symmetry of the image is rejected with PHY_ERR_TYPE and the
+ * head is left unchanged, so a declaration can never quietly turn every tensor
+ * with this head into zero.
+ *
+ * The converse is deliberately not folded in.  The multi-term content of the
+ * declaration — the Garnir relations, of which the Riemann case is the first
+ * Bianchi identity — is never added to the signed slot group, because it is
+ * not a signed slot permutation.  Monoterm canonicalization keeps exactly the
+ * strength it had; the multi-term content is applied only by the reducer
+ * below.
+ *
+ * Adding a slot generator after a Young declaration re-runs the same check.
+ */
+phy_status phy_tensor_head_set_young_symmetry(
+    phy_abstract_tensor_head *head, const phy_young_tableau *tableau,
+    const phy_young_limits *limits);
+bool phy_tensor_head_has_young_symmetry(
+    const phy_abstract_tensor_head *head);
+/*
+ * The declared tableau, borrowed from the head, plus its validated info.
+ * Either output may be NULL.
+ */
+phy_status phy_tensor_head_young_symmetry(
+    const phy_abstract_tensor_head *head,
+    phy_young_tableau *out_tableau, phy_young_tableau_info *out_info);
+
+/* ------------------------------------------------------------ Garnir layer */
+
+/*
+ * The Garnir relation set of a tableau.
+ *
+ * Relation (j, r) antisymmetrizes over the slots of column j in rows >= r
+ * together with the slots of column j+1 in rows <= r, for every column j and
+ * every 0 <= r < (length of column j+1).  Each such set has exactly
+ * (length of column j) + 1 slots, one more than the column it over-fills,
+ * which is the classical Garnir condition.  Relations are numbered in
+ * increasing (j, r) order.
+ *
+ * These are an explicit presentation of the relation module.  They are not
+ * what the reducer runs on: the reducer applies the idempotent projector,
+ * whose completeness does not depend on the Garnir lemma.  The test suite
+ * checks the two against each other.
+ */
+size_t phy_young_garnir_count(const phy_young_tableau *tableau);
+phy_status phy_young_garnir_slots(const phy_young_tableau *tableau,
+                                  size_t which, uint16_t *out_slots,
+                                  size_t capacity, size_t *out_count);
+
+typedef struct {
+    size_t slot_count;    /* |X|, the antisymmetrized slot set */
+    uint64_t group_order; /* |X|! */
+    uint64_t generated_terms;
+    size_t collected_terms;
+} phy_garnir_stats;
+
+/*
+ * Build relation `which` of the head declared on `factor`, as the normalized
+ * antisymmetrization (1/|X|!) sum_{sigma in S_X} sgn(sigma) sigma applied to
+ * that factor. Every generated term is canonicalized and collected exactly.
+ * The returned expression is a readable representative of the relation; pass
+ * it to phy_tensor_expression_young_reduce() to prove that it is zero modulo
+ * the head's declared Young symmetry.
+ *
+ * The factor's head must carry a Young declaration; without one there is no
+ * Garnir relation to state and the call is PHY_ERR_TYPE.
+ */
+phy_status phy_tensor_monomial_garnir_relation(
+    const phy_tensor_monomial *monomial, size_t factor, size_t which,
+    const phy_young_limits *limits,
+    phy_tensor_expression **out_expression, phy_garnir_stats *out_stats);
 
 void phy_tensor_expression_destroy(phy_tensor_expression *expression);
 phy_abstract_context *phy_tensor_expression_context(
@@ -395,6 +566,57 @@ phy_status phy_tensor_expression_multiply(
     const phy_tensor_expression *right,
     const phy_tensor_algebra_limits *limits,
     phy_tensor_expression **out_expression);
+
+/*
+ * Apply P_T to the same factor position of every term.  Each term must have
+ * that position and the same head there, otherwise the request names no single
+ * tensor factor and is PHY_ERR_TYPE.  Statistics are cumulative over terms.
+ */
+phy_status phy_tensor_expression_young_project(
+    const phy_tensor_expression *expression, size_t factor,
+    const phy_young_tableau *tableau, const phy_young_limits *limits,
+    phy_tensor_expression **out_expression, phy_young_stats *out_stats);
+
+/* ------------------------------------------- multi-term Young reduction */
+
+typedef struct {
+    size_t max_generated_terms; /* projector images per input term; default 4096 */
+    size_t max_result_terms;    /* after canonical collection; default 256 */
+    size_t max_bytes;           /* temporary projector storage; default 512 KiB */
+    uint32_t max_steps;         /* generated terms over the whole call; default 1M */
+    phy_tensor_canonical_limits canonical;
+} phy_young_reduce_limits;
+
+typedef struct {
+    size_t input_terms;
+    size_t collected_terms;
+    uint64_t projected_factors; /* factors carrying a Young declaration */
+    uint64_t generated_terms;
+    uint32_t steps;
+} phy_young_reduce_stats;
+
+void phy_young_reduce_limits_defaults(phy_young_reduce_limits *out_limits);
+
+/*
+ * Reduce an expression modulo the multi-term relations of every declared Young
+ * symmetry it mentions.
+ *
+ * Every factor of every term whose head carries a declaration is projected,
+ * all such factors of one term simultaneously, and the images are canonicalized
+ * and collected exactly. The result is the image under the declared
+ * idempotent projectors and is therefore an exact equality gate for the
+ * quotient by their kernels. A Riemann-type declaration imposes the first
+ * Bianchi identity automatically: the cyclic sum reduces to the zero
+ * expression, which keeps its typed free-index signature.
+ *
+ * A term with no declared factor is canonicalized and passed through.
+ * Exceeding any ceiling returns without a partially reduced result.
+ */
+phy_status phy_tensor_expression_young_reduce(
+    const phy_tensor_expression *expression,
+    const phy_young_reduce_limits *limits,
+    phy_tensor_expression **out_expression,
+    phy_young_reduce_stats *out_stats);
 
 #ifdef __cplusplus
 }

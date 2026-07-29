@@ -1451,7 +1451,8 @@ static void test_young_row_and_column_projectors(void)
     static const uint16_t tableau_slots[2] = {0, 1};
     static const uint16_t symmetric_rows[1] = {2};
     const phy_young_tableau symmetric = {
-        tableau_slots, 2u, symmetric_rows, 1u};
+        tableau_slots, 2u, symmetric_rows, 1u,
+        PHY_YOUNG_ROW_SYMMETRY_LAST};
     phy_tensor_expression *expression = NULL;
     phy_young_stats stats = {0};
     PHY_CHECK_EQ_INT(
@@ -1485,7 +1486,8 @@ static void test_young_row_and_column_projectors(void)
 
     static const uint16_t antisymmetric_rows[2] = {1, 1};
     const phy_young_tableau antisymmetric = {
-        tableau_slots, 2u, antisymmetric_rows, 2u};
+        tableau_slots, 2u, antisymmetric_rows, 2u,
+        PHY_YOUNG_ROW_SYMMETRY_LAST};
     PHY_CHECK_EQ_INT(
         phy_tensor_monomial_young_project(
             input, 0u, &antisymmetric, NULL, &expression, &stats), PHY_OK);
@@ -1551,7 +1553,8 @@ static void test_young_collection_hook_and_typed_validation(void)
     static const uint16_t tableau_slots[2] = {0, 1};
     static const uint16_t row[1] = {2};
     const phy_young_tableau tableau = {
-        tableau_slots, 2u, row, 1u};
+        tableau_slots, 2u, row, 1u,
+        PHY_YOUNG_ROW_SYMMETRY_LAST};
     phy_tensor_expression *expression = NULL;
     phy_young_stats stats = {0};
     PHY_CHECK_EQ_INT(
@@ -1587,7 +1590,8 @@ static void test_young_collection_hook_and_typed_validation(void)
     static const uint16_t three_slots[3] = {0, 1, 2};
     static const uint16_t two_one[2] = {2, 1};
     const phy_young_tableau shape_two_one = {
-        three_slots, 3u, two_one, 2u};
+        three_slots, 3u, two_one, 2u,
+        PHY_YOUNG_ROW_SYMMETRY_LAST};
     PHY_CHECK_EQ_INT(
         phy_tensor_monomial_young_project(
             input, 0u, &shape_two_one, NULL, &expression, &stats), PHY_OK);

@@ -261,8 +261,10 @@ static const constant_descriptor *known_constant(const char *name)
  */
 static const char *const kObjectHeads[] = {
     "IndexSpace",   "TensorHead",       "TensorCanonicalize",
-    "YoungProject", "ComponentBasis",   "TensorComponents",
-    "ComponentLift", "ComponentValue",
+    "YoungProject", "YoungDeclare",     "YoungReduce",
+    "GarnirRelation", "YoungDimension",
+    "ComponentBasis", "TensorComponents", "ComponentLift",
+    "ComponentValue",
 
     "GRComponents", "GRSpace",          "GRBasis",
     "GRHead",       "GRTensor",
