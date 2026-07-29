@@ -128,6 +128,14 @@ static bool valid_image(const phy_tensor_head *head, const uint16_t *image)
                 return false;
             }
         }
+        /*
+         * A slot symmetry is an automorphism of the typed slot list.  Allowing
+         * it to exchange different index spaces would make a well-typed head
+         * produce an ill-typed application during canonicalization.
+         */
+        if (head->slot_spaces[i] != head->slot_spaces[image[i]]) {
+            return false;
+        }
     }
     return true;
 }

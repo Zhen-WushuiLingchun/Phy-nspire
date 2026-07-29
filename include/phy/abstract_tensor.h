@@ -170,6 +170,48 @@ phy_status phy_tensor_monomial_index_use(
     const phy_tensor_monomial *monomial, size_t which,
     phy_abstract_index_use *out_use);
 
+/*
+ * Exact monoterm canonicalization under:
+ *
+ *   - every declared signed slot symmetry;
+ *   - exchange of identical commuting tensor factors;
+ *   - alpha-renaming of dummy pairs; and
+ *   - upper/lower exchange of a dummy pair when its index space owns a
+ *     symmetric or antisymmetric metric.
+ *
+ * The input is never modified.  A sign produced by slot or metric symmetry is
+ * folded into the scalar coefficient.  If the same canonical index
+ * configuration is reachable with both signs, the result is the scalar-zero
+ * monomial.  Reaching any configured ceiling fails without returning a
+ * partially canonical result.
+ *
+ * `max_degree` is a resource ceiling, not a tensor-rank semantic limit.
+ * Zero-valued fields select the device-oriented defaults.
+ */
+typedef struct {
+    size_t max_degree;            /* default 32 */
+    size_t max_generators;        /* slot/factor generators; default 256 */
+    size_t max_strong_generators; /* BSGS closure; default 1024 */
+    uint32_t max_steps;           /* BSGS plus orbit traversal; default 2M */
+    uint64_t max_candidates;      /* exact orbit representatives; default 100k */
+    size_t max_bytes;             /* group plus canonical scratch; default 1 MiB */
+} phy_tensor_canonical_limits;
+
+typedef struct {
+    size_t degree;
+    uint64_t slot_group_order;
+    uint64_t candidates_visited;
+    bool zero_by_symmetry;
+} phy_tensor_canonical_stats;
+
+void phy_tensor_canonical_limits_defaults(
+    phy_tensor_canonical_limits *out_limits);
+phy_status phy_tensor_monomial_canonicalize(
+    const phy_tensor_monomial *monomial,
+    const phy_tensor_canonical_limits *limits,
+    phy_tensor_monomial **out_monomial,
+    phy_tensor_canonical_stats *out_stats);
+
 #ifdef __cplusplus
 }
 #endif

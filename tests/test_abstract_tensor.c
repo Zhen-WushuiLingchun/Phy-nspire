@@ -210,6 +210,24 @@ static void test_signed_slot_generators(void)
         phy_tensor_head_add_symmetry(riemann, pair_exchange, 1), PHY_OK);
     PHY_CHECK_EQ_INT(phy_tensor_head_symmetry_count(riemann), 3);
 
+    phy_index_space *other = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_index_space_create(
+            f.abstract, "N", phy_ir_integer(f.ir, 4), PHY_METRIC_NONE,
+            &other),
+        PHY_OK);
+    const phy_index_space *mixed_slots[2] = {space, other};
+    phy_tensor_head *mixed = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_create(
+            f.abstract, "Mixed", mixed_slots, 2u,
+            PHY_TENSOR_COMMUTING, &mixed),
+        PHY_OK);
+    static const uint16_t cross_space_swap[] = {1, 0};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_add_symmetry(
+            mixed, cross_space_swap, 1), PHY_ERR_TYPE);
+
     fixture_close(&f);
 }
 
@@ -443,6 +461,380 @@ static void test_same_name_in_different_spaces_is_distinct(void)
     fixture_close(&f);
 }
 
+static int64_t exact_integer(const fixture *f, phy_ir_ref value)
+{
+    int64_t integer = INT64_MIN;
+    PHY_CHECK(phy_ir_integer_value(f->ir, value, &integer));
+    return integer;
+}
+
+static void test_free_index_and_factor_canonicalization(void)
+{
+    fixture f = fixture_open(NULL);
+    phy_index_space *space = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_index_space_create(
+            f.abstract, "M", phy_ir_integer(f.ir, 4),
+            PHY_METRIC_SYMMETRIC, &space),
+        PHY_OK);
+    const phy_index_space *two[2] = {space, space};
+    const phy_index_space *one[1] = {space};
+    phy_tensor_head *antisymmetric = NULL;
+    phy_tensor_head *a_head = NULL;
+    phy_tensor_head *b_head = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_create(
+            f.abstract, "F", two, 2u, PHY_TENSOR_COMMUTING,
+            &antisymmetric),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_create(
+            f.abstract, "A", one, 1u, PHY_TENSOR_COMMUTING, &a_head),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_create(
+            f.abstract, "B", one, 1u, PHY_TENSOR_COMMUTING, &b_head),
+        PHY_OK);
+    static const uint16_t swap[] = {1, 0};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_add_symmetry(
+            antisymmetric, swap, -1), PHY_OK);
+
+    phy_abstract_index a = {0};
+    phy_abstract_index b = {0};
+    PHY_CHECK_EQ_INT(
+        phy_abstract_index_make(
+            space, "a", PHY_IR_INDEX_LOWER, &a), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_abstract_index_make(
+            space, "b", PHY_IR_INDEX_LOWER, &b), PHY_OK);
+    const phy_abstract_index reversed[2] = {b, a};
+    const phy_abstract_factor field = {
+        antisymmetric, reversed, 2u};
+    phy_tensor_monomial *input = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_create(
+            f.abstract, phy_ir_integer(f.ir, 3), &field, 1u, &input),
+        PHY_OK);
+    phy_tensor_monomial *canonical = NULL;
+    phy_tensor_canonical_stats stats = {0};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_canonicalize(
+            input, NULL, &canonical, &stats), PHY_OK);
+    PHY_CHECK_EQ_INT(stats.slot_group_order, 2);
+    PHY_CHECK_EQ_INT(stats.candidates_visited, 2);
+    PHY_CHECK_EQ_INT(
+        exact_integer(
+            &f, phy_tensor_monomial_coefficient(canonical)), -3);
+    const phy_tensor_head *head = NULL;
+    const phy_abstract_index *indices = NULL;
+    size_t count = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_factor(
+            canonical, 0u, &head, &indices, &count), PHY_OK);
+    PHY_CHECK(head == antisymmetric);
+    PHY_CHECK_EQ_INT(count, 2);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, indices[0].name), "a");
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, indices[1].name), "b");
+    phy_tensor_monomial_destroy(canonical);
+    phy_tensor_monomial_destroy(input);
+
+    /*
+     * Different commuting heads sort by name independently of construction
+     * order.  The indices remain attached to their original heads.
+     */
+    const phy_abstract_factor unsorted[2] = {
+        {b_head, &b, 1u}, {a_head, &a, 1u}};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_create(
+            f.abstract, phy_ir_integer(f.ir, 1), unsorted, 2u, &input),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_canonicalize(
+            input, NULL, &canonical, NULL), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_factor(
+            canonical, 0u, &head, &indices, &count), PHY_OK);
+    PHY_CHECK(head == a_head);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, indices[0].name), "a");
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_factor(
+            canonical, 1u, &head, &indices, &count), PHY_OK);
+    PHY_CHECK(head == b_head);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, indices[0].name), "b");
+    phy_tensor_monomial_destroy(canonical);
+    phy_tensor_monomial_destroy(input);
+    fixture_close(&f);
+}
+
+static void test_dummy_alpha_renaming_and_metric_zero(void)
+{
+    fixture f = fixture_open(NULL);
+    phy_index_space *space = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_index_space_create(
+            f.abstract, "M", phy_ir_integer(f.ir, 4),
+            PHY_METRIC_SYMMETRIC, &space),
+        PHY_OK);
+    const phy_index_space *one[1] = {space};
+    const phy_index_space *two[2] = {space, space};
+    phy_tensor_head *vector = NULL;
+    phy_tensor_head *two_form = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_create(
+            f.abstract, "V", one, 1u, PHY_TENSOR_COMMUTING, &vector),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_create(
+            f.abstract, "A", two, 2u, PHY_TENSOR_COMMUTING, &two_form),
+        PHY_OK);
+    static const uint16_t swap[] = {1, 0};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_add_symmetry(two_form, swap, -1), PHY_OK);
+
+    phy_abstract_index q_up = {0};
+    phy_abstract_index q_down = {0};
+    PHY_CHECK_EQ_INT(
+        phy_abstract_index_make(
+            space, "arbitraryDummyName", PHY_IR_INDEX_UPPER, &q_up),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_abstract_index_make(
+            space, "arbitraryDummyName", PHY_IR_INDEX_LOWER, &q_down),
+        PHY_OK);
+    const phy_abstract_factor vector_pair[2] = {
+        {vector, &q_down, 1u}, {vector, &q_up, 1u}};
+    phy_tensor_monomial *input = NULL;
+    phy_tensor_monomial *canonical = NULL;
+    phy_tensor_canonical_stats stats = {0};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_create(
+            f.abstract, phy_ir_integer(f.ir, 5), vector_pair, 2u, &input),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_canonicalize(
+            input, NULL, &canonical, &stats), PHY_OK);
+    PHY_CHECK_EQ_INT(stats.slot_group_order, 2);
+    const phy_tensor_head *head = NULL;
+    const phy_abstract_index *first = NULL;
+    const phy_abstract_index *second = NULL;
+    size_t count = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_factor(
+            canonical, 0u, &head, &first, &count), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_factor(
+            canonical, 1u, &head, &second, &count), PHY_OK);
+    PHY_CHECK_EQ_INT(first[0].name, second[0].name);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, first[0].name), "_d0");
+    PHY_CHECK_EQ_INT(first[0].variance, PHY_IR_INDEX_UPPER);
+    PHY_CHECK_EQ_INT(second[0].variance, PHY_IR_INDEX_LOWER);
+    phy_tensor_monomial_destroy(canonical);
+    phy_tensor_monomial_destroy(input);
+
+    const phy_abstract_index trace_indices[2] = {q_up, q_down};
+    const phy_abstract_factor trace = {
+        two_form, trace_indices, 2u};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_create(
+            f.abstract, phy_ir_integer(f.ir, 7), &trace, 1u, &input),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_canonicalize(
+            input, NULL, &canonical, &stats), PHY_OK);
+    PHY_CHECK(stats.zero_by_symmetry);
+    PHY_CHECK_EQ_INT(phy_tensor_monomial_factor_count(canonical), 0);
+    PHY_CHECK_EQ_INT(
+        exact_integer(
+            &f, phy_tensor_monomial_coefficient(canonical)), 0);
+    phy_tensor_monomial_destroy(canonical);
+    phy_tensor_monomial_destroy(input);
+    fixture_close(&f);
+}
+
+static void test_metric_type_controls_dummy_orientation(void)
+{
+    fixture f = fixture_open(NULL);
+    phy_index_space *symplectic = NULL;
+    phy_index_space *unmetric = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_index_space_create(
+            f.abstract, "Symplectic", phy_ir_integer(f.ir, 4),
+            PHY_METRIC_ANTISYMMETRIC, &symplectic),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_index_space_create(
+            f.abstract, "NoMetric", phy_ir_integer(f.ir, 4),
+            PHY_METRIC_NONE, &unmetric),
+        PHY_OK);
+
+    const phy_index_space *symplectic_slots[2] = {
+        symplectic, symplectic};
+    const phy_index_space *unmetric_slots[2] = {unmetric, unmetric};
+    phy_tensor_head *plain = NULL;
+    phy_tensor_head *antisymmetric = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_create(
+            f.abstract, "P", symplectic_slots, 2u,
+            PHY_TENSOR_COMMUTING, &plain),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_create(
+            f.abstract, "A", unmetric_slots, 2u,
+            PHY_TENSOR_COMMUTING, &antisymmetric),
+        PHY_OK);
+    static const uint16_t swap[] = {1, 0};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_add_symmetry(
+            antisymmetric, swap, -1), PHY_OK);
+
+    phy_abstract_index lower = {0};
+    phy_abstract_index upper = {0};
+    PHY_CHECK_EQ_INT(
+        phy_abstract_index_make(
+            symplectic, "s", PHY_IR_INDEX_LOWER, &lower), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_abstract_index_make(
+            symplectic, "s", PHY_IR_INDEX_UPPER, &upper), PHY_OK);
+    const phy_abstract_index symplectic_pair[2] = {lower, upper};
+    const phy_abstract_factor symplectic_factor = {
+        plain, symplectic_pair, 2u};
+    phy_tensor_monomial *input = NULL;
+    phy_tensor_monomial *canonical = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_create(
+            f.abstract, phy_ir_integer(f.ir, 2), &symplectic_factor, 1u,
+            &input),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_canonicalize(
+            input, NULL, &canonical, NULL), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        exact_integer(
+            &f, phy_tensor_monomial_coefficient(canonical)), -2);
+    phy_tensor_monomial_destroy(canonical);
+    phy_tensor_monomial_destroy(input);
+
+    PHY_CHECK_EQ_INT(
+        phy_abstract_index_make(
+            unmetric, "u", PHY_IR_INDEX_UPPER, &upper), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_abstract_index_make(
+            unmetric, "u", PHY_IR_INDEX_LOWER, &lower), PHY_OK);
+    const phy_abstract_index unmetric_pair[2] = {upper, lower};
+    const phy_abstract_factor unmetric_factor = {
+        antisymmetric, unmetric_pair, 2u};
+    phy_tensor_canonical_stats stats = {0};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_create(
+            f.abstract, phy_ir_integer(f.ir, 3), &unmetric_factor, 1u,
+            &input),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_canonicalize(
+            input, NULL, &canonical, &stats), PHY_OK);
+    PHY_CHECK(!stats.zero_by_symmetry);
+    PHY_CHECK_EQ_INT(phy_tensor_monomial_factor_count(canonical), 1);
+    /*
+     * No metric means upper/lower orientation is not identified.  The slot
+     * swap still chooses lower-before-upper and contributes its own minus,
+     * but the two orientations remain distinct and therefore do not imply
+     * zero.
+     */
+    PHY_CHECK_EQ_INT(
+        exact_integer(
+            &f, phy_tensor_monomial_coefficient(canonical)), -3);
+    phy_tensor_monomial_destroy(canonical);
+    phy_tensor_monomial_destroy(input);
+    fixture_close(&f);
+}
+
+static void test_xperm_rank_six_oracle_and_work_limit(void)
+{
+    fixture f = fixture_open(NULL);
+    phy_index_space *space = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_index_space_create(
+            f.abstract, "M", phy_ir_integer(f.ir, 4),
+            PHY_METRIC_SYMMETRIC, &space),
+        PHY_OK);
+    const phy_index_space *slots[6] = {
+        space, space, space, space, space, space};
+    phy_tensor_head *head = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_create(
+            f.abstract, "T", slots, 6u, PHY_TENSOR_COMMUTING, &head),
+        PHY_OK);
+    static const uint16_t swap02[] = {2, 1, 0, 3, 4, 5};
+    static const uint16_t swap04[] = {4, 1, 2, 3, 0, 5};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_add_symmetry(head, swap02, -1), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_add_symmetry(head, swap04, -1), PHY_OK);
+
+    static const char *const names[6] = {
+        "d3", "d2", "d1", "d1", "d2", "d3"};
+    phy_abstract_index indices[6] = {{0}};
+    for (size_t i = 0u; i < 6u; ++i) {
+        PHY_CHECK_EQ_INT(
+            phy_abstract_index_make(
+                space, names[i],
+                i < 3u ? PHY_IR_INDEX_UPPER : PHY_IR_INDEX_LOWER,
+                &indices[i]),
+            PHY_OK);
+    }
+    const phy_abstract_factor factor = {head, indices, 6u};
+    phy_tensor_monomial *input = NULL;
+    phy_tensor_monomial *canonical = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_create(
+            f.abstract, phy_ir_integer(f.ir, 1), &factor, 1u, &input),
+        PHY_OK);
+    phy_tensor_canonical_stats stats = {0};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_canonicalize(
+            input, NULL, &canonical, &stats), PHY_OK);
+    PHY_CHECK_EQ_INT(stats.slot_group_order, 6);
+    PHY_CHECK_EQ_INT(stats.candidates_visited, 6);
+    PHY_CHECK_EQ_INT(
+        exact_integer(
+            &f, phy_tensor_monomial_coefficient(canonical)), -1);
+    const phy_tensor_head *queried = NULL;
+    const phy_abstract_index *result = NULL;
+    size_t count = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_factor(
+            canonical, 0u, &queried, &result, &count), PHY_OK);
+    PHY_CHECK_EQ_INT(count, 6);
+    /*
+     * xPerm's representative is the identity on the ordered label list
+     * [d1,-d1,d2,-d2,d3,-d3], hence contracted pairs are adjacent.
+     */
+    for (size_t pair = 0u; pair < 3u; ++pair) {
+        const size_t upper = 2u * pair;
+        const size_t lower = upper + 1u;
+        PHY_CHECK_EQ_INT(result[upper].variance, PHY_IR_INDEX_UPPER);
+        PHY_CHECK_EQ_INT(result[lower].variance, PHY_IR_INDEX_LOWER);
+        PHY_CHECK_EQ_INT(result[upper].name, result[lower].name);
+    }
+    phy_tensor_monomial_destroy(canonical);
+
+    phy_tensor_canonical_limits limits = {0};
+    limits.max_candidates = 5u;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_canonicalize(
+            input, &limits, &canonical, &stats), PHY_ERR_TIMEOUT);
+    PHY_CHECK(canonical == NULL);
+    PHY_CHECK_EQ_INT(stats.slot_group_order, 6);
+    phy_tensor_monomial_destroy(input);
+    fixture_close(&f);
+}
+
 int main(void)
 {
     PHY_TEST_CASE(test_index_spaces);
@@ -452,5 +844,9 @@ int main(void)
     PHY_TEST_CASE(test_monomial_index_census);
     PHY_TEST_CASE(test_monomial_rejects_malformed_indices);
     PHY_TEST_CASE(test_same_name_in_different_spaces_is_distinct);
+    PHY_TEST_CASE(test_free_index_and_factor_canonicalization);
+    PHY_TEST_CASE(test_dummy_alpha_renaming_and_metric_zero);
+    PHY_TEST_CASE(test_metric_type_controls_dummy_orientation);
+    PHY_TEST_CASE(test_xperm_rank_six_oracle_and_work_limit);
     return PHY_TEST_REPORT("abstract_tensor");
 }
