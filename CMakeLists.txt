@@ -149,6 +149,7 @@ add_library(phy_core STATIC
     src/abstract/head.c
     src/abstract/monomial.c
     src/abstract/canonical.c
+    src/abstract/young.c
     src/permutation/perm.c
     src/permutation/bsgs.c
     src/permutation/orbit.c

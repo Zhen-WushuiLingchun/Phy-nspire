@@ -468,6 +468,22 @@ static int64_t exact_integer(const fixture *f, phy_ir_ref value)
     return integer;
 }
 
+static void check_exact_coefficient(const fixture *f, phy_ir_ref value,
+                                    int64_t numerator, int64_t denominator)
+{
+    phy_ir_ref expected = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_number(
+            f->cas, numerator, denominator, &expected), PHY_OK);
+    phy_ir_ref difference = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_sub(f->cas, value, expected, &difference), PHY_OK);
+    phy_cas_decision decision = PHY_CAS_UNKNOWN;
+    PHY_CHECK_EQ_INT(
+        phy_cas_is_zero(f->cas, difference, &decision), PHY_OK);
+    PHY_CHECK_EQ_INT(decision, PHY_CAS_ZERO);
+}
+
 static void test_free_index_and_factor_canonicalization(void)
 {
     fixture f = fixture_open(NULL);
@@ -907,6 +923,215 @@ static void test_symmetric_rank_nine_is_pruned_not_enumerated(void)
     fixture_close(&f);
 }
 
+static void test_young_row_and_column_projectors(void)
+{
+    fixture f = fixture_open(NULL);
+    phy_index_space *space = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_index_space_create(
+            f.abstract, "M", phy_ir_integer(f.ir, 4),
+            PHY_METRIC_NONE, &space),
+        PHY_OK);
+    const phy_index_space *slots[2] = {space, space};
+    phy_tensor_head *head = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_create(
+            f.abstract, "T", slots, 2u, PHY_TENSOR_COMMUTING, &head),
+        PHY_OK);
+    phy_abstract_index a = {0};
+    phy_abstract_index b = {0};
+    PHY_CHECK_EQ_INT(
+        phy_abstract_index_make(
+            space, "a", PHY_IR_INDEX_LOWER, &a), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_abstract_index_make(
+            space, "b", PHY_IR_INDEX_LOWER, &b), PHY_OK);
+    const phy_abstract_index reversed[2] = {b, a};
+    const phy_abstract_factor factor = {head, reversed, 2u};
+    phy_tensor_monomial *input = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_create(
+            f.abstract, phy_ir_integer(f.ir, 1), &factor, 1u, &input),
+        PHY_OK);
+
+    static const uint16_t tableau_slots[2] = {0, 1};
+    static const uint16_t symmetric_rows[1] = {2};
+    const phy_young_tableau symmetric = {
+        tableau_slots, 2u, symmetric_rows, 1u};
+    phy_tensor_expression *expression = NULL;
+    phy_young_stats stats = {0};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_young_project(
+            input, 0u, &symmetric, NULL, &expression, &stats), PHY_OK);
+    PHY_CHECK_EQ_INT(stats.row_group_order, 2);
+    PHY_CHECK_EQ_INT(stats.column_group_order, 1);
+    PHY_CHECK_EQ_INT(stats.hook_product, 2);
+    PHY_CHECK_EQ_INT(stats.generated_terms, 2);
+    PHY_CHECK_EQ_INT(stats.collected_terms, 2);
+    PHY_CHECK_EQ_INT(phy_tensor_expression_term_count(expression), 2);
+    for (size_t term = 0u; term < 2u; ++term) {
+        check_exact_coefficient(
+            &f, phy_tensor_monomial_coefficient(
+                    phy_tensor_expression_term(expression, term)),
+            1, 2);
+    }
+    const phy_tensor_head *queried = NULL;
+    const phy_abstract_index *result = NULL;
+    size_t count = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_factor(
+            phy_tensor_expression_term(expression, 0u), 0u, &queried,
+            &result, &count),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, result[0].name), "a");
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, result[1].name), "b");
+    phy_tensor_expression_destroy(expression);
+
+    static const uint16_t antisymmetric_rows[2] = {1, 1};
+    const phy_young_tableau antisymmetric = {
+        tableau_slots, 2u, antisymmetric_rows, 2u};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_young_project(
+            input, 0u, &antisymmetric, NULL, &expression, &stats), PHY_OK);
+    PHY_CHECK_EQ_INT(stats.row_group_order, 1);
+    PHY_CHECK_EQ_INT(stats.column_group_order, 2);
+    PHY_CHECK_EQ_INT(stats.hook_product, 2);
+    PHY_CHECK_EQ_INT(phy_tensor_expression_term_count(expression), 2);
+    check_exact_coefficient(
+        &f, phy_tensor_monomial_coefficient(
+                phy_tensor_expression_term(expression, 0u)),
+        -1, 2);
+    check_exact_coefficient(
+        &f, phy_tensor_monomial_coefficient(
+                phy_tensor_expression_term(expression, 1u)),
+        1, 2);
+    phy_tensor_expression_destroy(expression);
+    phy_tensor_monomial_destroy(input);
+    fixture_close(&f);
+}
+
+static void test_young_collection_hook_and_typed_validation(void)
+{
+    fixture f = fixture_open(NULL);
+    phy_index_space *space = NULL;
+    phy_index_space *other = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_index_space_create(
+            f.abstract, "M", phy_ir_integer(f.ir, 4),
+            PHY_METRIC_NONE, &space),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_index_space_create(
+            f.abstract, "N", phy_ir_integer(f.ir, 3),
+            PHY_METRIC_NONE, &other),
+        PHY_OK);
+    const phy_index_space *two[2] = {space, space};
+    phy_tensor_head *symmetric_head = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_create(
+            f.abstract, "S", two, 2u, PHY_TENSOR_COMMUTING,
+            &symmetric_head),
+        PHY_OK);
+    static const uint16_t swap[] = {1, 0};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_add_symmetry(
+            symmetric_head, swap, 1), PHY_OK);
+    phy_abstract_index a = {0};
+    phy_abstract_index b = {0};
+    PHY_CHECK_EQ_INT(
+        phy_abstract_index_make(
+            space, "a", PHY_IR_INDEX_LOWER, &a), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_abstract_index_make(
+            space, "b", PHY_IR_INDEX_LOWER, &b), PHY_OK);
+    const phy_abstract_index indices[2] = {b, a};
+    const phy_abstract_factor factor = {
+        symmetric_head, indices, 2u};
+    phy_tensor_monomial *input = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_create(
+            f.abstract, phy_ir_integer(f.ir, 1), &factor, 1u, &input),
+        PHY_OK);
+    static const uint16_t tableau_slots[2] = {0, 1};
+    static const uint16_t row[1] = {2};
+    const phy_young_tableau tableau = {
+        tableau_slots, 2u, row, 1u};
+    phy_tensor_expression *expression = NULL;
+    phy_young_stats stats = {0};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_young_project(
+            input, 0u, &tableau, NULL, &expression, &stats), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_tensor_expression_term_count(expression), 1);
+    check_exact_coefficient(
+        &f, phy_tensor_monomial_coefficient(
+                phy_tensor_expression_term(expression, 0u)),
+        1, 1);
+    phy_tensor_expression_destroy(expression);
+    phy_tensor_monomial_destroy(input);
+
+    const phy_index_space *three[3] = {space, space, space};
+    phy_tensor_head *rank_three = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_create(
+            f.abstract, "Y", three, 3u, PHY_TENSOR_COMMUTING,
+            &rank_three),
+        PHY_OK);
+    phy_abstract_index c = {0};
+    PHY_CHECK_EQ_INT(
+        phy_abstract_index_make(
+            space, "c", PHY_IR_INDEX_LOWER, &c), PHY_OK);
+    const phy_abstract_index abc[3] = {a, b, c};
+    const phy_abstract_factor rank_three_factor = {
+        rank_three, abc, 3u};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_create(
+            f.abstract, phy_ir_integer(f.ir, 1), &rank_three_factor, 1u,
+            &input),
+        PHY_OK);
+    static const uint16_t three_slots[3] = {0, 1, 2};
+    static const uint16_t two_one[2] = {2, 1};
+    const phy_young_tableau shape_two_one = {
+        three_slots, 3u, two_one, 2u};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_young_project(
+            input, 0u, &shape_two_one, NULL, &expression, &stats), PHY_OK);
+    PHY_CHECK_EQ_INT(stats.row_group_order, 2);
+    PHY_CHECK_EQ_INT(stats.column_group_order, 2);
+    PHY_CHECK_EQ_INT(stats.hook_product, 3);
+    PHY_CHECK_EQ_INT(stats.generated_terms, 4);
+    phy_tensor_expression_destroy(expression);
+    phy_tensor_monomial_destroy(input);
+
+    const phy_index_space *mixed_slots[2] = {space, other};
+    phy_tensor_head *mixed = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_create(
+            f.abstract, "MixedYoung", mixed_slots, 2u,
+            PHY_TENSOR_COMMUTING, &mixed),
+        PHY_OK);
+    phy_abstract_index other_index = {0};
+    PHY_CHECK_EQ_INT(
+        phy_abstract_index_make(
+            other, "n", PHY_IR_INDEX_LOWER, &other_index), PHY_OK);
+    const phy_abstract_index mixed_indices[2] = {a, other_index};
+    const phy_abstract_factor mixed_factor = {
+        mixed, mixed_indices, 2u};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_create(
+            f.abstract, phy_ir_integer(f.ir, 1), &mixed_factor, 1u,
+            &input),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_young_project(
+            input, 0u, &tableau, NULL, &expression, NULL),
+        PHY_ERR_TYPE);
+    PHY_CHECK(expression == NULL);
+    phy_tensor_monomial_destroy(input);
+    fixture_close(&f);
+}
+
 int main(void)
 {
     PHY_TEST_CASE(test_index_spaces);
@@ -921,5 +1146,7 @@ int main(void)
     PHY_TEST_CASE(test_metric_type_controls_dummy_orientation);
     PHY_TEST_CASE(test_xperm_rank_six_oracle_and_work_limit);
     PHY_TEST_CASE(test_symmetric_rank_nine_is_pruned_not_enumerated);
+    PHY_TEST_CASE(test_young_row_and_column_projectors);
+    PHY_TEST_CASE(test_young_collection_hook_and_typed_validation);
     return PHY_TEST_REPORT("abstract_tensor");
 }

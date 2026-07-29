@@ -31,6 +31,7 @@ struct phy_abstract_context {
     size_t space_count;
     size_t head_count;
     phy_tensor_monomial *monomials;
+    phy_tensor_expression *expressions;
 };
 
 struct phy_tensor_monomial {
@@ -50,6 +51,17 @@ struct phy_tensor_monomial {
     size_t factor_bytes;
     size_t index_bytes;
     size_t use_bytes;
+};
+
+struct phy_tensor_expression {
+    phy_abstract_context *context;
+    phy_tensor_expression *previous;
+    phy_tensor_expression *next;
+    bool linked;
+    phy_tensor_monomial **terms;
+    size_t term_count;
+    size_t term_capacity;
+    size_t term_bytes;
 };
 
 struct phy_index_space {

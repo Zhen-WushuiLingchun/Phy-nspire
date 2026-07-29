@@ -141,6 +141,9 @@ void phy_abstract_context_destroy(phy_abstract_context *context)
     if (context == NULL) {
         return;
     }
+    while (context->expressions != NULL) {
+        phy_tensor_expression_destroy(context->expressions);
+    }
     while (context->monomials != NULL) {
         phy_tensor_monomial_destroy(context->monomials);
     }

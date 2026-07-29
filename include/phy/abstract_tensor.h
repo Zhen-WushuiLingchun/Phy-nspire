@@ -212,6 +212,62 @@ phy_status phy_tensor_monomial_canonicalize(
     phy_tensor_monomial **out_monomial,
     phy_tensor_canonical_stats *out_stats);
 
+/* ------------------------------------------------------ multi-term Young layer */
+
+/*
+ * A standard Young tableau over the slots of one tensor factor.
+ *
+ * `row_lengths` is a non-increasing partition of `slot_count`; `slots`
+ * contains each local slot exactly once in row-major tableau order.  Keeping
+ * the slot permutation explicit allows tableaux such as [[0,2],[1,3]]
+ * without changing the tensor head's declared slot order.
+ */
+typedef struct {
+    const uint16_t *slots;
+    size_t slot_count;
+    const uint16_t *row_lengths;
+    size_t row_count;
+} phy_young_tableau;
+
+typedef struct {
+    size_t max_generated_terms; /* row group x column group; default 4096 */
+    size_t max_result_terms;    /* after canonical collection; default 256 */
+    size_t max_bytes;           /* temporary projector storage; default 512 KiB */
+    phy_tensor_canonical_limits canonical;
+} phy_young_limits;
+
+typedef struct {
+    uint64_t row_group_order;
+    uint64_t column_group_order;
+    uint64_t generated_terms;
+    size_t collected_terms;
+    uint64_t hook_product;
+} phy_young_stats;
+
+void phy_young_limits_defaults(phy_young_limits *out_limits);
+
+/*
+ * Apply the normalized Young symmetrizer
+ *
+ *     P_T = (row symmetrizer)(column antisymmetrizer) / hook(T)
+ *
+ * to one factor of a monomial.  Each generated term first passes through the
+ * monoterm canonicalizer above; structurally equal terms are then collected
+ * by the exact scalar CAS.  This API is intentionally a linear-combination
+ * layer rather than pretending a multi-term Garnir identity is a signed slot
+ * permutation.
+ */
+phy_status phy_tensor_monomial_young_project(
+    const phy_tensor_monomial *monomial, size_t factor,
+    const phy_young_tableau *tableau, const phy_young_limits *limits,
+    phy_tensor_expression **out_expression, phy_young_stats *out_stats);
+
+void phy_tensor_expression_destroy(phy_tensor_expression *expression);
+size_t phy_tensor_expression_term_count(
+    const phy_tensor_expression *expression);
+const phy_tensor_monomial *phy_tensor_expression_term(
+    const phy_tensor_expression *expression, size_t which);
+
 #ifdef __cplusplus
 }
 #endif
