@@ -149,6 +149,7 @@ add_library(phy_core STATIC
     src/abstract/head.c
     src/abstract/monomial.c
     src/abstract/canonical.c
+    src/abstract/dgs.c
     src/abstract/young.c
     src/component/basis.c
     src/component/component.c

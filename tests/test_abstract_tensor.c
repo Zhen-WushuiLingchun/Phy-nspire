@@ -708,6 +708,22 @@ static void check_same_monomial(const fixture *f,
     }
 }
 
+static void check_dgs_matches(const fixture *f,
+                              const phy_tensor_monomial *input,
+                              const phy_tensor_monomial *production)
+{
+    phy_tensor_monomial *dgs = NULL;
+    phy_tensor_dgs_stats stats = {0};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_canonicalize_dgs(
+            input, NULL, &dgs, &stats),
+        PHY_OK);
+    PHY_CHECK(dgs != NULL);
+    PHY_CHECK(stats.products_visited > 0u || stats.zero_by_symmetry);
+    check_same_monomial(f, production, dgs);
+    phy_tensor_monomial_destroy(dgs);
+}
+
 static void test_commuting_run_order_and_idempotence(void)
 {
     fixture f = fixture_open(NULL);
@@ -764,6 +780,8 @@ static void test_commuting_run_order_and_idempotence(void)
             &f, phy_tensor_monomial_coefficient(first_canonical)), -1);
     check_same_monomial(&f, first_canonical, second_canonical);
     check_same_monomial(&f, first_canonical, canonical_twice);
+    check_dgs_matches(&f, first_input, first_canonical);
+    check_dgs_matches(&f, second_input, second_canonical);
 
     phy_tensor_monomial_destroy(canonical_twice);
     phy_tensor_monomial_destroy(second_canonical);
@@ -808,6 +826,7 @@ static void test_run_local_identical_exchange(void)
     check_factor(&f, canonical, 3u, r.first, t_expect, 1u);
     PHY_CHECK_EQ_INT(
         exact_integer(&f, phy_tensor_monomial_coefficient(canonical)), 1);
+    check_dgs_matches(&f, input, canonical);
     phy_tensor_monomial_destroy(canonical);
     phy_tensor_monomial_destroy(input);
     fixture_close(&f);
@@ -848,6 +867,7 @@ static void test_noncommuting_barrier_blocks_exchange(void)
     PHY_CHECK(!stats.zero_by_symmetry);
     PHY_CHECK_EQ_INT(
         exact_integer(&f, phy_tensor_monomial_coefficient(canonical)), 1);
+    check_dgs_matches(&f, input, canonical);
     phy_tensor_monomial_destroy(canonical);
     phy_tensor_monomial_destroy(input);
     fixture_close(&f);
@@ -888,6 +908,7 @@ static void test_noncommuting_factors_keep_relative_order(void)
     check_factor(&f, canonical, 3u, r.second, x_expect, 1u);
     PHY_CHECK_EQ_INT(
         exact_integer(&f, phy_tensor_monomial_coefficient(canonical)), -1);
+    check_dgs_matches(&f, input, canonical);
     phy_tensor_monomial_destroy(canonical);
     phy_tensor_monomial_destroy(input);
     fixture_close(&f);
@@ -956,6 +977,7 @@ static void test_dummy_alpha_renaming_and_metric_zero(void)
         phy_ir_symbol_name(f.ir, first[0].name), "_d0");
     PHY_CHECK_EQ_INT(first[0].variance, PHY_IR_INDEX_UPPER);
     PHY_CHECK_EQ_INT(second[0].variance, PHY_IR_INDEX_LOWER);
+    check_dgs_matches(&f, input, canonical);
     phy_tensor_monomial_destroy(canonical);
     phy_tensor_monomial_destroy(input);
 
@@ -974,6 +996,7 @@ static void test_dummy_alpha_renaming_and_metric_zero(void)
     PHY_CHECK_EQ_INT(
         exact_integer(
             &f, phy_tensor_monomial_coefficient(canonical)), 0);
+    check_dgs_matches(&f, input, canonical);
     phy_tensor_monomial_destroy(canonical);
     phy_tensor_monomial_destroy(input);
     fixture_close(&f);
@@ -1063,11 +1086,42 @@ static void test_metric_type_controls_dummy_orientation(void)
     PHY_CHECK(!stats.zero_by_symmetry);
     PHY_CHECK_EQ_INT(phy_tensor_monomial_factor_count(canonical), 1);
     /*
-     * No metric means upper/lower orientation is not identified.  The slot
-     * swap still chooses lower-before-upper and contributes its own minus,
-     * but the two orientations remain distinct and therefore do not imply
-     * zero.
+     * No metric means upper/lower orientation is not identified, so the two
+     * orientations remain distinct index values and do not imply zero.  The
+     * canonical index alphabet still ranks the raised member of a pair first
+     * — the same order SymPy's tensor_can uses — so `A[Up[u],Down[u]]` is
+     * already canonical and the antisymmetric slot swap contributes nothing.
      */
+    PHY_CHECK_EQ_INT(
+        exact_integer(
+            &f, phy_tensor_monomial_coefficient(canonical)), 3);
+    const phy_abstract_tensor_head *unmetric_head = NULL;
+    const phy_abstract_index *unmetric_result = NULL;
+    size_t unmetric_count = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_factor(
+            canonical, 0u, &unmetric_head, &unmetric_result,
+            &unmetric_count),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(unmetric_count, 2);
+    PHY_CHECK_EQ_INT(unmetric_result[0].variance, PHY_IR_INDEX_UPPER);
+    PHY_CHECK_EQ_INT(unmetric_result[1].variance, PHY_IR_INDEX_LOWER);
+    phy_tensor_monomial_destroy(canonical);
+    phy_tensor_monomial_destroy(input);
+
+    /* Writing the same contraction the other way round costs the slot sign. */
+    const phy_abstract_index reversed_pair[2] = {lower, upper};
+    const phy_abstract_factor reversed_factor = {
+        antisymmetric, reversed_pair, 2u};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_create(
+            f.abstract, phy_ir_integer(f.ir, 3), &reversed_factor, 1u,
+            &input),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_canonicalize(
+            input, NULL, &canonical, &stats), PHY_OK);
+    PHY_CHECK(!stats.zero_by_symmetry);
     PHY_CHECK_EQ_INT(
         exact_integer(
             &f, phy_tensor_monomial_coefficient(canonical)), -3);
@@ -1145,6 +1199,34 @@ static void test_xperm_rank_six_oracle_and_work_limit(void)
         PHY_CHECK_EQ_INT(result[lower].variance, PHY_IR_INDEX_LOWER);
         PHY_CHECK_EQ_INT(result[upper].name, result[lower].name);
     }
+
+    /*
+     * The deliberately exhaustive D*g*S implementation must reach the same
+     * representative.  For three symmetric-metric dummy pairs,
+     * |D| = 3! 2^3 = 48; the head's two transpositions generate |S| = 6.
+     */
+    phy_tensor_monomial *dgs = NULL;
+    phy_tensor_dgs_stats dgs_stats = {0};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_canonicalize_dgs(
+            input, NULL, &dgs, &dgs_stats),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(dgs_stats.degree, 6);
+    PHY_CHECK_EQ_INT(dgs_stats.dummy_pair_count, 3);
+    PHY_CHECK_EQ_INT(dgs_stats.slot_group_order, 6);
+    PHY_CHECK_EQ_INT(dgs_stats.dummy_group_order, 48);
+    PHY_CHECK_EQ_INT(dgs_stats.products_visited, 288);
+    PHY_CHECK(!dgs_stats.zero_by_symmetry);
+    check_same_monomial(&f, canonical, dgs);
+    phy_tensor_monomial_destroy(dgs);
+
+    phy_tensor_dgs_limits dgs_limits = {0};
+    dgs_limits.max_products = 287u;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_canonicalize_dgs(
+            input, &dgs_limits, &dgs, &dgs_stats),
+        PHY_ERR_TERM_LIMIT);
+    PHY_CHECK(dgs == NULL);
     phy_tensor_monomial_destroy(canonical);
 
     phy_tensor_canonical_limits limits = {0};
@@ -1154,6 +1236,113 @@ static void test_xperm_rank_six_oracle_and_work_limit(void)
             input, &limits, &canonical, &stats), PHY_ERR_TIMEOUT);
     PHY_CHECK(canonical == NULL);
     PHY_CHECK_EQ_INT(stats.slot_group_order, 6);
+    phy_tensor_monomial_destroy(input);
+    fixture_close(&f);
+}
+
+/*
+ * The first worked example in SymPy 1.14 tensor_can.canonicalize:
+ *
+ *   A_[d0 d1] B^[d0]_[d2] B^[d2 d1] == 0
+ *
+ * for antisymmetric commuting A and B and a symmetric metric.  SymPy encodes
+ * it as g=[1,3,0,5,4,2,6,7], dummies=range(6), msym=0 and returns 0.  The
+ * companion tools/tensor_can_oracle.py executes that independent oracle.
+ */
+static void test_sympy_tensor_can_zero_oracle(void)
+{
+    fixture f = fixture_open(NULL);
+    phy_index_space *space = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_index_space_create(
+            f.abstract, "M", phy_ir_integer(f.ir, 4),
+            PHY_METRIC_SYMMETRIC, &space),
+        PHY_OK);
+    const phy_index_space *slots[2] = {space, space};
+    static const uint16_t swap[] = {1, 0};
+    phy_abstract_tensor_head *a_head = NULL;
+    phy_abstract_tensor_head *b_head = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_create(
+            f.abstract, "A", slots, 2u, PHY_TENSOR_COMMUTING, &a_head),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_add_symmetry(a_head, swap, -1), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_create(
+            f.abstract, "B", slots, 2u, PHY_TENSOR_COMMUTING, &b_head),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_add_symmetry(b_head, swap, -1), PHY_OK);
+
+    phy_abstract_index d0_down = {0};
+    phy_abstract_index d0_up = {0};
+    phy_abstract_index d1_down = {0};
+    phy_abstract_index d1_up = {0};
+    phy_abstract_index d2_down = {0};
+    phy_abstract_index d2_up = {0};
+    PHY_CHECK_EQ_INT(
+        phy_abstract_index_make(
+            space, "d0", PHY_IR_INDEX_LOWER, &d0_down),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_abstract_index_make(
+            space, "d0", PHY_IR_INDEX_UPPER, &d0_up),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_abstract_index_make(
+            space, "d1", PHY_IR_INDEX_LOWER, &d1_down),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_abstract_index_make(
+            space, "d1", PHY_IR_INDEX_UPPER, &d1_up),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_abstract_index_make(
+            space, "d2", PHY_IR_INDEX_LOWER, &d2_down),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_abstract_index_make(
+            space, "d2", PHY_IR_INDEX_UPPER, &d2_up),
+        PHY_OK);
+
+    const phy_abstract_index a_indices[2] = {d0_down, d1_down};
+    const phy_abstract_index b0_indices[2] = {d0_up, d2_down};
+    const phy_abstract_index b1_indices[2] = {d2_up, d1_up};
+    const phy_abstract_factor factors[3] = {
+        {a_head, a_indices, 2u},
+        {b_head, b0_indices, 2u},
+        {b_head, b1_indices, 2u}};
+    phy_tensor_monomial *input = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_create(
+            f.abstract, phy_ir_integer(f.ir, 1), factors, 3u, &input),
+        PHY_OK);
+
+    phy_tensor_monomial *production = NULL;
+    phy_tensor_canonical_stats production_stats = {0};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_canonicalize(
+            input, NULL, &production, &production_stats),
+        PHY_OK);
+    PHY_CHECK(production_stats.zero_by_symmetry);
+    PHY_CHECK_EQ_INT(phy_tensor_monomial_factor_count(production), 0);
+    PHY_CHECK_EQ_INT(
+        exact_integer(
+            &f, phy_tensor_monomial_coefficient(production)),
+        0);
+
+    phy_tensor_monomial *dgs = NULL;
+    phy_tensor_dgs_stats dgs_stats = {0};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_canonicalize_dgs(
+            input, NULL, &dgs, &dgs_stats),
+        PHY_OK);
+    PHY_CHECK(dgs_stats.zero_by_symmetry);
+    check_same_monomial(&f, production, dgs);
+
+    phy_tensor_monomial_destroy(dgs);
+    phy_tensor_monomial_destroy(production);
     phy_tensor_monomial_destroy(input);
     fixture_close(&f);
 }
@@ -1680,6 +1869,7 @@ int main(void)
     PHY_TEST_CASE(test_dummy_alpha_renaming_and_metric_zero);
     PHY_TEST_CASE(test_metric_type_controls_dummy_orientation);
     PHY_TEST_CASE(test_xperm_rank_six_oracle_and_work_limit);
+    PHY_TEST_CASE(test_sympy_tensor_can_zero_oracle);
     PHY_TEST_CASE(test_symmetric_rank_nine_is_pruned_not_enumerated);
     PHY_TEST_CASE(test_young_row_and_column_projectors);
     PHY_TEST_CASE(test_young_collection_hook_and_typed_validation);

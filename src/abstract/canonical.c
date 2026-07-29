@@ -13,13 +13,6 @@
 #define PHY_CANON_DEFAULT_BYTES (1024u * 1024u)
 
 typedef struct {
-    uint8_t role;
-    uint8_t orientation;
-    size_t ordinal;
-    phy_ir_symbol free_name;
-} phy_canonical_key;
-
-typedef struct {
     const phy_tensor_monomial *input;
     phy_ir_context *ir;
     const phy_tensor_canonical_limits *limits;
@@ -159,8 +152,8 @@ static void sort_commuting_run(const phy_tensor_monomial *monomial,
  * Sorting each run independently preserves the noncommuting subsequence and
  * never carries a commuting factor across a noncommuting boundary.
  */
-static void build_factor_order(const phy_tensor_monomial *monomial,
-                               size_t *order)
+void phy_canonical_factor_order(const phy_tensor_monomial *monomial,
+                                size_t *order)
 {
     for (size_t i = 0u; i < monomial->factor_count; ++i) {
         order[i] = i;
@@ -179,9 +172,9 @@ static void build_factor_order(const phy_tensor_monomial *monomial,
     }
 }
 
-static void arrange_indices(const phy_tensor_monomial *monomial,
-                            const size_t *order, size_t *offsets,
-                            phy_abstract_index *out_indices)
+void phy_canonical_arrange_indices(const phy_tensor_monomial *monomial,
+                                   const size_t *order, size_t *offsets,
+                                   phy_abstract_index *out_indices)
 {
     size_t offset = 0u;
     for (size_t position = 0u; position < monomial->factor_count;
@@ -262,8 +255,23 @@ static phy_status add_factor_exchange_generators(
     return PHY_OK;
 }
 
-static size_t find_index_use(const phy_tensor_monomial *monomial,
-                             const phy_abstract_index *index)
+phy_status phy_canonical_slot_generators(const phy_tensor_monomial *monomial,
+                                         const size_t *order,
+                                         const size_t *offsets,
+                                         phy_perm_group *group,
+                                         uint16_t *image)
+{
+    const phy_status status =
+        add_lifted_generators(monomial, order, offsets, group, image);
+    if (status != PHY_OK) {
+        return status;
+    }
+    return add_factor_exchange_generators(
+        monomial, order, offsets, group, image);
+}
+
+size_t phy_canonical_index_use(const phy_tensor_monomial *monomial,
+                               const phy_abstract_index *index)
 {
     for (size_t use = 0u; use < monomial->use_count; ++use) {
         if (monomial->uses[use].space == index->space &&
@@ -288,42 +296,31 @@ static size_t next_dummy_ordinal(const phy_canonical_search *search,
     return next;
 }
 
-static int compare_keys(const phy_canonical_search *search)
+/*
+ * Position of one slot's variance in the canonical index alphabet.
+ *
+ * SymPy's `tensor_can` and xPerm both order that alphabet as the free indices
+ * ascending by name followed by d0^, d0_, d1^, d1_, ..., so the raised member
+ * of a contracted pair precedes the lowered one.  `phy_ir_variance` numbers
+ * PHY_IR_INDEX_LOWER first, which is a storage detail of the IR and not this
+ * ordering, so the rank is computed rather than cast.
+ */
+uint8_t phy_canonical_orientation_rank(phy_ir_variance variance)
 {
-    for (size_t slot = 0u; slot < search->degree; ++slot) {
-        const phy_canonical_key *left = &search->candidate_key[slot];
-        const phy_canonical_key *right = &search->best_key[slot];
-        if (left->role != right->role) {
-            return left->role < right->role ? -1 : 1;
-        }
-        if (left->role == (uint8_t)PHY_ABSTRACT_INDEX_FREE) {
-            const int name_order = strcmp(
-                phy_ir_symbol_name(search->ir, left->free_name),
-                phy_ir_symbol_name(search->ir, right->free_name));
-            if (name_order != 0) {
-                return name_order;
-            }
-        } else if (left->ordinal != right->ordinal) {
-            return left->ordinal < right->ordinal ? -1 : 1;
-        }
-        if (left->orientation != right->orientation) {
-            return left->orientation < right->orientation ? -1 : 1;
-        }
-    }
-    return 0;
+    return variance == PHY_IR_INDEX_UPPER ? (uint8_t)0u : (uint8_t)1u;
 }
 
-static int compare_key_entry(const phy_canonical_search *search,
-                             const phy_canonical_key *left,
-                             const phy_canonical_key *right)
+int phy_canonical_compare_key(phy_ir_context *ir,
+                              const phy_canonical_key *left,
+                              const phy_canonical_key *right)
 {
     if (left->role != right->role) {
         return left->role < right->role ? -1 : 1;
     }
     if (left->role == (uint8_t)PHY_ABSTRACT_INDEX_FREE) {
-        const int name_order = strcmp(
-            phy_ir_symbol_name(search->ir, left->free_name),
-            phy_ir_symbol_name(search->ir, right->free_name));
+        const int name_order =
+            strcmp(phy_ir_symbol_name(ir, left->free_name),
+                   phy_ir_symbol_name(ir, right->free_name));
         if (name_order != 0) {
             return name_order;
         }
@@ -332,6 +329,19 @@ static int compare_key_entry(const phy_canonical_search *search,
     }
     if (left->orientation != right->orientation) {
         return left->orientation < right->orientation ? -1 : 1;
+    }
+    return 0;
+}
+
+static int compare_keys(const phy_canonical_search *search)
+{
+    for (size_t slot = 0u; slot < search->degree; ++slot) {
+        const int order = phy_canonical_compare_key(
+            search->ir, &search->candidate_key[slot],
+            &search->best_key[slot]);
+        if (order != 0) {
+            return order;
+        }
     }
     return 0;
 }
@@ -360,7 +370,8 @@ static phy_status normalize_prefix(phy_canonical_search *search,
     int dummy_sign = 1;
     for (size_t slot = 0u; slot < prefix_count; ++slot) {
         phy_abstract_index *index = &search->candidate_indices[slot];
-        const size_t use = find_index_use(search->input, index);
+        const size_t use =
+            phy_canonical_index_use(search->input, index);
         if (use == SIZE_MAX) {
             return PHY_ERR_CORRUPT_DOCUMENT;
         }
@@ -371,7 +382,8 @@ static phy_status normalize_prefix(phy_canonical_search *search,
         key->role = (uint8_t)census->role;
         if (census->role == PHY_ABSTRACT_INDEX_FREE) {
             key->free_name = index->name;
-            key->orientation = (uint8_t)index->variance;
+            key->orientation =
+                phy_canonical_orientation_rank(index->variance);
             continue;
         }
 
@@ -384,15 +396,15 @@ static phy_status normalize_prefix(phy_canonical_search *search,
         if (occurrence > 1u) {
             return PHY_ERR_CORRUPT_DOCUMENT;
         }
-        if (index->space->metric == PHY_METRIC_NONE) {
-            key->orientation = (uint8_t)index->variance;
-        } else {
+        if (index->space->metric != PHY_METRIC_NONE) {
             /*
-             * A metric identifies the two orientations of a contracted pair.
-             * Canonical orientation is upper then lower.  Flipping a pair
-             * across an antisymmetric metric contributes one minus sign.
+             * A metric identifies the two orientations of a contracted pair,
+             * so the raised member is moved to the pair's first slot.  Doing
+             * that across an antisymmetric metric contributes one minus sign.
+             * Without a metric the two orientations are distinct index
+             * values, the pair is left exactly as written, and the
+             * orientation rank below is what distinguishes the arrangements.
              */
-            key->orientation = occurrence;
             if (occurrence == 0u &&
                 index->variance == PHY_IR_INDEX_LOWER &&
                 index->space->metric == PHY_METRIC_ANTISYMMETRIC) {
@@ -402,6 +414,8 @@ static phy_status normalize_prefix(phy_canonical_search *search,
                 occurrence == 0u ? PHY_IR_INDEX_UPPER
                                  : PHY_IR_INDEX_LOWER;
         }
+        key->orientation =
+            phy_canonical_orientation_rank(index->variance);
     }
     *out_dummy_sign = dummy_sign;
     return PHY_OK;
@@ -411,8 +425,8 @@ static int compare_prefix_to_best(const phy_canonical_search *search,
                                   size_t prefix_count)
 {
     for (size_t slot = 0u; slot < prefix_count; ++slot) {
-        const int order = compare_key_entry(
-            search, &search->candidate_key[slot],
+        const int order = phy_canonical_compare_key(
+            search->ir, &search->candidate_key[slot],
             &search->best_key[slot]);
         if (order != 0) {
             return order;
@@ -509,8 +523,8 @@ static phy_status traverse_slot_group(phy_canonical_search *search,
                 return normalized;
             }
             if (best_point == SIZE_MAX ||
-                compare_key_entry(
-                    search, &search->candidate_key[level],
+                phy_canonical_compare_key(
+                    search->ir, &search->candidate_key[level],
                     &best_entry) < 0) {
                 best_point = point;
                 best_entry = search->candidate_key[level];
@@ -640,7 +654,7 @@ static phy_status rename_best_dummies(
     return PHY_OK;
 }
 
-static phy_status build_output(
+phy_status phy_canonical_build_output(
     const phy_tensor_monomial *monomial, const size_t *order,
     const size_t *offsets, phy_abstract_index *indices,
     const phy_canonical_key *key, phy_ir_symbol *symbols, int sign,
@@ -795,11 +809,12 @@ phy_status phy_tensor_monomial_canonicalize(
     phy_abstract_factor *factors =
         (phy_abstract_factor *)(scratch + factors_offset);
 
-    build_factor_order(monomial, order);
-    arrange_indices(monomial, order, offsets, base_indices);
+    phy_canonical_factor_order(monomial, order);
+    phy_canonical_arrange_indices(
+        monomial, order, offsets, base_indices);
 
     if (degree == 0u) {
-        status = build_output(
+        status = phy_canonical_build_output(
             monomial, order, offsets, best_indices, best_key, symbols, 1,
             false, factors, out_monomial);
         phy_free(scratch, scratch_bytes == 0u ? 1u : scratch_bytes);
@@ -819,11 +834,7 @@ phy_status phy_tensor_monomial_canonicalize(
     phy_perm_group *group = NULL;
     status = phy_perm_group_create(degree, &perm_limits, &group);
     if (status == PHY_OK) {
-        status = add_lifted_generators(
-            monomial, order, offsets, group, image);
-    }
-    if (status == PHY_OK) {
-        status = add_factor_exchange_generators(
+        status = phy_canonical_slot_generators(
             monomial, order, offsets, group, image);
     }
     if (status == PHY_OK) {
@@ -879,7 +890,7 @@ phy_status phy_tensor_monomial_canonicalize(
         status = PHY_ERR_CORRUPT_DOCUMENT;
     }
     if (status == PHY_OK) {
-        status = build_output(
+        status = phy_canonical_build_output(
             monomial, order, offsets, best_indices, best_key, symbols,
             search.best_sign, zero, factors, out_monomial);
     }
