@@ -179,8 +179,9 @@ requires an explicit calculator acceptance run after transfer; an ARM link and
 byte-identical upload do not establish on-device runtime or performance. That
 cached tour exposed a CX II load-time failure consistent with eager IR/heap
 pressure and has since been replaced by the 12,200-byte source-only tour; that
-tour and the current 1,221,725-byte program still require explicit calculator
-open/run checks. The
+tour and the current 1,221,725-byte program were atomically deployed and
+downloaded back byte-identically on 2026-07-30. They still require explicit
+calculator open/run checks. The
 separate baseline channel-order check remains tracked in
 [docs/BUILD.md](docs/BUILD.md).
 

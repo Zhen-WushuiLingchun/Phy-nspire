@@ -39,6 +39,13 @@ performed the final directory checks in 36.6 seconds. The verified hashes were
 `7eb36249ca1fadf32c3614d57fbb9c441a10745dc9bd7503889bf46017069791`
 and `718a0a40fcd68c57113b88f3a3fe24bbb6463d9f936f1481709a0ca17498e90a`.
 
+The 2026-07-30 sync uploaded and SHA-256-read-back the 1,221,725-byte
+application and 12,200-byte source-only CAS tour in one 49.8-second session,
+atomically promoted both, removed both `.previous` copies, and confirmed the
+project `examples/` directory empty. The verified hashes were
+`2fe57c30612daba926ebefd59f0367bae2f111faa97b8190fee6600d4ce781cc`
+and `7afc7af56676fd6fe487225ac0c59b5e0507d861f4d7a26530c99c840eb06a9d`.
+
 Local inputs are read-only memory maps rather than file-sized heap buffers.
 There is no project-specific size threshold: every file length representable by
 the calculator protocol is accepted. The protocol's length field is 32-bit, so

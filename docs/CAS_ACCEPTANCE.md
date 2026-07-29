@@ -82,6 +82,14 @@ These results establish source, host, sanitizer, and ARM-link acceptance. They
 do not establish calculator interaction, timing, or heap headroom until the
 exact artifacts are opened and exercised on the physical CX II.
 
+On 2026-07-30 the repository CLI atomically deployed and read back the exact
+1,221,725-byte program (SHA-256
+`2fe57c30612daba926ebefd59f0367bae2f111faa97b8190fee6600d4ce781cc`) and
+12,200-byte tour (SHA-256
+`7afc7af56676fd6fe487225ac0c59b5e0507d861f4d7a26530c99c840eb06a9d`).
+It removed both rollback copies and confirmed `examples/` empty. This proves
+transport integrity only; calculator open/run acceptance remains pending.
+
 ## Explicit non-features
 
 `NSolve`, `Reduce`, `Refine`, and the `Trig*` family are registered but return
