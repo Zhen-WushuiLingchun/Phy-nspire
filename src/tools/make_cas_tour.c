@@ -128,6 +128,9 @@ static const tour_cell kTour[] = {
     {TOUR_INPUT,
      "Aa=TensorHead[{Va,Va},Antisymmetric]", NULL},
     {TOUR_INPUT, "Sa=TensorHead[{Va,Va},Symmetric]", NULL},
+    {TOUR_INPUT, "Ta=TensorHead[{Va,Va},Commuting]", NULL},
+    {TOUR_INPUT,
+     "YoungProject[Ta[Down[i],Down[j]],{{1,2}}]", NULL},
     {TOUR_INPUT,
      "TensorCanonicalize[Aa[Down[j],Down[i]]]", NULL},
     {TOUR_INPUT,
@@ -480,8 +483,8 @@ int main(int argc, char **argv)
 
     /*
      * The distributable document intentionally contains source cells only.
-     * Persisting all 129 cached input IR trees and all 129 output trees makes
-     * opening the 272-card validation document rebuild the entire physics
+     * Persisting all 131 cached input IR trees and all 131 output trees makes
+     * opening the 276-card validation document rebuild the entire physics
      * session at once. The cached artifact round-trips on the host, but the
      * byte-identical file was reported as corrupt by a CX II at open time. The
      * eager IR/heap reconstruction is the platform-specific part of that path.

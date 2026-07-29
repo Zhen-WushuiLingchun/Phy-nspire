@@ -95,6 +95,9 @@ static const phy_palette_entry kCasPhysics[] = {
     {"Canonicalize abstract tensor",
      "TensorCanonicalize[A[Down[b],Down[a]]]",
      sizeof("TensorCanonicalize[") - 1u},
+    {"Young-project abstract tensor",
+     "YoungProject[T[Down[a],Down[b]],{{1,2}}]",
+     sizeof("YoungProject[") - 1u},
 };
 
 /*

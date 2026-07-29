@@ -46,6 +46,7 @@ R = TensorHead[{V,V,V}, Commuting,
 TensorCanonicalize[A[Down[b],Down[a]]]
 TensorCanonicalize[A[Down[a],Down[b]] *
                    S[Up[a],Up[b]]]
+YoungProject[R[Down[a],Down[b],Down[c]], {{1,2},{3}}]
 ```
 
 The first result is `-A[Down[a],Down[b]]`; the second vanishes when `S` is
@@ -81,9 +82,9 @@ native tensor API.
 | --- | --- |
 | legacy charts, coordinate symbols, rank, valence, head metadata | evaluator migration from legacy dense values |
 | dense `n^r` storage plus runtime-rank sparse component binding | sparse component/basis evaluator objects |
-| abstract free/dummy census and signed double-coset canonicalization | full Garnir-basis reduction beyond explicit Young projection |
-| `IndexSpace`, `TensorHead`, indexed products and `TensorCanonicalize` in notebook cells | Young-projector evaluator command |
-| normalized Young row/column projectors with exact term collection | sparse-to-sparse tensor transport |
+| abstract free/dummy census and signed double-coset canonicalization | full Garnir-basis reduction for arbitrary pre-existing sums |
+| `IndexSpace`, `TensorHead`, indexed products and `TensorCanonicalize` in notebook cells | abstract metric contraction/raise/lower commands |
+| reader-facing normalized Young row/column projection with exact term collection | general algebra on arbitrary pre-existing tensor sums |
 | verified atlas cocycles and mixed-valence dense basis changes | atlas/change-basis evaluator commands |
 | exact contraction, inverse metric, raise/lower, component derivatives | first-Bianchi orbit canonicalization |
 | canonical lookup, fill validation, allocation-failure unwind | optional xPerm integration |

@@ -85,7 +85,9 @@ Coordinate-free tensors use a separate typed surface:
 ```text
 V = IndexSpace[4, SymmetricMetric]
 A = TensorHead[{V,V}, Antisymmetric]
+T = TensorHead[{V,V}, Commuting]
 TensorCanonicalize[A[Down[b],Down[a]]]
+YoungProject[T[Down[a],Down[b]],{{1,2}}]
 ```
 
 `IndexSpace` accepts a positive integer or symbolic dimension and
@@ -94,13 +96,15 @@ list of slot spaces, `Commuting`/`NonCommuting`, and an optional list of signed
 1-based generators such as `Symmetry[{2,1,3},-1]`; rank-two `Symmetric` and
 `Antisymmetric` are shortcuts. Direct head application creates an abstract
 monomial, products combine factors, and `TensorCanonicalize` performs exact
-slot/factor/dummy/metric canonicalization. An explicit space in
+slot/factor/dummy/metric canonicalization. `YoungProject` takes a one-based
+row tableau, optionally preceded by a one-based factor position, and returns
+the normalized, exactly collected multi-term expression. An explicit space in
 `Down[i,V]`/`Up[i,V]` is checked; an omitted space is inferred from the head.
 
 The evaluated object heads are:
 
 - abstract tensors — `IndexSpace`, `TensorHead`, indexed head application,
-  `TensorCanonicalize`;
+  `TensorCanonicalize`, `YoungProject`;
 - geometry — `Manifold`, `ComponentTensor`, `DifferentialForm`, `Metric`, `VectorField`,
   `ExteriorD`, `InteriorProduct`, `LieDerivative`, `HodgeStar`, `Volume`;
 - Lie — `LieGroup`, `LieAlgebra`, `Generator`, `LieElement`, `LieBracket`,

@@ -407,6 +407,30 @@ static phy_status abstract_tensor_expansion(
     return phy_cas_mul(env->cas, product, 2u, out_ref);
 }
 
+static phy_status abstract_expression_expansion(
+    phy_env *env, const phy_tensor_expression *expression,
+    phy_ir_ref *out_ref)
+{
+    const size_t count =
+        phy_tensor_expression_term_count(expression);
+    if (count > DISPLAY_MAX_TERMS) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    if (count == 0u) {
+        return phy_cas_number(env->cas, 0, 1, out_ref);
+    }
+    phy_ir_ref terms[DISPLAY_MAX_TERMS];
+    for (size_t which = 0u; which < count; ++which) {
+        const phy_status status = abstract_tensor_expansion(
+            env, phy_tensor_expression_term(expression, which),
+            &terms[which]);
+        if (status != PHY_OK) {
+            return status;
+        }
+    }
+    return phy_cas_add(env->cas, terms, count, out_ref);
+}
+
 phy_status phy_eval_value_expression(phy_env *env, phy_value value,
                                      phy_ir_ref *out_ref)
 {
@@ -429,6 +453,9 @@ phy_status phy_eval_value_expression(phy_env *env, phy_value value,
     case PHY_VALUE_ABSTRACT_TENSOR:
         return abstract_tensor_expansion(
             env, value.as.abstract_tensor, out_ref);
+    case PHY_VALUE_ABSTRACT_EXPRESSION:
+        return abstract_expression_expansion(
+            env, value.as.abstract_expression, out_ref);
     default:
         break;
     }
@@ -605,6 +632,13 @@ phy_status phy_eval_describe(const phy_env *env, phy_value value, char *buffer,
             &writer,
             (unsigned)phy_tensor_monomial_dummy_count(
                 value.as.abstract_tensor));
+        break;
+    case PHY_VALUE_ABSTRACT_EXPRESSION:
+        write_text(&writer, " terms ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_tensor_expression_term_count(
+                value.as.abstract_expression));
         break;
     default:
         break;

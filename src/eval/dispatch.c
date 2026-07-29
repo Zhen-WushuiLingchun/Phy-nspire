@@ -286,6 +286,10 @@ static phy_status publish(phy_env *env, phy_value_kind kind, void *object,
         value.as.abstract_tensor =
             (const phy_tensor_monomial *)object;
         break;
+    case PHY_VALUE_ABSTRACT_EXPRESSION:
+        value.as.abstract_expression =
+            (const phy_tensor_expression *)object;
+        break;
     default:
         return PHY_ERR_INVALID_ARGUMENT;
     }
@@ -595,10 +599,20 @@ static phy_status eval_tensor_canonicalize(
         return PHY_ERR_PARSE;
     }
     phy_value input;
-    phy_status status = arg_typed(
-        env, expr, 0u, PHY_VALUE_ABSTRACT_TENSOR, &input);
+    phy_status status = arg_value(env, expr, 0u, &input);
     if (status != PHY_OK) {
         return status;
+    }
+    if (input.kind == PHY_VALUE_ABSTRACT_EXPRESSION) {
+        /*
+         * The only current expression constructor, YoungProject, canonicalizes
+         * and collects every term before publication.
+         */
+        *out_value = input;
+        return PHY_OK;
+    }
+    if (input.kind != PHY_VALUE_ABSTRACT_TENSOR) {
+        return PHY_ERR_TYPE;
     }
     phy_tensor_monomial *canonical = NULL;
     status = phy_tensor_monomial_canonicalize(
@@ -607,6 +621,115 @@ static phy_status eval_tensor_canonicalize(
                ? publish(
                      env, PHY_VALUE_ABSTRACT_TENSOR, canonical, &input,
                      NULL, out_value)
+               : status;
+}
+
+static phy_status read_young_tableau(
+    phy_env *env, phy_ir_ref ref, uint16_t *out_slots,
+    uint16_t *out_row_lengths, size_t *out_slot_count,
+    size_t *out_row_count)
+{
+    phy_ir_ref rows[EVAL_ABSTRACT_MAX_SLOTS];
+    size_t row_count = 0u;
+    phy_status status = list_refs(
+        env, ref, rows, EVAL_ABSTRACT_MAX_SLOTS, &row_count);
+    if (status != PHY_OK || row_count == 0u) {
+        return status != PHY_OK ? status : PHY_ERR_PARSE;
+    }
+    size_t slot_count = 0u;
+    for (size_t row = 0u;
+         row < row_count && status == PHY_OK; ++row) {
+        phy_ir_ref cells[EVAL_ABSTRACT_MAX_SLOTS];
+        size_t length = 0u;
+        status = list_refs(
+            env, rows[row], cells,
+            EVAL_ABSTRACT_MAX_SLOTS - slot_count, &length);
+        if (status != PHY_OK || length == 0u ||
+            length > UINT16_MAX) {
+            return status != PHY_OK ? status : PHY_ERR_PARSE;
+        }
+        out_row_lengths[row] = (uint16_t)length;
+        for (size_t cell = 0u; cell < length; ++cell) {
+            phy_value value;
+            status = eval_node(env, cells[cell], &value);
+            int64_t position = 0;
+            if (status != PHY_OK) {
+                return status;
+            }
+            if (value.kind != PHY_VALUE_SCALAR ||
+                !phy_ir_integer_value(
+                    env->ir, value.as.scalar, &position)) {
+                return PHY_ERR_TYPE;
+            }
+            if (position < 1 ||
+                (uint64_t)position >
+                    (uint64_t)EVAL_ABSTRACT_MAX_SLOTS) {
+                return PHY_ERR_DOMAIN;
+            }
+            out_slots[slot_count++] =
+                (uint16_t)(position - 1);
+        }
+    }
+    *out_slot_count = slot_count;
+    *out_row_count = row_count;
+    return PHY_OK;
+}
+
+static phy_status eval_young_project(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    const size_t count = arg_count(env, expr);
+    if (count < 2u || count > 3u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value input;
+    phy_status status = arg_typed(
+        env, expr, 0u, PHY_VALUE_ABSTRACT_TENSOR, &input);
+    if (status != PHY_OK) {
+        return status;
+    }
+    size_t factor = 0u;
+    phy_ir_ref tableau_ref = arg_ref(env, expr, 1u);
+    if (count == 3u) {
+        phy_ir_ref factor_ref = PHY_IR_NULL;
+        status = arg_scalar(env, expr, 1u, &factor_ref);
+        int64_t one_based = 0;
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (!phy_ir_integer_value(
+                env->ir, factor_ref, &one_based)) {
+            return PHY_ERR_TYPE;
+        }
+        if (one_based < 1 ||
+            (uint64_t)one_based >
+                (uint64_t)phy_tensor_monomial_factor_count(
+                    input.as.abstract_tensor)) {
+            return PHY_ERR_DOMAIN;
+        }
+        factor = (size_t)(one_based - 1);
+        tableau_ref = arg_ref(env, expr, 2u);
+    }
+    uint16_t slots[EVAL_ABSTRACT_MAX_SLOTS];
+    uint16_t row_lengths[EVAL_ABSTRACT_MAX_SLOTS];
+    size_t slot_count = 0u;
+    size_t row_count = 0u;
+    status = read_young_tableau(
+        env, tableau_ref, slots, row_lengths, &slot_count,
+        &row_count);
+    if (status != PHY_OK) {
+        return status;
+    }
+    const phy_young_tableau tableau = {
+        slots, slot_count, row_lengths, row_count};
+    phy_tensor_expression *projected = NULL;
+    status = phy_tensor_monomial_young_project(
+        input.as.abstract_tensor, factor, &tableau, NULL,
+        &projected, NULL);
+    return status == PHY_OK
+               ? publish(
+                     env, PHY_VALUE_ABSTRACT_EXPRESSION, projected,
+                     &input, NULL, out_value)
                : status;
 }
 
@@ -2757,6 +2880,18 @@ static phy_status eval_measure(phy_env *env, phy_ir_ref expr, eval_head head,
                     target.as.abstract_tensor),
                 out_value);
         }
+        if (target.kind == PHY_VALUE_ABSTRACT_EXPRESSION) {
+            const phy_tensor_expression *expression =
+                target.as.abstract_expression;
+            const phy_tensor_monomial *first =
+                phy_tensor_expression_term(expression, 0u);
+            return integer_value(
+                env,
+                first != NULL
+                    ? (int64_t)phy_tensor_monomial_free_count(first)
+                    : 0,
+                out_value);
+        }
         return PHY_ERR_TYPE;
     }
 
@@ -3009,6 +3144,8 @@ static phy_status eval_operator(phy_env *env, phy_ir_ref expr,
         return eval_tensor_head(env, expr, out_value);
     case EVAL_HEAD_TENSOR_CANONICALIZE:
         return eval_tensor_canonicalize(env, expr, out_value);
+    case EVAL_HEAD_YOUNG_PROJECT:
+        return eval_young_project(env, expr, out_value);
 
     case EVAL_HEAD_MANIFOLD:
         return eval_manifold(env, expr, out_value);

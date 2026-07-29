@@ -138,8 +138,8 @@ braces. Both held modifiers and tap-then-key modifiers are accepted.
 ## Comprehensive CAS tour
 
 [`examples/phy-nspire-cas-tour.tns`](../examples/phy-nspire-cas-tour.tns) is a
-generated, executable notebook rather than a screenshot fixture. Its 143
-source cards contain fourteen Markdown/LaTeX explanations and 129 Math inputs
+generated, executable notebook rather than a screenshot fixture. Its 145
+source cards contain fourteen Markdown/LaTeX explanations and 131 Math inputs
 covering the implemented scalar CAS and calculus, generic component tensors,
 manifolds, forms and Hodge operations, coordinate GR, Lie algebra and
 Yang--Mills, phi4 graph/renormalization operations,
@@ -151,8 +151,8 @@ that fully evaluated notebook, deserializes it into a fresh empty environment,
 and replays all cells. It then writes a separately round-tripped source-only
 document. This keeps the CX II's `FILE > Open` path free of eager cached-tree
 reconstruction while preserving full generation-time CAS coverage. Running all
-129 Math cells top-to-bottom grows the document to 272 cards. The 320-card
-bound leaves 48 slots for reader experiments.
+131 Math cells top-to-bottom grows the document to 276 cards. The 320-card
+bound leaves 44 slots for reader experiments.
 
 ## Verification
 
@@ -171,9 +171,9 @@ bound leaves 48 slots for reader experiments.
 - `test_pointer`: 29 checks over relative contact/motion behavior;
 - `test_modifier`: 8 checks over tapped and held Shift/Ctrl behavior;
 - `tests/fixtures/notebook_frame.digest`: bit-exact 320 × 240 host fixture;
-- strict Windows suite: 40/40; WSL ASan/UBSan/leak suite: 42/42; 305,535
+- strict Windows suite: 40/40; WSL ASan/UBSan/leak suite: 42/42; 305,594
   explicit checks;
-- Ndless r2022 ARM build: 1,183,523 bytes. The evaluator probe retains 15/15
+- Ndless r2022 ARM build: 1,186,679 bytes. The evaluator probe retains 15/15
   public APIs behind the complete physics stack and imports no forbidden
   float/libm/soft-float helper.
 

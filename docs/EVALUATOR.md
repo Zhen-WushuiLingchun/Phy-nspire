@@ -94,6 +94,7 @@ one character of lookahead. `Set[name, value]` is the FullForm spelling.
 | `A[Down[i],Up[j],...]` | typed `phy_tensor_monomial` factor using the spaces declared by `A` |
 | products of indexed heads and scalar coefficients | exact monomial coefficient/factor merge and Einstein census |
 | `TensorCanonicalize[monomial]` | bounded signed BSGS double-coset canonicalizer |
+| `YoungProject[monomial, factor?, {{slots...},...}]` | normalized Young row symmetrizer/column antisymmetrizer and exact term collection |
 
 `metric` is `NoMetric`, `SymmetricMetric`, or `AntisymmetricMetric`.
 `property` is `Commuting`, `NonCommuting`, or the rank-two shortcut
@@ -105,10 +106,13 @@ direct application rejects an explicit `Down[i,W]` when that slot belongs to
 notebook environment; returned monomials own their copied factor/index arrays,
 so canonical results do not dangle when an intermediate is swept.
 
-This surface intentionally exposes monoterm canonicalization first. The native
-Young projector exists in the library, but arbitrary sums and a general
-Garnir-basis reducer are not yet reader-facing; no inert `YoungProject[...]`
-head is advertised.
+Factor and tableau slot positions are one-based at the reader surface; the
+factor argument defaults to one. `YoungProject` returns a real multi-term
+abstract expression, not an inert operator: every generated monomial passes
+through the monoterm canonicalizer, equal structures are collected with exact
+coefficients, and the resulting sum uses the same MathTree renderer. A general
+Garnir-basis reducer for arbitrary pre-existing sums remains outside the
+current boundary.
 
 ### Differential geometry
 
@@ -403,6 +407,8 @@ future work has now happened: the application genuinely calls the geometry,
 Lie, Yang--Mills, and QFT layers, so `--gc-sections` no longer drops them.
 The preserved `dist-foundation/phy-nspire.tns` baseline is 1,173,026 bytes.
 The current `dist/phy-nspire.tns`, with the abstract tensor evaluator reachable,
-is 1,183,523 bytes (18.8% of the 6 MiB ceiling); the final ELF retains
+is 1,186,679 bytes (18.9% of the 6 MiB ceiling); the final ELF retains
 `phy_index_space_create`, `phy_tensor_head_create_with_symmetries`,
-`phy_tensor_monomial_create`, and `phy_tensor_monomial_canonicalize`.
+`phy_tensor_monomial_create`, `phy_tensor_monomial_canonicalize`,
+`phy_tensor_monomial_young_project`, and
+`phy_tensor_expression_term_count`.

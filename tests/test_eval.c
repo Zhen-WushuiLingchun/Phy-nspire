@@ -1544,6 +1544,94 @@ static void test_abstract_tensor_frontend_and_canonicalization(void)
     fixture_close(&f);
 }
 
+static void test_young_project_frontend(void)
+{
+    fixture f = fixture_open();
+    (void)run(&f, "V = IndexSpace[4, SymmetricMetric]");
+    (void)run(&f, "T = TensorHead[{V,V}, Commuting]");
+
+    phy_value value = run(
+        &f,
+        "Y = YoungProject[T[Down[a],Down[b]],{{1,2}}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_ABSTRACT_EXPRESSION);
+    PHY_CHECK_EQ_STR(
+        phy_value_kind_name(value.kind), "AbstractExpression");
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_term_count(
+            value.as.abstract_expression),
+        2);
+    expect_scalar(&f, "Rank[Y]", "2");
+    value = run(&f, "TensorCanonicalize[Y]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_ABSTRACT_EXPRESSION);
+    const char *rendered = expansion(&f, value);
+    PHY_CHECK(strstr(rendered, "tensor T") != NULL);
+    for (size_t term = 0u; term < 2u; ++term) {
+        int64_t numerator = 0;
+        int64_t denominator = 0;
+        PHY_CHECK(phy_ir_rational_value(
+            f.ir,
+            phy_tensor_monomial_coefficient(
+                phy_tensor_expression_term(
+                    value.as.abstract_expression, term)),
+            &numerator, &denominator));
+        PHY_CHECK_EQ_INT(numerator, 1);
+        PHY_CHECK_EQ_INT(denominator, 2);
+    }
+
+    value = run(
+        &f,
+        "YoungProject[T[Down[a],Down[b]],{{1},{2}}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_ABSTRACT_EXPRESSION);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_term_count(
+            value.as.abstract_expression),
+        2);
+    rendered = expansion(&f, value);
+    PHY_CHECK(strstr(rendered, "tensor T") != NULL);
+    int signs = 0;
+    for (size_t term = 0u; term < 2u; ++term) {
+        int64_t numerator = 0;
+        int64_t denominator = 0;
+        PHY_CHECK(phy_ir_rational_value(
+            f.ir,
+            phy_tensor_monomial_coefficient(
+                phy_tensor_expression_term(
+                    value.as.abstract_expression, term)),
+            &numerator, &denominator));
+        PHY_CHECK_EQ_INT(denominator, 2);
+        signs += (int)numerator;
+    }
+    PHY_CHECK_EQ_INT(signs, 0);
+
+    /*
+     * Factor selection is one-based at the notebook surface and the tableau
+     * contains one-based local slots in explicit row-major order.
+     */
+    value = run(
+        &f,
+        "YoungProject["
+        "T[Down[a],Down[b]]*T[Down[c],Down[d]],2,"
+        "{{2,1}}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_ABSTRACT_EXPRESSION);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_term_count(
+            value.as.abstract_expression),
+        2);
+
+    expect_status(
+        &f,
+        "YoungProject[T[Down[a],Down[b]],{{1,1}}]",
+        PHY_ERR_TYPE);
+    expect_status(
+        &f,
+        "YoungProject[T[Down[a],Down[b]],3,{{1,2}}]",
+        PHY_ERR_DOMAIN);
+
+    phy_env_reset(f.env);
+    PHY_CHECK_EQ_INT(phy_env_object_count(f.env), 0);
+    fixture_close(&f);
+}
+
 int main(void)
 {
     if (phy_platform_init() != PHY_OK) {
@@ -1576,6 +1664,7 @@ int main(void)
     PHY_TEST_CASE(test_notebook_round_trip_keeps_descriptors);
     PHY_TEST_CASE(test_notebook_round_trip_keeps_series_data);
     PHY_TEST_CASE(test_abstract_tensor_frontend_and_canonicalization);
+    PHY_TEST_CASE(test_young_project_frontend);
     const int result = PHY_TEST_REPORT("test_eval");
     phy_platform_shutdown();
     return result;

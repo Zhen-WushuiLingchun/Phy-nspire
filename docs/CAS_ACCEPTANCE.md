@@ -8,19 +8,19 @@ evidence.
 ## Executable notebook
 
 [`examples/phy-nspire-cas-tour.tns`](../examples/phy-nspire-cas-tour.tns) is a
-8,362-byte `PHYNB001` notebook with 143 source cards:
+8,475-byte `PHYNB001` notebook with 145 source cards:
 
 - fourteen Markdown cells with nMarkdown LaTeX;
-- 129 editable Math inputs;
+- 131 editable Math inputs;
 - no eagerly persisted output/IR cache.
 
 The generator evaluates a validation copy of the complete document, serializes
 it, opens it in a new notebook with an empty environment, and runs every cell
 again. It separately serializes and reopens the source-only artifact before
 writing it. Generation fails on any parse, evaluation, serialization, reopen,
-or replay error. The source-only form avoids rebuilding 258 cached IR trees
-during `FILE > Open`; running all inputs produces 129 typed outputs and
-a 272-card session. The inputs touch every currently implemented evaluator head
+or replay error. The source-only form avoids rebuilding 262 cached IR trees
+during `FILE > Open`; running all inputs produces 131 typed outputs and
+a 276-card session. The inputs touch every currently implemented evaluator head
 at least once:
 
 | Area | Successful reader-facing heads |
@@ -54,8 +54,8 @@ where the QFT type checker must reject a cross-space operation.
 
 - Windows strict build and CTest: 40/40.
 - WSL ASan, UBSan, and leak detection: 42/42.
-- Assertion-bearing tests: 305,535 checks.
-- Ndless r2022 ARM product: 1,183,523 bytes, 18.8% of the 6 MiB ceiling.
+- Assertion-bearing tests: 305,594 checks.
+- Ndless r2022 ARM product: 1,186,679 bytes, 18.9% of the 6 MiB ceiling.
 - Isolated exact-number ARM probe: 68/68 public APIs, 17,680 bytes of exact
   number text, 23,540-byte package, and no forbidden numeric dependency.
 - Isolated real-algebraic ARM probe: 28/28 public APIs, 24,256 bytes of

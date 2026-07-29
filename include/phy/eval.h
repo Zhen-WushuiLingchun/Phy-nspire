@@ -162,7 +162,8 @@ typedef enum {
     PHY_VALUE_CURVATURE,
     PHY_VALUE_INDEX_SPACE,
     PHY_VALUE_TENSOR_HEAD,
-    PHY_VALUE_ABSTRACT_TENSOR
+    PHY_VALUE_ABSTRACT_TENSOR,
+    PHY_VALUE_ABSTRACT_EXPRESSION
 } phy_value_kind;
 
 /*
@@ -199,6 +200,7 @@ typedef struct {
         const phy_index_space *index_space;
         const phy_abstract_tensor_head *tensor_head;
         const phy_tensor_monomial *abstract_tensor;
+        const phy_tensor_expression *abstract_expression;
     } as;
 } phy_value;
 

@@ -17,6 +17,7 @@
 
 static const char *const kEvalHeadNames[EVAL_HEAD_COUNT] = {
     "IndexSpace",   "TensorHead",       "TensorCanonicalize",
+    "YoungProject",
 
     "Manifold",     "DifferentialForm", "Metric",      "VectorField",
     "ComponentTensor",
@@ -80,6 +81,8 @@ const char *phy_value_kind_name(phy_value_kind kind)
         return "TensorHead";
     case PHY_VALUE_ABSTRACT_TENSOR:
         return "AbstractTensor";
+    case PHY_VALUE_ABSTRACT_EXPRESSION:
+        return "AbstractExpression";
     default:
         break;
     }
@@ -116,6 +119,8 @@ const void *eval_value_pointer(const phy_value *value)
         return value->as.tensor_head;
     case PHY_VALUE_ABSTRACT_TENSOR:
         return value->as.abstract_tensor;
+    case PHY_VALUE_ABSTRACT_EXPRESSION:
+        return value->as.abstract_expression;
     default:
         break;
     }
@@ -155,6 +160,10 @@ static void destroy_owned(phy_value_kind kind, void *owned)
     case PHY_VALUE_ABSTRACT_TENSOR:
         phy_tensor_monomial_destroy(
             (phy_tensor_monomial *)owned);
+        break;
+    case PHY_VALUE_ABSTRACT_EXPRESSION:
+        phy_tensor_expression_destroy(
+            (phy_tensor_expression *)owned);
         break;
     default:
         /* Scalars and borrowed algebras never own anything. */

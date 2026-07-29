@@ -8,8 +8,8 @@ The tour is generated from reader-facing source. A validation copy is evaluated
 through the same stateful notebook backend as the calculator, checked so every
 output succeeds, serialized, reopened into a fresh environment, and replayed.
 The distributable file deliberately stores only its fourteen Markdown/LaTeX cells
-and 129 executable input cells, so opening it on a CX II does not eagerly rebuild
-129 cached input IR trees plus 129 output trees. The examples still reach every
+and 131 executable input cells, so opening it on a CX II does not eagerly rebuild
+131 cached input IR trees plus 131 output trees. The examples still reach every
 implemented evaluator head at least once. Rebuild it with:
 
 ```text
@@ -19,7 +19,7 @@ build/Debug/phy-make-cas-tour.exe examples/phy-nspire-cas-tour.tns
 
 Copy it to `Documents/phy-nspire/notebooks/` and open it with the `FILE`
 picker. Every Math card remains editable and can be run again with its
-upper-right `RUN` badge. The 143-card source document leaves 177 of the
-notebook's 320 bounded card slots free on open. Running all 129 Math cells
-top-to-bottom adds their output cards, reaches 272 cards, and leaves 48 slots
+upper-right `RUN` badge. The 145-card source document leaves 175 of the
+notebook's 320 bounded card slots free on open. Running all 131 Math cells
+top-to-bottom adds their output cards, reaches 276 cards, and leaves 44 slots
 for additional calculations.
