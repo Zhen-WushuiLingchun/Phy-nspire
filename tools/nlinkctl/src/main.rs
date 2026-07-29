@@ -31,10 +31,9 @@ static SERVICE_SETTLE_MS: AtomicU64 = AtomicU64::new(250);
     about = "Reliable TI-Nspire CX II file transfer and Phy-nspire deployment"
 )]
 struct Cli {
-    /// CX II CSP payload size. 1280 keeps margin below the native 1440-byte
-    /// frame and completes a verified 1.1 MB usbipd deployment before the
-    /// observed long-transfer failure window.
-    #[arg(long, default_value_t = 1280, global = true)]
+    /// CX II CSP payload size. The native 1440-byte frame minimizes ACK
+    /// round trips; completed uploads are resumable after a usbipd reattach.
+    #[arg(long, default_value_t = 1440, global = true)]
     cx2_packet_size: u32,
 
     /// CX II payload expected while reading files from the calculator.
@@ -42,7 +41,7 @@ struct Cli {
     cx2_read_packet_size: u32,
 
     /// Maximum wait for one CX II ACK read.
-    #[arg(long, default_value_t = 1500, global = true)]
+    #[arg(long, default_value_t = 250, global = true)]
     ack_timeout_ms: u32,
 
     /// Maximum wait for one CX II handshake or response read.
@@ -50,7 +49,7 @@ struct Cli {
     handshake_timeout_ms: u32,
 
     /// Number of times to transmit a packet when its ACK is lost.
-    #[arg(long, default_value_t = 4, global = true)]
+    #[arg(long, default_value_t = 8, global = true)]
     ack_retries: u32,
 
     /// Number of complete file-service attempts before giving up.
@@ -912,6 +911,15 @@ mod tests {
         }
         .validate()
         .is_err());
+    }
+
+    #[test]
+    fn physical_cx2_defaults_match_the_verified_fast_path() {
+        let cli = Cli::try_parse_from(["phy-nlinkctl", "ls", "/phy-nspire"]).unwrap();
+        assert_eq!(cli.cx2_packet_size, 1440);
+        assert_eq!(cli.cx2_read_packet_size, 1440);
+        assert_eq!(cli.ack_timeout_ms, 250);
+        assert_eq!(cli.ack_retries, 8);
     }
 
     #[test]
