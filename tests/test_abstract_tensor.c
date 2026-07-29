@@ -88,12 +88,29 @@ static void test_index_spaces(void)
                                phy_ir_integer(f.ir, -2), PHY_METRIC_NONE,
                                &bad),
         PHY_ERR_DOMAIN);
+    const phy_ir_ref formal = phy_ir_add(
+        f.ir, (phy_ir_ref[2]){n, phy_ir_integer(f.ir, 1)}, 2u);
+    phy_index_space *expression_space = NULL;
     PHY_CHECK_EQ_INT(
         phy_index_space_create(
-            f.abstract, "Expression",
-            phy_ir_add(
-                f.ir, (phy_ir_ref[2]){n, phy_ir_integer(f.ir, 1)}, 2u),
+            f.abstract, "Expression", formal, PHY_METRIC_NONE,
+            &expression_space),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_index_space_dimension(expression_space), formal);
+    PHY_CHECK(!phy_index_space_known_dimension(
+        expression_space, &dimension));
+    PHY_CHECK_EQ_INT(
+        phy_index_space_create(
+            f.abstract, "Fraction", phy_ir_rational(f.ir, 3, 2),
             PHY_METRIC_NONE, &bad),
+        PHY_ERR_DOMAIN);
+    const phy_ir_symbol sin_head = phy_ir_intern(f.ir, "Sin");
+    const phy_ir_ref opaque =
+        phy_ir_function(f.ir, sin_head, &n, 1u);
+    PHY_CHECK_EQ_INT(
+        phy_index_space_create(
+            f.abstract, "Opaque", opaque, PHY_METRIC_NONE, &bad),
         PHY_ERR_TYPE);
 
     fixture_close(&f);

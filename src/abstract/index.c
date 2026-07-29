@@ -209,17 +209,48 @@ phy_abstract_context *phy_index_space_context(
     return space != NULL ? space->context : NULL;
 }
 
+static phy_status validate_formal_dimension(phy_ir_context *ir,
+                                            phy_ir_ref dimension,
+                                            size_t *steps)
+{
+    if (++*steps > 4096u) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    const phy_ir_kind kind = phy_ir_kind_of(ir, dimension);
+    if (kind == PHY_IR_INTEGER || kind == PHY_IR_RATIONAL ||
+        kind == PHY_IR_SYMBOL) {
+        return PHY_OK;
+    }
+    if (kind != PHY_IR_ADD && kind != PHY_IR_MUL &&
+        kind != PHY_IR_POW) {
+        return PHY_ERR_TYPE;
+    }
+    const size_t count = phy_ir_child_count(ir, dimension);
+    if ((kind == PHY_IR_POW && count != 2u) || count == 0u) {
+        return PHY_ERR_CORRUPT_DOCUMENT;
+    }
+    for (size_t child = 0u; child < count; ++child) {
+        const phy_status status = validate_formal_dimension(
+            ir, phy_ir_child(ir, dimension, child), steps);
+        if (status != PHY_OK) {
+            return status;
+        }
+    }
+    return PHY_OK;
+}
+
 static phy_status validate_dimension(phy_ir_context *ir, phy_ir_ref dimension)
 {
     if (dimension == PHY_IR_NULL) {
         return PHY_OK;
     }
     const phy_ir_kind kind = phy_ir_kind_of(ir, dimension);
-    if (kind == PHY_IR_SYMBOL) {
-        return PHY_OK;
+    if (kind == PHY_IR_RATIONAL) {
+        return PHY_ERR_DOMAIN;
     }
     if (kind != PHY_IR_INTEGER) {
-        return PHY_ERR_TYPE;
+        size_t steps = 0u;
+        return validate_formal_dimension(ir, dimension, &steps);
     }
     int64_t value = 0;
     if (!phy_ir_integer_value(ir, dimension, &value)) {

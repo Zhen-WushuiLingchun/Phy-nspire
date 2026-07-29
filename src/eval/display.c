@@ -516,6 +516,7 @@ phy_status phy_eval_value_expression(phy_env *env, phy_value value,
     case PHY_VALUE_BASIS_TRANSITION:
     case PHY_VALUE_ATLAS:
     case PHY_VALUE_GR_COMPONENTS:
+    case PHY_VALUE_QFT_COMPONENTS:
         /* These are handles; phy_eval_describe provides their display. */
         return PHY_OK;
     case PHY_VALUE_VECTOR:
@@ -822,6 +823,43 @@ phy_status phy_eval_describe(const phy_env *env, phy_value value, char *buffer,
             (unsigned)phy_gr_component_view_dimension(view));
         write_text(&writer, " lifted ");
         write_unsigned(&writer, (unsigned)held);
+        break;
+    }
+    case PHY_VALUE_QFT_COMPONENTS: {
+        const phy_qft_component_view *view = value.as.qft_components;
+        size_t bases = 0u;
+        size_t tensors = 0u;
+        for (unsigned space = 0u; space < (unsigned)PHY_QFT_SPACE_COUNT;
+             ++space) {
+            if (phy_qft_component_view_has_basis(
+                    view, (phy_qft_space)space)) {
+                ++bases;
+            }
+        }
+        for (unsigned quantity = 0u;
+             quantity < (unsigned)PHY_QFT_QUANTITY_COUNT; ++quantity) {
+            if (phy_qft_component_view_holds(
+                    view, (phy_qft_quantity)quantity)) {
+                ++tensors;
+            }
+        }
+        write_text(&writer, " SU(");
+        const phy_ir_ref n = phy_qft_component_view_n(view);
+        int64_t integer = 0;
+        if (phy_ir_integer_value(env->ir, n, &integer) &&
+            integer >= 0 && (uint64_t)integer <= (uint64_t)UINT_MAX) {
+            write_unsigned(&writer, (unsigned)integer);
+        } else if (phy_ir_kind_of(env->ir, n) == PHY_IR_SYMBOL) {
+            write_text(
+                &writer,
+                phy_ir_symbol_name(env->ir, phy_ir_head(env->ir, n)));
+        } else {
+            write_text(&writer, "exact");
+        }
+        write_text(&writer, ") spaces 4 bases ");
+        write_unsigned(&writer, (unsigned)bases);
+        write_text(&writer, " tensors ");
+        write_unsigned(&writer, (unsigned)tensors);
         break;
     }
     default:

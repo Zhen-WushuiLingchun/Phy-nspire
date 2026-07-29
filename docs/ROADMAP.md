@@ -28,9 +28,9 @@ Verification:
 - host smoke test — done; the suite covers the platform, relative pointer,
   source language, drawing, notebook, the stateful evaluator, IR, tensor
   storage, differential forms, GR, Lie/QFT foundations, CAS, QFT oracle, and
-  full lifecycle: last strict Windows baseline 41/41, current WSL
-  ASan/UBSan/leak 43/43, and 306,862 explicit checks;
-- generated `.tns` size report — 1,186,793 bytes, 18.9% of the 6 MiB ceiling,
+  full lifecycle: last strict Windows baseline 44/44, current WSL
+  ASan/leak and UBSan 46/46 each, and 309,529 explicit checks;
+- generated `.tns` size report — 1,221,725 bytes, 19.4% of the 6 MiB ceiling,
   with the current evaluator and physics stack linked;
 - launch of a Phy-nspire artifact on the real CX II — done on 2026-07-26 with
   the observable CAS smoke screen;
@@ -118,7 +118,7 @@ Verification:
   stale outputs, Markdown selection, independent run-badge hit testing, 2D
   metrics, nMarkdown LaTeX integration, memory return, and the framebuffer
   fixture;
-- evaluator tests — done, `tests/test_eval.c`, 2,647 checks. The physics cases
+- evaluator tests — done, `tests/test_eval.c`, 2,963 checks. The physics cases
   reproduce, through reader-facing source, results the backend suites already
   certify directly: the U(1) and SU(2) curvature components and vanishing
   Bianchi residuals of `tests/test_yang_mills.c`, the round two-sphere
@@ -146,10 +146,10 @@ CAS APIs survive garbage collection and the probe packages to a 154,924-byte
 observable `phy-cas-smoke.tns` then ran seven symbolic cases on the physical
 CX II on 2026-07-26, displayed 7/7 PASS, and returned cleanly to Documents.
 
-The evaluator's real Ndless check now compiles 55 portable sources, retains
-15/15 public evaluator entry points, packages a 268,388-byte isolated probe,
+The evaluator's real Ndless check now compiles 66 portable sources, retains
+15/15 public evaluator entry points, packages a 330,756-byte isolated probe,
 and contains no float formatter, libm call, or ARM soft-float helper. The
-product is 1,186,793 bytes. The independent SU(N) colour probe retains 23/23
+product is 1,221,725 bytes. The independent SU(N) colour probe retains 23/23
 public APIs, 4,924 bytes of layer text, and packages to 52,764 bytes under the
 same no-float rule. These establish ARM link/package and size, not
 physical-device runtime or performance.
@@ -197,8 +197,11 @@ Deferred with named blocking dependencies:
 - GR now has a checked `ComponentLift` adapter from legacy dense tensor results
   into the shared sparse abstract/component layer. It proves declared Young
   projectors component by component, and `GRComponents` exposes Riemann/Weyl
-  heads with verified `(2,2)` declarations. Expression-native GR producer
-  algorithms and QFT's local-index migration remain open.
+  heads with verified `(2,2)` declarations. `QFTSystem` now migrates the
+  Lorentz, spinor and two colour index spaces plus the shared invariant heads
+  and available exact component tables. Expression-native GR/QFT producer
+  algorithms remain open; the specialized exact reducers have not been
+  rewritten as generic abstract tensor rewrites.
 
 Verification:
 
@@ -286,6 +289,16 @@ SU(3) components. General colour dummy canonicalization, Fierz/completeness,
 finite dimensionally regulated master integrals, general graph generation,
 gauge fixing/ghosts, Ward identities, and renormalization beyond the bounded
 phi4 one-loop MS/MSbar result remain scoped rather than implemented.
+The shared abstract/component migration has now begun through `QFTSystem`.
+Lorentz, spinor, adjoint-colour and fundamental-colour are distinct
+`IndexSpace` objects; eta, momentum, gamma, delta, f, d, generators, gauge
+potential and field strength are typed heads with their proven monoterm
+symmetries. Exact Minkowski components are bound for symbolic or concrete N,
+and bounded concrete colour views add delta plus the built-in SU(2)/SU(3)
+structure constants. The bridge is already checked against the legacy
+`SUNFComponent` backend. Dirac Clifford reduction, colour traces and loop
+integrals remain specialized exact engines reached through the same frontend;
+they have not been rewritten as one giant generic tensor rewrite system.
 The MVP boundary, the pinned
 conventions, the algorithm specification and the verified identity set are in
 [`docs/references/QFT_GAUGE.md`](references/QFT_GAUGE.md); the contracts that
@@ -320,7 +333,8 @@ from the notebook: `LieGroup`,
 `Phi4Diagrams`, `Phi4Graph`, `Phi4Renormalization`, `Phi4Counterterm`, plus `SUNDelta`,
 `SUNF`, `SUND`, `SUNT`, `SUNTrace`,
 `SUNCommutator`, `SUNCF`, `SUNCA`, and the other bounded `SUN*` commands,
-dispatch onto native backends. Typed master-integral and
+dispatch onto native backends. `QFTSystem`, `QFTSpace`, `QFTBasis`, `QFTHead`
+and `QFTTensor` expose the shared abstract/component picture. Typed master-integral and
 gamma/momentum heads remain output vocabulary, not no-op commands.
 
 Verification:

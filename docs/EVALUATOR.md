@@ -109,6 +109,11 @@ one character of lookahead. `Set[name, value]` is the FullForm spelling.
 | `YoungDimension[{{slots...},...},dimension]` | exact hook-content dimension of the Schur module |
 
 `metric` is `NoMetric`, `SymmetricMetric`, or `AntisymmetricMetric`.
+`dimension` may be a positive concrete integer, a symbol, or a formal exact
+scalar expression assembled from symbols, integers/rationals and `+`, `*`,
+`^`. The last form records relations such as `N^2-1`; it is not a proof that
+the expression is positive and integral. A concrete component basis remains
+responsible for supplying a positive runtime dimension.
 `property` is `Commuting`, `NonCommuting`, or the rank-two shortcut
 `Symmetric`/`Antisymmetric`. General signed slot laws use one-based image
 notation, for example
@@ -213,6 +218,49 @@ algorithm. What has migrated is the consumer side: contractions and
 multi-term identities can use the shared abstract evaluator, and the Riemann,
 RiemannUpper and Weyl heads carry `(2,2)` declarations only after component
 import proves them.
+
+### QFT abstract/component system
+
+```text
+qft  = QFTSystem[3]
+L    = QFTSpace[qft,Lorentz]
+C    = QFTSpace[qft,ColorAdjoint]
+eta  = QFTHead[qft,MinkowskiMetric]
+etac = QFTTensor[qft,MinkowskiMetric]
+f    = QFTHead[qft,SUNF]
+fc   = QFTTensor[qft,SUNF]
+```
+
+| Spelling | Result |
+| --- | --- |
+| `QFTSystem[]`, `QFTSystem[N]` | one shared QFT abstract/component view; omitted `N` is the symbol `N` |
+| `QFTSpace[qft,Lorentz\|Spinor\|ColorAdjoint\|ColorFundamental]` | a typed `IndexSpace` |
+| `QFTBasis[qft,space]` | its concrete basis when available |
+| `QFTHead[qft,quantity]` | the shared abstract `TensorHead` |
+| `QFTTensor[qft,quantity]` | an exact sparse realization when available |
+
+The quantity selectors are `MinkowskiMetric`, `MinkowskiInverse`, `Momentum`,
+`DiracGamma`, `SUNDelta`, `SUNF`, `SUND`, `SUNT`, `GaugePotential`, and
+`FieldStrength`. Their slot spaces and monoterm symmetries are part of the
+heads: `SUNF` is totally antisymmetric, `SUND` totally symmetric, and
+`FieldStrength` antisymmetric in its two Lorentz slots. Gamma matrices and
+fundamental generators are noncommuting heads.
+
+The component boundary is intentionally narrower than the abstract one.
+Minkowski `diag(1,-1,-1,-1)` and its inverse are always bound. A concrete
+colour basis within the configured resource ceilings adds `SUNDelta`; the
+built-in SU(2)/SU(3) tables also add exact `SUNF`. `SUND`, `SUNT`, gamma
+matrices and general SU(N) numerical generators are not fabricated:
+`QFTTensor` returns `PHY_ERR_NOT_INITIALIZED` for them. With symbolic `N`,
+`Dimension[QFTSpace[qft,ColorAdjoint]]` is exactly `N^2-1`, while colour
+component bases remain absent.
+
+This adapter does not replace the specialized Dirac trace, Mandelstam or
+colour-trace reducers. It gives their index vocabulary a single typed identity
+and lets the general canonicalizer/component evaluator check contractions and
+slot identities. As with `GRComponents`, one view owns its bases and
+realizations while the notebook's bulk abstract context owns its spaces and
+heads.
 
 ### Differential geometry
 
@@ -462,7 +510,7 @@ its configured arenas.
 
 ## Verification
 
-`tests/test_eval.c`, 2,647 checks. The physics cases deliberately reproduce,
+`tests/test_eval.c`, 2,963 checks. The physics cases deliberately reproduce,
 through reader-facing source, results the backend suites already certify
 directly:
 
@@ -501,9 +549,9 @@ palette that inserts something the evaluator rejects is worse than no palette.
 The ARM link check is `make eval-link-check` and
 `tests/device/eval_link_probe.c`: 15 declared entry points, the whole physics
 stack behind one dispatcher, and the same no-float/no-libm/no-soft-float
-standard the CAS and geometry layers are held to. It now links 55 portable
+standard the CAS and geometry layers are held to. It now links 66 portable
 sources, retains 15/15 public evaluator entry points, contains no forbidden
-float/libm/soft-float dependency, and packages as a 268,388-byte isolated
+float/libm/soft-float dependency, and packages as a 330,756-byte isolated
 probe. That probe size includes its dependencies and is not an incremental
 product-size measurement.
 
@@ -512,8 +560,9 @@ future work has now happened: the application genuinely calls the geometry,
 Lie, Yang--Mills, and QFT layers, so `--gc-sections` no longer drops them.
 The preserved `dist-foundation/phy-nspire.tns` baseline is 1,173,026 bytes.
 The current `dist/phy-nspire.tns`, with the abstract tensor evaluator reachable,
-is 1,186,793 bytes (18.9% of the 6 MiB ceiling); the final ELF retains
+is 1,221,725 bytes (19.4% of the 6 MiB ceiling); the final ELF retains
 `phy_index_space_create`, `phy_tensor_head_create_with_symmetries`,
 `phy_tensor_monomial_create`, `phy_tensor_monomial_canonicalize`,
 `phy_tensor_monomial_young_project`, and
-`phy_tensor_expression_term_count`.
+`phy_tensor_expression_term_count`, together with the GR and QFT bridge entry
+points.

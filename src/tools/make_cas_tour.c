@@ -146,6 +146,20 @@ static const tour_cell kTour[] = {
      "R5[Down[j],Down[i],Down[k],Down[l],Down[m]]]",
      NULL},
     {TOUR_INPUT, "Rank[R5]", NULL},
+    {TOUR_INPUT,
+     "RY=TensorHead[{Va,Va,Va,Va},Commuting,"
+     "{Symmetry[{2,1,3,4},-1],Symmetry[{1,2,4,3},-1],"
+     "Symmetry[{3,4,1,2},1]}]",
+     NULL},
+    {TOUR_INPUT,
+     "YoungDeclare[RY,{{1,3},{2,4}},RowLast]", NULL},
+    {TOUR_INPUT, "YoungDimension[{{1,3},{2,4}},4]", NULL},
+    {TOUR_INPUT,
+     "YoungReduce["
+     "RY[Down[a1],Down[b1],Down[c1],Down[d1]]"
+     "+RY[Down[a1],Down[c1],Down[d1],Down[b1]]"
+     "+RY[Down[a1],Down[d1],Down[b1],Down[c1]]]",
+     NULL},
 
     {TOUR_MARKDOWN, "Exact dynamic linear algebra",
      "$$A=\\begin{pmatrix}1&2\\\\3&4\\end{pmatrix},\\quad "
@@ -232,6 +246,21 @@ static const tour_cell kTour[] = {
     {TOUR_INPUT, "ZeroQ[Weyl[c]]", NULL},
     {TOUR_INPUT, "WeylSquared[c]", NULL},
     {TOUR_INPUT, "GeodesicAcceleration[c,v]", NULL},
+    {TOUR_INPUT,
+     "gr=GRComponents[c,{Weyl,RiemannUpper}]", NULL},
+    {TOUR_INPUT, "Rh=GRHead[gr,Riemann]", NULL},
+    {TOUR_INPUT, "Rhc=GRTensor[gr,Riemann]", NULL},
+    {TOUR_INPUT,
+     "YoungReduce["
+     "Rh[Down[ga],Down[gb],Down[gc],Down[gd]]"
+     "+Rh[Down[ga],Down[gc],Down[gd],Down[gb]]"
+     "+Rh[Down[ga],Down[gd],Down[gb],Down[gc]]]",
+     NULL},
+    {TOUR_INPUT,
+     "ComponentValue["
+     "Rh[Down[ga],Down[gb],Down[gc],Down[gd]],"
+     "{Rhc},{0,1,0,1}]",
+     NULL},
 
     {TOUR_MARKDOWN, "Lie algebra and Yang-Mills",
      "$$F=dA+\\frac{g}{2}[A,A],\\quad D_AF=0$$"},
@@ -257,7 +286,36 @@ static const tour_cell kTour[] = {
 
     {TOUR_MARKDOWN, "Scalar QFT, Dirac and colour",
      "$$\\mathcal{L}=\\frac{1}{2}(\\partial\\phi)^2"
-     "-\\frac{1}{2}m^2\\phi^2-\\frac{\\lambda}{4!}\\phi^4$$"},
+     "-\\frac{1}{2}m^2\\phi^2-\\frac{\\lambda}{4!}\\phi^4$$"
+     " Lorentz, spinor, adjoint-colour and fundamental-colour indices are "
+     "different typed spaces. The shared component picture binds exact "
+     "Minkowski and built-in SU(3) invariant tensors to the same abstract "
+     "heads used by tensor canonicalization."},
+    {TOUR_INPUT, "qft=QFTSystem[3]", NULL},
+    {TOUR_INPUT, "Lq=QFTSpace[qft,Lorentz]", NULL},
+    {TOUR_INPUT, "Cq=QFTSpace[qft,ColorAdjoint]", NULL},
+    {TOUR_INPUT, "Dimension[Cq]", NULL},
+    {TOUR_INPUT, "etaD=QFTHead[qft,MinkowskiMetric]", NULL},
+    {TOUR_INPUT, "etaDc=QFTTensor[qft,MinkowskiMetric]", NULL},
+    {TOUR_INPUT, "etaU=QFTHead[qft,MinkowskiInverse]", NULL},
+    {TOUR_INPUT, "etaUc=QFTTensor[qft,MinkowskiInverse]", NULL},
+    {TOUR_INPUT,
+     "ComponentValue["
+     "etaD[Down[qm],Down[qn]]*etaU[Up[qn],Up[qr]],"
+     "{etaDc,etaUc},{1,1}]",
+     NULL},
+    {TOUR_INPUT, "fQ=QFTHead[qft,SUNF]", NULL},
+    {TOUR_INPUT, "fQc=QFTTensor[qft,SUNF]", NULL},
+    {TOUR_INPUT,
+     "ComponentValue[fQ[Up[qa],Up[qb],Up[qc]],"
+     "{fQc},{0,1,2}]",
+     NULL},
+    {TOUR_INPUT, "FQ=QFTHead[qft,FieldStrength]", NULL},
+    {TOUR_INPUT,
+     "TensorCanonicalize["
+     "FQ[Up[qa],Down[qm],Down[qn]]"
+     "+FQ[Up[qa],Down[qn],Down[qm]]]",
+     NULL},
     {TOUR_INPUT, "Phi4Lagrangian[phi,m,lambda,4]", NULL},
     {TOUR_INPUT, "Phi4EOM[phi,m,lambda,4]", NULL},
     {TOUR_INPUT, "Phi4Diagrams[phi,m,lambda,4,s,t,u]", NULL},
@@ -287,6 +345,7 @@ static const tour_cell kTour[] = {
     {TOUR_INPUT, "SUNExpandCasimirs[C_F+C_A,Nc]", NULL},
     {TOUR_INPUT, "SUNFundamentalCasimir[Nc]", NULL},
     {TOUR_INPUT, "SUNAdjointCasimir[ca,cb,Nc]", NULL},
+    {TOUR_INPUT, "ClearAll[]", NULL},
 
     {TOUR_MARKDOWN, "Deep symbolic stress: Schwarzschild",
      "$$R=0,\\qquad R_{abcd}R^{abcd}=\\frac{12r_s^2}{r^6}$$"},
@@ -314,7 +373,7 @@ static const tour_cell kTour[] = {
     {TOUR_MARKDOWN, "Exact decisions and resource bounds",
      "$$L=I-V+1,\\quad \\omega=DL-2I,\\quad "
      "w=\\frac{\\lambda^V}{S}$$"},
-    {TOUR_INPUT, "ZeroQ[CovariantDerivative[Ricci[c],c]]", NULL},
+    {TOUR_INPUT, "ZeroQ[CovariantDerivative[Ricci[cs],cs]]", NULL},
     {TOUR_INPUT, "MemoryStatus[]", NULL},
 };
 

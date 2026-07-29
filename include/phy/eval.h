@@ -113,6 +113,7 @@
 #include "phy/geom.h"
 #include "phy/gr.h"
 #include "phy/gr_bridge.h"
+#include "phy/qft_bridge.h"
 #include "phy/ir.h"
 #include "phy/linear.h"
 #include "phy/map.h"
@@ -175,7 +176,8 @@ typedef enum {
     PHY_VALUE_COORDINATE_MAP,
     PHY_VALUE_BASIS_TRANSITION,
     PHY_VALUE_ATLAS,
-    PHY_VALUE_GR_COMPONENTS
+    PHY_VALUE_GR_COMPONENTS,
+    PHY_VALUE_QFT_COMPONENTS
 } phy_value_kind;
 
 /*
@@ -221,6 +223,7 @@ typedef struct {
         const phy_basis_transition *basis_transition;
         phy_atlas *atlas;
         const phy_gr_component_view *gr_components;
+        const phy_qft_component_view *qft_components;
     } as;
 } phy_value;
 

@@ -4,7 +4,7 @@
  * The model owns one typed-IR context, one native CAS, and one evaluator
  * environment. Cell source remains separate from evaluated IR so a failed
  * calculation never makes the document unsaveable. Storage is bounded: this
- * first shell has 192 cells and fixed source buffers rather than untracked
+ * first shell has fixed cell and source buffers rather than untracked
  * heap growth.
  *
  * Cells are no longer independent. A cell may bind a name that later cells
@@ -12,7 +12,7 @@
  * stale, and a document reopened from disk starts with an empty environment
  * until phy_notebook_evaluate_all replays it.
  *
- * The document remains bounded: at most 320 source/Markdown/output cards and
+ * The document remains bounded: at most 400 source/Markdown/output cards and
  * 128 KiB serialized. This leaves room for the exhaustive command tour plus
  * its generated outputs and user cells while keeping the calculator-side
  * model a single predictable allocation.
@@ -34,12 +34,12 @@ extern "C" {
 #endif
 
 /*
- * The CAS tour carries more than 140 source cells and evaluation owns one
- * output per input. 320 cards leave a deliberate margin above the evaluated
+ * The CAS tour carries more than 170 source cells and evaluation owns one
+ * output per input. 400 cards leave a deliberate margin above the evaluated
  * acceptance document instead of making each new command consume the last
- * available slot.
+ * available slot. This is still one predictable allocation on the calculator.
  */
-#define PHY_NOTEBOOK_MAX_CELLS 320u
+#define PHY_NOTEBOOK_MAX_CELLS 400u
 #define PHY_NOTEBOOK_DOCUMENT_MAX_BYTES (128u * 1024u)
 
 typedef struct phy_notebook phy_notebook;

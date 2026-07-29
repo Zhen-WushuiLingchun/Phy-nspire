@@ -125,7 +125,8 @@ The evaluated object heads are:
 - exact linear algebra — `Vector`, `Matrix`, `Dot`, `Transpose`,
   `Determinant`, `Inverse`, `RowReduce`, `MatrixRank`, `LinearSolve`;
 - abstract/components — `IndexSpace`, `TensorHead`, indexed head application,
-  `TensorCanonicalize`, `YoungProject`, `ComponentBasis`,
+  `TensorCanonicalize`, `YoungProject`, `YoungDeclare`, `YoungReduce`,
+  `GarnirRelation`, `YoungDimension`, `ComponentBasis`,
   `TensorComponents`, `ComponentLift`, `ComponentValue`;
 - maps/atlas — `CoordinateMap`, `BasisTransition`, `Jacobian`,
   `PullbackScalar`, `PullbackCovector`, `PushForwardVector`,
@@ -144,7 +145,8 @@ The evaluated object heads are:
   `Phi4Diagrams`, `Phi4Graph`, `Phi4Renormalization`, `Phi4Counterterm`, `SUNDelta`,
   `SUNF`, `SUND`, `SUNT`, `SUNTrace`,
   `SUNCommutator`, `SUNDeltaContract`, `SUNCF`, `SUNCA`, `SUNFComponent`,
-  `SUNExpandCasimirs`, `SUNFundamentalCasimir`, `SUNAdjointCasimir`;
+  `SUNExpandCasimirs`, `SUNFundamentalCasimir`, `SUNAdjointCasimir`,
+  `QFTSystem`, `QFTSpace`, `QFTBasis`, `QFTHead`, `QFTTensor`;
 - queries — `Component`, `Degree`, `Dimension`, `Dimensions`, `Rank`, `ZeroQ`,
   `EquivalentQ`.
 

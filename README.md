@@ -81,7 +81,13 @@ with explicit head and bases; a declared Young module is checked by proving
 proven legacy pipeline, while `GRComponents` publishes proved abstract heads
 and sparse realizations; covariant/contravariant Riemann and Weyl heads carry
 the verified `(2,2)` Young declaration. Independent-component iteration
-remains pending. Validated
+remains pending. `QFTSystem` now gives the Lorentz, spinor, adjoint-colour and
+fundamental-colour objects the same abstract identity. Its typed heads cover
+the Minkowski metric, momentum, Dirac gamma, SU(N) invariants/generators, gauge
+potential and field strength; exact Minkowski components are always present,
+while concrete SU(2)/SU(3) views also bind the built-in delta and structure-
+constant tables. Symbolic SU(N) retains `Dimension[ColorAdjoint]=N^2-1`
+without inventing a numerical colour basis. Validated
 coordinate maps add
 exact Jacobians, proved two-way transitions, arbitrary-degree exterior-form
 pullbacks through exact minors, vector pushforwards along maps, a bounded atlas
@@ -111,6 +117,9 @@ exact `F wedge star_g(F)` densities. A four-dimensional Lorentz/Dirac layer
 adds typed momenta and index spaces, Clifford normalisation and contraction,
 traces without gamma-five, routed Mandelstam reduction, and exact symbolic
 SU(N) colour tensors, traces, commutators, and Casimirs with symbolic `N`.
+Those domain algorithms remain specialized exact reducers, but their indices
+and invariant tensors now cross an explicit `QFTSystem` adapter into the
+shared abstract/component canonicalizer.
 The scalar sector also exposes convention-pinned one-loop MS/MSbar
 renormalization constants and the local phi4 counterterm density for
 `D = 4 - 2 epsilon`. A bounded connected phi4 multigraph command proves
@@ -140,19 +149,22 @@ survived a round trip and nothing computed.
 
 The generated
 [`examples/phy-nspire-cas-tour.tns`](examples/phy-nspire-cas-tour.tns)
-notebook combines sixteen Markdown/LaTeX explanations with 152 executable examples
-that touch every implemented evaluator family. Its distributable form contains 168
+notebook combines sixteen Markdown/LaTeX explanations with 176 executable examples
+that touch every implemented evaluator family. Its distributable form contains 192
 source cells so opening does not eagerly rebuild all cached results; a separate
 fully evaluated copy is serialized, reopened, and replayed during generation.
 
-The strict Windows host suite passes 41/41. The WSL ASan/UBSan/leak suite
-passes 43/43, and the assertion-bearing executables contain 307,035 explicit
+The strict Windows host suite passes 44/44. The WSL ASan/leak and UBSan suites
+each pass 46/46, and the assertion-bearing executables contain 309,529 explicit
 checks.
 
-The current native build is measured at 1,210,234 bytes, 19.2% of the 6 MiB
+The current native build is measured at 1,221,725 bytes, 19.4% of the 6 MiB
 ceiling. Its evaluator ARM probe links the complete current physics stack,
 retains 15/15 public evaluator entry points, packages to a `.tns`, and imports
 no libm, floating-point formatter, or ARM soft-float helper.
+The QFT abstract/component probe independently retains 13/13 public entry
+points and packages with its dependencies to 94,952 bytes under the same
+no-float rule.
 The separate dynamic-component bridge probe retains 35/35 public entry points,
 packages to a 97,196-byte `.tns`, and also imports no floating-point
 formatter or parser.
@@ -166,9 +178,9 @@ verified byte-for-byte by calculator readback. The evaluator build still
 requires an explicit calculator acceptance run after transfer; an ARM link and
 byte-identical upload do not establish on-device runtime or performance. That
 cached tour exposed a CX II load-time failure consistent with eager IR/heap
-pressure and has since been replaced by the 10,370-byte source-only tour; the
-replacement and the current 1,186,793-byte program have not been uploaded in
-this build and still require explicit calculator open/run checks. The
+pressure and has since been replaced by the 12,200-byte source-only tour; that
+tour and the current 1,221,725-byte program still require explicit calculator
+open/run checks. The
 separate baseline channel-order check remains tracked in
 [docs/BUILD.md](docs/BUILD.md).
 

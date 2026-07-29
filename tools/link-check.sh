@@ -22,7 +22,7 @@
 # Nothing here touches dist/. The probe is built into its own directory and
 # is never linked into the product.
 #
-# Usage: tools/link-check.sh [ir|exact|cas|algebraic|geom|ym|color|eval]
+# Usage: tools/link-check.sh [ir|exact|cas|algebraic|geom|ym|color|qftbridge|eval]
 #        (default ir)
 #        after eval "$(tools/bootstrap-ndless.sh --env-only)"
 
@@ -86,7 +86,9 @@ PHYSICS_SOURCES=(
     src/abstract/head.c
     src/abstract/monomial.c
     src/abstract/canonical.c
+    src/abstract/dgs.c
     src/abstract/young.c
+    src/abstract/garnir.c
     src/component/basis.c
     src/component/component.c
     src/component/bridge.c
@@ -96,12 +98,14 @@ PHYSICS_SOURCES=(
     src/permutation/bsgs.c
     src/permutation/orbit.c
     src/gr/gr.c
+    src/gr/bridge.c
     src/lie/lie.c
     src/qft/scalar.c
     src/qft/lorentz.c
     src/qft/dirac.c
     src/qft/mandelstam.c
     src/qft/color.c
+    src/qft/bridge.c
     src/geom/manifold.c
     src/geom/form.c
     src/geom/exterior.c
@@ -214,6 +218,35 @@ color)
              src/lie/lie.c
              src/qft/color.c)
     ;;
+qftbridge)
+    LABEL="QFT abstract/component bridge"
+    PROBE="tests/device/qft_bridge_link_probe.c"
+    HEADER="include/phy/qft_bridge.h"
+    OBJECT_GLOB="src_qft_bridge.o"
+    SYMBOL_RE='phy_qft_'
+    EXCLUDE='^$'
+    MIN_ENTRY_POINTS=12
+    SOURCES=("${COMMON_SOURCES[@]}" "${CAS_SOURCES[@]}"
+             src/tensor/chart.c
+             src/tensor/symmetry.c
+             src/tensor/tensor.c
+             src/tensor/ops.c
+             src/abstract/index.c
+             src/abstract/head.c
+             src/abstract/monomial.c
+             src/abstract/canonical.c
+             src/abstract/young.c
+             src/abstract/garnir.c
+             src/component/basis.c
+             src/component/component.c
+             src/component/bridge.c
+             src/permutation/perm.c
+             src/permutation/bsgs.c
+             src/permutation/orbit.c
+             src/lie/lie.c
+             src/qft/color.c
+             src/qft/bridge.c)
+    ;;
 eval)
     LABEL="evaluator"
     PROBE="tests/device/eval_link_probe.c"
@@ -229,7 +262,7 @@ eval)
              src/eval/display.c)
     ;;
 *)
-    echo "usage: tools/link-check.sh [ir|exact|cas|algebraic|geom|ym|color|eval]" >&2
+    echo "usage: tools/link-check.sh [ir|exact|cas|algebraic|geom|ym|color|qftbridge|eval]" >&2
     exit 2
     ;;
 esac
@@ -404,6 +437,7 @@ if [ "$LAYER" = "exact" ] || [ "$LAYER" = "cas" ] ||
    [ "$LAYER" = "algebraic" ] ||
    [ "$LAYER" = "geom" ] ||
    [ "$LAYER" = "ym" ] || [ "$LAYER" = "color" ] ||
+   [ "$LAYER" = "qftbridge" ] ||
    [ "$LAYER" = "eval" ]; then
     STRICT_FLOAT=1
     BANNED_PATTERN+='|[[:space:]]_?(sin|cos|tan|exp|log|pow|sqrt|floor|ceil|fmod)$|__aeabi_[df]'

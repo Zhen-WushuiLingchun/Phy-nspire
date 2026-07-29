@@ -59,8 +59,14 @@ size_t phy_abstract_head_count(const phy_abstract_context *context);
 size_t phy_abstract_bytes_used(const phy_abstract_context *context);
 
 /*
- * `dimension` is PHY_IR_NULL (unknown), a positive exact integer, or a symbol.
- * Symbolic dimensions remain abstract until a component basis is supplied.
+ * `dimension` is PHY_IR_NULL (unknown), a positive exact integer, or a formal
+ * exact scalar expression built from symbols, integers, rationals and
+ * +, *, ^.  Thus an adjoint SU(N) space can carry N^2-1 instead of losing the
+ * relation behind an unrelated placeholder symbol.  A non-atomic formal
+ * expression is not asserted positive or integral; those remain assumptions
+ * of the mathematical model, and a concrete component basis must still
+ * provide a positive integer dimension that agrees whenever the dimension is
+ * already known numerically.
  */
 phy_status phy_index_space_create(phy_abstract_context *context,
                                   const char *name, phy_ir_ref dimension,

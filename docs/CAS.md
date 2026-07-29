@@ -641,14 +641,14 @@ counts are recorded in `CAS_ACCEPTANCE.md` after each clean build.
 
 Built with the pinned Ndless r2022 SDK and ARM GNU 14.3 toolchain using
 `-Os -marm`. The isolated link check compiles the complete scalar layer to
-109,101 bytes of ARM text; its dependency-complete probe packages to 154,924
+109,160 bytes of ARM text; its dependency-complete probe packages to 154,996
 bytes. These figures are deliberately measured by the link-check target rather
 than maintained as a hand-summed per-object table.
 
 The application now calls the CAS and the typed physics backends through
 editable notebook cells. The current product, including persistence,
-nMarkdown's math typesetter, and the reachable evaluator stack, is 1,186,793
-bytes (18.9% of the 6 MiB ceiling).
+nMarkdown's math typesetter, and the reachable evaluator stack, is 1,221,725
+bytes (19.4% of the 6 MiB ceiling).
 
 `make cas-link-check` closes the gap that leaves. It is the same guard as
 `make ir-link-check`, and `tools/link-check.sh` now serves both layers from one

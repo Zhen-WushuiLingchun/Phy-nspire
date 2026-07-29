@@ -505,15 +505,17 @@ phy_status phy_young_gl_dimension(const phy_young_tableau *tableau,
                 *out_dimension = 0u;
                 return PHY_OK;
             }
-            if (dimension >= row &&
-                (uint64_t)(dimension - row) >
-                    UINT64_MAX - (uint64_t)column) {
-                return PHY_ERR_OVERFLOW;
+            if (dimension >= row) {
+                uint64_t base = (uint64_t)(dimension - row);
+                uint64_t numerator = base + (uint64_t)column;
+                if (numerator < base) {
+                    return PHY_ERR_OVERFLOW;
+                }
+                numerators[cell] = numerator;
+            } else {
+                numerators[cell] =
+                    (uint64_t)(column - (row - dimension));
             }
-            numerators[cell] =
-                dimension >= row
-                    ? (uint64_t)(dimension - row) + (uint64_t)column
-                    : (uint64_t)(column - (row - dimension));
             uint64_t hook =
                 (uint64_t)tableau->row_lengths[row] - (uint64_t)column;
             for (size_t below = row + 1u;

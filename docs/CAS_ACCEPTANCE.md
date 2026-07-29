@@ -8,39 +8,39 @@ evidence.
 ## Executable notebook
 
 [`examples/phy-nspire-cas-tour.tns`](../examples/phy-nspire-cas-tour.tns) is a
-10,370-byte `PHYNB001` notebook with 168 source cards:
+12,200-byte `PHYNB001` notebook with 192 source cards:
 
 - sixteen Markdown cells with nMarkdown LaTeX;
-- 152 editable Math inputs;
+- 176 editable Math inputs;
 - no eagerly persisted output/IR cache.
 
 The generator evaluates a validation copy of the complete document, serializes
 it, opens it in a new notebook with an empty environment, and runs every cell
 again. It separately serializes and reopens the source-only artifact before
 writing it. Generation fails on any parse, evaluation, serialization, reopen,
-or replay error. The source-only form avoids rebuilding 296 cached IR trees
-during `FILE > Open`; running all inputs produces 152 typed outputs and
-a 320-card session. The inputs touch every currently implemented evaluator
+or replay error. The source-only form avoids rebuilding the cached input/output
+IR trees during `FILE > Open`; running all inputs produces 176 typed outputs and
+a 368-card session. The inputs touch every currently implemented evaluator
 family at least once:
 
 | Area | Successful reader-facing heads |
 | --- | --- |
 | scalar | bare exact expressions, protected constants and special values, arbitrary-precision Gaussian-rational arithmetic, `Re`, `Im`, `Conjugate`, `Abs`, assignment, `Simplify`, `FullSimplify`, `Expand`, `Together`, sparse multivariate `Cancel`, bounded exact `Factor`, `Apart`, `Series`, `Normal`, exact finite/directed/infinity `Limit`, exact polynomial and linear-system `Solve`, `Numerator`, `Denominator`, `D`, verified `Integrate`, inverse/hyperbolic/Gamma/error functions |
 | exact linear algebra | dynamic `Vector` / `Matrix`, `Dot`, `Determinant`, `Inverse`, `RowReduce`, `MatrixRank`, `LinearSolve`, `Transpose`, `Dimensions` |
-| abstract/component bridge | `IndexSpace`, `TensorHead`, `TensorCanonicalize`, `YoungProject`, exact abstract expression algebra, `ComponentBasis`, `TensorComponents`, checked legacy `ComponentLift`, expression-wide `ComponentValue` |
+| abstract/component bridge | `IndexSpace`, formal exact dimensions, `TensorHead`, `TensorCanonicalize`, `YoungProject`, `YoungDeclare`, `YoungReduce`, `YoungDimension`, exact abstract expression algebra, `ComponentBasis`, `TensorComponents`, checked legacy `ComponentLift`, expression-wide `ComponentValue` |
 | maps and atlases | `CoordinateMap`, verified `BasisTransition`, `Jacobian`, scalar/covector/vector maps, sparse mixed-valence tensor pullback, direct-edge `Atlas` operations |
 | tensor/manifold | `Manifold`, `ComponentTensor`, `Metric`, `VectorField`, `Component`, `Rank`, `Dimension` |
 | exterior geometry | `DifferentialForm`, `Wedge`, `ExteriorD`, `InteriorProduct`, `LieDerivative`, `HodgeStar`, `Volume`, `Degree` |
 | Lie/Yang--Mills | `LieGroup`, `LieAlgebra`, `Generator`, `LieElement`, `LieBracket`, `StructureConstant`, `Killing`, `LieForm`, `GaugeConnection`, `CovariantD`, `FieldStrength`, `GaugeVariation`, `Bianchi`, `YangMillsLagrangian`, `ColorComponent` |
-| GR | `Curvature`, `InverseMetric`, `Christoffel`, `RiemannMixed`, `Riemann`, `Ricci`, `RicciScalar`, `Einstein`, `Kretschmann`, `Weyl`, `WeylSquared`, `GeodesicAcceleration`, `CovariantDerivative` |
-| scalar/Dirac QFT | `Phi4Lagrangian`, `Phi4EOM`, `Phi4Diagrams`, `Phi4Graph`, `Phi4Renormalization`, `Phi4Counterterm`, `DiracTrace`, `MandelstamReduce` |
+| GR | `Curvature`, `InverseMetric`, `Christoffel`, `RiemannMixed`, `Riemann`, `Ricci`, `RicciScalar`, `Einstein`, `Kretschmann`, `Weyl`, `WeylSquared`, `GeodesicAcceleration`, `CovariantDerivative`, `GRComponents`/`GRHead`/`GRTensor`, and automatic first-Bianchi reduction |
+| scalar/Dirac QFT | `Phi4Lagrangian`, `Phi4EOM`, `Phi4Diagrams`, `Phi4Graph`, `Phi4Renormalization`, `Phi4Counterterm`, `DiracTrace`, `MandelstamReduce`, `QFTSystem`/`QFTSpace`/`QFTHead`/`QFTTensor` |
 | SU(N) colour | `SUNDelta`, `SUNF`, `SUND`, `SUNT`, `SUNTrace`, `SUNCommutator`, `SUNDeltaContract`, `SUNCF`, `SUNCA`, `SUNFComponent`, `SUNExpandCasimirs`, `SUNFundamentalCasimir`, `SUNAdjointCasimir` |
 | decisions/resources | `ZeroQ`, `EquivalentQ`, `MemoryStatus` |
 
-The tour uses one staged `ClearAll[]` after its abstract/component bridge
-examples. This keeps the object table bounded, exercises the successful empty
-output document path, and then recreates the manifold needed by the remaining
-geometry and QFT cells.
+The tour uses staged `ClearAll[]` boundaries after its map/atlas examples and
+after its first QFT session. This keeps the object table bounded, exercises
+the successful empty-output document path, and recreates only the state needed
+by the following geometry or stress cells.
 
 ## Meaning of a general tensor
 
@@ -49,17 +49,22 @@ geometry and QFT cells.
 suite constructs all five ranks, exhausts all 31 variance patterns, and checks
 malformed shapes. The tour contains ranks 0, 1, 2, 3, and 4.
 
-This is a bounded dense component tensor system, not an unbounded abstract-index
-canonicalizer. Abstract `Tensor[head,indices...]` expressions can use generic
-`Up[i]`/`Down[j]`; Lorentz, colour, and spinor space labels are required only
-where the QFT type checker must reject a cross-space operation.
+The legacy `ComponentTensor` constructor is the bounded rank-four dense path.
+The shared component library instead uses runtime rank (default ceiling 32)
+with dense/sparse storage, while abstract `Tensor[head,indices...]` allocates
+no `dimension^rank` array and has a separate default 64-slot ceiling. Abstract
+expressions receive signed-slot and dummy-index canonicalization plus bounded
+Young/Garnir reduction. These explicit resource bounds are not a claim of
+unbounded xPerm/xTensor equivalence. Lorentz, colour, and spinor space labels
+are required only where the QFT type checker must reject a cross-space
+operation.
 
 ## Automated evidence
 
-- Last Windows strict build and CTest: 41/41.
-- Current WSL ASan, UBSan, and leak detection: 43/43.
-- Assertion-bearing tests: 307,035 checks.
-- Ndless r2022 ARM product: 1,210,234 bytes, 19.2% of the 6 MiB ceiling.
+- Last Windows strict build and CTest: 44/44.
+- Current WSL ASan/leak and UBSan runs: 46/46 each.
+- Assertion-bearing tests: 309,529 checks.
+- Ndless r2022 ARM product: 1,221,725 bytes, 19.4% of the 6 MiB ceiling.
 - Isolated exact-number ARM probe: 68/68 public APIs, 17,680 bytes of exact
   number text, 23,540-byte package, and no forbidden numeric dependency.
 - Isolated real-algebraic ARM probe: 28/28 public APIs, 24,256 bytes of
@@ -67,9 +72,11 @@ where the QFT type checker must reject a cross-space operation.
 - Isolated CAS ARM probe: 35/35 public APIs, 109,160 bytes of CAS text,
   154,996-byte package, and no float formatter, libm call, or ARM soft-float
   helper.
-- Isolated evaluator ARM probe: 15/15 public APIs, 48,055 bytes of evaluator
-  text, 310,636-byte package, and no float formatter, libm call, or ARM
+- Isolated evaluator ARM probe: 15/15 public APIs, 52,423 bytes of evaluator
+  text, 330,756-byte package, and no float formatter, libm call, or ARM
   soft-float helper.
+- Isolated QFT abstract/component bridge probe: 13/13 public APIs, 2,940
+  bytes of bridge text, 94,952-byte package, and the same no-float guarantee.
 
 These results establish source, host, sanitizer, and ARM-link acceptance. They
 do not establish calculator interaction, timing, or heap headroom until the
@@ -88,9 +95,9 @@ pullback, and direct-edge `Atlas` commands are implemented. General automatic
 transition-path composition and independent-component output iteration remain
 typed unsupported. There is no
 global-topology or named-manifold catalogue, no unlimited-resource tensor rank,
-no general Garnir-basis reducer, no gamma-five, and no general loop-integral
-reduction engine. Calling those absences implemented would turn a typed failure
-into a false scientific claim.
+no unbounded or optimized xPerm port, no gamma-five, and no general
+loop-integral reduction engine. Calling those absences implemented would turn
+a typed failure into a false scientific claim.
 
 The exact promotion order and the positive/negative cases that must change
 those statuses are frozen in

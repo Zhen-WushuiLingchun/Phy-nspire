@@ -168,6 +168,7 @@ add_library(phy_core STATIC
     src/qft/dirac.c
     src/qft/mandelstam.c
     src/qft/color.c
+    src/qft/bridge.c
     src/exact/context.c
     src/exact/integer.c
     src/exact/rational.c
@@ -255,7 +256,7 @@ if(BUILD_TESTING)
                   test_linear test_abstract_tensor test_permutation
                   test_young_garnir
                   test_component_tensor test_component_bridge
-                  test_gr_bridge
+                  test_gr_bridge test_qft_bridge
                   test_coordinate_map test_atlas)
         # test_series is appended below because it also sees the internal
         # bounded-series contract.

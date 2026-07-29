@@ -1189,6 +1189,131 @@ static void test_qft_heads_reach_native_backends(void)
     fixture_close(&f);
 }
 
+static void test_qft_shared_abstract_component_frontend(void)
+{
+    fixture f = fixture_open();
+
+    phy_value system = run(&f, "qft = QFTSystem[3]");
+    PHY_CHECK_EQ_INT(system.kind, PHY_VALUE_QFT_COMPONENTS);
+    PHY_CHECK_EQ_STR(
+        describe(&f, system),
+        "QFTSystem SU(3) spaces 4 bases 4 tensors 4");
+
+    PHY_CHECK_EQ_INT(
+        run(&f, "L = QFTSpace[qft,Lorentz]").kind,
+        PHY_VALUE_INDEX_SPACE);
+    PHY_CHECK_EQ_INT(
+        run(&f, "C = QFTSpace[qft,ColorAdjoint]").kind,
+        PHY_VALUE_INDEX_SPACE);
+    expect_scalar(&f, "Dimension[L]", "4");
+    expect_scalar(&f, "Dimension[C]", "8");
+    PHY_CHECK_EQ_INT(
+        run(&f, "Lb = QFTBasis[qft,Lorentz]").kind,
+        PHY_VALUE_COMPONENT_BASIS);
+
+    (void)run(&f, "etaD = QFTHead[qft,MinkowskiMetric]");
+    (void)run(&f, "etaDc = QFTTensor[qft,MinkowskiMetric]");
+    (void)run(&f, "etaU = QFTHead[qft,MinkowskiInverse]");
+    (void)run(&f, "etaUc = QFTTensor[qft,MinkowskiInverse]");
+    expect_scalar(
+        &f,
+        "ComponentValue[etaD[Down[mu],Down[nu]],{etaDc},{0,0}]",
+        "1");
+    expect_scalar(
+        &f,
+        "ComponentValue[etaD[Down[mu],Down[nu]],{etaDc},{1,1}]",
+        "-1");
+    expect_scalar(
+        &f,
+        "ComponentValue["
+        "etaD[Down[mu],Down[nu]]*etaU[Up[nu],Up[rho]],"
+        "{etaDc,etaUc},{1,1}]",
+        "1");
+    expect_scalar(
+        &f,
+        "ComponentValue["
+        "etaD[Down[mu],Down[nu]]*etaU[Up[nu],Up[rho]],"
+        "{etaDc,etaUc},{1,0}]",
+        "0");
+
+    (void)run(&f, "fh = QFTHead[qft,SUNF]");
+    (void)run(&f, "fc = QFTTensor[qft,SUNF]");
+    expect_scalar(
+        &f,
+        "ComponentValue[fh[Up[a],Up[b],Up[c]],{fc},{0,1,2}]",
+        "1");
+    expect_scalar(
+        &f,
+        "ComponentValue[fh[Up[b],Up[a],Up[c]],{fc},{1,0,2}]",
+        "-1");
+    expect_decision(
+        &f,
+        "EquivalentQ["
+        "ComponentValue[fh[Up[a],Up[b],Up[c]],{fc},{0,1,2}],"
+        "SUNFComponent[3,1,2,3]]",
+        "True");
+
+    (void)run(&f, "FS = QFTHead[qft,FieldStrength]");
+    phy_value antisymmetry = run(
+        &f,
+        "TensorCanonicalize["
+        "FS[Up[a],Down[mu],Down[nu]]"
+        "+FS[Up[a],Down[nu],Down[mu]]]");
+    PHY_CHECK_EQ_INT(
+        antisymmetry.kind, PHY_VALUE_ABSTRACT_EXPRESSION);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_term_count(
+            antisymmetry.as.abstract_expression),
+        0);
+
+    (void)run(&f, "ga = QFTHead[qft,DiracGamma]");
+    expect_status(
+        &f,
+        "ga[Up[a,ColorAdjoint],Down[i,Spinor],Up[j,Spinor]]",
+        PHY_ERR_TYPE);
+    PHY_CHECK_EQ_INT(
+        run(
+            &f,
+            "ga[Up[mu,Lorentz],Down[i,Spinor],Up[j,Spinor]]")
+            .kind,
+        PHY_VALUE_ABSTRACT_TENSOR);
+
+    expect_status(
+        &f, "QFTTensor[qft,DiracGamma]", PHY_ERR_NOT_INITIALIZED);
+    expect_status(
+        &f, "QFTHead[qft,NotAQFTTensor]", PHY_ERR_PARSE);
+    expect_status(&f, "QFTSpace[qft,UnknownSpace]", PHY_ERR_PARSE);
+    expect_status(&f, "QFTSpace[3,Lorentz]", PHY_ERR_TYPE);
+
+    phy_env_reset(f.env);
+    PHY_CHECK_EQ_INT(phy_env_object_count(f.env), 0);
+    fixture_close(&f);
+}
+
+static void test_qft_symbolic_n_frontend(void)
+{
+    fixture f = fixture_open();
+    phy_value system = run(&f, "qft = QFTSystem[]");
+    PHY_CHECK_EQ_INT(system.kind, PHY_VALUE_QFT_COMPONENTS);
+    PHY_CHECK_EQ_STR(
+        describe(&f, system),
+        "QFTSystem SU(N) spaces 4 bases 2 tensors 2");
+    (void)run(&f, "C = QFTSpace[qft,ColorAdjoint]");
+    expect_decision(
+        &f, "EquivalentQ[Dimension[C],N^2-1]", "True");
+    expect_status(
+        &f, "QFTBasis[qft,ColorAdjoint]", PHY_ERR_NOT_INITIALIZED);
+    expect_status(
+        &f, "QFTTensor[qft,SUNDelta]", PHY_ERR_NOT_INITIALIZED);
+    PHY_CHECK_EQ_INT(
+        run(&f, "QFTTensor[qft,MinkowskiMetric]").kind,
+        PHY_VALUE_COMPONENT_TENSOR);
+
+    /* A second fixed-name declaration would be a distinct Lorentz identity. */
+    expect_status(&f, "QFTSystem[3]", PHY_ERR_ALREADY_INITIALIZED);
+    fixture_close(&f);
+}
+
 static void test_sun_colour_heads_reach_native_backend(void)
 {
     fixture f = fixture_open();
@@ -1345,6 +1470,8 @@ static void test_every_evaluated_head_rejects_empty_arguments(void)
         "SUNCommutator", "SUNDeltaContract",    "SUNCF",
         "SUNCA",        "SUNFComponent",         "SUNExpandCasimirs",
         "SUNFundamentalCasimir",                "SUNAdjointCasimir",
+        "QFTSpace",     "QFTBasis",             "QFTHead",
+        "QFTTensor",
         "Component",
         "Degree",       "Dimension",           "Rank",
         "ZeroQ",        "EquivalentQ",
@@ -2173,6 +2300,8 @@ int main(void)
     PHY_TEST_CASE(test_nonabelian_gauge_field);
     PHY_TEST_CASE(test_curvature_pipeline);
     PHY_TEST_CASE(test_qft_heads_reach_native_backends);
+    PHY_TEST_CASE(test_qft_shared_abstract_component_frontend);
+    PHY_TEST_CASE(test_qft_symbolic_n_frontend);
     PHY_TEST_CASE(test_sun_colour_heads_reach_native_backend);
     PHY_TEST_CASE(test_reserved_heads_never_silently_pass_through);
     PHY_TEST_CASE(test_every_evaluated_head_rejects_empty_arguments);

@@ -269,6 +269,9 @@ static const char *const kObjectHeads[] = {
     "GRComponents", "GRSpace",          "GRBasis",
     "GRHead",       "GRTensor",
 
+    "QFTSystem",    "QFTSpace",         "QFTBasis",
+    "QFTHead",      "QFTTensor",
+
     "Vector",       "Matrix",           "Transpose",    "Dot",
     "Determinant",  "Inverse",          "RowReduce",    "MatrixRank",
     "LinearSolve",

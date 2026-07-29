@@ -357,6 +357,8 @@ static phy_status publish_many(phy_env *env, phy_value_kind kind,
         value.as.atlas = (phy_atlas *)object;
     } else if (kind == PHY_VALUE_GR_COMPONENTS) {
         value.as.gr_components = (const phy_gr_component_view *)object;
+    } else if (kind == PHY_VALUE_QFT_COMPONENTS) {
+        value.as.qft_components = (const phy_qft_component_view *)object;
     } else {
         return PHY_ERR_INVALID_ARGUMENT;
     }
@@ -1559,6 +1561,140 @@ static phy_status eval_gr_part(phy_env *env, phy_ir_ref expr, eval_head head,
     }
     if (eval_value_pointer(&part) == NULL) {
         return PHY_ERR_CORRUPT_DOCUMENT;
+    }
+    return publish_borrowed(env, part, &view, out_value);
+}
+
+/* ------------------------------------------------------- shared QFT tensor view */
+
+/*
+ * QFTSystem[] keeps N symbolic; QFTSystem[3] additionally instantiates the
+ * exact built-in SU(3) component picture.  Either form always provides the
+ * Lorentz and spinor spaces plus eta components.
+ */
+static phy_status eval_qft_system(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    const size_t count = arg_count(env, expr);
+    if (count > 1u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_ir_ref n = PHY_IR_NULL;
+    phy_status status = PHY_OK;
+    if (count == 1u) {
+        status = arg_scalar(env, expr, 0u, &n);
+    } else {
+        const phy_ir_symbol symbol = phy_ir_intern(env->ir, "N");
+        n = symbol != PHY_IR_NO_SYMBOL
+                ? phy_ir_symbol_ref(env->ir, symbol)
+                : PHY_IR_NULL;
+        if (n == PHY_IR_NULL) {
+            status = phy_ir_last_error(env->ir);
+        }
+    }
+    if (status == PHY_OK) {
+        status = ensure_abstract_context(env);
+    }
+    phy_qft_component_view *view = NULL;
+    if (status == PHY_OK) {
+        status = phy_qft_component_view_create(
+            env->cas, env->abstract, n, NULL, &view);
+    }
+    return status == PHY_OK
+               ? publish_many(
+                     env, PHY_VALUE_QFT_COMPONENTS, view, NULL, 0u,
+                     out_value)
+               : status;
+}
+
+static phy_status read_qft_space(const phy_env *env, phy_ir_ref ref,
+                                 phy_qft_space *out_space)
+{
+    if (phy_ir_kind_of(env->ir, ref) != PHY_IR_SYMBOL) {
+        return PHY_ERR_TYPE;
+    }
+    const char *name =
+        phy_ir_symbol_name(env->ir, phy_ir_head(env->ir, ref));
+    for (unsigned space = 0u; space < (unsigned)PHY_QFT_SPACE_COUNT;
+         ++space) {
+        if (keyword_is(
+                name, phy_qft_space_name((phy_qft_space)space))) {
+            *out_space = (phy_qft_space)space;
+            return PHY_OK;
+        }
+    }
+    return PHY_ERR_PARSE;
+}
+
+static phy_status read_qft_quantity(
+    const phy_env *env, phy_ir_ref ref, phy_qft_quantity *out_quantity)
+{
+    if (phy_ir_kind_of(env->ir, ref) != PHY_IR_SYMBOL) {
+        return PHY_ERR_TYPE;
+    }
+    const char *name =
+        phy_ir_symbol_name(env->ir, phy_ir_head(env->ir, ref));
+    for (unsigned quantity = 0u;
+         quantity < (unsigned)PHY_QFT_QUANTITY_COUNT; ++quantity) {
+        if (keyword_is(
+                name,
+                phy_qft_quantity_name((phy_qft_quantity)quantity))) {
+            *out_quantity = (phy_qft_quantity)quantity;
+            return PHY_OK;
+        }
+    }
+    return PHY_ERR_PARSE;
+}
+
+static phy_status eval_qft_part(phy_env *env, phy_ir_ref expr, eval_head head,
+                                phy_value *out_value)
+{
+    if (arg_count(env, expr) != 2u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value view = {0};
+    phy_status status =
+        arg_typed(env, expr, 0u, PHY_VALUE_QFT_COMPONENTS, &view);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_value part = {0};
+    if (head == EVAL_HEAD_QFT_SPACE || head == EVAL_HEAD_QFT_BASIS) {
+        phy_qft_space space = PHY_QFT_SPACE_LORENTZ;
+        status = read_qft_space(env, arg_ref(env, expr, 1u), &space);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (head == EVAL_HEAD_QFT_SPACE) {
+            part.kind = PHY_VALUE_INDEX_SPACE;
+            part.as.index_space = phy_qft_component_view_space(
+                view.as.qft_components, space);
+        } else {
+            part.kind = PHY_VALUE_COMPONENT_BASIS;
+            part.as.component_basis = phy_qft_component_view_basis(
+                view.as.qft_components, space);
+        }
+    } else {
+        phy_qft_quantity quantity = PHY_QFT_MINKOWSKI_METRIC;
+        status = read_qft_quantity(
+            env, arg_ref(env, expr, 1u), &quantity);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (head == EVAL_HEAD_QFT_HEAD) {
+            part.kind = PHY_VALUE_TENSOR_HEAD;
+            part.as.tensor_head = phy_qft_component_view_head(
+                view.as.qft_components, quantity);
+        } else if (head == EVAL_HEAD_QFT_TENSOR) {
+            part.kind = PHY_VALUE_COMPONENT_TENSOR;
+            part.as.component_tensor = phy_qft_component_view_tensor(
+                view.as.qft_components, quantity);
+        } else {
+            return PHY_ERR_UNSUPPORTED;
+        }
+    }
+    if (eval_value_pointer(&part) == NULL) {
+        return PHY_ERR_NOT_INITIALIZED;
     }
     return publish_borrowed(env, part, &view, out_value);
 }
@@ -5044,6 +5180,13 @@ static phy_status eval_operator(phy_env *env, phy_ir_ref expr,
     case EVAL_HEAD_GR_HEAD:
     case EVAL_HEAD_GR_TENSOR:
         return eval_gr_part(env, expr, which, out_value);
+    case EVAL_HEAD_QFT_SYSTEM:
+        return eval_qft_system(env, expr, out_value);
+    case EVAL_HEAD_QFT_SPACE:
+    case EVAL_HEAD_QFT_BASIS:
+    case EVAL_HEAD_QFT_HEAD:
+    case EVAL_HEAD_QFT_TENSOR:
+        return eval_qft_part(env, expr, which, out_value);
 
     case EVAL_HEAD_VECTOR:
         return eval_vector_constructor(env, expr, out_value);

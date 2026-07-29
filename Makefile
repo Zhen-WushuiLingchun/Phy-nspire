@@ -20,6 +20,7 @@
 #   geom-link-check    prove manifolds and differential forms link on device
 #   ym-link-check      prove Yang-Mills and all dependencies link on device
 #   color-link-check   prove exact SU(N) colour algebra links on device
+#   qft-bridge-link-check prove QFT abstract/component bridge links on device
 #   eval-link-check    prove the stateful evaluator and its whole backend
 #                      stack link on device
 #   cas-smoke      build an observable on-device symbolic CAS acceptance test
@@ -131,6 +132,7 @@ SOURCES := \
     src/qft/dirac.c \
     src/qft/mandelstam.c \
     src/qft/color.c \
+    src/qft/bridge.c \
     src/exact/context.c \
     src/exact/integer.c \
     src/exact/rational.c \
@@ -258,7 +260,7 @@ QFT_BENCH_TNS := $(DISTDIR)/$(QFT_BENCH_EXE).tns
 .PHONY: all clean size-report symbol-report ir-link-check exact-link-check \
         tensor-link-check component-bridge-link-check \
         cas-link-check algebraic-link-check geom-link-check ym-link-check \
-        eval-link-check \
+        qft-bridge-link-check eval-link-check \
         cas-smoke qft-bench check-sdk
 
 all: $(TNS)
@@ -335,6 +337,9 @@ ym-link-check: check-sdk
 
 color-link-check: check-sdk
 	@tools/link-check.sh color
+
+qft-bridge-link-check: check-sdk
+	@tools/link-check.sh qftbridge
 
 eval-link-check: check-sdk
 	@tools/link-check.sh eval
