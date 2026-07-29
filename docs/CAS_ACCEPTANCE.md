@@ -52,9 +52,9 @@ where the QFT type checker must reject a cross-space operation.
 
 ## Automated evidence
 
-- Windows strict build and CTest: 39/39.
-- WSL ASan, UBSan, and leak detection: 41/41.
-- Assertion-bearing tests: 305,389 checks.
+- Windows strict build and CTest: 40/40.
+- WSL ASan, UBSan, and leak detection: 42/42.
+- Assertion-bearing tests: 305,535 checks.
 - Ndless r2022 ARM product: 1,183,523 bytes, 18.8% of the 6 MiB ceiling.
 - Isolated exact-number ARM probe: 68/68 public APIs, 17,680 bytes of exact
   number text, 23,540-byte package, and no forbidden numeric dependency.
@@ -78,10 +78,12 @@ exact artifacts are opened and exercised on the physical CX II.
 roots plus higher-degree all-real `Root` descriptors as documented in
 `docs/CAS.md`, plus exact simultaneous affine systems through eight
 equations/variables; unresolved higher complex factors and nonlinear systems
-remain typed unsupported. There is no
-multi-chart transition map or pullback, no
-global-topology or named-manifold catalogue, no unbounded tensor rank, no
-abstract dummy-index canonicalizer, no gamma-five, and no general loop-integral
+remain typed unsupported. There are no reader-facing `Atlas`,
+`TransitionMap`, `Pullback`, or `ChangeBasis` commands yet; their native library
+layer now has exact two-way maps, p-form pullback, mixed-valence tensor
+transformation, and cocycle-checked atlas registration. There is no
+global-topology or named-manifold catalogue, no unlimited-resource tensor rank,
+no general Garnir-basis reducer, no gamma-five, and no general loop-integral
 reduction engine. Calling those absences implemented would turn a typed failure
 into a false scientific claim.
 
@@ -93,7 +95,9 @@ and compiled by `tests/corpus/cas_foundation_cases.inc`.
 ## Memory lifetime
 
 Evaluator objects are swept after every successful and failed command.
-Bindings keep their dependency graph alive; `Clear`/`ClearAll` release it. CAS
+Bindings keep their dependency graph alive; `Clear` releases ordinary owned
+objects, while abstract index spaces and heads share one bulk-owned bounded
+context that is returned by `ClearAll`/environment reset. CAS
 scratch is LIFO and the memo cache is bounded and rebuildable. Interned IR nodes
 are immutable and notebook-lifetime rather than individually collected; their
 131,072-node/4-MiB ceilings produce typed errors. New/Open destroys the complete

@@ -291,6 +291,75 @@ static void test_transition_rejects_false_inverse_and_capture(void)
     fixture_close(&f);
 }
 
+static void test_general_tensor_transition(void)
+{
+    fixture f = fixture_open();
+    phy_ir_ref forward_components[2] = {0};
+    phy_ir_ref inverse_components[2] = {0};
+    affine_transition_components(
+        &f, forward_components, inverse_components);
+    phy_basis_transition *transition = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_basis_transition_create(
+            f.xy, f.uv, forward_components, inverse_components, NULL,
+            &transition),
+        PHY_OK);
+
+    /*
+     * The identity (1,1) tensor is invariant:
+     * (d x / d y) I (d y / d x) = I.
+     */
+    const phy_ir_ref identity[4] = {
+        phy_ir_integer(f.ir, 1), phy_ir_integer(f.ir, 0),
+        phy_ir_integer(f.ir, 0), phy_ir_integer(f.ir, 1)};
+    const phy_ir_variance mixed[2] = {
+        PHY_IR_INDEX_UPPER, PHY_IR_INDEX_LOWER};
+    phy_ir_ref transformed[4] = {0};
+    PHY_CHECK_EQ_INT(
+        phy_basis_transition_pullback_tensor(
+            transition, 2u, mixed, identity, transformed),
+        PHY_OK);
+    for (size_t flat = 0u; flat < 4u; ++flat) {
+        check_equal(&f, transformed[flat], identity[flat]);
+    }
+
+    /* A covariant Euclidean form pulls back to J^T J = diag(2,2). */
+    const phy_ir_variance covariant[2] = {
+        PHY_IR_INDEX_LOWER, PHY_IR_INDEX_LOWER};
+    PHY_CHECK_EQ_INT(
+        phy_basis_transition_pullback_tensor(
+            transition, 2u, covariant, identity, transformed),
+        PHY_OK);
+    const int64_t expected[4] = {2, 0, 0, 2};
+    for (size_t flat = 0u; flat < 4u; ++flat) {
+        check_equal(
+            &f, transformed[flat],
+            phy_ir_integer(f.ir, expected[flat]));
+    }
+
+    const phy_ir_ref target_scalar[1] = {add2(&f, f.u, f.v)};
+    phy_ir_ref source_scalar[1] = {PHY_IR_NULL};
+    PHY_CHECK_EQ_INT(
+        phy_basis_transition_pullback_tensor(
+            transition, 0u, NULL, target_scalar, source_scalar),
+        PHY_OK);
+    check_equal(
+        &f, source_scalar[0],
+        add2(&f, forward_components[0], forward_components[1]));
+
+    phy_ir_variance excessive[13];
+    for (size_t slot = 0u; slot < 13u; ++slot) {
+        excessive[slot] = PHY_IR_INDEX_LOWER;
+    }
+    PHY_CHECK_EQ_INT(
+        phy_basis_transition_pullback_tensor(
+            transition, 13u, excessive, identity, transformed),
+        PHY_ERR_TERM_LIMIT);
+
+    phy_basis_transition_destroy(transition);
+    fixture_close(&f);
+}
+
 static void test_rectangular_map_pullback(void)
 {
     fixture f = fixture_open();
@@ -383,6 +452,7 @@ int main(void)
     PHY_TEST_CASE(test_scalar_and_covector_pullback);
     PHY_TEST_CASE(test_general_form_pullback);
     PHY_TEST_CASE(test_transition_rejects_false_inverse_and_capture);
+    PHY_TEST_CASE(test_general_tensor_transition);
     PHY_TEST_CASE(test_rectangular_map_pullback);
     return PHY_TEST_REPORT("coordinate_map");
 }

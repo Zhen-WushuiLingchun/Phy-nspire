@@ -16,17 +16,20 @@ selects any supported pseudo-Riemannian signature. Orientation is independently
 dimension 1 through 4. The dynamic basis surface now supports validated
 coordinate maps, exact Jacobians, proved two-way chart transitions,
 arbitrary-degree exterior-form pullback, and vector pushforward along a map at
-runtime dimensions. Migration of `phy_manifold` ownership and general
-non-alternating tensor transport are still pending.
+runtime dimensions. A bounded dynamic atlas now owns registered transitions,
+checks every closed chart triangle, and transforms general mixed-valence
+tensors. Migration of legacy `phy_manifold` ownership remains pending.
 
 ## What has landed, and what has not
 
 | Landed | Deferred, with the blocking dependency named |
 | --- | --- |
 | manifold metadata: name, dimension ≤ 4, orientation, signature | migrate legacy manifold/form storage to dynamic bases |
-| bounded legacy charts plus dynamic coordinate bases | general atlas cocycle registry |
-| validated coordinate maps and exact Jacobians | general non-alternating tensor transport |
-| two-way transitions proved inverse by substitution | atlas overlap/cocycle registry |
+| bounded legacy charts plus dynamic coordinate bases | legacy `phy_manifold` ownership migration |
+| validated coordinate maps and exact Jacobians | transition-domain/singular-locus certificates |
+| two-way transitions proved inverse by substitution | automatic transition inference |
+| bounded atlas registry with exact triangle cocycles | atlas evaluator objects |
+| mixed-valence tensor change of coordinates across a transition | sparse-to-sparse tensor transport |
 | scalar, p-form pullback, and vector pushforward along a map | singular-locus/domain certificates |
 | canonical antisymmetric `C(n,p)` component storage | dynamic sparse forms |
 | exact wedge product | vector-field Lie bracket |
@@ -127,6 +130,22 @@ pulled-back 2-form on the curve, and pushforward of `d/dt` to
 `d/dx + 2t d/dy`. Converting a legacy `phy_form` directly through this map
 remains deferred so the old chart object is not silently identified with a
 dynamic basis.
+
+`phy_atlas` borrows coordinate bases and owns every registered two-way
+transition. Adding a third edge is transactional: for every closed
+`a -> b -> c` triangle it substitutes the two-step coordinate functions and
+proves them equal to the direct `a -> c` functions componentwise. An unknown
+zero decision is not accepted. A failed edge is destroyed, leaving the
+previous atlas unchanged.
+
+For an invertible transition, a general tensor uses the ordinary mixed-valence
+law. Each lower target slot contributes the forward Jacobian
+`dy^a/dx^i`; each upper target slot contributes `dx^i/dy^a`, evaluated after
+`y=phi(x)`. Rank, dense component count, total component-pair terms, scratch
+bytes, charts, transitions, and cocycle identities all have independent
+limits. Tests include invariant `(1,1)` identity, the covariant result
+`J^T J = diag(2,2)`, directed atlas lookup, exact six-way triangle consistency,
+and rollback of an individually invertible but cocycle-inconsistent edge.
 
 ## Conventions
 

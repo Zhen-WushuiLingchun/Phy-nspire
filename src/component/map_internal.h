@@ -22,4 +22,16 @@ struct phy_basis_transition {
     phy_coordinate_map *inverse;
 };
 
+struct phy_atlas {
+    const phy_index_space *space;
+    size_t dimension;
+    phy_atlas_limits limits;
+    const phy_component_basis **charts;
+    phy_basis_transition **transitions;
+    void *storage;
+    size_t storage_bytes;
+    size_t chart_count;
+    size_t transition_count;
+};
+
 #endif /* PHY_MAP_INTERNAL_H */

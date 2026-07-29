@@ -28,7 +28,7 @@ Verification:
 - host smoke test — done; the suite covers the platform, relative pointer,
   source language, drawing, notebook, the stateful evaluator, IR, tensor
   storage, differential forms, GR, Lie/QFT foundations, CAS, QFT oracle, and
-  full lifecycle: Windows 39/39, WSL ASan/UBSan/leak 41/41, and 305,389
+  full lifecycle: Windows 40/40, WSL ASan/UBSan/leak 42/42, and 305,535
   explicit checks;
 - generated `.tns` size report — 1,183,523 bytes, 18.8% of the 6 MiB ceiling,
   with the current evaluator and physics stack linked;
@@ -162,8 +162,10 @@ implemented. The differential-form layer over them has also landed — manifolds
 with
   orientation and signature, canonical antisymmetric components, and exact wedge,
   exterior derivative, interior product, Lie derivative and Hodge dual, documented in
-[`docs/GEOMETRY.md`](GEOMETRY.md). Transition maps/pullbacks, abstract
-dummy-index canonicalization, and higher-level covariant form operations remain
+[`docs/GEOMETRY.md`](GEOMETRY.md). The native library now also has exact
+transition maps, arbitrary p-form pullback, mixed-valence tensor coordinate
+change, a bounded atlas registry, and exact cocycle rejection. Reader-facing
+atlas/change-basis commands and higher-level covariant form operations remain
 open.
 
 The layer is now reachable from the notebook: `Manifold`, `ComponentTensor`,
@@ -176,18 +178,19 @@ Output:
 - manifolds, charts, metrics, indices, symmetries, contraction, canonical dummy
   indices, covariant derivatives, and differential forms — forms, contraction,
   raise/lower, coordinate-metric GR, and component tensor covariant
-  derivatives are done; abstract canonical dummy indices and transition-map
-  syntax remain outstanding;
-- the component constructor covers ranks 0 through 4 and every slot-variance
-  pattern inside the dimension-4 native ceiling; unbounded rank remains
-  intentionally out of scope;
-- optional xPerm C integration after independent tests pass.
+  derivatives are done; abstract monoterm dummy canonicalization is exposed,
+  while transition-map syntax remains outstanding;
+- the legacy component constructor covers ranks 0 through 4, while the abstract
+  and sparse component libraries use runtime rank with explicit resource
+  ceilings;
+- xPerm remains an independent reference/oracle rather than a linked runtime
+  dependency.
 
 Deferred with a named blocking dependency:
 
-- pullback along a coordinate map, which needs a validated `phy_map` with
-  provably disjoint coordinate symbols — substituting without that silently
-  captures and returns a wrong answer.
+- reader-facing atlas and change-of-basis objects, which require evaluator
+  ownership for coordinate bases and transition graphs; the native validated
+  map/atlas library is already present.
 
 Verification:
 

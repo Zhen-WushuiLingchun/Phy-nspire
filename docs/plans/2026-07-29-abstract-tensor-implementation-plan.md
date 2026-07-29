@@ -171,6 +171,10 @@
 
 ### Task 8: Atlas transition maps and pullback/pushforward
 
+**Status: native library complete.** The implementation lives in
+`include/phy/map.h` and `src/component/{map,atlas}.c`, beside the dynamic
+component bases it transforms. Evaluator ownership is tracked in Task 9.
+
 **Files:**
 - Create: `src/geom/transition.c`
 - Create: `src/geom/pullback.c`

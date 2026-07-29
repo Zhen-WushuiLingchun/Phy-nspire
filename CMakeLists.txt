@@ -153,6 +153,7 @@ add_library(phy_core STATIC
     src/component/basis.c
     src/component/component.c
     src/component/map.c
+    src/component/atlas.c
     src/permutation/perm.c
     src/permutation/bsgs.c
     src/permutation/orbit.c
@@ -248,7 +249,7 @@ if(BUILD_TESTING)
                   test_geom_metric test_eval test_lorentz test_mandelstam
                   test_color test_exact test_algebraic test_finite_poly
                   test_linear test_abstract_tensor test_permutation
-                  test_component_tensor test_coordinate_map)
+                  test_component_tensor test_coordinate_map test_atlas)
         # test_series is appended below because it also sees the internal
         # bounded-series contract.
         add_executable(${suite} tests/${suite}.c)

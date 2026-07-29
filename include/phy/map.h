@@ -15,12 +15,16 @@ extern "C" {
 
 typedef struct phy_coordinate_map phy_coordinate_map;
 typedef struct phy_basis_transition phy_basis_transition;
+typedef struct phy_atlas phy_atlas;
 
 typedef struct {
     size_t max_dimension; /* source or target; default 32 */
     size_t max_bytes;     /* map metadata; default 128 KiB */
     size_t max_form_components; /* one exterior-power basis; default 4096 */
     uint32_t max_pullback_terms; /* minors accumulated; default 250000 */
+    size_t max_tensor_rank;       /* general tensor slots; default 32 */
+    size_t max_tensor_components; /* dense change-of-basis side; default 4096 */
+    uint64_t max_transform_terms; /* component pairs; default 250000 */
     phy_linear_limits linear;
 } phy_map_limits;
 
@@ -108,6 +112,85 @@ const phy_coordinate_map *phy_basis_transition_forward(
     const phy_basis_transition *transition);
 const phy_coordinate_map *phy_basis_transition_inverse(
     const phy_basis_transition *transition);
+
+/*
+ * Pull a general target-chart tensor back to the source chart of a verified
+ * transition. Components are dense lexicographic arrays of dimension^rank.
+ * Lower slots use the forward Jacobian; upper slots use the inverse Jacobian
+ * evaluated in source coordinates. Rank zero is scalar substitution.
+ */
+phy_status phy_basis_transition_pullback_tensor(
+    const phy_basis_transition *transition, size_t rank,
+    const phy_ir_variance *valence,
+    const phy_ir_ref *target_components,
+    phy_ir_ref *out_source_components);
+
+typedef struct {
+    size_t max_charts;          /* default 16 */
+    size_t max_transitions;     /* undirected chart pairs; default 64 */
+    uint32_t max_cocycle_checks; /* exact component identities; default 4096 */
+    size_t max_bytes;           /* atlas registry only; default 16 KiB */
+} phy_atlas_limits;
+
+void phy_atlas_limits_defaults(phy_atlas_limits *out_limits);
+
+/*
+ * Create an atlas containing `first_chart`. Every later chart must bind the
+ * same IndexSpace at the same concrete dimension. The atlas borrows charts,
+ * so it must be destroyed before their component bases.
+ */
+phy_status phy_atlas_create(
+    const phy_component_basis *first_chart,
+    const phy_atlas_limits *limits, phy_atlas **out_atlas);
+void phy_atlas_destroy(phy_atlas *atlas);
+
+phy_status phy_atlas_add_chart(
+    phy_atlas *atlas, const phy_component_basis *chart);
+bool phy_atlas_contains_chart(
+    const phy_atlas *atlas, const phy_component_basis *chart);
+size_t phy_atlas_chart_count(const phy_atlas *atlas);
+size_t phy_atlas_transition_count(const phy_atlas *atlas);
+size_t phy_atlas_bytes_used(const phy_atlas *atlas);
+
+/*
+ * Construct and register one verified two-way chart transition. Registration
+ * is transactional: every newly closed triangle must satisfy
+ *
+ *     g_ac = g_bc o g_ab
+ *
+ * componentwise by exact substitution and zero decision. Unknown equality is
+ * rejected as PHY_ERR_ASSUMPTION; an inconsistent edge is destroyed and the
+ * previous atlas is unchanged.
+ */
+phy_status phy_atlas_add_transition(
+    phy_atlas *atlas, const phy_component_basis *source,
+    const phy_component_basis *target,
+    const phy_ir_ref *target_in_source,
+    const phy_ir_ref *source_in_target,
+    const phy_map_limits *map_limits);
+
+/*
+ * Return a registered directed map, or NULL for an identity/missing edge.
+ * Both directions of every registered transition are available.
+ */
+const phy_coordinate_map *phy_atlas_transition_map(
+    const phy_atlas *atlas, const phy_component_basis *source,
+    const phy_component_basis *target);
+
+/* Recheck every closed chart triangle and report component identities tested. */
+phy_status phy_atlas_verify_cocycles(
+    const phy_atlas *atlas, size_t *out_checks);
+
+/*
+ * Directed atlas wrapper around the verified general tensor transformation.
+ * The input is expressed in `target`, the result in `source`.
+ */
+phy_status phy_atlas_pullback_tensor(
+    const phy_atlas *atlas, const phy_component_basis *source,
+    const phy_component_basis *target, size_t rank,
+    const phy_ir_variance *valence,
+    const phy_ir_ref *target_components,
+    phy_ir_ref *out_source_components);
 
 #ifdef __cplusplus
 }

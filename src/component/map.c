@@ -6,6 +6,9 @@
 #define PHY_MAP_DEFAULT_BYTES (128u * 1024u)
 #define PHY_MAP_DEFAULT_FORM_COMPONENTS 4096u
 #define PHY_MAP_DEFAULT_PULLBACK_TERMS 250000u
+#define PHY_MAP_DEFAULT_TENSOR_RANK 32u
+#define PHY_MAP_DEFAULT_TENSOR_COMPONENTS 4096u
+#define PHY_MAP_DEFAULT_TRANSFORM_TERMS 250000u
 
 static size_t align_up(size_t value, size_t alignment)
 {
@@ -24,6 +27,12 @@ void phy_map_limits_defaults(phy_map_limits *out_limits)
         PHY_MAP_DEFAULT_FORM_COMPONENTS;
     out_limits->max_pullback_terms =
         PHY_MAP_DEFAULT_PULLBACK_TERMS;
+    out_limits->max_tensor_rank =
+        PHY_MAP_DEFAULT_TENSOR_RANK;
+    out_limits->max_tensor_components =
+        PHY_MAP_DEFAULT_TENSOR_COMPONENTS;
+    out_limits->max_transform_terms =
+        PHY_MAP_DEFAULT_TRANSFORM_TERMS;
     phy_linear_limits_defaults(&out_limits->linear);
 }
 
@@ -46,12 +55,26 @@ static phy_status resolve_limits(const phy_map_limits *requested,
             out->max_pullback_terms =
                 requested->max_pullback_terms;
         }
+        if (requested->max_tensor_rank != 0u) {
+            out->max_tensor_rank = requested->max_tensor_rank;
+        }
+        if (requested->max_tensor_components != 0u) {
+            out->max_tensor_components =
+                requested->max_tensor_components;
+        }
+        if (requested->max_transform_terms != 0u) {
+            out->max_transform_terms =
+                requested->max_transform_terms;
+        }
         out->linear = requested->linear;
     }
     if (out->max_dimension == 0u ||
         out->max_bytes < sizeof(phy_coordinate_map) ||
         out->max_form_components == 0u ||
-        out->max_pullback_terms == 0u) {
+        out->max_pullback_terms == 0u ||
+        out->max_tensor_rank == 0u ||
+        out->max_tensor_components == 0u ||
+        out->max_transform_terms == 0u) {
         return PHY_ERR_INVALID_ARGUMENT;
     }
     return PHY_OK;
@@ -814,4 +837,194 @@ const phy_coordinate_map *phy_basis_transition_inverse(
     const phy_basis_transition *transition)
 {
     return transition != NULL ? transition->inverse : NULL;
+}
+
+static phy_status tensor_component_count(
+    size_t dimension, size_t rank, size_t limit, size_t *out_count)
+{
+    size_t count = 1u;
+    for (size_t slot = 0u; slot < rank; ++slot) {
+        if (dimension != 0u && count > limit / dimension) {
+            return PHY_ERR_TERM_LIMIT;
+        }
+        count *= dimension;
+    }
+    *out_count = count;
+    return PHY_OK;
+}
+
+static bool add_tensor_scratch(size_t count, size_t element_size,
+                               size_t *total)
+{
+    if (count != 0u && element_size > SIZE_MAX / count) {
+        return false;
+    }
+    const size_t bytes = count * element_size;
+    if (*total > SIZE_MAX - bytes) {
+        return false;
+    }
+    *total += bytes;
+    return true;
+}
+
+phy_status phy_basis_transition_pullback_tensor(
+    const phy_basis_transition *transition, size_t rank,
+    const phy_ir_variance *valence,
+    const phy_ir_ref *target_components,
+    phy_ir_ref *out_source_components)
+{
+    if (transition == NULL || target_components == NULL ||
+        out_source_components == NULL ||
+        (rank != 0u && valence == NULL)) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    const phy_coordinate_map *forward = transition->forward;
+    const phy_coordinate_map *inverse = transition->inverse;
+    if (rank > forward->limits.max_tensor_rank) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    const size_t dimension = forward->source->dimension;
+    size_t component_count = 0u;
+    phy_status status = tensor_component_count(
+        dimension, rank, forward->limits.max_tensor_components,
+        &component_count);
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (component_count != 0u &&
+        (uint64_t)component_count >
+            forward->limits.max_transform_terms /
+                (uint64_t)component_count) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    for (size_t slot = 0u; slot < rank; ++slot) {
+        if (valence[slot] != PHY_IR_INDEX_LOWER &&
+            valence[slot] != PHY_IR_INDEX_UPPER) {
+            return PHY_ERR_TYPE;
+        }
+    }
+    if (rank == 0u) {
+        return phy_coordinate_map_pullback_scalar(
+            forward, target_components[0],
+            &out_source_components[0]);
+    }
+
+    const size_t jacobian_count = dimension * dimension;
+    size_t scratch_bytes = 0u;
+    if (dimension != 0u &&
+        jacobian_count / dimension != dimension) {
+        return PHY_ERR_MEMORY_LIMIT;
+    }
+    if (!add_tensor_scratch(
+            component_count, sizeof(phy_ir_ref),
+            &scratch_bytes) ||
+        !add_tensor_scratch(
+            component_count, sizeof(phy_ir_ref),
+            &scratch_bytes) ||
+        !add_tensor_scratch(
+            component_count, sizeof(phy_ir_ref),
+            &scratch_bytes) ||
+        !add_tensor_scratch(
+            jacobian_count, sizeof(phy_ir_ref),
+            &scratch_bytes) ||
+        !add_tensor_scratch(
+            rank + 1u, sizeof(phy_ir_ref), &scratch_bytes) ||
+        scratch_bytes > forward->limits.max_bytes) {
+        return PHY_ERR_MEMORY_LIMIT;
+    }
+    uint8_t *scratch = phy_alloc(scratch_bytes);
+    if (scratch == NULL) {
+        return PHY_ERR_MEMORY_LIMIT;
+    }
+    phy_ir_ref *substituted = (phy_ir_ref *)(void *)scratch;
+    phy_ir_ref *terms = substituted + component_count;
+    phy_ir_ref *results = terms + component_count;
+    phy_ir_ref *inverse_jacobian = results + component_count;
+    phy_ir_ref *factors = inverse_jacobian + jacobian_count;
+
+    for (size_t flat = 0u;
+         flat < component_count && status == PHY_OK; ++flat) {
+        if (!scalar_expression(
+                forward->ir, target_components[flat], 0u) ||
+            contains_ref(
+                forward->ir, target_components[flat],
+                forward->source->coordinates, dimension, 0u)) {
+            status = PHY_ERR_TYPE;
+            break;
+        }
+        status = phy_coordinate_map_pullback_scalar(
+            forward, target_components[flat],
+            &substituted[flat]);
+    }
+    for (size_t source_axis = 0u;
+         source_axis < dimension && status == PHY_OK;
+         ++source_axis) {
+        for (size_t target_axis = 0u;
+             target_axis < dimension; ++target_axis) {
+            phy_ir_ref entry = PHY_IR_NULL;
+            status = phy_matrix_get(
+                inverse->jacobian, source_axis, target_axis,
+                &entry);
+            if (status == PHY_OK) {
+                status = phy_coordinate_map_pullback_scalar(
+                    forward, entry,
+                    &inverse_jacobian[
+                        source_axis * dimension + target_axis]);
+            }
+            if (status != PHY_OK) {
+                break;
+            }
+        }
+    }
+
+    for (size_t source_flat = 0u;
+         source_flat < component_count && status == PHY_OK;
+         ++source_flat) {
+        for (size_t target_flat = 0u;
+             target_flat < component_count; ++target_flat) {
+            factors[0] = substituted[target_flat];
+            size_t source_digits = source_flat;
+            size_t target_digits = target_flat;
+            for (size_t reversed = rank; reversed-- > 0u;) {
+                const size_t source_axis =
+                    source_digits % dimension;
+                const size_t target_axis =
+                    target_digits % dimension;
+                source_digits /= dimension;
+                target_digits /= dimension;
+                if (valence[reversed] == PHY_IR_INDEX_LOWER) {
+                    status = phy_matrix_get(
+                        forward->jacobian, target_axis,
+                        source_axis, &factors[reversed + 1u]);
+                } else {
+                    factors[reversed + 1u] =
+                        inverse_jacobian[
+                            source_axis * dimension + target_axis];
+                }
+                if (status != PHY_OK) {
+                    break;
+                }
+            }
+            if (status == PHY_OK) {
+                status = phy_cas_mul(
+                    forward->cas, factors, rank + 1u,
+                    &terms[target_flat]);
+            }
+            if (status != PHY_OK) {
+                break;
+            }
+        }
+        if (status == PHY_OK) {
+            status = phy_cas_add(
+                forward->cas, terms, component_count,
+                &results[source_flat]);
+        }
+    }
+    if (status == PHY_OK) {
+        memcpy(
+            out_source_components, results,
+            component_count * sizeof(*results));
+    }
+    phy_free(scratch, scratch_bytes);
+    return status;
 }

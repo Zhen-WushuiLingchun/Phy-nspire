@@ -66,7 +66,9 @@ exchange, and normalized Young projectors with exact multi-term collection.
 Its explicit component bridge binds runtime-dimension coordinate or internal
 bases to bounded sparse component tables, while validated coordinate maps add
 exact Jacobians, proved two-way transitions, arbitrary-degree exterior-form
-pullbacks through exact minors, and vector pushforwards along maps.
+pullbacks through exact minors, vector pushforwards along maps, a bounded atlas
+registry with exact triangle-cocycle checks, and general mixed-valence tensor
+change of coordinates across verified transitions.
 `IndexSpace`, `TensorHead`, direct indexed head application and
 `TensorCanonicalize` now expose the coordinate-free monoterm layer in notebook
 cells. Young projection, sparse component construction and coordinate maps
@@ -121,8 +123,8 @@ that touch every implemented evaluator head. Its distributable form contains 143
 source cells so opening does not eagerly rebuild all cached results; a separate
 fully evaluated copy is serialized, reopened, and replayed during generation.
 
-The strict Windows host suite passes 39/39. The WSL ASan/UBSan/leak suite
-passes 41/41, and the assertion-bearing executables contain 305,389 explicit
+The strict Windows host suite passes 40/40. The WSL ASan/UBSan/leak suite
+passes 42/42, and the assertion-bearing executables contain 305,535 explicit
 checks.
 
 The current native build is measured at 1,183,523 bytes, 18.8% of the 6 MiB
