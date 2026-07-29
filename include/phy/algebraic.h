@@ -114,6 +114,24 @@ bool phy_real_algebraic_is_rational(
     const phy_real_algebraic *value);
 
 /*
+ * Exact rational transforms.
+ *
+ * Each operation constructs a new independently owned certificate in the
+ * source value's context. The defining polynomial is transformed over Z[x],
+ * normalized to primitive positive-leading form, and the transformed interval
+ * is re-certified before publication. On failure *out_value remains NULL and
+ * the source value is unchanged.
+ */
+phy_status phy_real_algebraic_translate_rational(
+    const phy_real_algebraic *value, phy_exact_rational_text translation,
+    phy_real_algebraic **out_value);
+phy_status phy_real_algebraic_scale_rational(
+    const phy_real_algebraic *value, phy_exact_rational_text factor,
+    phy_real_algebraic **out_value);
+phy_status phy_real_algebraic_reciprocal(
+    const phy_real_algebraic *value, phy_real_algebraic **out_value);
+
+/*
  * Bisect the certified interval. If a midpoint is the exact root, the interval
  * becomes that rational point. Failure leaves the old interval unchanged.
  */

@@ -66,6 +66,19 @@ equality.
   polynomial;
 - certified equality between a rational point and any defining polynomial that
   vanishes there.
+- exact rational translation `alpha + r`, including arbitrary-precision
+  offsets;
+- exact rational scaling `r alpha`, including negative order reversal and the
+  rational zero result;
+- exact reciprocal `1/alpha`, with private interval refinement when the
+  original certificate crosses zero.
+
+Each rational transform constructs the new integer defining polynomial,
+normalizes its content and leading sign, transforms the interval with exact
+rational arithmetic, and runs the Sturm certificate again before publishing
+the result. A source certificate is never modified. Rational results collapse
+to a canonical linear polynomial, and reciprocal of exact zero returns
+`PHY_ERR_DOMAIN`.
 
 Different defining polynomials whose irrational roots are equal require a
 resultant/minimal-polynomial proof. Until that layer exists, a comparison that
@@ -99,14 +112,16 @@ ceilings cover both root count and all-root isolation.
 
 Current reproducible evidence:
 
-- `test_exact`: 76,051 checks, zero failures;
-- `test_algebraic`: 34,243 checks, zero failures;
+- `test_exact`: 79,159 checks, zero failures;
+- `test_algebraic`: 81,582 checks, zero failures, including allocation-failure,
+  timeout, cancellation, arbitrary-precision and retry coverage for every
+  rational transform;
 - strict Windows suite: 34/34 tests;
 - ASan/UBSan/leak suite: 36/36 tests;
 - Ndless exact-number link probe: 51/51 public entry points, 14,516 bytes of
   exact-layer ARM text, 19,912-byte packaged probe;
-- Ndless real-algebraic link probe: 20/20 public entry points, 12,388 bytes of
-  algebraic-layer ARM text, 30,260-byte packaged probe;
+- Ndless real-algebraic link probe: 23/23 public entry points, 16,384 bytes of
+  algebraic-layer ARM text, 34,424-byte packaged probe;
 - neither ARM probe retains a floating-point formatter, libm call, or
   soft-float helper.
 
@@ -118,7 +133,8 @@ acceptance remain separate evidence.
 This is the certificate and comparison foundation, not yet a complete
 algebraic closure:
 
-- no resultant-based `+`, `*`, `/`, or powers between algebraic values;
+- no resultant-based `+`, `*`, `/`, or powers between two non-rational
+  algebraic values; rational translate/scale/inverse are implemented;
 - no proof of equality across unrelated irrational defining polynomials;
 - no complex isolating rectangles;
 - no radical-to-algebraic lowering in the typed IR;

@@ -28,7 +28,7 @@ Verification:
 - host smoke test — done; the suite covers the platform, relative pointer,
   source language, drawing, notebook, the stateful evaluator, IR, tensor
   storage, differential forms, GR, Lie/QFT foundations, CAS, QFT oracle, and
-  full lifecycle: Windows 34/34, WSL ASan/UBSan/leak 36/36, and 255,904
+  full lifecycle: Windows 34/34, WSL ASan/UBSan/leak 36/36, and 303,243
   explicit checks;
 - generated `.tns` size report — 1,165,169 bytes, 18.5% of the 6 MiB ceiling,
   with the current evaluator and physics stack linked;

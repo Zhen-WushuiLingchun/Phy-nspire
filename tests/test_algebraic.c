@@ -356,6 +356,367 @@ static void test_arbitrary_precision_coefficients_and_intervals(void)
     fixture_close(&f);
 }
 
+static void test_exact_rational_transforms(void)
+{
+    fixture f = fixture_open();
+    static const char *sqrt2_polynomial[] = {"-2", "0", "1"};
+    phy_real_algebraic *sqrt2 = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_real_algebraic_create(
+            f.algebraic, sqrt2_polynomial, 3u, rational("1", "1"),
+            rational("2", "1"), &sqrt2),
+        PHY_OK);
+
+    phy_real_algebraic *translated = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_real_algebraic_translate_rational(
+            sqrt2, rational("1", "2"), &translated),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(coefficient_text(translated, 0u), "-7");
+    PHY_CHECK_EQ_STR(coefficient_text(translated, 1u), "-4");
+    PHY_CHECK_EQ_STR(coefficient_text(translated, 2u), "4");
+    PHY_CHECK_EQ_STR(lower_text(translated), "3/2");
+    PHY_CHECK_EQ_STR(upper_text(translated), "5/2");
+
+    phy_real_algebraic *scaled = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_real_algebraic_scale_rational(
+            sqrt2, rational("-3", "2"), &scaled),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(coefficient_text(scaled, 0u), "-9");
+    PHY_CHECK_EQ_STR(coefficient_text(scaled, 1u), "0");
+    PHY_CHECK_EQ_STR(coefficient_text(scaled, 2u), "2");
+    PHY_CHECK_EQ_STR(lower_text(scaled), "-3");
+    PHY_CHECK_EQ_STR(upper_text(scaled), "-3/2");
+
+    phy_real_algebraic *inverse = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_real_algebraic_reciprocal(sqrt2, &inverse), PHY_OK);
+    PHY_CHECK_EQ_STR(coefficient_text(inverse, 0u), "-1");
+    PHY_CHECK_EQ_STR(coefficient_text(inverse, 1u), "0");
+    PHY_CHECK_EQ_STR(coefficient_text(inverse, 2u), "2");
+    PHY_CHECK_EQ_STR(lower_text(inverse), "1/2");
+    PHY_CHECK_EQ_STR(upper_text(inverse), "1");
+
+    phy_real_algebraic *zero = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_real_algebraic_scale_rational(
+            sqrt2, rational("0", "17"), &zero),
+        PHY_OK);
+    PHY_CHECK(phy_real_algebraic_is_rational(zero));
+    PHY_CHECK_EQ_INT(phy_real_algebraic_degree(zero), 1);
+    PHY_CHECK_EQ_STR(coefficient_text(zero, 0u), "0");
+    PHY_CHECK_EQ_STR(coefficient_text(zero, 1u), "1");
+    PHY_CHECK_EQ_STR(lower_text(zero), "0");
+    PHY_CHECK_EQ_STR(upper_text(zero), "0");
+
+    phy_real_algebraic *huge = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_real_algebraic_translate_rational(
+            sqrt2, rational("18446744073709551616", "1"), &huge),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(
+        coefficient_text(huge, 0u),
+        "340282366920938463463374607431768211454");
+    PHY_CHECK_EQ_STR(
+        coefficient_text(huge, 1u), "-36893488147419103232");
+    PHY_CHECK_EQ_STR(coefficient_text(huge, 2u), "1");
+    PHY_CHECK_EQ_STR(lower_text(huge), "18446744073709551617");
+    PHY_CHECK_EQ_STR(upper_text(huge), "18446744073709551618");
+
+    PHY_CHECK_EQ_INT(phy_real_algebraic_validate(translated), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_real_algebraic_validate(scaled), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_real_algebraic_validate(inverse), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_real_algebraic_validate(zero), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_real_algebraic_validate(huge), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_real_algebraic_validate(sqrt2), PHY_OK);
+    PHY_CHECK_EQ_STR(lower_text(sqrt2), "1");
+    PHY_CHECK_EQ_STR(upper_text(sqrt2), "2");
+    PHY_CHECK_EQ_INT(phy_algebraic_validate(f.algebraic), PHY_OK);
+
+    phy_real_algebraic_destroy(huge);
+    phy_real_algebraic_destroy(zero);
+    phy_real_algebraic_destroy(inverse);
+    phy_real_algebraic_destroy(scaled);
+    phy_real_algebraic_destroy(translated);
+    phy_real_algebraic_destroy(sqrt2);
+    fixture_close(&f);
+}
+
+static void test_rational_transform_edge_cases(void)
+{
+    fixture f = fixture_open();
+    static const char *one_polynomial[] = {"-1", "1"};
+    phy_real_algebraic *one = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_real_algebraic_create(
+            f.algebraic, one_polynomial, 2u, rational("0", "1"),
+            rational("2", "1"), &one),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(phy_real_algebraic_refine(one, 1u), PHY_OK);
+    PHY_CHECK(phy_real_algebraic_is_rational(one));
+
+    phy_real_algebraic *negative_two = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_real_algebraic_scale_rational(
+            one, rational("-2", "1"), &negative_two),
+        PHY_OK);
+    PHY_CHECK(phy_real_algebraic_is_rational(negative_two));
+    PHY_CHECK_EQ_STR(coefficient_text(negative_two, 0u), "2");
+    PHY_CHECK_EQ_STR(coefficient_text(negative_two, 1u), "1");
+    PHY_CHECK_EQ_STR(lower_text(negative_two), "-2");
+    PHY_CHECK_EQ_STR(upper_text(negative_two), "-2");
+
+    phy_real_algebraic *one_inverse = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_real_algebraic_reciprocal(one, &one_inverse), PHY_OK);
+    PHY_CHECK(phy_real_algebraic_is_rational(one_inverse));
+    PHY_CHECK_EQ_STR(coefficient_text(one_inverse, 0u), "-1");
+    PHY_CHECK_EQ_STR(coefficient_text(one_inverse, 1u), "1");
+
+    static const char *zero_polynomial[] = {"0", "1"};
+    phy_real_algebraic *zero = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_real_algebraic_create(
+            f.algebraic, zero_polynomial, 2u, rational("-1", "1"),
+            rational("1", "1"), &zero),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(phy_real_algebraic_refine(zero, 1u), PHY_OK);
+    PHY_CHECK(phy_real_algebraic_is_rational(zero));
+    phy_real_algebraic *rejected = one;
+    PHY_CHECK_EQ_INT(
+        phy_real_algebraic_reciprocal(zero, &rejected),
+        PHY_ERR_DOMAIN);
+    PHY_CHECK(rejected == NULL);
+
+    rejected = one;
+    PHY_CHECK_EQ_INT(
+        phy_real_algebraic_translate_rational(
+            one, rational("1", "0"), &rejected),
+        PHY_ERR_DOMAIN);
+    PHY_CHECK(rejected == NULL);
+    PHY_CHECK_EQ_INT(phy_real_algebraic_validate(one), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_real_algebraic_validate(zero), PHY_OK);
+
+    static const char *sqrt2_polynomial[] = {"-2", "0", "1"};
+    phy_real_algebraic *wide_sqrt2 = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_real_algebraic_create(
+            f.algebraic, sqrt2_polynomial, 3u, rational("-1", "1"),
+            rational("2", "1"), &wide_sqrt2),
+        PHY_OK);
+    phy_real_algebraic *wide_inverse = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_real_algebraic_reciprocal(
+            wide_sqrt2, &wide_inverse),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(lower_text(wide_inverse), "1/2");
+    PHY_CHECK_EQ_STR(upper_text(wide_inverse), "2");
+    PHY_CHECK_EQ_STR(lower_text(wide_sqrt2), "-1");
+    PHY_CHECK_EQ_STR(upper_text(wide_sqrt2), "2");
+    PHY_CHECK_EQ_INT(
+        phy_real_algebraic_validate(wide_sqrt2), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_real_algebraic_validate(wide_inverse), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_algebraic_validate(f.algebraic), PHY_OK);
+
+    phy_real_algebraic_destroy(wide_inverse);
+    phy_real_algebraic_destroy(wide_sqrt2);
+    phy_real_algebraic_destroy(zero);
+    phy_real_algebraic_destroy(one_inverse);
+    phy_real_algebraic_destroy(negative_two);
+    phy_real_algebraic_destroy(one);
+    fixture_close(&f);
+}
+
+typedef enum {
+    TRANSFORM_TRANSLATE,
+    TRANSFORM_SCALE,
+    TRANSFORM_RECIPROCAL
+} transform_kind;
+
+static bool cancel_now(void *user);
+
+static phy_status run_transform(
+    transform_kind kind, const phy_real_algebraic *source,
+    phy_real_algebraic **out_value)
+{
+    if (kind == TRANSFORM_TRANSLATE) {
+        return phy_real_algebraic_translate_rational(
+            source,
+            rational("18446744073709551616", "3"),
+            out_value);
+    }
+    if (kind == TRANSFORM_SCALE) {
+        return phy_real_algebraic_scale_rational(
+            source,
+            rational("-18446744073709551617", "5"),
+            out_value);
+    }
+    return phy_real_algebraic_reciprocal(source, out_value);
+}
+
+static void test_transform_allocation_failures_are_transactional(void)
+{
+    static const char *polynomial[] = {"-2", "0", "1"};
+    for (int operation = (int)TRANSFORM_TRANSLATE;
+         operation <= (int)TRANSFORM_RECIPROCAL; ++operation) {
+        fixture calibration = fixture_open();
+        phy_real_algebraic *source = NULL;
+        PHY_CHECK_EQ_INT(
+            phy_real_algebraic_create(
+                calibration.algebraic, polynomial, 3u,
+                rational("1", "1"), rational("2", "1"), &source),
+            PHY_OK);
+        const uint32_t attempts_before = phy_host_alloc_attempts();
+        phy_real_algebraic *result = NULL;
+        PHY_CHECK_EQ_INT(
+            run_transform(
+                (transform_kind)operation, source, &result),
+            PHY_OK);
+        const uint32_t allocations =
+            phy_host_alloc_attempts() - attempts_before;
+        PHY_CHECK(allocations > 20u);
+        phy_real_algebraic_destroy(result);
+        phy_real_algebraic_destroy(source);
+        fixture_close(&calibration);
+
+        unsigned failures = 0u;
+        for (uint32_t nth = 1u; nth <= allocations; ++nth) {
+            fixture f = fixture_open();
+            source = NULL;
+            PHY_CHECK_EQ_INT(
+                phy_real_algebraic_create(
+                    f.algebraic, polynomial, 3u,
+                    rational("1", "1"), rational("2", "1"),
+                    &source),
+                PHY_OK);
+            phy_host_fail_alloc_after(nth);
+            result = NULL;
+            const phy_status status = run_transform(
+                (transform_kind)operation, source, &result);
+            phy_host_fail_alloc_after(0u);
+            PHY_CHECK(
+                status == PHY_OK ||
+                status == PHY_ERR_OUT_OF_MEMORY ||
+                status == PHY_ERR_MEMORY_LIMIT);
+            if (status != PHY_OK) {
+                failures++;
+                PHY_CHECK(result == NULL);
+            } else {
+                phy_real_algebraic_destroy(result);
+            }
+            PHY_CHECK_EQ_INT(
+                phy_real_algebraic_validate(source), PHY_OK);
+            PHY_CHECK_EQ_STR(lower_text(source), "1");
+            PHY_CHECK_EQ_STR(upper_text(source), "2");
+            PHY_CHECK_EQ_INT(
+                phy_algebraic_validate(f.algebraic), PHY_OK);
+
+            result = NULL;
+            PHY_CHECK_EQ_INT(
+                run_transform(
+                    (transform_kind)operation, source, &result),
+                PHY_OK);
+            PHY_CHECK(result != NULL);
+            PHY_CHECK_EQ_INT(
+                phy_real_algebraic_validate(result), PHY_OK);
+            PHY_CHECK_EQ_INT(
+                phy_algebraic_validate(f.algebraic), PHY_OK);
+            phy_real_algebraic_destroy(result);
+            phy_real_algebraic_destroy(source);
+            fixture_close(&f);
+
+            phy_telemetry telemetry;
+            phy_telemetry_get(&telemetry);
+            PHY_CHECK_EQ_INT(telemetry.bytes_live, 0);
+        }
+        PHY_CHECK(failures > 10u);
+    }
+    phy_host_fail_alloc_after(0u);
+}
+
+static void test_transform_limits_and_cancellation_are_typed(void)
+{
+    static const char *polynomial[] = {"-2", "0", "1"};
+    fixture calibration = fixture_open();
+    phy_real_algebraic *source = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_real_algebraic_create(
+            calibration.algebraic, polynomial, 3u,
+            rational("1", "1"), rational("2", "1"), &source),
+        PHY_OK);
+    const uint32_t creation_steps =
+        phy_algebraic_steps(calibration.algebraic);
+    phy_real_algebraic *result = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_real_algebraic_translate_rational(
+            source, rational("1", "2"), &result),
+        PHY_OK);
+    const uint32_t transform_steps =
+        phy_algebraic_steps(calibration.algebraic);
+    PHY_CHECK(transform_steps > creation_steps + 1u);
+    phy_real_algebraic_destroy(result);
+    phy_real_algebraic_destroy(source);
+    fixture_close(&calibration);
+
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    phy_algebraic_limits limits;
+    phy_algebraic_limits_defaults(&limits);
+    limits.max_steps =
+        creation_steps + (transform_steps - creation_steps) / 2u;
+    phy_algebraic_context *context =
+        phy_algebraic_context_create(&limits);
+    PHY_CHECK(context != NULL);
+    source = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_real_algebraic_create(
+            context, polynomial, 3u, rational("1", "1"),
+            rational("2", "1"), &source),
+        PHY_OK);
+    result = source;
+    PHY_CHECK_EQ_INT(
+        phy_real_algebraic_translate_rational(
+            source, rational("1", "2"), &result),
+        PHY_ERR_TIMEOUT);
+    PHY_CHECK(result == NULL);
+    PHY_CHECK_EQ_INT(phy_real_algebraic_validate(source), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_algebraic_validate(context), PHY_OK);
+    phy_real_algebraic_destroy(source);
+    phy_algebraic_context_destroy(context);
+    phy_platform_shutdown();
+
+    fixture f = fixture_open();
+    source = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_real_algebraic_create(
+            f.algebraic, polynomial, 3u, rational("1", "1"),
+            rational("2", "1"), &source),
+        PHY_OK);
+    unsigned calls = 0u;
+    phy_algebraic_set_cancel(f.algebraic, cancel_now, &calls);
+    result = source;
+    PHY_CHECK_EQ_INT(
+        phy_real_algebraic_scale_rational(
+            source, rational("-3", "2"), &result),
+        PHY_ERR_INTERRUPTED);
+    PHY_CHECK(result == NULL);
+    PHY_CHECK(calls > 0u);
+    phy_algebraic_set_cancel(f.algebraic, NULL, NULL);
+    PHY_CHECK_EQ_INT(phy_real_algebraic_validate(source), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_algebraic_validate(f.algebraic), PHY_OK);
+    result = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_real_algebraic_scale_rational(
+            source, rational("-3", "2"), &result),
+        PHY_OK);
+    PHY_CHECK(result != NULL);
+    PHY_CHECK_EQ_INT(phy_real_algebraic_validate(result), PHY_OK);
+    phy_real_algebraic_destroy(result);
+    phy_real_algebraic_destroy(source);
+    fixture_close(&f);
+}
+
 static bool cancel_now(void *user)
 {
     unsigned *calls = (unsigned *)user;
@@ -570,6 +931,10 @@ int main(void)
     PHY_TEST_CASE(test_all_real_roots_are_isolated_in_order);
     PHY_TEST_CASE(test_refine_and_safe_compare);
     PHY_TEST_CASE(test_arbitrary_precision_coefficients_and_intervals);
+    PHY_TEST_CASE(test_exact_rational_transforms);
+    PHY_TEST_CASE(test_rational_transform_edge_cases);
+    PHY_TEST_CASE(test_transform_allocation_failures_are_transactional);
+    PHY_TEST_CASE(test_transform_limits_and_cancellation_are_typed);
     PHY_TEST_CASE(test_limits_and_cancellation_are_typed);
     PHY_TEST_CASE(test_isolation_allocation_failure_is_transactional);
     PHY_TEST_CASE(test_allocation_failure_is_transactional);

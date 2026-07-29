@@ -54,7 +54,7 @@ where the QFT type checker must reject a cross-space operation.
 
 - Windows strict build and CTest: 34/34.
 - WSL ASan, UBSan, and leak detection: 36/36.
-- Assertion-bearing tests: 255,904 checks.
+- Assertion-bearing tests: 303,243 checks.
 - Ndless r2022 ARM product: 1,165,169 bytes, 18.5% of the 6 MiB ceiling.
 - Isolated exact-number ARM probe: 68/68 public APIs, 17,680 bytes of exact
   number text, 23,540-byte package, and no forbidden numeric dependency.

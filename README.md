@@ -107,7 +107,7 @@ source cells so opening does not eagerly rebuild all cached results; a separate
 fully evaluated copy is serialized, reopened, and replayed during generation.
 
 The strict Windows host suite passes 34/34. The WSL ASan/UBSan/leak suite
-passes 36/36, and the assertion-bearing executables contain 255,904 explicit
+passes 36/36, and the assertion-bearing executables contain 303,243 explicit
 checks.
 
 The current native build is measured at 1,165,169 bytes, 18.5% of the 6 MiB

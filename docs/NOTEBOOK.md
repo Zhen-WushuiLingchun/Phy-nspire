@@ -171,7 +171,7 @@ the 256 bounded slots free.
 - `test_pointer`: 29 checks over relative contact/motion behavior;
 - `test_modifier`: 8 checks over tapped and held Shift/Ctrl behavior;
 - `tests/fixtures/notebook_frame.digest`: bit-exact 320 × 240 host fixture;
-- strict Windows suite: 34/34; WSL ASan/UBSan/leak suite: 36/36; 255,904
+- strict Windows suite: 34/34; WSL ASan/UBSan/leak suite: 36/36; 303,243
   explicit checks;
 - Ndless r2022 ARM build: 1,165,169 bytes. The evaluator probe retains 15/15
   public APIs behind the complete physics stack and imports no forbidden

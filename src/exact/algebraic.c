@@ -755,6 +755,98 @@ static void destroy_coefficient_array(
     }
 }
 
+static phy_status allocate_coefficient_array(
+    phy_algebraic_context *context, size_t capacity,
+    phy_bigint **out_coefficients)
+{
+    if (!context_valid(context) || capacity == 0u ||
+        out_coefficients == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    *out_coefficients = NULL;
+    size_t bytes = 0u;
+    if (!checked_multiply(capacity, sizeof(phy_bigint), &bytes)) {
+        return PHY_ERR_MEMORY_LIMIT;
+    }
+    phy_bigint *coefficients = NULL;
+    phy_status status = metadata_allocate(
+        context, bytes, (void **)&coefficients);
+    size_t initialized = 0u;
+    while (status == PHY_OK && initialized < capacity) {
+        status = phy_bigint_init(
+            context->exact, &coefficients[initialized]);
+        if (status == PHY_OK) {
+            initialized++;
+        }
+    }
+    if (status != PHY_OK) {
+        while (initialized != 0u) {
+            initialized--;
+            phy_bigint_destroy(&coefficients[initialized]);
+        }
+        metadata_free(context, coefficients, bytes);
+        return status;
+    }
+    *out_coefficients = coefficients;
+    return PHY_OK;
+}
+
+static phy_status canonicalize_coefficient_array(
+    phy_algebraic_context *context, phy_bigint *coefficients,
+    size_t capacity, size_t *out_count)
+{
+    if (!context_valid(context) || coefficients == NULL ||
+        capacity < 2u || out_count == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    size_t count = capacity;
+    while (count != 0u &&
+           phy_bigint_sign(&coefficients[count - 1u]) == 0) {
+        count--;
+    }
+    if (count < 2u) {
+        return PHY_ERR_DOMAIN;
+    }
+
+    phy_bigint content;
+    memset(&content, 0, sizeof content);
+    phy_status status = phy_bigint_init(context->exact, &content);
+    if (status == PHY_OK) {
+        status = phy_bigint_set_i64(&content, 0);
+    }
+    for (size_t index = 0u;
+         status == PHY_OK && index < count; ++index) {
+        status = algebraic_step(context, 1u);
+        if (status == PHY_OK &&
+            phy_bigint_sign(&coefficients[index]) != 0) {
+            status = phy_bigint_gcd(
+                &content, &coefficients[index], &content);
+        }
+    }
+    if (status == PHY_OK && phy_bigint_sign(&content) == 0) {
+        status = PHY_ERR_DOMAIN;
+    }
+    for (size_t index = 0u;
+         status == PHY_OK && index < count; ++index) {
+        status = phy_bigint_divide_exact(
+            &coefficients[index], &content, &coefficients[index]);
+    }
+    phy_bigint_destroy(&content);
+
+    if (status == PHY_OK &&
+        phy_bigint_sign(&coefficients[count - 1u]) < 0) {
+        for (size_t index = 0u;
+             status == PHY_OK && index < count; ++index) {
+            status = phy_bigint_negate(
+                &coefficients[index], &coefficients[index]);
+        }
+    }
+    if (status == PHY_OK) {
+        *out_count = count;
+    }
+    return status;
+}
+
 static phy_status load_canonical_coefficients(
     phy_algebraic_context *context,
     const char *const *coefficient_text, size_t requested_count,
@@ -770,22 +862,9 @@ static phy_status load_canonical_coefficients(
     *out_coefficients = NULL;
     *out_count = 0u;
     *out_capacity = 0u;
-    size_t bytes = 0u;
-    if (!checked_multiply(
-            requested_count, sizeof(phy_bigint), &bytes)) {
-        return PHY_ERR_MEMORY_LIMIT;
-    }
     phy_bigint *coefficients = NULL;
-    phy_status status = metadata_allocate(
-        context, bytes, (void **)&coefficients);
-    size_t initialized = 0u;
-    while (status == PHY_OK && initialized < requested_count) {
-        status = phy_bigint_init(
-            context->exact, &coefficients[initialized]);
-        if (status == PHY_OK) {
-            initialized++;
-        }
-    }
+    phy_status status = allocate_coefficient_array(
+        context, requested_count, &coefficients);
     for (size_t i = 0u;
          status == PHY_OK && i < requested_count; ++i) {
         status = algebraic_step(context, 1u);
@@ -798,49 +877,14 @@ static phy_status load_canonical_coefficients(
         }
     }
     if (status != PHY_OK) {
-        while (initialized != 0u) {
-            initialized--;
-            phy_bigint_destroy(&coefficients[initialized]);
-        }
-        metadata_free(context, coefficients, bytes);
+        destroy_coefficient_array(
+            context, coefficients, requested_count);
         return status;
     }
 
-    size_t count = requested_count;
-    while (count != 0u &&
-           phy_bigint_sign(&coefficients[count - 1u]) == 0) {
-        count--;
-    }
-    if (count < 2u) {
-        destroy_coefficient_array(
-            context, coefficients, requested_count);
-        return PHY_ERR_DOMAIN;
-    }
-
-    phy_bigint content;
-    memset(&content, 0, sizeof content);
-    status = phy_bigint_init(context->exact, &content);
-    for (size_t i = 0u; status == PHY_OK && i < count; ++i) {
-        status = algebraic_step(context, 1u);
-        if (status == PHY_OK &&
-            phy_bigint_sign(&coefficients[i]) != 0) {
-            status = phy_bigint_gcd(
-                &content, &coefficients[i], &content);
-        }
-    }
-    for (size_t i = 0u; status == PHY_OK && i < count; ++i) {
-        status = phy_bigint_divide_exact(
-            &coefficients[i], &content, &coefficients[i]);
-    }
-    phy_bigint_destroy(&content);
-
-    if (status == PHY_OK &&
-        phy_bigint_sign(&coefficients[count - 1u]) < 0) {
-        for (size_t i = 0u; status == PHY_OK && i < count; ++i) {
-            status = phy_bigint_negate(
-                &coefficients[i], &coefficients[i]);
-        }
-    }
+    size_t count = 0u;
+    status = canonicalize_coefficient_array(
+        context, coefficients, requested_count, &count);
     if (status != PHY_OK) {
         destroy_coefficient_array(
             context, coefficients, requested_count);
@@ -1146,6 +1190,539 @@ static phy_status value_from_certificate(
     release_value_fields(value);
     metadata_free(context, value, sizeof *value);
     return status;
+}
+
+static phy_status rational_polynomial_affine_transform(
+    phy_algebraic_context *context,
+    const phy_real_algebraic *value, const phy_bigrat *slope,
+    const phy_bigrat *intercept,
+    rational_polynomial *out_polynomial)
+{
+    memset(out_polynomial, 0, sizeof *out_polynomial);
+    rational_polynomial current;
+    rational_polynomial next;
+    memset(&current, 0, sizeof current);
+    memset(&next, 0, sizeof next);
+    const size_t capacity = value->coefficient_count;
+    phy_status status = rational_polynomial_init(
+        context, capacity, &current);
+    if (status == PHY_OK) {
+        status = rational_polynomial_init(
+            context, capacity, &next);
+    }
+    phy_bigrat product;
+    memset(&product, 0, sizeof product);
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context->exact, &product);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_set_bigint(
+            &value->coefficients[value->coefficient_count - 1u],
+            &current.coefficients[0]);
+        current.count = 1u;
+    }
+
+    for (size_t source = value->coefficient_count - 1u;
+         status == PHY_OK && source-- != 0u;) {
+        for (size_t index = 0u;
+             status == PHY_OK && index < next.capacity; ++index) {
+            status = phy_bigrat_set_i64(
+                &next.coefficients[index], 0, 1);
+        }
+        next.count = current.count + 1u;
+        for (size_t index = 0u;
+             status == PHY_OK && index < current.count; ++index) {
+            status = algebraic_step(context, 2u);
+            if (status == PHY_OK) {
+                status = phy_bigrat_multiply(
+                    &current.coefficients[index], intercept, &product);
+            }
+            if (status == PHY_OK) {
+                status = phy_bigrat_add(
+                    &next.coefficients[index], &product,
+                    &next.coefficients[index]);
+            }
+            if (status == PHY_OK) {
+                status = phy_bigrat_multiply(
+                    &current.coefficients[index], slope, &product);
+            }
+            if (status == PHY_OK) {
+                status = phy_bigrat_add(
+                    &next.coefficients[index + 1u], &product,
+                    &next.coefficients[index + 1u]);
+            }
+        }
+        if (status == PHY_OK) {
+            status = phy_bigrat_set_bigint(
+                &value->coefficients[source], &product);
+        }
+        if (status == PHY_OK) {
+            status = phy_bigrat_add(
+                &next.coefficients[0], &product,
+                &next.coefficients[0]);
+        }
+        if (status == PHY_OK) {
+            const rational_polynomial swap = current;
+            current = next;
+            next = swap;
+        }
+    }
+
+    phy_bigrat_destroy(&product);
+    if (status == PHY_OK) {
+        *out_polynomial = current;
+        memset(&current, 0, sizeof current);
+    }
+    rational_polynomial_destroy(context, &next);
+    rational_polynomial_destroy(context, &current);
+    return status;
+}
+
+static phy_status rational_polynomial_to_primitive_integers(
+    phy_algebraic_context *context,
+    const rational_polynomial *polynomial,
+    phy_bigint **out_coefficients, size_t *out_count,
+    size_t *out_capacity)
+{
+    *out_coefficients = NULL;
+    *out_count = 0u;
+    *out_capacity = 0u;
+    phy_bigint *coefficients = NULL;
+    phy_status status = allocate_coefficient_array(
+        context, polynomial->count, &coefficients);
+
+    phy_bigint lcm;
+    phy_bigint gcd;
+    phy_bigint quotient;
+    phy_bigint multiplier;
+    memset(&lcm, 0, sizeof lcm);
+    memset(&gcd, 0, sizeof gcd);
+    memset(&quotient, 0, sizeof quotient);
+    memset(&multiplier, 0, sizeof multiplier);
+    if (status == PHY_OK) {
+        status = phy_bigint_init(context->exact, &lcm);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigint_init(context->exact, &gcd);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigint_init(context->exact, &quotient);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigint_init(context->exact, &multiplier);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigint_set_i64(&lcm, 1);
+    }
+    for (size_t index = 0u;
+         status == PHY_OK && index < polynomial->count; ++index) {
+        const phy_bigint *denominator = phy_bigrat_denominator(
+            &polynomial->coefficients[index]);
+        status = algebraic_step(context, 1u);
+        if (status == PHY_OK) {
+            status = phy_bigint_gcd(&lcm, denominator, &gcd);
+        }
+        if (status == PHY_OK) {
+            status = phy_bigint_divide_exact(
+                &lcm, &gcd, &quotient);
+        }
+        if (status == PHY_OK) {
+            status = phy_bigint_multiply(
+                &quotient, denominator, &lcm);
+        }
+    }
+    for (size_t index = 0u;
+         status == PHY_OK && index < polynomial->count; ++index) {
+        const phy_bigint *numerator = phy_bigrat_numerator(
+            &polynomial->coefficients[index]);
+        const phy_bigint *denominator = phy_bigrat_denominator(
+            &polynomial->coefficients[index]);
+        status = algebraic_step(context, 1u);
+        if (status == PHY_OK) {
+            status = phy_bigint_divide_exact(
+                &lcm, denominator, &multiplier);
+        }
+        if (status == PHY_OK) {
+            status = phy_bigint_multiply(
+                numerator, &multiplier, &coefficients[index]);
+        }
+    }
+    size_t count = 0u;
+    if (status == PHY_OK) {
+        status = canonicalize_coefficient_array(
+            context, coefficients, polynomial->count, &count);
+    }
+
+    phy_bigint_destroy(&multiplier);
+    phy_bigint_destroy(&quotient);
+    phy_bigint_destroy(&gcd);
+    phy_bigint_destroy(&lcm);
+    if (status != PHY_OK) {
+        destroy_coefficient_array(
+            context, coefficients, polynomial->count);
+        return status;
+    }
+    *out_coefficients = coefficients;
+    *out_count = count;
+    *out_capacity = polynomial->count;
+    return PHY_OK;
+}
+
+static phy_status value_from_rational_point(
+    phy_algebraic_context *context, const phy_bigrat *point,
+    phy_real_algebraic **out_value)
+{
+    *out_value = NULL;
+    phy_bigint *coefficients = NULL;
+    phy_status status =
+        allocate_coefficient_array(context, 2u, &coefficients);
+    if (status == PHY_OK) {
+        status = phy_bigint_negate(
+            phy_bigrat_numerator(point), &coefficients[0]);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigint_copy(
+            phy_bigrat_denominator(point), &coefficients[1]);
+    }
+    size_t count = 0u;
+    if (status == PHY_OK) {
+        status = canonicalize_coefficient_array(
+            context, coefficients, 2u, &count);
+    }
+    phy_real_algebraic *result = NULL;
+    if (status == PHY_OK) {
+        status = value_from_certificate(
+            context, coefficients, count, point, point, &result);
+    }
+    if (status == PHY_OK) {
+        result->rational = true;
+        *out_value = result;
+    }
+    destroy_coefficient_array(context, coefficients, 2u);
+    return status;
+}
+
+static phy_status publish_transformed_interval(
+    phy_algebraic_context *context, const phy_bigint *coefficients,
+    size_t coefficient_count, const phy_bigrat *lower,
+    const phy_bigrat *upper, phy_real_algebraic **out_value)
+{
+    uint32_t roots = 0u;
+    phy_status status = root_count_for_coefficients(
+        context, coefficients, coefficient_count, lower, upper, &roots);
+    if (status == PHY_OK && roots != 1u) {
+        status = PHY_ERR_CORRUPT_DOCUMENT;
+    }
+    return status == PHY_OK
+               ? value_from_certificate(
+                     context, coefficients, coefficient_count,
+                     lower, upper, out_value)
+               : status;
+}
+
+static phy_status affine_transform(
+    const phy_real_algebraic *value, const phy_bigrat *scale,
+    const phy_bigrat *offset, phy_real_algebraic **out_value)
+{
+    phy_algebraic_context *context = value->context;
+    if (phy_bigrat_sign(scale) == 0) {
+        return value_from_rational_point(context, offset, out_value);
+    }
+
+    phy_bigrat point;
+    phy_bigrat inverse_scale;
+    phy_bigrat negative_offset;
+    phy_bigrat intercept;
+    phy_bigrat lower;
+    phy_bigrat upper;
+    memset(&point, 0, sizeof point);
+    memset(&inverse_scale, 0, sizeof inverse_scale);
+    memset(&negative_offset, 0, sizeof negative_offset);
+    memset(&intercept, 0, sizeof intercept);
+    memset(&lower, 0, sizeof lower);
+    memset(&upper, 0, sizeof upper);
+    phy_status status = phy_bigrat_init(context->exact, &point);
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context->exact, &inverse_scale);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context->exact, &negative_offset);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context->exact, &intercept);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context->exact, &lower);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context->exact, &upper);
+    }
+
+    if (status == PHY_OK && value->rational) {
+        status = phy_bigrat_multiply(
+            &value->lower, scale, &point);
+        if (status == PHY_OK) {
+            status = phy_bigrat_add(&point, offset, &point);
+        }
+        if (status == PHY_OK) {
+            status = value_from_rational_point(
+                context, &point, out_value);
+        }
+        phy_bigrat_destroy(&upper);
+        phy_bigrat_destroy(&lower);
+        phy_bigrat_destroy(&intercept);
+        phy_bigrat_destroy(&negative_offset);
+        phy_bigrat_destroy(&inverse_scale);
+        phy_bigrat_destroy(&point);
+        return status;
+    }
+
+    if (status == PHY_OK) {
+        status = phy_bigrat_reciprocal(scale, &inverse_scale);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_negate(offset, &negative_offset);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_divide(
+            &negative_offset, scale, &intercept);
+    }
+
+    rational_polynomial transformed;
+    memset(&transformed, 0, sizeof transformed);
+    if (status == PHY_OK) {
+        status = rational_polynomial_affine_transform(
+            context, value, &inverse_scale, &intercept,
+            &transformed);
+    }
+    phy_bigint *coefficients = NULL;
+    size_t coefficient_count = 0u;
+    size_t coefficient_capacity = 0u;
+    if (status == PHY_OK) {
+        status = rational_polynomial_to_primitive_integers(
+            context, &transformed, &coefficients,
+            &coefficient_count, &coefficient_capacity);
+    }
+
+    const phy_bigrat *first =
+        phy_bigrat_sign(scale) > 0 ? &value->lower : &value->upper;
+    const phy_bigrat *second =
+        phy_bigrat_sign(scale) > 0 ? &value->upper : &value->lower;
+    if (status == PHY_OK) {
+        status = phy_bigrat_multiply(first, scale, &lower);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_add(&lower, offset, &lower);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_multiply(second, scale, &upper);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_add(&upper, offset, &upper);
+    }
+    if (status == PHY_OK) {
+        status = publish_transformed_interval(
+            context, coefficients, coefficient_count,
+            &lower, &upper, out_value);
+    }
+
+    destroy_coefficient_array(
+        context, coefficients, coefficient_capacity);
+    rational_polynomial_destroy(context, &transformed);
+    phy_bigrat_destroy(&upper);
+    phy_bigrat_destroy(&lower);
+    phy_bigrat_destroy(&intercept);
+    phy_bigrat_destroy(&negative_offset);
+    phy_bigrat_destroy(&inverse_scale);
+    phy_bigrat_destroy(&point);
+    return status;
+}
+
+phy_status phy_real_algebraic_translate_rational(
+    const phy_real_algebraic *value, phy_exact_rational_text translation,
+    phy_real_algebraic **out_value)
+{
+    if (!value_valid_handle(value) || out_value == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    *out_value = NULL;
+    phy_algebraic_context *context = value->context;
+    phy_status status = call_begin(context);
+    phy_bigrat offset;
+    phy_bigrat one;
+    memset(&offset, 0, sizeof offset);
+    memset(&one, 0, sizeof one);
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context->exact, &offset);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context->exact, &one);
+    }
+    if (status == PHY_OK) {
+        status = rational_text_read(&offset, translation);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_set_i64(&one, 1, 1);
+    }
+    if (status == PHY_OK) {
+        status = affine_transform(value, &one, &offset, out_value);
+    }
+    phy_bigrat_destroy(&one);
+    phy_bigrat_destroy(&offset);
+    return call_end(context, status);
+}
+
+phy_status phy_real_algebraic_scale_rational(
+    const phy_real_algebraic *value, phy_exact_rational_text factor,
+    phy_real_algebraic **out_value)
+{
+    if (!value_valid_handle(value) || out_value == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    *out_value = NULL;
+    phy_algebraic_context *context = value->context;
+    phy_status status = call_begin(context);
+    phy_bigrat scale;
+    phy_bigrat zero;
+    memset(&scale, 0, sizeof scale);
+    memset(&zero, 0, sizeof zero);
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context->exact, &scale);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context->exact, &zero);
+    }
+    if (status == PHY_OK) {
+        status = rational_text_read(&scale, factor);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_set_i64(&zero, 0, 1);
+    }
+    if (status == PHY_OK) {
+        status = affine_transform(value, &scale, &zero, out_value);
+    }
+    phy_bigrat_destroy(&zero);
+    phy_bigrat_destroy(&scale);
+    return call_end(context, status);
+}
+
+phy_status phy_real_algebraic_reciprocal(
+    const phy_real_algebraic *value, phy_real_algebraic **out_value)
+{
+    if (!value_valid_handle(value) || out_value == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    *out_value = NULL;
+    phy_algebraic_context *context = value->context;
+    phy_status status = call_begin(context);
+
+    if (status == PHY_OK && value->rational) {
+        phy_bigrat reciprocal;
+        memset(&reciprocal, 0, sizeof reciprocal);
+        status = phy_bigrat_init(context->exact, &reciprocal);
+        if (status == PHY_OK) {
+            status = phy_bigrat_reciprocal(
+                &value->lower, &reciprocal);
+        }
+        if (status == PHY_OK) {
+            status = value_from_rational_point(
+                context, &reciprocal, out_value);
+        }
+        phy_bigrat_destroy(&reciprocal);
+        return call_end(context, status);
+    }
+
+    phy_real_algebraic *working = NULL;
+    if (status == PHY_OK) {
+        status = value_from_certificate(
+            context, value->coefficients, value->coefficient_count,
+            &value->lower, &value->upper, &working);
+    }
+    uint32_t refinements = 0u;
+    while (status == PHY_OK && !working->rational &&
+           (phy_bigrat_sign(&working->lower) == 0 ||
+            phy_bigrat_sign(&working->upper) == 0 ||
+            phy_bigrat_sign(&working->lower) !=
+                phy_bigrat_sign(&working->upper))) {
+        if (refinements >= context->limits.max_refinements) {
+            status = PHY_ERR_TIMEOUT;
+            break;
+        }
+        status = phy_real_algebraic_refine(working, 1u);
+        refinements++;
+    }
+
+    if (status == PHY_OK && working->rational) {
+        phy_bigrat reciprocal;
+        memset(&reciprocal, 0, sizeof reciprocal);
+        status = phy_bigrat_init(context->exact, &reciprocal);
+        if (status == PHY_OK) {
+            status = phy_bigrat_reciprocal(
+                &working->lower, &reciprocal);
+        }
+        if (status == PHY_OK) {
+            status = value_from_rational_point(
+                context, &reciprocal, out_value);
+        }
+        phy_bigrat_destroy(&reciprocal);
+        phy_real_algebraic_destroy(working);
+        return call_end(context, status);
+    }
+
+    phy_bigint *coefficients = NULL;
+    size_t coefficient_count = 0u;
+    const size_t coefficient_capacity =
+        status == PHY_OK ? working->coefficient_count : 0u;
+    if (status == PHY_OK) {
+        status = allocate_coefficient_array(
+            context, coefficient_capacity, &coefficients);
+    }
+    for (size_t index = 0u;
+         status == PHY_OK && index < coefficient_capacity; ++index) {
+        status = algebraic_step(context, 1u);
+        if (status == PHY_OK) {
+            status = phy_bigint_copy(
+                &working->coefficients[
+                    coefficient_capacity - 1u - index],
+                &coefficients[index]);
+        }
+    }
+    if (status == PHY_OK) {
+        status = canonicalize_coefficient_array(
+            context, coefficients, coefficient_capacity,
+            &coefficient_count);
+    }
+
+    phy_bigrat lower;
+    phy_bigrat upper;
+    memset(&lower, 0, sizeof lower);
+    memset(&upper, 0, sizeof upper);
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context->exact, &lower);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context->exact, &upper);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_reciprocal(
+            &working->upper, &lower);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_reciprocal(
+            &working->lower, &upper);
+    }
+    if (status == PHY_OK) {
+        status = publish_transformed_interval(
+            context, coefficients, coefficient_count,
+            &lower, &upper, out_value);
+    }
+
+    phy_bigrat_destroy(&upper);
+    phy_bigrat_destroy(&lower);
+    destroy_coefficient_array(
+        context, coefficients, coefficient_capacity);
+    phy_real_algebraic_destroy(working);
+    return call_end(context, status);
 }
 
 static phy_status cauchy_interval(

@@ -113,11 +113,13 @@ Gaussian rationals are
 implemented and flow through IR, source, scalar folding, evaluator,
 serialization, and MathTree display. Exact `I`, `Re`, `Im`, `Conjugate`, and
 `Abs` share that backend, including transactional allocation-failure tests and
-complete public-API ARM retention. The certified real-algebraic foundation
+complete public-API ARM retention. Certified real-algebraic values now support
+exact rational translation, scaling, and reciprocal with transformed Sturm
+certificates. The certified real-algebraic foundation
 (primitive square-free defining polynomial, rational isolating interval, Sturm
 count/all-root isolation/refinement/comparison) is implemented and documented in
-[`ALGEBRAIC.md`](ALGEBRAIC.md). General algebraic arithmetic and
-canonical minimal-polynomial equality remain open. The univariate polynomial
+[`ALGEBRAIC.md`](ALGEBRAIC.md). Resultant arithmetic between two non-rational
+algebraic values and canonical minimal-polynomial equality remain open. The univariate polynomial
 coefficient containers and rational LCD path have been migrated.
 
 - Native bounded-memory arbitrary-precision integers and rationals.
@@ -130,8 +132,8 @@ coefficient containers and rational LCD path have been migrated.
 
 The native choice has host strict/ASan, serialization, allocation-failure, and
 complete public-API ARM link/size evidence. Physical CX II timing/peak-heap
-acceptance, algebraic arithmetic, and canonical
-minimal-polynomial equality are still required before F3 can be closed.
+acceptance, non-rational resultant arithmetic, and canonical minimal-polynomial
+equality are still required before F3 can be closed.
 
 ### F4 — series, limits, and equations
 

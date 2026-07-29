@@ -77,6 +77,19 @@ int main(void)
     sink((unsigned)phy_real_algebraic_write_upper(
         left, 0, 0u, &required));
     sink(phy_real_algebraic_is_rational(left) ? 1u : 0u);
+    phy_real_algebraic *translated = 0;
+    phy_real_algebraic *scaled = 0;
+    phy_real_algebraic *reciprocal = 0;
+    const phy_exact_rational_text half = {"1", "2"};
+    sink((unsigned)phy_real_algebraic_translate_rational(
+        left, half, &translated));
+    sink((unsigned)phy_real_algebraic_scale_rational(
+        left, half, &scaled));
+    sink((unsigned)phy_real_algebraic_reciprocal(
+        left, &reciprocal));
+    phy_real_algebraic_destroy(reciprocal);
+    phy_real_algebraic_destroy(scaled);
+    phy_real_algebraic_destroy(translated);
     sink((unsigned)phy_real_algebraic_refine(left, 1u));
     int comparison = 0;
     sink((unsigned)phy_real_algebraic_compare(
