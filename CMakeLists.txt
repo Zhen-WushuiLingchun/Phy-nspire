@@ -143,6 +143,8 @@ add_library(phy_core STATIC
     src/tensor/symmetry.c
     src/tensor/tensor.c
     src/tensor/ops.c
+    src/linear/matrix.c
+    src/linear/elimination.c
     src/gr/gr.c
     src/lie/lie.c
     src/qft/scalar.c
@@ -177,7 +179,7 @@ add_library(phy_core STATIC
     src/qft/yang_mills.c
 )
 target_include_directories(phy_core PUBLIC include PRIVATE
-    src/gfx src/ir src/tensor src/cas src/geom src/eval)
+    src/gfx src/ir src/tensor src/linear src/cas src/geom src/eval)
 target_link_libraries(phy_core PRIVATE phy_warnings nmarkdown_math)
 if(MSVC)
     target_compile_options(phy_core PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/EHsc>
@@ -232,7 +234,8 @@ if(BUILD_TESTING)
                   test_notebook test_ir test_tensor test_gr test_lie
                   test_qft_scalar test_yang_mills test_cas test_geom
                   test_geom_metric test_eval test_lorentz test_mandelstam
-                  test_color test_exact test_algebraic test_finite_poly)
+                  test_color test_exact test_algebraic test_finite_poly
+                  test_linear)
         # test_series is appended below because it also sees the internal
         # bounded-series contract.
         add_executable(${suite} tests/${suite}.c)
