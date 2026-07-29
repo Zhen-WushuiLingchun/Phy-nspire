@@ -146,6 +146,40 @@ typedef enum {
     PHY_CAS_FN_COUNT
 } phy_cas_function;
 
+typedef enum {
+    PHY_CAS_PARITY_NONE = 0,
+    PHY_CAS_PARITY_EVEN,
+    PHY_CAS_PARITY_ODD
+} phy_cas_function_parity;
+
+typedef enum {
+    PHY_CAS_ZERO_VALUE_EXPLICIT = 0,
+    PHY_CAS_ZERO_VALUE_ZERO,
+    PHY_CAS_ZERO_VALUE_ONE,
+    PHY_CAS_ZERO_VALUE_DOMAIN
+} phy_cas_zero_value;
+
+enum {
+    PHY_CAS_SINGULAR_NONE = 0u,
+    PHY_CAS_SINGULAR_AT_UNIT_ENDPOINTS = 1u << 0,
+    PHY_CAS_SINGULAR_AT_NONPOSITIVE_INTEGERS = 1u << 1
+};
+
+/*
+ * Algebraic properties shared by simplification, zero proofs and tests.
+ *
+ * Keeping these facts next to the canonical function name prevents a new
+ * elementary function from being added to several unrelated hand-written
+ * branches with inconsistent parity or domain semantics.
+ */
+typedef struct {
+    const char *name;
+    phy_cas_function_parity parity;
+    phy_cas_zero_value zero_value;
+    uint8_t singularities;
+    bool nonzero_where_defined;
+} phy_cas_function_descriptor;
+
 struct phy_cas {
     phy_ir_context *ir;
     phy_cas_limits limits;
@@ -255,6 +289,8 @@ phy_ir_symbol phy_cas_known_function(const phy_cas *cas, phy_ir_ref ref);
 bool phy_cas_is_known_head(const phy_cas *cas, phy_ir_symbol head);
 phy_cas_function phy_cas_function_id(const phy_cas *cas, phy_ir_symbol head);
 phy_cas_function phy_cas_function_of(const phy_cas *cas, phy_ir_ref ref);
+const phy_cas_function_descriptor *
+phy_cas_function_descriptor_for(phy_cas_function function);
 
 /* True for kinds this scalar layer treats as opaque: tensors, operators,
    noncommutative products, wedges, unevaluated derivatives, indices. */

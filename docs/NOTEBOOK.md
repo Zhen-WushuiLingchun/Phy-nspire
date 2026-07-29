@@ -159,7 +159,7 @@ bound leaves 44 slots for reader experiments.
 - `test_notebook`: 215 checks over exact results, editing, insertion, stale
   results, source/IR agreement, bounds, memory return, selection, `RUN` hit
   testing, Markdown LaTeX integration, 2D metrics, and deterministic pixels;
-- `test_eval`: 1,939 checks over the stateful evaluator, including the notebook
+- `test_eval`: 2,126 checks over the stateful evaluator, including the notebook
   integration — state flowing between cells, descriptor outputs, forward
   staleness, and a save/reopen that restores descriptors but not objects;
 - `test_palette`: 892 checks over every category, entry, snippet, and cursor
@@ -171,9 +171,9 @@ bound leaves 44 slots for reader experiments.
 - `test_pointer`: 29 checks over relative contact/motion behavior;
 - `test_modifier`: 8 checks over tapped and held Shift/Ctrl behavior;
 - `tests/fixtures/notebook_frame.digest`: bit-exact 320 × 240 host fixture;
-- strict Windows suite: 40/40; WSL ASan/UBSan/leak suite: 42/42; 305,594
+- strict Windows suite: 40/40; WSL ASan/UBSan/leak suite: 42/42; 305,685
   explicit checks;
-- Ndless r2022 ARM build: 1,186,679 bytes. The evaluator probe retains 15/15
+- Ndless r2022 ARM build: 1,186,793 bytes. The evaluator probe retains 15/15
   public APIs behind the complete physics stack and imports no forbidden
   float/libm/soft-float helper.
 

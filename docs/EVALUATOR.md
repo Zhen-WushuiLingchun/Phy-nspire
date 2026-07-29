@@ -357,7 +357,7 @@ its configured arenas.
 
 ## Verification
 
-`tests/test_eval.c`, 1,939 checks. The physics cases deliberately reproduce,
+`tests/test_eval.c`, 2,126 checks. The physics cases deliberately reproduce,
 through reader-facing source, results the backend suites already certify
 directly:
 
@@ -396,9 +396,9 @@ palette that inserts something the evaluator rejects is worse than no palette.
 The ARM link check is `make eval-link-check` and
 `tests/device/eval_link_probe.c`: 15 declared entry points, the whole physics
 stack behind one dispatcher, and the same no-float/no-libm/no-soft-float
-standard the CAS and geometry layers are held to. It now links 45 portable
+standard the CAS and geometry layers are held to. It now links 55 portable
 sources, retains 15/15 public evaluator entry points, contains no forbidden
-float/libm/soft-float dependency, and packages as a 242,540-byte isolated
+float/libm/soft-float dependency, and packages as a 268,388-byte isolated
 probe. That probe size includes its dependencies and is not an incremental
 product-size measurement.
 
@@ -407,7 +407,7 @@ future work has now happened: the application genuinely calls the geometry,
 Lie, Yang--Mills, and QFT layers, so `--gc-sections` no longer drops them.
 The preserved `dist-foundation/phy-nspire.tns` baseline is 1,173,026 bytes.
 The current `dist/phy-nspire.tns`, with the abstract tensor evaluator reachable,
-is 1,186,679 bytes (18.9% of the 6 MiB ceiling); the final ELF retains
+is 1,186,793 bytes (18.9% of the 6 MiB ceiling); the final ELF retains
 `phy_index_space_create`, `phy_tensor_head_create_with_symmetries`,
 `phy_tensor_monomial_create`, `phy_tensor_monomial_canonicalize`,
 `phy_tensor_monomial_young_project`, and

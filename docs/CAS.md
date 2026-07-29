@@ -487,13 +487,24 @@ kernels
 exp(-u^2)          -> sqrt(Pi) erf(u) / 2
 ```
 
-with the constant derivative of `u` divided out. `Erf` and `Erfc` themselves
-have exact linear-inner antiderivatives. Bounded repeated integration by parts
-also covers a polynomial of degree at most 12 multiplied by a linear-inner
-`Exp`, `Sin`, `Cos`, `Sinh`, or `Cosh`. Before a non-deferred antiderivative is
-published, the CAS differentiates it, subtracts the original integrand, and
-requires an exact zero proof. Outside this class the result is the explicit
-typed head `Integrate[expr,var]`.
+with the constant derivative of `u` divided out **only when that derivative is
+proved nonzero**. An exact nonzero number is sufficient; a symbolic parameter
+must carry `NonZero`, `Positive`, or `Negative`. Thus
+`Integrate[Sin[a*x],x]` stays explicit for an unconstrained `a`, while the same
+input may use `-Cos[a*x]/a` after `a` receives a `NonZero`, `Positive`, or
+`Negative` assumption through the host C API and the CAS cache is cleared.
+The notebook language does not yet expose an `Assume` command, so it honestly
+keeps the input deferred there. Heads known never to vanish, such as `Exp[a]`,
+need no declaration. This preserves the original integrand's domain at `a = 0`.
+
+`Erf` and `Erfc` themselves have exact linear-inner antiderivatives. Bounded
+repeated integration by parts also covers a polynomial of degree at most 12
+multiplied by a linear-inner `Exp`, `Sin`, `Cos`, `Sinh`, or `Cosh`. Before a
+non-deferred antiderivative is published, the CAS differentiates it, subtracts
+the original integrand, and requires an exact zero proof. Outside this class
+the result is the explicit typed head `Integrate[expr,var]`; a failed
+integration-by-parts subproblem also defers the original input instead of
+publishing nested `Integrate[Integrate[...]]` heads.
 
 The evaluator applies the same publication rule to reader-facing algebraic
 rewrites. Results from `Simplify`, `FullSimplify`, `Expand`, `Together`,
@@ -636,7 +647,7 @@ than maintained as a hand-summed per-object table.
 
 The application now calls the CAS and the typed physics backends through
 editable notebook cells. The current product, including persistence,
-nMarkdown's math typesetter, and the reachable evaluator stack, is 1,186,679
+nMarkdown's math typesetter, and the reachable evaluator stack, is 1,186,793
 bytes (18.9% of the 6 MiB ceiling).
 
 `make cas-link-check` closes the gap that leaves. It is the same guard as

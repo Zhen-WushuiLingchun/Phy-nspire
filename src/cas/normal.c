@@ -1181,8 +1181,8 @@ phy_status phy_cas_decide_zero_node(phy_cas *cas, phy_ir_ref expr,
     if (phy_cas_is_integer(cas, numerator, 0)) {
         *out_decision = PHY_CAS_ZERO;
     } else if (phy_cas_known_nonzero(cas, numerator)) {
-        /* Exact nonzero numbers, declared-nonzero symbols, products of those,
-           and exp() -- see phy_cas_known_nonzero. */
+        /* Exact nonzero values, assumptions, products, powers and function
+           heads whose descriptor proves nonzero -- see phy_cas_known_nonzero. */
         *out_decision = PHY_CAS_NONZERO;
     } else {
         *out_decision = PHY_CAS_UNKNOWN;

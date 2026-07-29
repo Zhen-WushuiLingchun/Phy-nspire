@@ -8,6 +8,8 @@
  */
 #include "cas_internal.h"
 
+static bool contains_deferred_integral(const phy_cas *cas, phy_ir_ref expr);
+
 static phy_status defer_integral(phy_cas *cas, phy_ir_ref expr,
                                  phy_ir_ref var, phy_ir_ref *out_ref)
 {
@@ -50,8 +52,10 @@ static phy_status divide_node(phy_cas *cas, phy_ir_ref numerator,
 }
 
 /*
- * Reports an inner derivative only when it is independent of var and nonzero.
- * That is the exact condition behind the u-substitution rules below.
+ * Reports an inner derivative only when it is independent of var and proved
+ * nonzero. Merely being different from the literal integer zero is not enough:
+ * a free parameter may still be zero, and dividing by it would strengthen the
+ * domain of the original integrand.
  */
 static phy_status constant_inner_derivative(phy_cas *cas, phy_ir_ref inner,
                                             phy_ir_ref var,
@@ -69,7 +73,7 @@ static phy_status constant_inner_derivative(phy_cas *cas, phy_ir_ref inner,
         return status;
     }
     *out_derivative = derivative;
-    *out_usable = !varies && !phy_cas_is_integer(cas, derivative, 0);
+    *out_usable = !varies && phy_cas_known_nonzero(cas, derivative);
     return PHY_OK;
 }
 
@@ -238,7 +242,17 @@ static phy_status integrate_product(phy_cas *cas, phy_ir_ref expr,
             phy_ir_ref integrated = PHY_IR_NULL;
             status = integrate_monomial_times_elementary(
                 cas, degree, elementary, var, &integrated);
-            if (status == PHY_OK) {
+            /*
+             * Integration by parts is valid only after the primitive that
+             * starts the recurrence has actually been found. Otherwise the
+             * recurrence manufactures nested Integrate heads such as
+             * Integrate[Integrate[Sin[a*x],x],x]. Preserve the original
+             * problem as one typed deferred integral instead.
+             */
+            if (status == PHY_OK &&
+                contains_deferred_integral(cas, integrated)) {
+                status = defer_integral(cas, expr, var, out_ref);
+            } else if (status == PHY_OK) {
                 phy_ir_ref coefficient = PHY_IR_NULL;
                 status = phy_cas_mul_at(
                     cas, constants, constant_count, &coefficient);

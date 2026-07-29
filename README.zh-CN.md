@@ -8,7 +8,7 @@ Phy-nspire 是运行在 TI-Nspire CX II CAS 计算器上的**原生符号物理�
 计算器,并以二维数学排版 + Markdown 笔记的形式呈现。
 
 - **目标设备**:TI-Nspire CX II CAS,OS 6.4.0.74,Ndless r2022
-- **程序体积**:1,161,533 字节(约 1.11 MiB，6 MiB 上限的 18.5%)
+- **程序体积**:1,186,793 字节(约 1.13 MiB，6 MiB 上限的 18.9%)
 - **实现语言**:C11 内核 + C++17 公式排版桥;同一份可移植内核同时构建
   主机测试二进制与设备 ARM 程序
 - **许可证**:GPL-3.0
@@ -82,7 +82,7 @@ Riemann)列出**非零分量方程**,指标用坐标名标注,如
 ```sh
 cmake -S . -B build-review -DCMAKE_BUILD_TYPE=RelWithDebInfo
 cmake --build build-review -j
-ctest --test-dir build-review          # 当前 Windows 34 个套件,213,505 条断言
+ctest --test-dir build-review          # 当前 Windows 40 个套件,305,685 条断言
 ```
 
 设备端(需要 Ndless SDK 与 arm-none-eabi 工具链,当前在 WSL 下验证):
@@ -93,7 +93,7 @@ make -j 8                              # 产物:dist/phy-nspire.tns
 ```
 
 另有 ASan/UBSan/Leak 全开的 `build-asan` 配置。当前合入门槛是
-Windows 严格配置 34/34、WSL ASan/UBSan/Leak 配置 36/36。
+Windows 严格配置 40/40、WSL ASan/UBSan/Leak 配置 42/42。
 
 ## 架构
 
@@ -183,8 +183,8 @@ Mathematica / Maple / SymPy / TI 自带 CAS 这一档的通用系统。这份清
 
 ## 测试与验收
 
-- Windows 严格配置 34/34，WSL ASan/UBSan/Leak 配置 36/36，
-  断言型测试合计 213,505 条检查;
+- Windows 严格配置 40/40，WSL ASan/UBSan/Leak 配置 42/42，
+  断言型测试合计 305,685 条检查;
 - GR 金标语料(`research/corpus/gr_golden.json`)由 SymPy 独立生成,
   设备管线的每个曲率分量与之精确判等;
 - 像素级回归:笔记本首帧渲染有 64 位指纹固定;

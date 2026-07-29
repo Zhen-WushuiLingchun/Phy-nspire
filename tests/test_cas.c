@@ -463,6 +463,10 @@ static void test_known_functions(void)
     PHY_CHECK_EQ_STR(normal(&f, "(fn exp 0)"), "1");
     PHY_CHECK_EQ_STR(normal(&f, "(fn log 1)"), "0");
     PHY_CHECK_EQ_STR(normal(&f, "(fn exp (fn log x))"), "x");
+    PHY_CHECK_EQ_INT(simplify_status(&f, "(fn log 0)"),
+                     PHY_ERR_DOMAIN);
+    PHY_CHECK_EQ_INT(simplify_status(&f, "(fn exp (fn log 0))"),
+                     PHY_ERR_DOMAIN);
     PHY_CHECK_EQ_STR(normal(&f, "(fn exp 1)"), "E");
     PHY_CHECK_EQ_STR(normal(&f, "(fn log E)"), "1");
 
@@ -482,21 +486,31 @@ static void test_known_functions(void)
 
     PHY_CHECK_EQ_STR(normal(&f, "(fn sinh 0)"), "0");
     PHY_CHECK_EQ_STR(normal(&f, "(fn cosh 0)"), "1");
-    PHY_CHECK_EQ_STR(normal(&f, "(fn tanh (* -1 x))"),
-                     "(* -1 (fn tanh x))");
     PHY_CHECK_EQ_STR(normal(&f, "(fn asin 0)"), "0");
     PHY_CHECK_EQ_STR(normal(&f, "(fn acos 0)"),
                      "(* (rat 1 2) Pi)");
     PHY_CHECK_EQ_STR(normal(&f, "(fn acosh 1)"), "0");
+    PHY_CHECK_EQ_INT(simplify_status(&f, "(fn atanh 1)"),
+                     PHY_ERR_DOMAIN);
+    PHY_CHECK_EQ_INT(simplify_status(&f, "(fn atanh -1)"),
+                     PHY_ERR_DOMAIN);
     PHY_CHECK_EQ_STR(normal(&f, "(fn gammafn 1)"), "1");
     PHY_CHECK_EQ_STR(normal(&f, "(fn gammafn 6)"), "120");
     PHY_CHECK_EQ_STR(normal(&f, "(fn gammafn (rat 1 2))"),
                      "(^ Pi (rat 1 2))");
     PHY_CHECK_EQ_INT(simplify_status(&f, "(fn gammafn 0)"),
                      PHY_ERR_DOMAIN);
+    PHY_CHECK_EQ_INT(
+        simplify_status(
+            &f, "(fn gammafn -18446744073709551616)"),
+        PHY_ERR_DOMAIN);
     PHY_CHECK_EQ_STR(normal(&f, "(fn loggamma 2)"), "0");
     PHY_CHECK_EQ_INT(simplify_status(&f, "(fn loggamma 0)"),
                      PHY_ERR_DOMAIN);
+    PHY_CHECK_EQ_INT(
+        simplify_status(
+            &f, "(fn loggamma -18446744073709551616)"),
+        PHY_ERR_DOMAIN);
     PHY_CHECK_EQ_STR(normal(&f, "(fn erf 0)"), "0");
     PHY_CHECK_EQ_STR(normal(&f, "(fn erfc 0)"), "1");
     PHY_CHECK_EQ_STR(normal(&f, "(fn erf (* -1 x))"),
@@ -504,10 +518,32 @@ static void test_known_functions(void)
     PHY_CHECK_EQ_STR(normal(&f, "(fn erfc (* -1 x))"),
                      "(+ 2 (* -1 (fn erfc x)))");
 
-    /* Parity, which is what lets sin(-u) + sin(u) collect. */
-    PHY_CHECK_EQ_STR(normal(&f, "(fn sin (* -1 x))"), "(* -1 (fn sin x))");
-    PHY_CHECK_EQ_STR(normal(&f, "(fn cos (* -1 x))"), "(fn cos x)");
-    PHY_CHECK_EQ_STR(normal(&f, "(fn tan (* -3 x))"), "(* -1 (fn tan (* 3 x)))");
+    /*
+     * Every registered odd/even elementary function is covered here. Keeping
+     * this list exhaustive makes a new function's parity an explicit review
+     * decision instead of an accidental long-if grouping.
+     */
+    static const struct {
+        const char *input;
+        const char *expected;
+    } parity_cases[] = {
+        {"(fn sin (* -1 x))", "(* -1 (fn sin x))"},
+        {"(fn cos (* -1 x))", "(fn cos x)"},
+        {"(fn tan (* -3 x))", "(* -1 (fn tan (* 3 x)))"},
+        {"(fn asin (* -1 x))", "(* -1 (fn asin x))"},
+        {"(fn atan (* -1 x))", "(* -1 (fn atan x))"},
+        {"(fn sinh (* -1 x))", "(* -1 (fn sinh x))"},
+        {"(fn cosh (* -1 x))", "(fn cosh x)"},
+        {"(fn tanh (* -1 x))", "(* -1 (fn tanh x))"},
+        {"(fn asinh (* -1 x))", "(* -1 (fn asinh x))"},
+        {"(fn atanh (* -1 x))", "(* -1 (fn atanh x))"},
+        {"(fn erf (* -1 x))", "(* -1 (fn erf x))"},
+    };
+    for (size_t index = 0u;
+         index < sizeof parity_cases / sizeof parity_cases[0]; ++index) {
+        PHY_CHECK_EQ_STR(normal(&f, parity_cases[index].input),
+                         parity_cases[index].expected);
+    }
     PHY_CHECK_EQ_STR(normal(&f, "(+ (fn sin (* -1 x)) (fn sin x))"), "0");
 
     /* An unknown head is left alone, arguments simplified. */
@@ -825,6 +861,34 @@ static void test_exact_symbolic_integration(void)
     PHY_CHECK_EQ_STR(
         antiderivative(&f, "(+ 3 x (^ x 2))", "x"),
         "(+ (* (rat 1 3) (^ x 3)) (* (rat 1 2) (^ x 2)) (* 3 x))");
+
+    /*
+     * Dividing a substitution result by a symbolic slope requires a proof that
+     * the slope is nonzero. Without it, a=0 would turn a defined integrand into
+     * an undefined antiderivative.
+     */
+    PHY_CHECK_EQ_STR(
+        antiderivative(&f, "(fn sin (* a x))", "x"),
+        "(fn Integrate (fn sin (* a x)) x)");
+    PHY_CHECK_EQ_STR(
+        antiderivative(&f, "(* x (fn sin (* a x)))", "x"),
+        "(fn Integrate (* x (fn sin (* a x))) x)");
+    PHY_CHECK_EQ_STR(
+        antiderivative(&f, "(* x (fn sin (^ x 2)))", "x"),
+        "(fn Integrate (* x (fn sin (^ x 2))) x)");
+
+    const phy_ir_symbol a = phy_ir_intern(f.ir, "a");
+    PHY_CHECK_EQ_INT(
+        phy_ir_assume(f.ir, a, PHY_IR_ASSUME_NONZERO), PHY_OK);
+    phy_cas_cache_clear(f.cas);
+    PHY_CHECK_EQ_STR(
+        antiderivative(&f, "(fn sin (* a x))", "x"),
+        "(* -1 (^ a -1) (fn cos (* a x)))");
+    PHY_CHECK_EQ_STR(
+        antiderivative(&f, "(fn sin (* (fn exp a) x))", "x"),
+        "(* -1 (^ (fn exp a) -1) (fn cos (* x (fn exp a))))");
+    PHY_CHECK_EQ_INT(
+        decide(&f, "(fn gammafn x)"), PHY_CAS_NONZERO);
 
     /* Unsupported classes remain explicit symbolic work, not numeric output. */
     PHY_CHECK_EQ_STR(antiderivative(&f, "(fn bessel x)", "x"),

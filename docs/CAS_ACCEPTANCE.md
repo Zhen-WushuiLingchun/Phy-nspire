@@ -54,17 +54,17 @@ where the QFT type checker must reject a cross-space operation.
 
 - Windows strict build and CTest: 40/40.
 - WSL ASan, UBSan, and leak detection: 42/42.
-- Assertion-bearing tests: 305,594 checks.
-- Ndless r2022 ARM product: 1,186,679 bytes, 18.9% of the 6 MiB ceiling.
+- Assertion-bearing tests: 305,685 checks.
+- Ndless r2022 ARM product: 1,186,793 bytes, 18.9% of the 6 MiB ceiling.
 - Isolated exact-number ARM probe: 68/68 public APIs, 17,680 bytes of exact
   number text, 23,540-byte package, and no forbidden numeric dependency.
 - Isolated real-algebraic ARM probe: 28/28 public APIs, 24,256 bytes of
   algebraic text and a 43,160-byte package.
-- Isolated CAS ARM probe: 35/35 public APIs, 109,101 bytes of CAS text,
-  154,924-byte package, and no float formatter, libm call, or ARM soft-float
+- Isolated CAS ARM probe: 35/35 public APIs, 109,160 bytes of CAS text,
+  154,996-byte package, and no float formatter, libm call, or ARM soft-float
   helper.
-- Isolated evaluator ARM probe: 15/15 public APIs, 29,512 bytes of evaluator
-  text, 242,540-byte package, and no float formatter, libm call, or ARM
+- Isolated evaluator ARM probe: 15/15 public APIs, 35,070 bytes of evaluator
+  text, 268,388-byte package, and no float formatter, libm call, or ARM
   soft-float helper.
 
 These results establish source, host, sanitizer, and ARM-link acceptance. They

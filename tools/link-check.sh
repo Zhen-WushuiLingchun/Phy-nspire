@@ -80,6 +80,14 @@ PHYSICS_SOURCES=(
     src/tensor/symmetry.c
     src/tensor/tensor.c
     src/tensor/ops.c
+    src/abstract/index.c
+    src/abstract/head.c
+    src/abstract/monomial.c
+    src/abstract/canonical.c
+    src/abstract/young.c
+    src/permutation/perm.c
+    src/permutation/bsgs.c
+    src/permutation/orbit.c
     src/gr/gr.c
     src/lie/lie.c
     src/qft/scalar.c
@@ -252,7 +260,7 @@ SIZE="$(find_binutil arm-none-eabi-size)"
 # them, not because collection was disabled.
 GCCFLAGS=(-Wall -Wextra -Wshadow -Wpointer-arith -std=c11 -marm -Os -DNDEBUG
           -ffunction-sections -fdata-sections -Iinclude -Isrc/ir -Isrc/cas
-          -Isrc/tensor -Isrc/geom)
+          -Isrc/tensor -Isrc/abstract -Isrc/permutation -Isrc/geom)
 LDFLAGS=(-Wl,--gc-sections -Wl,--no-warn-rwx-segments)
 
 PROBE_NAME="$(basename "$PROBE" .c)"
@@ -338,15 +346,19 @@ find_missing_symbols() {
 mapfile -t retained < <(read_retained_symbols)
 find_missing_symbols
 
-# drvfs has occasionally exposed the just-linked ELF to the first nm scan
-# before every final directory update was visible. A file sync plus one
-# deterministic re-read removes that transport race without hiding a genuine
-# missing reference: the second scan is checked by the same exact symbol set.
-if [ "${#missing[@]}" -ne 0 ]; then
+# drvfs can expose the just-linked ELF before every final directory update is
+# visible to a second WSL process. Use a short bounded sequence of identical
+# nm reads. A genuinely absent reference still fails after all five reads; a
+# transport race cannot turn a present public entry point into a false failure.
+for retry in 1 2 3 4 5; do
+    if [ "${#missing[@]}" -eq 0 ]; then
+        break
+    fi
     sync "$ELF" 2>/dev/null || sync
+    sleep 0.1
     mapfile -t retained < <(read_retained_symbols)
     find_missing_symbols
-fi
+done
 
 if [ "${#declared[@]}" -lt "$MIN_ENTRY_POINTS" ]; then
     echo "  FAIL: only ${#declared[@]} entry points derived from $HEADER;" >&2

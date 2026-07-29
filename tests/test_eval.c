@@ -187,6 +187,7 @@ static void test_scalar_elementary_foundation(void)
     expect_scalar(&f, "Tan[Pi/4]", "1");
     expect_scalar(&f, "Sqrt[8]", "(* 2 (^ 2 (rat 1 2)))");
     expect_scalar(&f, "Log[E]", "1");
+    expect_scalar(&f, "Cosh[-x]", "(fn cosh x)");
     expect_scalar(&f, "Gamma[6]", "120");
     expect_scalar(&f, "Gamma[1/2]", "(^ Pi (rat 1 2))");
     expect_scalar(&f, "Erf[0] + Erfc[0]", "1");
@@ -225,6 +226,19 @@ static void test_scalar_elementary_foundation(void)
     expect_scalar(&f, "Integrate[Sinh[2x],x]",
                   "(* (rat 1 2) (fn cosh (* 2 x)))");
     expect_scalar(
+        &f, "Integrate[Sin[a*x],x]",
+        "(fn Integrate (fn sin (* a x)) x)");
+    expect_scalar(
+        &f, "Integrate[x Sin[a*x],x]",
+        "(fn Integrate (* x (fn sin (* a x))) x)");
+    expect_scalar(
+        &f, "Integrate[x Sin[x^2],x]",
+        "(fn Integrate (* x (fn sin (^ x 2))) x)");
+    expect_scalar(
+        &f, "Integrate[Sin[Exp[a] x],x]",
+        "(* -1 (^ (fn exp a) -1) (fn cos (* x (fn exp a))))");
+    expect_decision(&f, "ZeroQ[Gamma[x]]", "False");
+    expect_scalar(
         &f, "Integrate[Exp[-x^2],x]",
         "(* (rat 1 2) (^ Pi (rat 1 2)) (fn erf x))");
     expect_scalar(
@@ -257,6 +271,14 @@ static void test_scalar_elementary_foundation(void)
         "(+ (* -1 (^ x -1)) (^ x -2) (^ (+ 1 x) -1))");
 
     expect_status(&f, "Tan[Pi/2]", PHY_ERR_DOMAIN);
+    expect_status(&f, "Log[0]", PHY_ERR_DOMAIN);
+    expect_status(&f, "Exp[Log[0]]", PHY_ERR_DOMAIN);
+    expect_status(&f, "ArcTanh[1]", PHY_ERR_DOMAIN);
+    expect_status(&f, "ArcTanh[-1]", PHY_ERR_DOMAIN);
+    expect_status(
+        &f, "Gamma[-18446744073709551616]", PHY_ERR_DOMAIN);
+    expect_status(
+        &f, "LogGamma[-18446744073709551616]", PHY_ERR_DOMAIN);
     expect_status(&f, "D[x,Pi]", PHY_ERR_TYPE);
     expect_status(&f, "Integrate[x,E]", PHY_ERR_TYPE);
     expect_scalar(

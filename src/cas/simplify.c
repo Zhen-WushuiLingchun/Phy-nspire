@@ -1275,6 +1275,52 @@ static phy_status exact_trig_value(phy_cas *cas, phy_cas_function function,
     return special_value(cas, code, out_ref);
 }
 
+static bool function_argument_is_singular(
+    phy_cas *cas, const phy_cas_function_descriptor *descriptor,
+    phy_ir_ref argument)
+{
+    if (descriptor == NULL) {
+        return false;
+    }
+
+    const bool zero_argument = phy_cas_is_integer(cas, argument, 0);
+    if (zero_argument &&
+        descriptor->zero_value == PHY_CAS_ZERO_VALUE_DOMAIN) {
+        return true;
+    }
+    if ((descriptor->singularities &
+         PHY_CAS_SINGULAR_AT_UNIT_ENDPOINTS) != 0u &&
+        (phy_cas_is_integer(cas, argument, 1) ||
+         phy_cas_is_integer(cas, argument, -1))) {
+        return true;
+    }
+    if ((descriptor->singularities &
+         PHY_CAS_SINGULAR_AT_NONPOSITIVE_INTEGERS) != 0u) {
+        return phy_ir_kind_of(cas->ir, argument) == PHY_IR_INTEGER &&
+               phy_cas_exact_sign_ref(cas, argument) <= 0;
+    }
+    return false;
+}
+
+static bool function_zero_value(
+    phy_cas *cas, const phy_cas_function_descriptor *descriptor,
+    phy_ir_ref argument, phy_ir_ref *out_ref)
+{
+    if (descriptor == NULL ||
+        !phy_cas_is_integer(cas, argument, 0)) {
+        return false;
+    }
+    if (descriptor->zero_value == PHY_CAS_ZERO_VALUE_ZERO) {
+        *out_ref = cas->zero;
+        return true;
+    }
+    if (descriptor->zero_value == PHY_CAS_ZERO_VALUE_ONE) {
+        *out_ref = cas->one;
+        return true;
+    }
+    return false;
+}
+
 static phy_status apply_function(phy_cas *cas, phy_ir_symbol head,
                                  phy_ir_ref argument, phy_ir_ref *out_ref)
 {
@@ -1286,9 +1332,10 @@ static phy_status apply_function(phy_cas *cas, phy_ir_symbol head,
     if (gaussian_status != PHY_OK || gaussian_matched) {
         return gaussian_status;
     }
-    const bool zero_argument = phy_cas_is_integer(cas, argument, 0);
 
     const phy_cas_function function = phy_cas_function_id(cas, head);
+    const phy_cas_function_descriptor *descriptor =
+        phy_cas_function_descriptor_for(function);
     if (function == PHY_CAS_FN_SIN || function == PHY_CAS_FN_COS ||
         function == PHY_CAS_FN_TAN) {
         bool matched = false;
@@ -1297,67 +1344,45 @@ static phy_status apply_function(phy_cas *cas, phy_ir_symbol head,
         if (status != PHY_OK || matched) {
             return status;
         }
-        if (zero_argument) {
-            *out_ref =
-                function == PHY_CAS_FN_COS ? cas->one : cas->zero;
-            return PHY_OK;
-        }
-        /*
-         * Parity: cos is even, sin and tan are odd. Folding the sign out of the
-         * argument is what lets sin(-u) + sin(u) collect to zero later, and it
-         * is cheap because a normalized product wears its sign on the front.
-         *
-         * It also puts the argument in the form the multiple-angle reduction in
-         * normal.c looks for, so cos(-2*u) reaches the same polynomial as
-         * cos(2*u) rather than becoming a second generator.
-         */
-        if (negative_lead(cas, argument)) {
-            phy_ir_ref positive;
-            status = phy_cas_neg_node(cas, argument, &positive);
-            if (status != PHY_OK) {
-                return status;
-            }
-            phy_ir_ref folded;
+    }
+
+    if (function_argument_is_singular(cas, descriptor, argument)) {
+        return PHY_ERR_DOMAIN;
+    }
+    if (function_zero_value(cas, descriptor, argument, out_ref)) {
+        return PHY_OK;
+    }
+
+    /*
+     * Fold parity from the descriptor instead of maintaining overlapping
+     * hand-written function lists. This covers trigonometric, hyperbolic,
+     * inverse and error functions; in particular cosh is even.
+     */
+    if (descriptor != NULL &&
+        descriptor->parity != PHY_CAS_PARITY_NONE &&
+        negative_lead(cas, argument)) {
+        phy_ir_ref positive = PHY_IR_NULL;
+        phy_ir_ref folded = PHY_IR_NULL;
+        phy_status status = phy_cas_neg_node(cas, argument, &positive);
+        if (status == PHY_OK) {
             status = apply_function(cas, head, positive, &folded);
-            if (status != PHY_OK) {
-                return status;
-            }
-            if (function == PHY_CAS_FN_COS) {
-                *out_ref = folded; /* even */
-                return PHY_OK;
-            }
-            return phy_cas_neg_node(cas, folded, out_ref); /* odd */
         }
-    } else if (function == PHY_CAS_FN_SINH ||
-               function == PHY_CAS_FN_COSH ||
-               function == PHY_CAS_FN_TANH ||
-               function == PHY_CAS_FN_ASIN ||
-               function == PHY_CAS_FN_ATAN ||
-               function == PHY_CAS_FN_ASINH ||
-               function == PHY_CAS_FN_ATANH) {
-        if (zero_argument) {
-            *out_ref =
-                function == PHY_CAS_FN_COSH ? cas->one : cas->zero;
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (descriptor->parity == PHY_CAS_PARITY_EVEN) {
+            *out_ref = folded;
             return PHY_OK;
         }
-        if (negative_lead(cas, argument)) {
-            phy_ir_ref positive = PHY_IR_NULL;
-            phy_ir_ref folded = PHY_IR_NULL;
-            phy_status status =
-                phy_cas_neg_node(cas, argument, &positive);
-            if (status == PHY_OK) {
-                status = apply_function(cas, head, positive, &folded);
-            }
-            return status == PHY_OK
-                       ? phy_cas_neg_node(cas, folded, out_ref)
-                       : status;
-        }
-    } else if (function == PHY_CAS_FN_ACOS) {
+        return phy_cas_neg_node(cas, folded, out_ref);
+    }
+
+    if (function == PHY_CAS_FN_ACOS) {
         if (phy_cas_is_integer(cas, argument, 1)) {
             *out_ref = cas->zero;
             return PHY_OK;
         }
-        if (zero_argument) {
+        if (phy_cas_is_integer(cas, argument, 0)) {
             phy_ir_ref half = PHY_IR_NULL;
             phy_status status = phy_cas_number_node(
                 cas, (phy_cas_rat){1, 2}, &half);
@@ -1373,10 +1398,6 @@ static phy_status apply_function(phy_cas *cas, phy_ir_symbol head,
             return PHY_OK;
         }
     } else if (function == PHY_CAS_FN_EXP) {
-        if (zero_argument) {
-            *out_ref = cas->one;
-            return PHY_OK;
-        }
         if (phy_cas_is_integer(cas, argument, 1)) {
             *out_ref = cas->constant_e;
             return PHY_OK;
@@ -1400,9 +1421,6 @@ static phy_status apply_function(phy_cas *cas, phy_ir_symbol head,
     } else if (function == PHY_CAS_FN_GAMMA) {
         phy_cas_rat value;
         if (phy_cas_exact_value(cas, argument, &value)) {
-            if (value.den == 1 && value.num <= 0) {
-                return PHY_ERR_DOMAIN;
-            }
             if (value.den == 1 && value.num <= 21) {
                 int64_t factorial = 1;
                 bool fits = true;
@@ -1429,36 +1447,18 @@ static phy_status apply_function(phy_cas *cas, phy_ir_symbol head,
             }
         }
     } else if (function == PHY_CAS_FN_LOGGAMMA) {
-        phy_cas_rat value;
-        if (phy_cas_exact_value(cas, argument, &value) &&
-            value.den == 1 && value.num <= 0) {
-            return PHY_ERR_DOMAIN;
-        }
         if (phy_cas_is_integer(cas, argument, 1) ||
             phy_cas_is_integer(cas, argument, 2)) {
             *out_ref = cas->zero;
             return PHY_OK;
         }
-    } else if (function == PHY_CAS_FN_ERF ||
-               function == PHY_CAS_FN_ERFC) {
-        if (zero_argument) {
-            *out_ref =
-                function == PHY_CAS_FN_ERFC ? cas->one : cas->zero;
-            return PHY_OK;
-        }
+    } else if (function == PHY_CAS_FN_ERFC) {
         if (negative_lead(cas, argument)) {
             phy_ir_ref positive = PHY_IR_NULL;
             phy_ir_ref folded = PHY_IR_NULL;
             phy_status status =
                 phy_cas_neg_node(cas, argument, &positive);
-            if (status == PHY_OK && function == PHY_CAS_FN_ERF) {
-                status = apply_function(cas, head, positive, &folded);
-                if (status == PHY_OK) {
-                    status = phy_cas_neg_node(cas, folded, out_ref);
-                }
-                return status;
-            }
-            if (status == PHY_OK && function == PHY_CAS_FN_ERFC) {
+            if (status == PHY_OK) {
                 status = apply_function(cas, head, positive, &folded);
                 if (status == PHY_OK) {
                     phy_ir_ref two = PHY_IR_NULL;
@@ -1475,8 +1475,8 @@ static phy_status apply_function(phy_cas *cas, phy_ir_symbol head,
                             phy_cas_add_node(cas, terms, 2u, out_ref);
                     }
                 }
-                return status;
             }
+            return status;
         }
     }
 
