@@ -119,8 +119,8 @@ static phy_status resolve_limits(
 static int compare_factor_heads(const phy_tensor_monomial *monomial,
                                 size_t left, size_t right)
 {
-    const phy_tensor_head *left_head = monomial->factors[left].head;
-    const phy_tensor_head *right_head = monomial->factors[right].head;
+    const phy_abstract_tensor_head *left_head = monomial->factors[left].head;
+    const phy_abstract_tensor_head *right_head = monomial->factors[right].head;
     if (left_head == right_head) {
         return 0;
     }
@@ -181,7 +181,7 @@ static phy_status add_lifted_generators(
     const size_t degree = monomial->index_count;
     for (size_t position = 0u; position < monomial->factor_count;
          ++position) {
-        const phy_tensor_head *head =
+        const phy_abstract_tensor_head *head =
             monomial->factors[order[position]].head;
         for (size_t generator = 0u;
              generator < head->generator_count; ++generator) {
@@ -208,9 +208,9 @@ static phy_status add_factor_exchange_generators(
     const size_t degree = monomial->index_count;
     for (size_t position = 1u; position < monomial->factor_count;
          ++position) {
-        const phy_tensor_head *left =
+        const phy_abstract_tensor_head *left =
             monomial->factors[order[position - 1u]].head;
-        const phy_tensor_head *right =
+        const phy_abstract_tensor_head *right =
             monomial->factors[order[position]].head;
         if (left != right || left->commutation != PHY_TENSOR_COMMUTING ||
             left->slot_count == 0u) {

@@ -21,6 +21,9 @@
 #include <string.h>
 
 #include "eval_internal.h"
+
+#define EVAL_ABSTRACT_MAX_SLOTS 64u
+#define EVAL_ABSTRACT_MAX_GENERATORS 64u
 #include "phy/color.h"
 #include "phy/dirac.h"
 #include "phy/mandelstam.h"
@@ -273,11 +276,27 @@ static phy_status publish(phy_env *env, phy_value_kind kind, void *object,
     case PHY_VALUE_CURVATURE:
         value.as.curvature = (phy_gr_result *)object;
         break;
+    case PHY_VALUE_INDEX_SPACE:
+        value.as.index_space = (const phy_index_space *)object;
+        break;
+    case PHY_VALUE_TENSOR_HEAD:
+        value.as.tensor_head = (const phy_abstract_tensor_head *)object;
+        break;
+    case PHY_VALUE_ABSTRACT_TENSOR:
+        value.as.abstract_tensor =
+            (const phy_tensor_monomial *)object;
+        break;
     default:
         return PHY_ERR_INVALID_ARGUMENT;
     }
+    void *owned = object;
+    if (kind == PHY_VALUE_INDEX_SPACE ||
+        kind == PHY_VALUE_TENSOR_HEAD) {
+        /* Both are owned in bulk by env->abstract. */
+        owned = NULL;
+    }
     const phy_status status =
-        eval_register(env, value, object, first, second);
+        eval_register(env, value, owned, first, second);
     if (status == PHY_OK) {
         *out_value = value;
     }
@@ -298,6 +317,297 @@ static phy_status publish_borrowed(phy_env *env, phy_value value,
         *out_value = value;
     }
     return status;
+}
+
+/* ------------------------------------------------------ abstract tensors */
+
+static phy_status ensure_abstract_context(phy_env *env)
+{
+    if (env->abstract != NULL) {
+        return PHY_OK;
+    }
+    return phy_abstract_context_create(
+        env->cas, NULL, &env->abstract);
+}
+
+static phy_status eval_index_space(phy_env *env, phy_ir_ref expr,
+                                   phy_value *out_value)
+{
+    if (env->object_count >= PHY_EVAL_MAX_OBJECTS) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    const size_t count = arg_count(env, expr);
+    if (count < 1u || count > 2u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_ir_ref dimension = PHY_IR_NULL;
+    phy_status status = arg_scalar(env, expr, 0u, &dimension);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_metric_symmetry metric = PHY_METRIC_NONE;
+    if (count == 2u) {
+        const char *keyword = arg_keyword(env, expr, 1u);
+        if (keyword_is(keyword, "NoMetric") ||
+            keyword_is(keyword, "None")) {
+            metric = PHY_METRIC_NONE;
+        } else if (keyword_is(keyword, "SymmetricMetric") ||
+                   keyword_is(keyword, "Symmetric")) {
+            metric = PHY_METRIC_SYMMETRIC;
+        } else if (keyword_is(keyword, "AntisymmetricMetric") ||
+                   keyword_is(keyword, "Antisymmetric")) {
+            metric = PHY_METRIC_ANTISYMMETRIC;
+        } else {
+            return PHY_ERR_PARSE;
+        }
+    }
+    status = ensure_abstract_context(env);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_index_space *space = NULL;
+    status = phy_index_space_create(
+        env->abstract, pending_name(env, "V"), dimension, metric,
+        &space);
+    return status == PHY_OK
+               ? publish(
+                     env, PHY_VALUE_INDEX_SPACE, space, NULL, NULL,
+                     out_value)
+               : status;
+}
+
+static phy_status read_signed_symmetry(
+    phy_env *env, phy_ir_ref ref, size_t rank, uint16_t *out_image,
+    int *out_sign)
+{
+    if (phy_ir_kind_of(env->ir, ref) != PHY_IR_FUNCTION ||
+        arg_count(env, ref) != 2u) {
+        return PHY_ERR_PARSE;
+    }
+    const char *name = phy_ir_symbol_name(
+        env->ir, phy_ir_head(env->ir, ref));
+    if (!keyword_is(name, "Symmetry") &&
+        !keyword_is(name, "SignedPermutation")) {
+        return PHY_ERR_PARSE;
+    }
+    phy_ir_ref raw[EVAL_ABSTRACT_MAX_SLOTS];
+    size_t count = 0u;
+    phy_status status = list_refs(
+        env, arg_ref(env, ref, 0u), raw,
+        EVAL_ABSTRACT_MAX_SLOTS, &count);
+    if (status != PHY_OK || count != rank) {
+        return status != PHY_OK ? status : PHY_ERR_PARSE;
+    }
+    for (size_t slot = 0u; slot < rank; ++slot) {
+        phy_value value;
+        status = eval_node(env, raw[slot], &value);
+        int64_t position = 0;
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (value.kind != PHY_VALUE_SCALAR ||
+            !phy_ir_integer_value(
+                env->ir, value.as.scalar, &position)) {
+            return PHY_ERR_TYPE;
+        }
+        if (position < 1 ||
+            (uint64_t)position > (uint64_t)rank) {
+            return PHY_ERR_DOMAIN;
+        }
+        out_image[slot] = (uint16_t)(position - 1);
+    }
+    phy_value sign;
+    status = eval_node(env, arg_ref(env, ref, 1u), &sign);
+    int64_t integer_sign = 0;
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (sign.kind != PHY_VALUE_SCALAR ||
+        !phy_ir_integer_value(
+            env->ir, sign.as.scalar, &integer_sign)) {
+        return PHY_ERR_TYPE;
+    }
+    if (integer_sign != -1 && integer_sign != 1) {
+        return PHY_ERR_DOMAIN;
+    }
+    *out_sign = (int)integer_sign;
+    return PHY_OK;
+}
+
+static phy_status eval_tensor_head(phy_env *env, phy_ir_ref expr,
+                                   phy_value *out_value)
+{
+    if (env->object_count >= PHY_EVAL_MAX_OBJECTS) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    const size_t count = arg_count(env, expr);
+    if (count < 1u || count > 3u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_ir_ref raw_spaces[EVAL_ABSTRACT_MAX_SLOTS];
+    size_t rank = 0u;
+    phy_status status = list_refs(
+        env, arg_ref(env, expr, 0u), raw_spaces,
+        EVAL_ABSTRACT_MAX_SLOTS, &rank);
+    if (status != PHY_OK) {
+        return status;
+    }
+    const phy_index_space *spaces[EVAL_ABSTRACT_MAX_SLOTS];
+    for (size_t slot = 0u; slot < rank; ++slot) {
+        phy_value space;
+        status = eval_node(env, raw_spaces[slot], &space);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (space.kind != PHY_VALUE_INDEX_SPACE) {
+            return PHY_ERR_TYPE;
+        }
+        spaces[slot] = space.as.index_space;
+    }
+
+    phy_tensor_commutation commutation = PHY_TENSOR_COMMUTING;
+    int shortcut_sign = 0;
+    if (count >= 2u) {
+        const char *keyword = arg_keyword(env, expr, 1u);
+        if (keyword_is(keyword, "Commuting")) {
+            commutation = PHY_TENSOR_COMMUTING;
+        } else if (keyword_is(keyword, "NonCommuting") ||
+                   keyword_is(keyword, "Noncommuting")) {
+            commutation = PHY_TENSOR_NONCOMMUTING;
+        } else if (keyword_is(keyword, "Symmetric")) {
+            shortcut_sign = 1;
+        } else if (keyword_is(keyword, "Antisymmetric")) {
+            shortcut_sign = -1;
+        } else {
+            return PHY_ERR_PARSE;
+        }
+    }
+    if (shortcut_sign != 0 &&
+        (rank != 2u || count == 3u)) {
+        return PHY_ERR_PARSE;
+    }
+    uint16_t images[EVAL_ABSTRACT_MAX_GENERATORS]
+                   [EVAL_ABSTRACT_MAX_SLOTS];
+    const uint16_t *image_views[EVAL_ABSTRACT_MAX_GENERATORS];
+    int signs[EVAL_ABSTRACT_MAX_GENERATORS];
+    size_t generator_count = 0u;
+    if (shortcut_sign != 0) {
+        images[0][0] = 1u;
+        images[0][1] = 0u;
+        image_views[0] = images[0];
+        signs[0] = shortcut_sign;
+        generator_count = 1u;
+    }
+    if (count == 3u) {
+        phy_ir_ref generators[EVAL_ABSTRACT_MAX_GENERATORS];
+        status = list_refs(
+            env, arg_ref(env, expr, 2u), generators,
+            EVAL_ABSTRACT_MAX_GENERATORS, &generator_count);
+        for (size_t which = 0u;
+             which < generator_count && status == PHY_OK; ++which) {
+            status = read_signed_symmetry(
+                env, generators[which], rank, images[which],
+                &signs[which]);
+            image_views[which] = images[which];
+        }
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    status = ensure_abstract_context(env);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_abstract_tensor_head *head = NULL;
+    status = phy_tensor_head_create_with_symmetries(
+        env->abstract, pending_name(env, "T"),
+        rank == 0u ? NULL : spaces, rank, commutation,
+        generator_count == 0u ? NULL : image_views,
+        generator_count == 0u ? NULL : signs, generator_count,
+        &head);
+    return status == PHY_OK
+               ? publish(
+                     env, PHY_VALUE_TENSOR_HEAD, head, NULL, NULL,
+                     out_value)
+               : status;
+}
+
+static phy_status eval_tensor_head_application(
+    phy_env *env, phy_ir_ref expr, const phy_abstract_tensor_head *head,
+    phy_value *out_value)
+{
+    const size_t rank = phy_tensor_head_slot_count(head);
+    if (arg_count(env, expr) != rank ||
+        rank > EVAL_ABSTRACT_MAX_SLOTS) {
+        return rank > EVAL_ABSTRACT_MAX_SLOTS
+                   ? PHY_ERR_TERM_LIMIT
+                   : PHY_ERR_PARSE;
+    }
+    phy_abstract_index indices[EVAL_ABSTRACT_MAX_SLOTS];
+    for (size_t slot = 0u; slot < rank; ++slot) {
+        const phy_ir_ref ref = arg_ref(env, expr, slot);
+        if (phy_ir_kind_of(env->ir, ref) != PHY_IR_INDEX) {
+            return PHY_ERR_TYPE;
+        }
+        phy_ir_variance variance = PHY_IR_INDEX_LOWER;
+        if (!phy_ir_index_variance(env->ir, ref, &variance)) {
+            return PHY_ERR_CORRUPT_DOCUMENT;
+        }
+        const phy_index_space *space =
+            phy_tensor_head_slot_space(head, slot);
+        const phy_ir_symbol explicit_space =
+            phy_ir_index_space(env->ir, ref);
+        if (explicit_space != PHY_IR_NO_SYMBOL &&
+            explicit_space != phy_index_space_symbol(space)) {
+            return PHY_ERR_TYPE;
+        }
+        const char *name = phy_ir_symbol_name(
+            env->ir, phy_ir_head(env->ir, ref));
+        if (name == NULL) {
+            return PHY_ERR_CORRUPT_DOCUMENT;
+        }
+        const phy_status status = phy_abstract_index_make(
+            space, name, variance, &indices[slot]);
+        if (status != PHY_OK) {
+            return status;
+        }
+    }
+    phy_ir_ref one = PHY_IR_NULL;
+    phy_status status = phy_cas_number(
+        env->cas, 1, 1, &one);
+    phy_tensor_monomial *monomial = NULL;
+    const phy_abstract_factor factor = {head, indices, rank};
+    if (status == PHY_OK) {
+        status = phy_tensor_monomial_create(
+            env->abstract, one, &factor, 1u, &monomial);
+    }
+    return status == PHY_OK
+               ? publish(
+                     env, PHY_VALUE_ABSTRACT_TENSOR, monomial, NULL,
+                     NULL, out_value)
+               : status;
+}
+
+static phy_status eval_tensor_canonicalize(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 1u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value input;
+    phy_status status = arg_typed(
+        env, expr, 0u, PHY_VALUE_ABSTRACT_TENSOR, &input);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_tensor_monomial *canonical = NULL;
+    status = phy_tensor_monomial_canonicalize(
+        input.as.abstract_tensor, NULL, &canonical, NULL);
+    return status == PHY_OK
+               ? publish(
+                     env, PHY_VALUE_ABSTRACT_TENSOR, canonical, &input,
+                     NULL, out_value)
+               : status;
 }
 
 /* ------------------------------------------------------------ geometry */
@@ -2428,11 +2738,26 @@ static phy_status eval_measure(phy_env *env, phy_ir_ref expr, eval_head head,
         return PHY_ERR_TYPE;
     }
     if (head == EVAL_HEAD_RANK) {
-        if (target.kind != PHY_VALUE_TENSOR) {
-            return PHY_ERR_TYPE;
+        if (target.kind == PHY_VALUE_TENSOR) {
+            return integer_value(
+                env, (int64_t)phy_tensor_rank(target.as.tensor),
+                out_value);
         }
-        return integer_value(env, (int64_t)phy_tensor_rank(target.as.tensor),
-                             out_value);
+        if (target.kind == PHY_VALUE_TENSOR_HEAD) {
+            return integer_value(
+                env,
+                (int64_t)phy_tensor_head_slot_count(
+                    target.as.tensor_head),
+                out_value);
+        }
+        if (target.kind == PHY_VALUE_ABSTRACT_TENSOR) {
+            return integer_value(
+                env,
+                (int64_t)phy_tensor_monomial_free_count(
+                    target.as.abstract_tensor),
+                out_value);
+        }
+        return PHY_ERR_TYPE;
     }
 
     /* Dimension: of the underlying space where there is one, of the algebra
@@ -2448,6 +2773,10 @@ static phy_status eval_measure(phy_env *env, phy_ir_ref expr, eval_head head,
     case PHY_VALUE_TENSOR:
         return integer_value(
             env, (int64_t)phy_tensor_dimension(target.as.tensor), out_value);
+    case PHY_VALUE_INDEX_SPACE:
+        *out_value = scalar_value(
+            phy_index_space_dimension(target.as.index_space));
+        return PHY_OK;
     case PHY_VALUE_LIE_FORM:
         return integer_value(
             env,
@@ -2674,6 +3003,13 @@ static phy_status eval_operator(phy_env *env, phy_ir_ref expr,
      */
     *out_handled = which != EVAL_HEAD_COUNT;
     switch (which) {
+    case EVAL_HEAD_INDEX_SPACE:
+        return eval_index_space(env, expr, out_value);
+    case EVAL_HEAD_TENSOR_HEAD:
+        return eval_tensor_head(env, expr, out_value);
+    case EVAL_HEAD_TENSOR_CANONICALIZE:
+        return eval_tensor_canonicalize(env, expr, out_value);
+
     case EVAL_HEAD_MANIFOLD:
         return eval_manifold(env, expr, out_value);
     case EVAL_HEAD_DIFFERENTIAL_FORM:
@@ -2862,6 +3198,64 @@ static phy_status eval_object_sum(phy_env *env, const phy_value *terms,
     return PHY_OK;
 }
 
+static phy_status eval_abstract_product(
+    phy_env *env, const phy_value *values, size_t count,
+    phy_ir_ref scalar, phy_value *out_value)
+{
+    phy_abstract_factor factors[EVAL_ABSTRACT_MAX_SLOTS];
+    size_t factor_count = 0u;
+    phy_ir_ref coefficients[EVAL_MAX_LIST + 1u];
+    size_t coefficient_count = 0u;
+    coefficients[coefficient_count++] = scalar;
+    for (size_t index = 0u; index < count; ++index) {
+        if (values[index].kind == PHY_VALUE_SCALAR) {
+            continue;
+        }
+        if (values[index].kind != PHY_VALUE_ABSTRACT_TENSOR) {
+            return PHY_ERR_TYPE;
+        }
+        const phy_tensor_monomial *monomial =
+            values[index].as.abstract_tensor;
+        coefficients[coefficient_count++] =
+            phy_tensor_monomial_coefficient(monomial);
+        const size_t incoming =
+            phy_tensor_monomial_factor_count(monomial);
+        if (incoming >
+            EVAL_ABSTRACT_MAX_SLOTS - factor_count) {
+            return PHY_ERR_TERM_LIMIT;
+        }
+        for (size_t which = 0u; which < incoming; ++which) {
+            const phy_abstract_tensor_head *head = NULL;
+            const phy_abstract_index *indices = NULL;
+            size_t index_count = 0u;
+            const phy_status status = phy_tensor_monomial_factor(
+                monomial, which, &head, &indices, &index_count);
+            if (status != PHY_OK) {
+                return status;
+            }
+            factors[factor_count].head = head;
+            factors[factor_count].indices = indices;
+            factors[factor_count].index_count = index_count;
+            ++factor_count;
+        }
+    }
+    phy_ir_ref coefficient = PHY_IR_NULL;
+    phy_status status = phy_cas_mul(
+        env->cas, coefficients, coefficient_count, &coefficient);
+    phy_tensor_monomial *product = NULL;
+    if (status == PHY_OK) {
+        status = phy_tensor_monomial_create(
+            env->abstract, coefficient,
+            factor_count == 0u ? NULL : factors, factor_count,
+            &product);
+    }
+    return status == PHY_OK
+               ? publish(
+                     env, PHY_VALUE_ABSTRACT_TENSOR, product, NULL,
+                     NULL, out_value)
+               : status;
+}
+
 static phy_status eval_object_scale(phy_env *env, phy_value object,
                                     phy_ir_ref scalar, phy_value *out_value)
 {
@@ -2886,7 +3280,12 @@ static phy_status eval_object_scale(phy_env *env, phy_value object,
         status = phy_lie_element_scale(object.as.element, scalar, &result);
         return status == PHY_OK ? publish(env, PHY_VALUE_LIE_ELEMENT, result,
                                           &object, NULL, out_value)
-                                : status;
+                                 : status;
+    }
+    if (object.kind == PHY_VALUE_ABSTRACT_TENSOR) {
+        const phy_value values[1] = {object};
+        return eval_abstract_product(
+            env, values, 1u, scalar, out_value);
     }
     return PHY_ERR_TYPE;
 }
@@ -2972,9 +3371,6 @@ static phy_status eval_nary(phy_env *env, phy_ir_ref expr, phy_ir_kind kind,
                    ? eval_form_wedge(env, values, count, out_value)
                    : PHY_ERR_TYPE;
     }
-    if (object_count != 1u) {
-        return PHY_ERR_TYPE;
-    }
     phy_ir_ref coefficient = PHY_IR_NULL;
     phy_status status =
         scalar_count == 0u
@@ -2982,6 +3378,15 @@ static phy_status eval_nary(phy_env *env, phy_ir_ref expr, phy_ir_kind kind,
             : phy_cas_mul(env->cas, scalars, scalar_count, &coefficient);
     if (status != PHY_OK) {
         return status;
+    }
+    if (object_count > 1u) {
+        return kind == PHY_IR_MUL
+                   ? eval_abstract_product(
+                         env, values, count, coefficient, out_value)
+                   : PHY_ERR_TYPE;
+    }
+    if (object_count != 1u) {
+        return PHY_ERR_TYPE;
     }
     return eval_object_scale(env, values[object_index], coefficient,
                              out_value);
@@ -2995,6 +3400,15 @@ phy_status eval_node(phy_env *env, phy_ir_ref expr, phy_value *out_value)
         return PHY_ERR_INVALID_ARGUMENT;
     }
     const phy_ir_kind kind = phy_ir_kind_of(env->ir, expr);
+    if (kind == PHY_IR_FUNCTION || kind == PHY_IR_TENSOR) {
+        phy_value bound_head;
+        if (eval_lookup(
+                env, phy_ir_head(env->ir, expr), &bound_head) &&
+            bound_head.kind == PHY_VALUE_TENSOR_HEAD) {
+            return eval_tensor_head_application(
+                env, expr, bound_head.as.tensor_head, out_value);
+        }
+    }
     switch (kind) {
     case PHY_IR_SYMBOL: {
         phy_value bound;

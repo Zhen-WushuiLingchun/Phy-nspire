@@ -14,7 +14,7 @@ typedef struct {
 } phy_abstract_generator;
 
 typedef struct {
-    const phy_tensor_head *head;
+    const phy_abstract_tensor_head *head;
     size_t index_offset;
     size_t index_count;
 } phy_abstract_factor_record;
@@ -25,7 +25,7 @@ struct phy_abstract_context {
     phy_abstract_limits limits;
     size_t bytes_used;
     phy_index_space **spaces;
-    phy_tensor_head **heads;
+    phy_abstract_tensor_head **heads;
     size_t space_array_bytes;
     size_t head_array_bytes;
     size_t space_count;
@@ -71,7 +71,7 @@ struct phy_index_space {
     phy_metric_symmetry metric;
 };
 
-struct phy_tensor_head {
+struct phy_abstract_tensor_head {
     phy_abstract_context *context;
     phy_ir_symbol symbol;
     size_t slot_count;
@@ -91,6 +91,6 @@ void phy_abstract_free(phy_abstract_context *context, void *pointer,
                        size_t bytes);
 bool phy_abstract_name_used(const phy_abstract_context *context,
                             phy_ir_symbol symbol, bool heads);
-void phy_abstract_head_destroy(phy_tensor_head *head);
+void phy_abstract_head_destroy(phy_abstract_tensor_head *head);
 
 #endif /* PHY_ABSTRACT_INTERNAL_H */

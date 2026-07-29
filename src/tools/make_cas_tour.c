@@ -117,6 +117,33 @@ static const tour_cell kTour[] = {
      "U=Manifold[{c0},Euclidean,Unoriented]", NULL},
     {TOUR_INPUT, "Tensor[H,Down[i],Up[j]]", NULL},
 
+    {TOUR_MARKDOWN, "Abstract-index tensors",
+     "$$A_{ab}=-A_{ba},\\qquad "
+     "A_{ab}S^{ab}=0$$"
+     " Index spaces and tensor heads are coordinate-free. Their rank and "
+     "dimension are runtime metadata, while signed slot symmetries, dummy "
+     "renaming, metric flips, and identical-factor exchange share one exact "
+     "canonicalizer."},
+    {TOUR_INPUT, "Va=IndexSpace[4,SymmetricMetric]", NULL},
+    {TOUR_INPUT,
+     "Aa=TensorHead[{Va,Va},Antisymmetric]", NULL},
+    {TOUR_INPUT, "Sa=TensorHead[{Va,Va},Symmetric]", NULL},
+    {TOUR_INPUT,
+     "TensorCanonicalize[Aa[Down[j],Down[i]]]", NULL},
+    {TOUR_INPUT,
+     "TensorCanonicalize["
+     "Aa[Down[i],Down[j]]*Sa[Up[i],Up[j]]]",
+     NULL},
+    {TOUR_INPUT,
+     "R5=TensorHead[{Va,Va,Va,Va,Va},Commuting,"
+     "{Symmetry[{2,1,3,4,5},-1]}]",
+     NULL},
+    {TOUR_INPUT,
+     "TensorCanonicalize["
+     "R5[Down[j],Down[i],Down[k],Down[l],Down[m]]]",
+     NULL},
+    {TOUR_INPUT, "Rank[R5]", NULL},
+
     {TOUR_MARKDOWN, "Exterior calculus",
      "$$d^2=0,\\quad \\mathcal{L}_v=d\\iota_v+\\iota_vd$$"},
     {TOUR_INPUT, "a=DifferentialForm[M,1,{0,Sin[theta]}]", NULL},
@@ -453,8 +480,8 @@ int main(int argc, char **argv)
 
     /*
      * The distributable document intentionally contains source cells only.
-     * Persisting all 103 cached input IR trees and all 103 output trees makes
-     * opening the 215-card validation document rebuild the entire physics
+     * Persisting all 129 cached input IR trees and all 129 output trees makes
+     * opening the 272-card validation document rebuild the entire physics
      * session at once. The cached artifact round-trips on the host, but the
      * byte-identical file was reported as corrupt by a CX II at open time. The
      * eager IR/heap reconstruction is the platform-specific part of that path.

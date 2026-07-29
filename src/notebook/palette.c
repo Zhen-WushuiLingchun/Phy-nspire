@@ -83,6 +83,18 @@ static const phy_palette_entry kCasPhysics[] = {
     {"Noncommutative product", "NonCommutativeMultiply[,]",
      sizeof("NonCommutativeMultiply[") - 1u},
     {"Exterior product", "Wedge[,]", sizeof("Wedge[") - 1u},
+    {"Define abstract index space",
+     "V = IndexSpace[4,SymmetricMetric]",
+     sizeof("V = IndexSpace[") - 1u},
+    {"Define antisymmetric tensor head",
+     "A = TensorHead[{V,V},Antisymmetric]",
+     sizeof("A = TensorHead[") - 1u},
+    {"Define general signed symmetry",
+     "R = TensorHead[{V,V,V},Commuting,{Symmetry[{2,1,3},-1]}]",
+     sizeof("R = TensorHead[") - 1u},
+    {"Canonicalize abstract tensor",
+     "TensorCanonicalize[A[Down[b],Down[a]]]",
+     sizeof("TensorCanonicalize[") - 1u},
 };
 
 /*

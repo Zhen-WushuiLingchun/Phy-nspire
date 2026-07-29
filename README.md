@@ -67,8 +67,11 @@ Its explicit component bridge binds runtime-dimension coordinate or internal
 bases to bounded sparse component tables, while validated coordinate maps add
 exact Jacobians, proved two-way transitions, arbitrary-degree exterior-form
 pullbacks through exact minors, and vector pushforwards along maps.
-These new library APIs are host-tested and ARM-compiled but are not yet wired
-to notebook evaluator heads or the existing GR pipeline.
+`IndexSpace`, `TensorHead`, direct indexed head application and
+`TensorCanonicalize` now expose the coordinate-free monoterm layer in notebook
+cells. Young projection, sparse component construction and coordinate maps
+remain library APIs until their reader-facing object lifetimes are finalized;
+the existing GR pipeline still uses the legacy dense backend.
 The differential-geometry layer with oriented
 manifolds, canonical antisymmetric forms, exact wedge, exterior derivative,
 interior product, Lie derivative, and both orthonormal/general-metric Hodge duals. The native
@@ -113,16 +116,16 @@ survived a round trip and nothing computed.
 
 The generated
 [`examples/phy-nspire-cas-tour.tns`](examples/phy-nspire-cas-tour.tns)
-notebook combines thirteen Markdown/LaTeX explanations with 121 executable examples
-that touch every implemented evaluator head. Its distributable form contains 134
+notebook combines fourteen Markdown/LaTeX explanations with 129 executable examples
+that touch every implemented evaluator head. Its distributable form contains 143
 source cells so opening does not eagerly rebuild all cached results; a separate
 fully evaluated copy is serialized, reopened, and replayed during generation.
 
-The strict Windows host suite passes 34/34. The WSL ASan/UBSan/leak suite
-passes 36/36, and the assertion-bearing executables contain 303,492 explicit
+The strict Windows host suite passes 39/39. The WSL ASan/UBSan/leak suite
+passes 41/41, and the assertion-bearing executables contain 305,389 explicit
 checks.
 
-The current native build is measured at 1,173,026 bytes, 18.6% of the 6 MiB
+The current native build is measured at 1,183,523 bytes, 18.8% of the 6 MiB
 ceiling. Its evaluator ARM probe links the complete current physics stack,
 retains 15/15 public evaluator entry points, packages to a `.tns`, and imports
 no libm, floating-point formatter, or ARM soft-float helper.
@@ -136,8 +139,8 @@ verified byte-for-byte by calculator readback. The evaluator build still
 requires an explicit calculator acceptance run after transfer; an ARM link and
 byte-identical upload do not establish on-device runtime or performance. That
 cached tour exposed a CX II load-time failure consistent with eager IR/heap
-pressure and has since been replaced by the 7,521-byte source-only tour; the
-replacement and the current 1,173,026-byte program have not been uploaded in
+pressure and has since been replaced by the 8,362-byte source-only tour; the
+replacement and the current 1,183,523-byte program have not been uploaded in
 this build and still require explicit calculator open/run checks. The
 separate baseline channel-order check remains tracked in
 [docs/BUILD.md](docs/BUILD.md).

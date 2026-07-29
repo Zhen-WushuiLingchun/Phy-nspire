@@ -1440,6 +1440,110 @@ static void test_notebook_round_trip_keeps_series_data(void)
     phy_notebook_destroy(notebook);
 }
 
+static void test_abstract_tensor_frontend_and_canonicalization(void)
+{
+    fixture f = fixture_open();
+
+    phy_value value = run(&f, "V = IndexSpace[4, SymmetricMetric]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_INDEX_SPACE);
+    PHY_CHECK_EQ_STR(
+        describe(&f, value),
+        "IndexSpace V dim 4 symmetric-metric");
+    expect_scalar(&f, "Dimension[V]", "4");
+
+    value = run(
+        &f,
+        "T5 = TensorHead[{V,V,V,V,V}, Commuting]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_TENSOR_HEAD);
+    PHY_CHECK_EQ_STR(
+        describe(&f, value),
+        "TensorHead T5 rank 5 commuting sym 0");
+    expect_scalar(&f, "Rank[T5]", "5");
+
+    (void)run(&f, "A = TensorHead[{V,V}, Antisymmetric]");
+    (void)run(&f, "S = TensorHead[{V,V}, Symmetric]");
+    value = run(
+        &f,
+        "m = TensorCanonicalize[A[Down[b],Down[a]]]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_ABSTRACT_TENSOR);
+    const phy_tensor_monomial *monomial = value.as.abstract_tensor;
+    int64_t coefficient = 0;
+    PHY_CHECK(phy_ir_integer_value(
+        f.ir, phy_tensor_monomial_coefficient(monomial),
+        &coefficient));
+    PHY_CHECK_EQ_INT(coefficient, -1);
+    const phy_abstract_tensor_head *head = NULL;
+    const phy_abstract_index *indices = NULL;
+    size_t index_count = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_factor(
+            monomial, 0u, &head, &indices, &index_count),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(index_count, 2);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, indices[0].name), "a");
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, indices[1].name), "b");
+    PHY_CHECK(strstr(expansion(&f, value), "tensor A") != NULL);
+
+    /* Symmetric contracted against antisymmetric vanishes exactly. */
+    value = run(
+        &f,
+        "TensorCanonicalize["
+        "A[Down[a],Down[b]]*S[Up[a],Up[b]]]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_ABSTRACT_TENSOR);
+    PHY_CHECK(phy_ir_integer_value(
+        f.ir,
+        phy_tensor_monomial_coefficient(value.as.abstract_tensor),
+        &coefficient));
+    PHY_CHECK_EQ_INT(coefficient, 0);
+    expect_scalar(
+        &f,
+        "Rank[TensorCanonicalize["
+        "A[Down[a],Down[b]]*S[Up[a],Up[b]]]]",
+        "0");
+
+    /* General signed generators are 1-based at the reader surface. */
+    value = run(
+        &f,
+        "R = TensorHead[{V,V,V,V,V}, Commuting, "
+        "{Symmetry[{2,1,3,4,5},-1]}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_TENSOR_HEAD);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_symmetry_count(
+            value.as.tensor_head),
+        1);
+    value = run(
+        &f,
+        "TensorCanonicalize["
+        "R[Down[b],Down[a],Down[c],Down[d],Down[e]]]");
+    PHY_CHECK(phy_ir_integer_value(
+        f.ir,
+        phy_tensor_monomial_coefficient(value.as.abstract_tensor),
+        &coefficient));
+    PHY_CHECK_EQ_INT(coefficient, -1);
+
+    /* Slot spaces are typed, not a decorative Lorentz label. */
+    (void)run(&f, "W = IndexSpace[3, NoMetric]");
+    (void)run(&f, "H = TensorHead[{V,W}, Commuting]");
+    value = run(&f, "H[Down[a,V],Up[b,W]]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_ABSTRACT_TENSOR);
+    expect_status(
+        &f, "H[Down[a,W],Up[b,W]]", PHY_ERR_TYPE);
+
+    (void)run(&f, "N = IndexSpace[n, NoMetric]");
+    expect_scalar(&f, "Dimension[N]", "n");
+
+    /* Reset destroys the bulk-owned abstract context and permits clean reuse. */
+    phy_env_reset(f.env);
+    PHY_CHECK_EQ_INT(phy_env_binding_count(f.env), 0);
+    PHY_CHECK_EQ_INT(phy_env_object_count(f.env), 0);
+    value = run(&f, "V = IndexSpace[2, NoMetric]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_INDEX_SPACE);
+    expect_scalar(&f, "Dimension[V]", "2");
+    fixture_close(&f);
+}
+
 int main(void)
 {
     if (phy_platform_init() != PHY_OK) {
@@ -1471,6 +1575,7 @@ int main(void)
     PHY_TEST_CASE(test_notebook_shares_state_between_cells);
     PHY_TEST_CASE(test_notebook_round_trip_keeps_descriptors);
     PHY_TEST_CASE(test_notebook_round_trip_keeps_series_data);
+    PHY_TEST_CASE(test_abstract_tensor_frontend_and_canonicalization);
     const int result = PHY_TEST_REPORT("test_eval");
     phy_platform_shutdown();
     return result;

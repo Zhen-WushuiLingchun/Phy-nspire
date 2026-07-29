@@ -16,6 +16,8 @@
 #include "eval_internal.h"
 
 static const char *const kEvalHeadNames[EVAL_HEAD_COUNT] = {
+    "IndexSpace",   "TensorHead",       "TensorCanonicalize",
+
     "Manifold",     "DifferentialForm", "Metric",      "VectorField",
     "ComponentTensor",
     "ExteriorD",    "InteriorProduct",  "LieDerivative",
@@ -72,6 +74,12 @@ const char *phy_value_kind_name(phy_value_kind kind)
         return "LieForm";
     case PHY_VALUE_CURVATURE:
         return "Curvature";
+    case PHY_VALUE_INDEX_SPACE:
+        return "IndexSpace";
+    case PHY_VALUE_TENSOR_HEAD:
+        return "TensorHead";
+    case PHY_VALUE_ABSTRACT_TENSOR:
+        return "AbstractTensor";
     default:
         break;
     }
@@ -102,6 +110,12 @@ const void *eval_value_pointer(const phy_value *value)
         return value->as.lie_form;
     case PHY_VALUE_CURVATURE:
         return value->as.curvature;
+    case PHY_VALUE_INDEX_SPACE:
+        return value->as.index_space;
+    case PHY_VALUE_TENSOR_HEAD:
+        return value->as.tensor_head;
+    case PHY_VALUE_ABSTRACT_TENSOR:
+        return value->as.abstract_tensor;
     default:
         break;
     }
@@ -137,6 +151,10 @@ static void destroy_owned(phy_value_kind kind, void *owned)
         break;
     case PHY_VALUE_CURVATURE:
         phy_gr_result_destroy((phy_gr_result *)owned);
+        break;
+    case PHY_VALUE_ABSTRACT_TENSOR:
+        phy_tensor_monomial_destroy(
+            (phy_tensor_monomial *)owned);
         break;
     default:
         /* Scalars and borrowed algebras never own anything. */
@@ -201,6 +219,8 @@ void phy_env_reset(phy_env *env)
     }
     env->object_count = 0u;
     env->pending_name = PHY_IR_NO_SYMBOL;
+    phy_abstract_context_destroy(env->abstract);
+    env->abstract = NULL;
 }
 
 void phy_env_destroy(phy_env *env)

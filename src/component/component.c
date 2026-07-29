@@ -103,7 +103,7 @@ static phy_status resolve_limits(const phy_component_limits *requested,
 }
 
 static phy_status validate_realization(
-    const phy_tensor_head *head, phy_component_basis *const *bases,
+    const phy_abstract_tensor_head *head, phy_component_basis *const *bases,
     const phy_ir_variance *valence,
     const phy_component_limits *limits)
 {
@@ -250,7 +250,7 @@ static phy_status build_slot_group(phy_component_tensor *tensor,
 }
 
 phy_status phy_component_tensor_create(
-    const phy_tensor_head *head, phy_component_basis *const *bases,
+    const phy_abstract_tensor_head *head, phy_component_basis *const *bases,
     const phy_ir_variance *valence,
     const phy_component_limits *requested,
     phy_component_tensor **out_tensor)
@@ -316,7 +316,7 @@ void phy_component_tensor_destroy(phy_component_tensor *tensor)
     phy_free(tensor, sizeof *tensor);
 }
 
-const phy_tensor_head *phy_component_tensor_head(
+const phy_abstract_tensor_head *phy_component_tensor_head(
     const phy_component_tensor *tensor)
 {
     return tensor != NULL ? tensor->head : NULL;

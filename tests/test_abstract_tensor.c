@@ -111,7 +111,7 @@ static void test_rank_six_head_and_application(void)
 
     const phy_index_space *slots[6] = {
         space, space, space, space, space, space};
-    phy_tensor_head *head = NULL;
+    phy_abstract_tensor_head *head = NULL;
     PHY_CHECK_EQ_INT(
         phy_tensor_head_create(
             f.abstract, "T", slots, 6u, PHY_TENSOR_COMMUTING, &head),
@@ -167,7 +167,7 @@ static void test_signed_slot_generators(void)
             PHY_METRIC_SYMMETRIC, &space),
         PHY_OK);
     const phy_index_space *slots[4] = {space, space, space, space};
-    phy_tensor_head *riemann = NULL;
+    phy_abstract_tensor_head *riemann = NULL;
     PHY_CHECK_EQ_INT(
         phy_tensor_head_create(
             f.abstract, "R", slots, 4u, PHY_TENSOR_COMMUTING, &riemann),
@@ -217,7 +217,7 @@ static void test_signed_slot_generators(void)
             &other),
         PHY_OK);
     const phy_index_space *mixed_slots[2] = {space, other};
-    phy_tensor_head *mixed = NULL;
+    phy_abstract_tensor_head *mixed = NULL;
     PHY_CHECK_EQ_INT(
         phy_tensor_head_create(
             f.abstract, "Mixed", mixed_slots, 2u,
@@ -255,7 +255,7 @@ static void test_limits_are_runtime_not_semantic(void)
 
     const phy_index_space *slots[8] = {
         space, space, space, space, space, space, space, space};
-    phy_tensor_head *rank_eight = NULL;
+    phy_abstract_tensor_head *rank_eight = NULL;
     PHY_CHECK_EQ_INT(
         phy_tensor_head_create(
             f.abstract, "A", slots, 8u, PHY_TENSOR_NONCOMMUTING,
@@ -263,7 +263,7 @@ static void test_limits_are_runtime_not_semantic(void)
         PHY_OK);
     PHY_CHECK_EQ_INT(phy_tensor_head_slot_count(rank_eight), 8);
 
-    phy_tensor_head *rank_nine = NULL;
+    phy_abstract_tensor_head *rank_nine = NULL;
     const phy_index_space *nine[9] = {
         space, space, space, space, space, space, space, space, space};
     PHY_CHECK_EQ_INT(
@@ -285,8 +285,8 @@ static void test_monomial_index_census(void)
         PHY_OK);
     const phy_index_space *two_slots[2] = {space, space};
     const phy_index_space *one_slot[1] = {space};
-    phy_tensor_head *a_head = NULL;
-    phy_tensor_head *b_head = NULL;
+    phy_abstract_tensor_head *a_head = NULL;
+    phy_abstract_tensor_head *b_head = NULL;
     PHY_CHECK_EQ_INT(
         phy_tensor_head_create(
             f.abstract, "A", two_slots, 2u, PHY_TENSOR_COMMUTING, &a_head),
@@ -339,7 +339,7 @@ static void test_monomial_index_census(void)
     PHY_CHECK_EQ_INT(use.upper_count, 1);
     PHY_CHECK_EQ_INT(use.name, b_down.name);
 
-    const phy_tensor_head *queried_head = NULL;
+    const phy_abstract_tensor_head *queried_head = NULL;
     const phy_abstract_index *queried_indices = NULL;
     size_t queried_count = 0u;
     PHY_CHECK_EQ_INT(
@@ -364,7 +364,7 @@ static void test_monomial_rejects_malformed_indices(void)
             PHY_METRIC_SYMMETRIC, &space),
         PHY_OK);
     const phy_index_space *slots[2] = {space, space};
-    phy_tensor_head *head = NULL;
+    phy_abstract_tensor_head *head = NULL;
     PHY_CHECK_EQ_INT(
         phy_tensor_head_create(
             f.abstract, "T", slots, 2u, PHY_TENSOR_COMMUTING, &head),
@@ -384,7 +384,7 @@ static void test_monomial_rejects_malformed_indices(void)
 
     /* Three occurrences are ambiguous even when two have opposite variance. */
     const phy_index_space *single_slot[1] = {space};
-    phy_tensor_head *vector = NULL;
+    phy_abstract_tensor_head *vector = NULL;
     PHY_CHECK_EQ_INT(
         phy_tensor_head_create(
             f.abstract, "V", single_slot, 1u, PHY_TENSOR_COMMUTING, &vector),
@@ -430,8 +430,8 @@ static void test_same_name_in_different_spaces_is_distinct(void)
         PHY_OK);
     const phy_index_space *m_slot[1] = {m};
     const phy_index_space *c_slot[1] = {colour};
-    phy_tensor_head *v = NULL;
-    phy_tensor_head *t = NULL;
+    phy_abstract_tensor_head *v = NULL;
+    phy_abstract_tensor_head *t = NULL;
     PHY_CHECK_EQ_INT(
         phy_tensor_head_create(
             f.abstract, "V", m_slot, 1u, PHY_TENSOR_COMMUTING, &v),
@@ -495,9 +495,9 @@ static void test_free_index_and_factor_canonicalization(void)
         PHY_OK);
     const phy_index_space *two[2] = {space, space};
     const phy_index_space *one[1] = {space};
-    phy_tensor_head *antisymmetric = NULL;
-    phy_tensor_head *a_head = NULL;
-    phy_tensor_head *b_head = NULL;
+    phy_abstract_tensor_head *antisymmetric = NULL;
+    phy_abstract_tensor_head *a_head = NULL;
+    phy_abstract_tensor_head *b_head = NULL;
     PHY_CHECK_EQ_INT(
         phy_tensor_head_create(
             f.abstract, "F", two, 2u, PHY_TENSOR_COMMUTING,
@@ -543,7 +543,7 @@ static void test_free_index_and_factor_canonicalization(void)
     PHY_CHECK_EQ_INT(
         exact_integer(
             &f, phy_tensor_monomial_coefficient(canonical)), -3);
-    const phy_tensor_head *head = NULL;
+    const phy_abstract_tensor_head *head = NULL;
     const phy_abstract_index *indices = NULL;
     size_t count = 0u;
     PHY_CHECK_EQ_INT(
@@ -599,8 +599,8 @@ static void test_dummy_alpha_renaming_and_metric_zero(void)
         PHY_OK);
     const phy_index_space *one[1] = {space};
     const phy_index_space *two[2] = {space, space};
-    phy_tensor_head *vector = NULL;
-    phy_tensor_head *two_form = NULL;
+    phy_abstract_tensor_head *vector = NULL;
+    phy_abstract_tensor_head *two_form = NULL;
     PHY_CHECK_EQ_INT(
         phy_tensor_head_create(
             f.abstract, "V", one, 1u, PHY_TENSOR_COMMUTING, &vector),
@@ -636,7 +636,7 @@ static void test_dummy_alpha_renaming_and_metric_zero(void)
         phy_tensor_monomial_canonicalize(
             input, NULL, &canonical, &stats), PHY_OK);
     PHY_CHECK_EQ_INT(stats.slot_group_order, 2);
-    const phy_tensor_head *head = NULL;
+    const phy_abstract_tensor_head *head = NULL;
     const phy_abstract_index *first = NULL;
     const phy_abstract_index *second = NULL;
     size_t count = 0u;
@@ -693,8 +693,8 @@ static void test_metric_type_controls_dummy_orientation(void)
     const phy_index_space *symplectic_slots[2] = {
         symplectic, symplectic};
     const phy_index_space *unmetric_slots[2] = {unmetric, unmetric};
-    phy_tensor_head *plain = NULL;
-    phy_tensor_head *antisymmetric = NULL;
+    phy_abstract_tensor_head *plain = NULL;
+    phy_abstract_tensor_head *antisymmetric = NULL;
     PHY_CHECK_EQ_INT(
         phy_tensor_head_create(
             f.abstract, "P", symplectic_slots, 2u,
@@ -782,7 +782,7 @@ static void test_xperm_rank_six_oracle_and_work_limit(void)
         PHY_OK);
     const phy_index_space *slots[6] = {
         space, space, space, space, space, space};
-    phy_tensor_head *head = NULL;
+    phy_abstract_tensor_head *head = NULL;
     PHY_CHECK_EQ_INT(
         phy_tensor_head_create(
             f.abstract, "T", slots, 6u, PHY_TENSOR_COMMUTING, &head),
@@ -822,7 +822,7 @@ static void test_xperm_rank_six_oracle_and_work_limit(void)
     PHY_CHECK_EQ_INT(
         exact_integer(
             &f, phy_tensor_monomial_coefficient(canonical)), -1);
-    const phy_tensor_head *queried = NULL;
+    const phy_abstract_tensor_head *queried = NULL;
     const phy_abstract_index *result = NULL;
     size_t count = 0u;
     PHY_CHECK_EQ_INT(
@@ -864,7 +864,7 @@ static void test_symmetric_rank_nine_is_pruned_not_enumerated(void)
         PHY_OK);
     const phy_index_space *slots[9] = {
         space, space, space, space, space, space, space, space, space};
-    phy_tensor_head *symmetric = NULL;
+    phy_abstract_tensor_head *symmetric = NULL;
     PHY_CHECK_EQ_INT(
         phy_tensor_head_create(
             f.abstract, "S", slots, 9u, PHY_TENSOR_COMMUTING,
@@ -906,7 +906,7 @@ static void test_symmetric_rank_nine_is_pruned_not_enumerated(void)
     PHY_CHECK_EQ_INT(stats.slot_group_order, 362880);
     PHY_CHECK(stats.candidates_visited < 100u);
 
-    const phy_tensor_head *head = NULL;
+    const phy_abstract_tensor_head *head = NULL;
     const phy_abstract_index *result = NULL;
     size_t count = 0u;
     PHY_CHECK_EQ_INT(
@@ -933,7 +933,7 @@ static void test_young_row_and_column_projectors(void)
             PHY_METRIC_NONE, &space),
         PHY_OK);
     const phy_index_space *slots[2] = {space, space};
-    phy_tensor_head *head = NULL;
+    phy_abstract_tensor_head *head = NULL;
     PHY_CHECK_EQ_INT(
         phy_tensor_head_create(
             f.abstract, "T", slots, 2u, PHY_TENSOR_COMMUTING, &head),
@@ -975,7 +975,7 @@ static void test_young_row_and_column_projectors(void)
                     phy_tensor_expression_term(expression, term)),
             1, 2);
     }
-    const phy_tensor_head *queried = NULL;
+    const phy_abstract_tensor_head *queried = NULL;
     const phy_abstract_index *result = NULL;
     size_t count = 0u;
     PHY_CHECK_EQ_INT(
@@ -1028,7 +1028,7 @@ static void test_young_collection_hook_and_typed_validation(void)
             PHY_METRIC_NONE, &other),
         PHY_OK);
     const phy_index_space *two[2] = {space, space};
-    phy_tensor_head *symmetric_head = NULL;
+    phy_abstract_tensor_head *symmetric_head = NULL;
     PHY_CHECK_EQ_INT(
         phy_tensor_head_create(
             f.abstract, "S", two, 2u, PHY_TENSOR_COMMUTING,
@@ -1072,7 +1072,7 @@ static void test_young_collection_hook_and_typed_validation(void)
     phy_tensor_monomial_destroy(input);
 
     const phy_index_space *three[3] = {space, space, space};
-    phy_tensor_head *rank_three = NULL;
+    phy_abstract_tensor_head *rank_three = NULL;
     PHY_CHECK_EQ_INT(
         phy_tensor_head_create(
             f.abstract, "Y", three, 3u, PHY_TENSOR_COMMUTING,
@@ -1105,7 +1105,7 @@ static void test_young_collection_hook_and_typed_validation(void)
     phy_tensor_monomial_destroy(input);
 
     const phy_index_space *mixed_slots[2] = {space, other};
-    phy_tensor_head *mixed = NULL;
+    phy_abstract_tensor_head *mixed = NULL;
     PHY_CHECK_EQ_INT(
         phy_tensor_head_create(
             f.abstract, "MixedYoung", mixed_slots, 2u,
@@ -1132,6 +1132,47 @@ static void test_young_collection_hook_and_typed_validation(void)
     fixture_close(&f);
 }
 
+static void test_transactional_head_declaration(void)
+{
+    fixture f = fixture_open(NULL);
+    phy_index_space *space = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_index_space_create(
+            f.abstract, "M", phy_ir_integer(f.ir, 3),
+            PHY_METRIC_NONE, &space),
+        PHY_OK);
+    const phy_index_space *slots[3] = {space, space, space};
+    static const uint16_t invalid[3] = {1u, 1u, 2u};
+    const uint16_t *invalid_generators[1] = {invalid};
+    const int signs[1] = {-1};
+    const size_t heads_before =
+        phy_abstract_head_count(f.abstract);
+    const size_t bytes_before =
+        phy_abstract_bytes_used(f.abstract);
+    phy_abstract_tensor_head *head = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_create_with_symmetries(
+            f.abstract, "Bad", slots, 3u, PHY_TENSOR_COMMUTING,
+            invalid_generators, signs, 1u, &head),
+        PHY_ERR_TYPE);
+    PHY_CHECK(head == NULL);
+    PHY_CHECK_EQ_INT(
+        phy_abstract_head_count(f.abstract), heads_before);
+    PHY_CHECK_EQ_INT(
+        phy_abstract_bytes_used(f.abstract), bytes_before);
+
+    static const uint16_t swap[3] = {1u, 0u, 2u};
+    const uint16_t *valid_generators[1] = {swap};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_create_with_symmetries(
+            f.abstract, "Good", slots, 3u, PHY_TENSOR_COMMUTING,
+            valid_generators, signs, 1u, &head),
+        PHY_OK);
+    PHY_CHECK(head != NULL);
+    PHY_CHECK_EQ_INT(phy_tensor_head_symmetry_count(head), 1);
+    fixture_close(&f);
+}
+
 int main(void)
 {
     PHY_TEST_CASE(test_index_spaces);
@@ -1148,5 +1189,6 @@ int main(void)
     PHY_TEST_CASE(test_symmetric_rank_nine_is_pruned_not_enumerated);
     PHY_TEST_CASE(test_young_row_and_column_projectors);
     PHY_TEST_CASE(test_young_collection_hook_and_typed_validation);
+    PHY_TEST_CASE(test_transactional_head_declaration);
     return PHY_TEST_REPORT("abstract_tensor");
 }

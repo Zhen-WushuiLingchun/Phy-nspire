@@ -11,7 +11,7 @@ static bool valid_commutation(phy_tensor_commutation commutation)
 phy_status phy_tensor_head_create(
     phy_abstract_context *context, const char *name,
     const phy_index_space *const *slot_spaces, size_t slot_count,
-    phy_tensor_commutation commutation, phy_tensor_head **out_head)
+    phy_tensor_commutation commutation, phy_abstract_tensor_head **out_head)
 {
     if (context == NULL || name == NULL || name[0] == '\0' ||
         out_head == NULL || !valid_commutation(commutation) ||
@@ -42,7 +42,7 @@ phy_status phy_tensor_head_create(
         return PHY_ERR_MEMORY_LIMIT;
     }
 
-    phy_tensor_head *head =
+    phy_abstract_tensor_head *head =
         phy_abstract_alloc(context, sizeof *head);
     if (head == NULL) {
         return PHY_ERR_MEMORY_LIMIT;
@@ -67,7 +67,7 @@ phy_status phy_tensor_head_create(
     return PHY_OK;
 }
 
-void phy_abstract_head_destroy(phy_tensor_head *head)
+void phy_abstract_head_destroy(phy_abstract_tensor_head *head)
 {
     if (head == NULL) {
         return;
@@ -83,7 +83,7 @@ void phy_abstract_head_destroy(phy_tensor_head *head)
     phy_abstract_free(context, head, sizeof *head);
 }
 
-const char *phy_tensor_head_name(const phy_tensor_head *head)
+const char *phy_tensor_head_name(const phy_abstract_tensor_head *head)
 {
     return head != NULL
                ? phy_ir_symbol_name(head->context->ir, head->symbol)
@@ -91,22 +91,22 @@ const char *phy_tensor_head_name(const phy_tensor_head *head)
 }
 
 phy_abstract_context *phy_tensor_head_context(
-    const phy_tensor_head *head)
+    const phy_abstract_tensor_head *head)
 {
     return head != NULL ? head->context : NULL;
 }
 
-phy_ir_symbol phy_tensor_head_symbol(const phy_tensor_head *head)
+phy_ir_symbol phy_tensor_head_symbol(const phy_abstract_tensor_head *head)
 {
     return head != NULL ? head->symbol : PHY_IR_NO_SYMBOL;
 }
 
-size_t phy_tensor_head_slot_count(const phy_tensor_head *head)
+size_t phy_tensor_head_slot_count(const phy_abstract_tensor_head *head)
 {
     return head != NULL ? head->slot_count : 0u;
 }
 
-const phy_index_space *phy_tensor_head_slot_space(const phy_tensor_head *head,
+const phy_index_space *phy_tensor_head_slot_space(const phy_abstract_tensor_head *head,
                                                   size_t slot)
 {
     return head != NULL && slot < head->slot_count
@@ -115,12 +115,12 @@ const phy_index_space *phy_tensor_head_slot_space(const phy_tensor_head *head,
 }
 
 phy_tensor_commutation phy_tensor_head_commutation(
-    const phy_tensor_head *head)
+    const phy_abstract_tensor_head *head)
 {
     return head != NULL ? head->commutation : PHY_TENSOR_COMMUTING;
 }
 
-static bool valid_image(const phy_tensor_head *head, const uint16_t *image)
+static bool valid_image(const phy_abstract_tensor_head *head, const uint16_t *image)
 {
     if (head->slot_count != 0u && image == NULL) {
         return false;
@@ -154,7 +154,7 @@ static bool same_image(const phy_abstract_generator *generator,
                   slot_count * sizeof(*image)) == 0;
 }
 
-phy_status phy_tensor_head_add_symmetry(phy_tensor_head *head,
+phy_status phy_tensor_head_add_symmetry(phy_abstract_tensor_head *head,
                                         const uint16_t *image, int sign)
 {
     if (head == NULL || (sign != -1 && sign != 1)) {
@@ -226,12 +226,49 @@ phy_status phy_tensor_head_add_symmetry(phy_tensor_head *head,
     return PHY_OK;
 }
 
-size_t phy_tensor_head_symmetry_count(const phy_tensor_head *head)
+phy_status phy_tensor_head_create_with_symmetries(
+    phy_abstract_context *context, const char *name,
+    const phy_index_space *const *slot_spaces, size_t slot_count,
+    phy_tensor_commutation commutation,
+    const uint16_t *const *images, const int *signs,
+    size_t generator_count, phy_abstract_tensor_head **out_head)
+{
+    if (context == NULL || out_head == NULL ||
+        (generator_count != 0u &&
+         (images == NULL || signs == NULL))) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    *out_head = NULL;
+    if (generator_count > context->limits.max_generators) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    phy_abstract_tensor_head *head = NULL;
+    phy_status status = phy_tensor_head_create(
+        context, name, slot_spaces, slot_count, commutation, &head);
+    for (size_t which = 0u;
+         which < generator_count && status == PHY_OK; ++which) {
+        status = phy_tensor_head_add_symmetry(
+            head, images[which], signs[which]);
+    }
+    if (status != PHY_OK) {
+        if (head != NULL && context->head_count != 0u &&
+            context->heads[context->head_count - 1u] == head) {
+            --context->head_count;
+            context->heads[context->head_count] = NULL;
+            phy_abstract_head_destroy(head);
+        }
+        return status;
+    }
+    *out_head = head;
+    return PHY_OK;
+}
+
+size_t phy_tensor_head_symmetry_count(const phy_abstract_tensor_head *head)
 {
     return head != NULL ? head->generator_count : 0u;
 }
 
-phy_status phy_tensor_head_symmetry(const phy_tensor_head *head, size_t which,
+phy_status phy_tensor_head_symmetry(const phy_abstract_tensor_head *head, size_t which,
                                     const uint16_t **out_image,
                                     int *out_sign)
 {
@@ -244,7 +281,7 @@ phy_status phy_tensor_head_symmetry(const phy_tensor_head *head, size_t which,
     return PHY_OK;
 }
 
-phy_status phy_tensor_head_apply(const phy_tensor_head *head,
+phy_status phy_tensor_head_apply(const phy_abstract_tensor_head *head,
                                  const phy_abstract_index *indices,
                                  size_t index_count, phy_ir_ref *out_ref)
 {

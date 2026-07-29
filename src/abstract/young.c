@@ -176,7 +176,7 @@ static phy_status validate_tableau(
         factor >= monomial->factor_count) {
         return PHY_ERR_INVALID_ARGUMENT;
     }
-    const phy_tensor_head *head = monomial->factors[factor].head;
+    const phy_abstract_tensor_head *head = monomial->factors[factor].head;
     if (tableau->slot_count != head->slot_count ||
         tableau->slot_count == 0u) {
         return PHY_ERR_INVALID_ARGUMENT;
@@ -390,8 +390,8 @@ static int compare_monomial_structure(const phy_tensor_monomial *left,
         return left->factor_count < right->factor_count ? -1 : 1;
     }
     for (size_t factor = 0u; factor < left->factor_count; ++factor) {
-        const phy_tensor_head *left_head = left->factors[factor].head;
-        const phy_tensor_head *right_head = right->factors[factor].head;
+        const phy_abstract_tensor_head *left_head = left->factors[factor].head;
+        const phy_abstract_tensor_head *right_head = right->factors[factor].head;
         if (left_head != right_head) {
             const int head_order = strcmp(
                 phy_tensor_head_name(left_head),

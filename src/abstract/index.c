@@ -63,7 +63,7 @@ phy_status phy_abstract_resolve_limits(const phy_abstract_limits *requested,
         return PHY_ERR_INVALID_ARGUMENT;
     }
     if (out->max_spaces > SIZE_MAX / sizeof(phy_index_space *) ||
-        out->max_heads > SIZE_MAX / sizeof(phy_tensor_head *)) {
+        out->max_heads > SIZE_MAX / sizeof(phy_abstract_tensor_head *)) {
         return PHY_ERR_MEMORY_LIMIT;
     }
     return PHY_OK;

@@ -260,6 +260,8 @@ static const constant_descriptor *known_constant(const char *name)
  * docs/EVALUATOR.md records that boundary.
  */
 static const char *const kObjectHeads[] = {
+    "IndexSpace",   "TensorHead",       "TensorCanonicalize",
+
     "Manifold",     "DifferentialForm", "Metric",        "VectorField",
     "ComponentTensor",
     "ExteriorD",    "InteriorProduct",  "LieDerivative", "HodgeStar",

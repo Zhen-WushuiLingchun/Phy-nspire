@@ -107,6 +107,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include "phy/abstract_tensor.h"
 #include "phy/cas.h"
 #include "phy/geom.h"
 #include "phy/gr.h"
@@ -158,7 +159,10 @@ typedef enum {
     PHY_VALUE_LIE_ALGEBRA,
     PHY_VALUE_LIE_ELEMENT,
     PHY_VALUE_LIE_FORM,
-    PHY_VALUE_CURVATURE
+    PHY_VALUE_CURVATURE,
+    PHY_VALUE_INDEX_SPACE,
+    PHY_VALUE_TENSOR_HEAD,
+    PHY_VALUE_ABSTRACT_TENSOR
 } phy_value_kind;
 
 /*
@@ -192,6 +196,9 @@ typedef struct {
         const phy_lie_element *element;
         const phy_lie_form *lie_form;
         phy_gr_result *curvature;
+        const phy_index_space *index_space;
+        const phy_abstract_tensor_head *tensor_head;
+        const phy_tensor_monomial *abstract_tensor;
     } as;
 } phy_value;
 

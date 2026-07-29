@@ -106,7 +106,7 @@ static void test_sparse_rank_nine_does_not_allocate_dense_power(void)
         PHY_OK);
     const phy_index_space *slots[9] = {
         space, space, space, space, space, space, space, space, space};
-    phy_tensor_head *head = NULL;
+    phy_abstract_tensor_head *head = NULL;
     PHY_CHECK_EQ_INT(
         phy_tensor_head_create(
             f.abstract, "T9", slots, 9u, PHY_TENSOR_COMMUTING, &head),
@@ -163,7 +163,7 @@ static void test_signed_component_orbits_and_forced_zero(void)
             space, "e", 5u, NULL, NULL, &basis),
         PHY_OK);
     const phy_index_space *slots[2] = {space, space};
-    phy_tensor_head *two_form = NULL;
+    phy_abstract_tensor_head *two_form = NULL;
     PHY_CHECK_EQ_INT(
         phy_tensor_head_create(
             f.abstract, "A", slots, 2u, PHY_TENSOR_COMMUTING, &two_form),
@@ -237,7 +237,7 @@ static void test_symmetric_component_canonicalization_and_limits(void)
         PHY_OK);
     const phy_index_space *slots[5] = {
         space, space, space, space, space};
-    phy_tensor_head *symmetric = NULL;
+    phy_abstract_tensor_head *symmetric = NULL;
     PHY_CHECK_EQ_INT(
         phy_tensor_head_create(
             f.abstract, "S5", slots, 5u, PHY_TENSOR_COMMUTING,
@@ -299,7 +299,7 @@ static void test_symmetric_component_canonicalization_and_limits(void)
 static void test_rank_zero_component_scalar(void)
 {
     fixture f = fixture_open();
-    phy_tensor_head *scalar_head = NULL;
+    phy_abstract_tensor_head *scalar_head = NULL;
     PHY_CHECK_EQ_INT(
         phy_tensor_head_create(
             f.abstract, "ScalarField", NULL, 0u,

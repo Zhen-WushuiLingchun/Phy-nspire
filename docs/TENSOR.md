@@ -33,8 +33,30 @@ migrated.
 
 ## Notebook construction surface
 
-The reader-facing evaluator can construct every supported dense component
-shape:
+The reader-facing evaluator now has two deliberately distinct surfaces.
+Coordinate-free declarations and monoterm canonicalization use:
+
+```text
+V = IndexSpace[4, SymmetricMetric]
+A = TensorHead[{V,V}, Antisymmetric]
+R = TensorHead[{V,V,V}, Commuting,
+               {Symmetry[{2,1,3},-1]}]
+
+TensorCanonicalize[A[Down[b],Down[a]]]
+TensorCanonicalize[A[Down[a],Down[b]] *
+                   S[Up[a],Up[b]]]
+```
+
+The first result is `-A[Down[a],Down[b]]`; the second vanishes when `S` is
+symmetric. A tensor head may mix index spaces, and an explicit
+`Down[i,Space]`/`Up[i,Space]` is checked against the declared slot. Omitted
+space labels are inferred from the head, so no Lorentz label is added to an
+ordinary manifold index. `Rank[head]` reports its slot count; `Rank[monomial]`
+reports its number of free indices. The reader surface is bounded at 64 slots
+and factors, matching the default device-oriented abstract limits rather than
+the old rank-four semantics.
+
+The component surface constructs every supported legacy dense shape:
 
 ```text
 scalar = ComponentTensor[M, {}, s]
@@ -57,8 +79,9 @@ native tensor API.
 | Landed | Deliberately deferred |
 | --- | --- |
 | legacy charts, coordinate symbols, rank, valence, head metadata | evaluator migration from legacy dense values |
-| dense `n^r` storage plus runtime-rank sparse component binding | general abstract expression evaluator heads |
+| dense `n^r` storage plus runtime-rank sparse component binding | sparse component/basis evaluator objects |
 | abstract free/dummy census and signed double-coset canonicalization | full Garnir-basis reduction beyond explicit Young projection |
+| `IndexSpace`, `TensorHead`, indexed products and `TensorCanonicalize` in notebook cells | Young-projector evaluator command |
 | normalized Young row/column projectors with exact term collection | general covariant/contravariant tensor pullback/pushforward |
 | exact contraction, inverse metric, raise/lower, component derivatives | first-Bianchi orbit canonicalization |
 | canonical lookup, fill validation, allocation-failure unwind | optional xPerm integration |

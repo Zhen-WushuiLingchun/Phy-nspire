@@ -75,7 +75,7 @@ The public API is split into four opaque object families:
 
 ```c
 typedef struct phy_index_space phy_index_space;
-typedef struct phy_tensor_head phy_tensor_head;
+typedef struct phy_abstract_tensor_head phy_abstract_tensor_head;
 typedef struct phy_tensor_monomial phy_tensor_monomial;
 typedef struct phy_tensor_expression phy_tensor_expression;
 ```
@@ -207,4 +207,3 @@ The dependency order is:
 7. transition maps, pullback/pushforward, and multi-chart geometry;
 8. migration of GR, differential forms, Lorentz, Dirac, Lie, colour, and QFT;
 9. notebook/evaluator command surface and device acceptance.
-

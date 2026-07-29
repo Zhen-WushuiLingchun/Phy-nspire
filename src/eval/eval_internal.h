@@ -28,7 +28,11 @@
  * order matches kEvalHeadNames in env.c.
  */
 typedef enum {
-    EVAL_HEAD_MANIFOLD = 0,
+    EVAL_HEAD_INDEX_SPACE = 0,
+    EVAL_HEAD_TENSOR_HEAD,
+    EVAL_HEAD_TENSOR_CANONICALIZE,
+
+    EVAL_HEAD_MANIFOLD,
     EVAL_HEAD_DIFFERENTIAL_FORM,
     EVAL_HEAD_METRIC,
     EVAL_HEAD_VECTOR_FIELD,
@@ -119,6 +123,7 @@ typedef struct {
 struct phy_env {
     phy_cas *cas;
     phy_ir_context *ir;
+    phy_abstract_context *abstract;
 
     phy_ir_symbol head[EVAL_HEAD_COUNT];
     phy_ir_symbol list_head; /* the `{...}` constructor the parser emits */

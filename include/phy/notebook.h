@@ -12,10 +12,10 @@
  * stale, and a document reopened from disk starts with an empty environment
  * until phy_notebook_evaluate_all replays it.
  *
- * The document remains bounded: at most 192 source/Markdown/output cards and
- * 64 KiB serialized. This leaves room for the exhaustive command tour plus
- * user cells while keeping the calculator-side model a single predictable
- * allocation.
+ * The document remains bounded: at most 320 source/Markdown/output cards and
+ * 128 KiB serialized. This leaves room for the exhaustive command tour plus
+ * its generated outputs and user cells while keeping the calculator-side
+ * model a single predictable allocation.
  */
 #ifndef PHY_NOTEBOOK_H
 #define PHY_NOTEBOOK_H
@@ -34,10 +34,12 @@ extern "C" {
 #endif
 
 /*
- * The CAS tour carries about 111 source cells and evaluation owns one output
- * per input, so 192 total cells no longer held it.
+ * The CAS tour carries more than 140 source cells and evaluation owns one
+ * output per input. 320 cards leave a deliberate margin above the evaluated
+ * acceptance document instead of making each new command consume the last
+ * available slot.
  */
-#define PHY_NOTEBOOK_MAX_CELLS 256u
+#define PHY_NOTEBOOK_MAX_CELLS 320u
 #define PHY_NOTEBOOK_DOCUMENT_MAX_BYTES (128u * 1024u)
 
 typedef struct phy_notebook phy_notebook;

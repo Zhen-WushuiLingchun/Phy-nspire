@@ -80,8 +80,27 @@ slot variance once with
 `ComponentTensor[M,{Down,Up,...},components]`; component lookup then takes
 integer coordinate positions rather than repeating abstract index labels.
 
+Coordinate-free tensors use a separate typed surface:
+
+```text
+V = IndexSpace[4, SymmetricMetric]
+A = TensorHead[{V,V}, Antisymmetric]
+TensorCanonicalize[A[Down[b],Down[a]]]
+```
+
+`IndexSpace` accepts a positive integer or symbolic dimension and
+`NoMetric`, `SymmetricMetric`, or `AntisymmetricMetric`. `TensorHead` accepts a
+list of slot spaces, `Commuting`/`NonCommuting`, and an optional list of signed
+1-based generators such as `Symmetry[{2,1,3},-1]`; rank-two `Symmetric` and
+`Antisymmetric` are shortcuts. Direct head application creates an abstract
+monomial, products combine factors, and `TensorCanonicalize` performs exact
+slot/factor/dummy/metric canonicalization. An explicit space in
+`Down[i,V]`/`Up[i,V]` is checked; an omitted space is inferred from the head.
+
 The evaluated object heads are:
 
+- abstract tensors — `IndexSpace`, `TensorHead`, indexed head application,
+  `TensorCanonicalize`;
 - geometry — `Manifold`, `ComponentTensor`, `DifferentialForm`, `Metric`, `VectorField`,
   `ExteriorD`, `InteriorProduct`, `LieDerivative`, `HodgeStar`, `Volume`;
 - Lie — `LieGroup`, `LieAlgebra`, `Generator`, `LieElement`, `LieBracket`,

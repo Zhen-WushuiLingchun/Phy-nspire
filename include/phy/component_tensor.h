@@ -70,14 +70,14 @@ void phy_component_limits_defaults(phy_component_limits *out_limits);
  * component realization rather than of the abstract head.
  */
 phy_status phy_component_tensor_create(
-    const phy_tensor_head *head,
+    const phy_abstract_tensor_head *head,
     phy_component_basis *const *bases,
     const phy_ir_variance *valence,
     const phy_component_limits *limits,
     phy_component_tensor **out_tensor);
 void phy_component_tensor_destroy(phy_component_tensor *tensor);
 
-const phy_tensor_head *phy_component_tensor_head(
+const phy_abstract_tensor_head *phy_component_tensor_head(
     const phy_component_tensor *tensor);
 size_t phy_component_tensor_rank(const phy_component_tensor *tensor);
 const phy_component_basis *phy_component_tensor_basis(

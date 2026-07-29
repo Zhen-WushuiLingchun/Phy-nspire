@@ -48,7 +48,8 @@
 **Steps:**
 1. Write failing tests for multiple spaces, symbolic/known dimensions,
    variance, metric policies, rank above four, and invalid slot-space matches.
-2. Implement context-owned `phy_index_space` and `phy_tensor_head` registries.
+2. Implement context-owned `phy_index_space` and
+   `phy_abstract_tensor_head` registries.
 3. Store runtime slot descriptors and signed symmetry generators without
    enumerating the full group.
 4. Add deterministic serialization based on names and structure rather than
@@ -238,4 +239,3 @@
 4. Build the calculator program and notebook, upload with the fixed CLI, verify
    byte-identical transport, and obtain calculator-side open/run evidence.
 5. Commit `docs: publish abstract tensor and geometry acceptance guide`.
-

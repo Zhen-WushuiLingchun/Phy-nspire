@@ -8,6 +8,7 @@
  * renderer draws it with no new layout code. Objects with no such expansion get
  * a descriptor line instead, and are honest about being a handle.
  */
+#include <limits.h>
 #include <string.h>
 
 #include "eval_internal.h"
@@ -366,6 +367,46 @@ static phy_status tensor_expansion(phy_env *env, const phy_tensor *tensor,
     return *out_ref == PHY_IR_NULL ? phy_ir_last_error(env->ir) : PHY_OK;
 }
 
+static phy_status abstract_tensor_expansion(
+    phy_env *env, const phy_tensor_monomial *monomial,
+    phy_ir_ref *out_ref)
+{
+    const size_t count =
+        phy_tensor_monomial_factor_count(monomial);
+    if (count > DISPLAY_MAX_TERMS) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    if (count == 0u) {
+        *out_ref = phy_tensor_monomial_coefficient(monomial);
+        return PHY_OK;
+    }
+    phy_ir_ref factors[DISPLAY_MAX_TERMS];
+    for (size_t which = 0u; which < count; ++which) {
+        const phy_abstract_tensor_head *head = NULL;
+        const phy_abstract_index *indices = NULL;
+        size_t index_count = 0u;
+        phy_status status = phy_tensor_monomial_factor(
+            monomial, which, &head, &indices, &index_count);
+        if (status == PHY_OK) {
+            status = phy_tensor_head_apply(
+                head, indices, index_count, &factors[which]);
+        }
+        if (status != PHY_OK) {
+            return status;
+        }
+    }
+    phy_ir_ref tensor_product =
+        count == 1u ? factors[0]
+                    : phy_ir_mul(env->ir, factors, count);
+    if (tensor_product == PHY_IR_NULL) {
+        return phy_ir_last_error(env->ir);
+    }
+    const phy_ir_ref product[2] = {
+        phy_tensor_monomial_coefficient(monomial),
+        tensor_product};
+    return phy_cas_mul(env->cas, product, 2u, out_ref);
+}
+
 phy_status phy_eval_value_expression(phy_env *env, phy_value value,
                                      phy_ir_ref *out_ref)
 {
@@ -385,6 +426,9 @@ phy_status phy_eval_value_expression(phy_env *env, phy_value value,
         return element_expansion(env, value.as.element, out_ref);
     case PHY_VALUE_TENSOR:
         return tensor_expansion(env, value.as.tensor, out_ref);
+    case PHY_VALUE_ABSTRACT_TENSOR:
+        return abstract_tensor_expansion(
+            env, value.as.abstract_tensor, out_ref);
     default:
         break;
     }
@@ -492,6 +536,76 @@ phy_status phy_eval_describe(const phy_env *env, phy_value value, char *buffer,
         write_text(&writer, " (Christoffel/Riemann/Ricci/Einstein)");
         break;
     }
+    case PHY_VALUE_INDEX_SPACE: {
+        const phy_index_space *space = value.as.index_space;
+        write_text(&writer, " ");
+        write_text(&writer, phy_index_space_name(space));
+        write_text(&writer, " dim ");
+        size_t dimension = 0u;
+        if (phy_index_space_known_dimension(space, &dimension) &&
+            dimension <= (size_t)UINT_MAX) {
+            write_unsigned(&writer, (unsigned)dimension);
+        } else {
+            const phy_ir_ref dimension_ref =
+                phy_index_space_dimension(space);
+            const char *dimension_name =
+                phy_ir_kind_of(env->ir, dimension_ref) == PHY_IR_SYMBOL
+                    ? phy_ir_symbol_name(
+                          env->ir,
+                          phy_ir_head(env->ir, dimension_ref))
+                    : "?";
+            write_text(&writer, dimension_name);
+        }
+        const phy_metric_symmetry metric =
+            phy_index_space_metric(space);
+        write_text(
+            &writer,
+            metric == PHY_METRIC_SYMMETRIC
+                ? " symmetric-metric"
+                : metric == PHY_METRIC_ANTISYMMETRIC
+                      ? " antisymmetric-metric"
+                      : " no-metric");
+        break;
+    }
+    case PHY_VALUE_TENSOR_HEAD:
+        write_text(&writer, " ");
+        write_text(
+            &writer,
+            phy_tensor_head_name(value.as.tensor_head));
+        write_text(&writer, " rank ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_tensor_head_slot_count(
+                value.as.tensor_head));
+        write_text(
+            &writer,
+            phy_tensor_head_commutation(value.as.tensor_head) ==
+                    PHY_TENSOR_NONCOMMUTING
+                ? " noncommuting"
+                : " commuting");
+        write_text(&writer, " sym ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_tensor_head_symmetry_count(
+                value.as.tensor_head));
+        break;
+    case PHY_VALUE_ABSTRACT_TENSOR:
+        write_text(&writer, " factors ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_tensor_monomial_factor_count(
+                value.as.abstract_tensor));
+        write_text(&writer, " free ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_tensor_monomial_free_count(
+                value.as.abstract_tensor));
+        write_text(&writer, " dummy ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_tensor_monomial_dummy_count(
+                value.as.abstract_tensor));
+        break;
     default:
         break;
     }

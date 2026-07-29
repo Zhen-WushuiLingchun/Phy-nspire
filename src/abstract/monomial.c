@@ -62,7 +62,7 @@ static phy_status count_indices(
 {
     size_t count = 0u;
     for (size_t factor = 0u; factor < factor_count; ++factor) {
-        const phy_tensor_head *head = factors[factor].head;
+        const phy_abstract_tensor_head *head = factors[factor].head;
         if (head == NULL || head->context != context ||
             factors[factor].index_count != head->slot_count ||
             (head->slot_count != 0u &&
@@ -265,7 +265,7 @@ size_t phy_tensor_monomial_factor_count(
 
 phy_status phy_tensor_monomial_factor(
     const phy_tensor_monomial *monomial, size_t which,
-    const phy_tensor_head **out_head,
+    const phy_abstract_tensor_head **out_head,
     const phy_abstract_index **out_indices, size_t *out_index_count)
 {
     if (monomial == NULL || which >= monomial->factor_count ||

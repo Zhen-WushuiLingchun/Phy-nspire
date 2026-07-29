@@ -18,7 +18,7 @@ struct phy_component_basis {
 };
 
 struct phy_component_tensor {
-    const phy_tensor_head *head;
+    const phy_abstract_tensor_head *head;
     phy_cas *cas;
     phy_ir_context *ir;
     phy_component_limits limits;

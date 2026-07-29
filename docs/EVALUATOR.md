@@ -62,6 +62,9 @@ four, which is what "stateful" buys.
 | `LieElement` | `Generator`, `LieElement`, `LieBracket` | `sum_a c_a T_a` |
 | `LieForm` | `LieForm`, `GaugeConnection`, `FieldStrength`, `CovariantD`, `GaugeVariation`, `Bianchi` | `sum_a T_a . (coframe expansion)` |
 | `Curvature` | `Curvature[g]` | descriptor line |
+| `IndexSpace` | `IndexSpace[...]` | dimension and metric descriptor |
+| `TensorHead` | `TensorHead[...]` | rank, commutation and generator count |
+| `AbstractTensor` | indexed tensor-head products | typed-IR indexed tensor expression |
 
 A form's expansion is real mathematics rather than a label: the coframe symbol
 of a coordinate is its name with a `d` in front, so a chart on `(r, theta)`
@@ -81,6 +84,31 @@ really is commutative.
 Assignment is `name = value`, distinguished from the equation `name == value` by
 one character of lookahead. `Set[name, value]` is the FullForm spelling.
 `Clear[name]` unbinds one name; `ClearAll[]` clears the environment.
+
+### Abstract tensors
+
+| Spelling | Backend |
+| --- | --- |
+| `IndexSpace[dimension, metric?]` | `phy_index_space_create` in the notebook's lazily owned abstract context |
+| `TensorHead[{spaces...}, property?, {generators...}?]` | `phy_tensor_head_create` plus signed generators |
+| `A[Down[i],Up[j],...]` | typed `phy_tensor_monomial` factor using the spaces declared by `A` |
+| products of indexed heads and scalar coefficients | exact monomial coefficient/factor merge and Einstein census |
+| `TensorCanonicalize[monomial]` | bounded signed BSGS double-coset canonicalizer |
+
+`metric` is `NoMetric`, `SymmetricMetric`, or `AntisymmetricMetric`.
+`property` is `Commuting`, `NonCommuting`, or the rank-two shortcut
+`Symmetric`/`Antisymmetric`. General signed slot laws use one-based image
+notation, for example
+`Symmetry[{2,1,3},-1]`. Index names are scoped by their `IndexSpace`, and a
+direct application rejects an explicit `Down[i,W]` when that slot belongs to
+`V`. The evaluator owns and clears the entire abstract context with the
+notebook environment; returned monomials own their copied factor/index arrays,
+so canonical results do not dangle when an intermediate is swept.
+
+This surface intentionally exposes monoterm canonicalization first. The native
+Young projector exists in the library, but arbitrary sums and a general
+Garnir-basis reducer are not yet reader-facing; no inert `YoungProject[...]`
+head is advertised.
 
 ### Differential geometry
 
@@ -109,7 +137,8 @@ until a validated `phy_map` exists.
 `ComponentTensor` has one variance marker per slot and one nested `List` level
 per slot. A rank-0 tensor takes a scalar component. The native bound is
 dimension 1 through 4, rank 0 through 4, hence at most 256 dense components;
-this is intentionally not an unbounded abstract-index tensor language.
+this remains the bounded dense component backend. Coordinate-free runtime rank
+belongs to the abstract surface above.
 
 ### Lie algebra
 
@@ -372,4 +401,8 @@ product-size measurement.
 One consequence of this phase that the earlier link-check reports called out as
 future work has now happened: the application genuinely calls the geometry,
 Lie, Yang--Mills, and QFT layers, so `--gc-sections` no longer drops them.
-`dist-foundation/phy-nspire.tns` is currently 1,173,026 bytes.
+The preserved `dist-foundation/phy-nspire.tns` baseline is 1,173,026 bytes.
+The current `dist/phy-nspire.tns`, with the abstract tensor evaluator reachable,
+is 1,183,523 bytes (18.8% of the 6 MiB ceiling); the final ELF retains
+`phy_index_space_create`, `phy_tensor_head_create_with_symmetries`,
+`phy_tensor_monomial_create`, and `phy_tensor_monomial_canonicalize`.

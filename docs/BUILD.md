@@ -224,7 +224,7 @@ Measured on the pinned ARM toolchain on 2026-07-28:
 - all four isolated probes contain no float formatter, libm call, or ARM
   soft-float helper.
 
-A clean product build from the same source is 1,173,026 bytes (18.6% of the
+A clean product build from the same source is 1,183,523 bytes (18.8% of the
 6 MiB ceiling). The product includes nMarkdown/FreeType/HarfBuzz and therefore
 has different retained dependencies from the exact isolated probes; the
 no-float statement above is specifically a property of those native symbolic
