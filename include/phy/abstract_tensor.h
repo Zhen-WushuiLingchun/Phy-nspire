@@ -42,6 +42,8 @@ typedef struct {
     size_t max_heads;      /* default 128 */
     size_t max_slots;      /* slots in one factor; default 64 */
     size_t max_generators; /* declared generators per head; default 256 */
+    size_t max_factors;    /* factors in one monomial; default 64 */
+    size_t max_indices;    /* total slots in one monomial; default 256 */
     size_t max_bytes;      /* persistent abstract metadata; default 512 KiB */
 } phy_abstract_limits;
 
@@ -119,9 +121,57 @@ phy_status phy_tensor_head_apply(const phy_tensor_head *head,
                                  const phy_abstract_index *indices,
                                  size_t index_count, phy_ir_ref *out_ref);
 
+typedef struct {
+    const phy_tensor_head *head;
+    const phy_abstract_index *indices;
+    size_t index_count;
+} phy_abstract_factor;
+
+typedef enum {
+    PHY_ABSTRACT_INDEX_FREE = 0,
+    PHY_ABSTRACT_INDEX_DUMMY
+} phy_abstract_index_role;
+
+typedef struct {
+    const phy_index_space *space;
+    phy_ir_symbol name;
+    uint16_t lower_count;
+    uint16_t upper_count;
+    phy_abstract_index_role role;
+} phy_abstract_index_use;
+
+/*
+ * Build one coefficient-times-tensor-product monomial and perform the complete
+ * Einstein-index census.  A name is scoped by its index space.  One occurrence
+ * is free; exactly one lower and one upper occurrence is dummy; every other
+ * multiplicity is rejected as ambiguous.
+ */
+phy_status phy_tensor_monomial_create(
+    phy_abstract_context *context, phy_ir_ref coefficient,
+    const phy_abstract_factor *factors, size_t factor_count,
+    phy_tensor_monomial **out_monomial);
+void phy_tensor_monomial_destroy(phy_tensor_monomial *monomial);
+
+phy_ir_ref phy_tensor_monomial_coefficient(
+    const phy_tensor_monomial *monomial);
+size_t phy_tensor_monomial_factor_count(
+    const phy_tensor_monomial *monomial);
+phy_status phy_tensor_monomial_factor(
+    const phy_tensor_monomial *monomial, size_t which,
+    const phy_tensor_head **out_head,
+    const phy_abstract_index **out_indices, size_t *out_index_count);
+size_t phy_tensor_monomial_index_use_count(
+    const phy_tensor_monomial *monomial);
+size_t phy_tensor_monomial_free_count(
+    const phy_tensor_monomial *monomial);
+size_t phy_tensor_monomial_dummy_count(
+    const phy_tensor_monomial *monomial);
+phy_status phy_tensor_monomial_index_use(
+    const phy_tensor_monomial *monomial, size_t which,
+    phy_abstract_index_use *out_use);
+
 #ifdef __cplusplus
 }
 #endif
 
 #endif /* PHY_ABSTRACT_TENSOR_H */
-

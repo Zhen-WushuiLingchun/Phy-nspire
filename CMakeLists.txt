@@ -147,6 +147,7 @@ add_library(phy_core STATIC
     src/linear/elimination.c
     src/abstract/index.c
     src/abstract/head.c
+    src/abstract/monomial.c
     src/gr/gr.c
     src/lie/lie.c
     src/qft/scalar.c

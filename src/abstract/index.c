@@ -7,6 +7,8 @@
 #define PHY_ABSTRACT_DEFAULT_HEADS 128u
 #define PHY_ABSTRACT_DEFAULT_SLOTS 64u
 #define PHY_ABSTRACT_DEFAULT_GENERATORS 256u
+#define PHY_ABSTRACT_DEFAULT_FACTORS 64u
+#define PHY_ABSTRACT_DEFAULT_INDICES 256u
 #define PHY_ABSTRACT_DEFAULT_BYTES (512u * 1024u)
 
 void phy_abstract_limits_defaults(phy_abstract_limits *out_limits)
@@ -18,6 +20,8 @@ void phy_abstract_limits_defaults(phy_abstract_limits *out_limits)
     out_limits->max_heads = PHY_ABSTRACT_DEFAULT_HEADS;
     out_limits->max_slots = PHY_ABSTRACT_DEFAULT_SLOTS;
     out_limits->max_generators = PHY_ABSTRACT_DEFAULT_GENERATORS;
+    out_limits->max_factors = PHY_ABSTRACT_DEFAULT_FACTORS;
+    out_limits->max_indices = PHY_ABSTRACT_DEFAULT_INDICES;
     out_limits->max_bytes = PHY_ABSTRACT_DEFAULT_BYTES;
 }
 
@@ -41,6 +45,12 @@ phy_status phy_abstract_resolve_limits(const phy_abstract_limits *requested,
         if (requested->max_generators != 0u) {
             out->max_generators = requested->max_generators;
         }
+        if (requested->max_factors != 0u) {
+            out->max_factors = requested->max_factors;
+        }
+        if (requested->max_indices != 0u) {
+            out->max_indices = requested->max_indices;
+        }
         if (requested->max_bytes != 0u) {
             out->max_bytes = requested->max_bytes;
         }
@@ -48,6 +58,7 @@ phy_status phy_abstract_resolve_limits(const phy_abstract_limits *requested,
     if (out->max_spaces == 0u || out->max_heads == 0u ||
         out->max_slots == 0u || out->max_slots > UINT16_MAX ||
         out->max_generators == 0u ||
+        out->max_factors == 0u || out->max_indices == 0u ||
         out->max_bytes < sizeof(phy_abstract_context)) {
         return PHY_ERR_INVALID_ARGUMENT;
     }
@@ -129,6 +140,9 @@ void phy_abstract_context_destroy(phy_abstract_context *context)
 {
     if (context == NULL) {
         return;
+    }
+    while (context->monomials != NULL) {
+        phy_tensor_monomial_destroy(context->monomials);
     }
     for (size_t i = 0u; i < context->head_count; ++i) {
         phy_abstract_head_destroy(context->heads[i]);
@@ -304,4 +318,3 @@ phy_status phy_abstract_index_make(const phy_index_space *space,
     out_index->variance = variance;
     return PHY_OK;
 }
-

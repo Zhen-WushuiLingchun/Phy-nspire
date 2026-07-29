@@ -13,6 +13,12 @@ typedef struct {
     int8_t sign;
 } phy_abstract_generator;
 
+typedef struct {
+    const phy_tensor_head *head;
+    size_t index_offset;
+    size_t index_count;
+} phy_abstract_factor_record;
+
 struct phy_abstract_context {
     phy_cas *cas;
     phy_ir_context *ir;
@@ -24,6 +30,26 @@ struct phy_abstract_context {
     size_t head_array_bytes;
     size_t space_count;
     size_t head_count;
+    phy_tensor_monomial *monomials;
+};
+
+struct phy_tensor_monomial {
+    phy_abstract_context *context;
+    phy_tensor_monomial *previous;
+    phy_tensor_monomial *next;
+    bool linked;
+    phy_ir_ref coefficient;
+    phy_abstract_factor_record *factors;
+    phy_abstract_index *indices;
+    phy_abstract_index_use *uses;
+    size_t factor_count;
+    size_t index_count;
+    size_t use_count;
+    size_t free_count;
+    size_t dummy_count;
+    size_t factor_bytes;
+    size_t index_bytes;
+    size_t use_bytes;
 };
 
 struct phy_index_space {
@@ -56,4 +82,3 @@ bool phy_abstract_name_used(const phy_abstract_context *context,
 void phy_abstract_head_destroy(phy_tensor_head *head);
 
 #endif /* PHY_ABSTRACT_INTERNAL_H */
-
