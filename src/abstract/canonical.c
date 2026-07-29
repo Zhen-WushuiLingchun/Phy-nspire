@@ -128,30 +128,54 @@ static int compare_factor_heads(const phy_tensor_monomial *monomial,
                   phy_tensor_head_name(right_head));
 }
 
-static void build_factor_order(const phy_tensor_monomial *monomial,
-                               size_t *order)
+/*
+ * Stable insertion sort of one half-open run of factor positions by head name.
+ * Stability preserves construction order between factors that share a head,
+ * which is what leaves identical factors adjacent for the exchange generators
+ * built below.
+ */
+static void sort_commuting_run(const phy_tensor_monomial *monomial,
+                               size_t *order, size_t start, size_t end)
 {
-    bool all_commuting = true;
-    for (size_t i = 0u; i < monomial->factor_count; ++i) {
-        order[i] = i;
-        if (monomial->factors[i].head->commutation !=
-            PHY_TENSOR_COMMUTING) {
-            all_commuting = false;
-        }
-    }
-    if (!all_commuting) {
-        return;
-    }
-    for (size_t i = 1u; i < monomial->factor_count; ++i) {
+    for (size_t i = start + 1u; i < end; ++i) {
         const size_t value = order[i];
         size_t position = i;
-        while (position != 0u &&
+        while (position != start &&
                compare_factor_heads(
                    monomial, value, order[position - 1u]) < 0) {
             order[position] = order[position - 1u];
             --position;
         }
         order[position] = value;
+    }
+}
+
+/*
+ * A commuting factor may be reordered inside its maximal commuting run; a
+ * noncommuting factor is a barrier.  The old all-or-nothing rule abandoned
+ * canonical ordering for every commuting factor as soon as one noncommuting
+ * factor appeared anywhere in the monomial.
+ *
+ * Sorting each run independently preserves the noncommuting subsequence and
+ * never carries a commuting factor across a noncommuting boundary.
+ */
+static void build_factor_order(const phy_tensor_monomial *monomial,
+                               size_t *order)
+{
+    for (size_t i = 0u; i < monomial->factor_count; ++i) {
+        order[i] = i;
+    }
+    size_t start = 0u;
+    for (size_t i = 0u; i <= monomial->factor_count; ++i) {
+        const bool barrier =
+            i == monomial->factor_count ||
+            monomial->factors[i].head->commutation !=
+                PHY_TENSOR_COMMUTING;
+        if (!barrier) {
+            continue;
+        }
+        sort_commuting_run(monomial, order, start, i);
+        start = i + 1u;
     }
 }
 
@@ -212,6 +236,11 @@ static phy_status add_factor_exchange_generators(
             monomial->factors[order[position - 1u]].head;
         const phy_abstract_tensor_head *right =
             monomial->factors[order[position]].head;
+        /*
+         * The sorted order preserves barriers.  Identical commuting heads in
+         * different runs therefore cannot become adjacent and cannot acquire
+         * an illegal exchange generator across a noncommuting factor.
+         */
         if (left != right || left->commutation != PHY_TENSOR_COMMUTING ||
             left->slot_count == 0u) {
             continue;
