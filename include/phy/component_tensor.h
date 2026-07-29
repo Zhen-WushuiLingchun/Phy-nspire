@@ -115,12 +115,15 @@ phy_status phy_component_tensor_canonical_indices(
  * The caller supplies the abstract head and one concrete basis per slot.
  * Rank, dimension, IR context, slot IndexSpace, coordinate names, and valence
  * are checked before allocation. The import is then verified over every dense
- * source component against the head's signed slot group; a source that
- * violates a stronger abstract symmetry is rejected transactionally.
+ * source component against the head's signed slot group. If the head declares
+ * a Young symmetry, the bridge additionally proves P_T(T) = T component by
+ * component. A source that violates either stronger abstract symmetry is
+ * rejected transactionally.
  *
  * This is the explicit bridge used while GR and the differential-geometric
  * frontend still produce the proven legacy component objects. It never
- * creates an abstract monomial and never guesses a basis.
+ * guesses a basis; the optional Young proof is evaluated through an explicit
+ * monomial over the caller-supplied bases.
  */
 phy_status phy_component_tensor_import_legacy(
     const phy_tensor *source, const phy_abstract_tensor_head *head,

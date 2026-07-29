@@ -63,7 +63,11 @@ component derivatives. A new abstract-index layer adds runtime-rank typed
 index spaces and tensor heads, exact free/dummy census, signed BSGS
 slot-orbit canonicalization with deterministic dummy normalization,
 metric-aware zero detection, identical-factor exchange, and normalized Young
-projectors with exact generated-term collection. The runtime component layer
+projectors with exact generated-term collection. Declared Young modules now
+add exact expression-wide projection, explicit Garnir relations, bounded
+multi-term reduction, hook-length/content invariants, and automatic first-
+Bianchi reduction without pretending a cyclic identity is a signed slot
+permutation. The runtime component layer
 binds coordinate or internal bases to bounded sparse component tables; the
 explicit abstract-to-component bridge now evaluates collected expressions at
 selected free coordinates and contracts only their dummy indices with exact
@@ -72,8 +76,12 @@ The notebook now owns `ComponentBasis`/`TensorComponents`, and its explicit
 `ComponentValue` command accepts monomials, Young projections, exact sums,
 scalar multiples and distributive products. `ComponentLift` now proves and
 imports an existing dense GR/geometry tensor into that sparse realization,
-with explicit head and bases; GR computation itself remains on the proven
-legacy pipeline. Independent-component iteration remains pending. Validated
+with explicit head and bases; a declared Young module is checked by proving
+`P_T(T)=T` component by component. GR computation itself remains on the
+proven legacy pipeline, while `GRComponents` publishes proved abstract heads
+and sparse realizations; covariant/contravariant Riemann and Weyl heads carry
+the verified `(2,2)` Young declaration. Independent-component iteration
+remains pending. Validated
 coordinate maps add
 exact Jacobians, proved two-way transitions, arbitrary-degree exterior-form
 pullbacks through exact minors, vector pushforwards along maps, a bounded atlas
@@ -82,7 +90,8 @@ change of coordinates across verified transitions.
 `IndexSpace`, `TensorHead`, direct indexed head application and
 `TensorCanonicalize` expose the coordinate-free monoterm layer in notebook
 cells, while `YoungProject` exposes normalized multi-term row/column
-projection. Exact runtime vectors/matrices, sparse component construction,
+projection and `YoungDeclare`/`YoungReduce` expose the corresponding relation
+module. Exact runtime vectors/matrices, sparse component construction,
 verified coordinate maps/transitions, Jacobian actions, mixed-valence tensor
 pullback and cocycle-checked atlases are now reader-facing evaluator objects;
 the existing GR pipeline still computes on the legacy dense backend and now

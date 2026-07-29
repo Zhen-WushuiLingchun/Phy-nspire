@@ -222,6 +222,18 @@ static void test_view_declares_the_textbook_slot_groups(void)
         phy_ir_variance valence[4];
         PHY_CHECK(head != NULL);
         PHY_CHECK_EQ_INT((int)phy_tensor_head_slot_count(head), (int)rank);
+        const bool expects_young =
+            id == PHY_GR_RIEMANN || id == PHY_GR_WEYL ||
+            id == PHY_GR_RIEMANN_UPPER;
+        PHY_CHECK_EQ_INT(
+            phy_tensor_head_has_young_symmetry(head), expects_young);
+        if (expects_young) {
+            phy_young_tableau_info young = {0};
+            PHY_CHECK_EQ_INT(
+                phy_tensor_head_young_symmetry(head, NULL, &young),
+                PHY_OK);
+            PHY_CHECK_EQ_INT(young.hook_product, 12);
+        }
         PHY_CHECK_EQ_INT(phy_gr_quantity_valence(id, valence), PHY_OK);
         for (size_t slot = 0u; slot < rank; ++slot) {
             PHY_CHECK(phy_tensor_head_slot_space(head, slot) ==

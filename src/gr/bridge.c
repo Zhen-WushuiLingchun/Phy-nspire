@@ -186,6 +186,13 @@ static bool quantity_selected(phy_gr_quantity quantity, unsigned options)
     return true;
 }
 
+static bool quantity_has_riemann_young(phy_gr_quantity quantity)
+{
+    return quantity == PHY_GR_RIEMANN ||
+           quantity == PHY_GR_WEYL ||
+           quantity == PHY_GR_RIEMANN_UPPER;
+}
+
 /*
  * Reject a shape mismatch before anything is allocated.
  *
@@ -276,6 +283,15 @@ static phy_status build_quantity(phy_gr_component_view *view,
         PHY_TENSOR_COMMUTING, images, signs,
         (size_t)info->generator_count, &head);
     phy_free(head_name, head_name_bytes);
+    if (status == PHY_OK && quantity_has_riemann_young(quantity)) {
+        static const uint16_t young_slots[4] = {0u, 2u, 1u, 3u};
+        static const uint16_t young_rows[2] = {2u, 2u};
+        const phy_young_tableau tableau = {
+            young_slots, 4u, young_rows, 2u,
+            PHY_YOUNG_ROW_SYMMETRY_LAST};
+        status = phy_tensor_head_set_young_symmetry(
+            head, &tableau, NULL);
+    }
     if (status != PHY_OK) {
         return status;
     }

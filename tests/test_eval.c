@@ -971,8 +971,34 @@ static void test_curvature_pipeline(void)
                      PHY_VALUE_COMPONENT_TENSOR);
     (void)run(&f, "Rm = GRHead[gr,RiemannMixed]");
     (void)run(&f, "Rmc = GRTensor[gr,RiemannMixed]");
+    (void)run(&f, "Rh = GRHead[gr,Riemann]");
+    (void)run(&f, "Rhc = GRTensor[gr,Riemann]");
     expect_scalar(&f, "Rank[Ric]", "2");
     expect_scalar(&f, "Dimensions[Rc2]", "(fn List 2 2)");
+
+    /*
+     * The covariant Riemann head carries a proved (2,2) Young declaration.
+     * Its cyclic sum both evaluates to zero through the lifted components and
+     * reduces structurally to a zero expression with four free indices.
+     */
+    phy_value bianchi = run(
+        &f,
+        "BR = Rh[Down[a],Down[b],Down[c],Down[d]]"
+        "+Rh[Down[a],Down[c],Down[d],Down[b]]"
+        "+Rh[Down[a],Down[d],Down[b],Down[c]]");
+    PHY_CHECK_EQ_INT(bianchi.kind, PHY_VALUE_ABSTRACT_EXPRESSION);
+    expect_scalar(
+        &f, "ComponentValue[BR,{Rhc},{0,1,0,1}]", "0");
+    bianchi = run(&f, "YoungReduce[BR]");
+    PHY_CHECK_EQ_INT(bianchi.kind, PHY_VALUE_ABSTRACT_EXPRESSION);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_term_count(
+            bianchi.as.abstract_expression),
+        0);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_free_count(
+            bianchi.as.abstract_expression),
+        4);
 
     /* R^a_bad == Ricci_bd, contracted through the bridge. */
     expect_scalar(

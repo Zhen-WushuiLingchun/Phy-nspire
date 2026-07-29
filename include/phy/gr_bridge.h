@@ -26,9 +26,11 @@
  * curvature does not satisfy the declaration is a typed failure, not a silent
  * reinterpretation.
  *
- * The first Bianchi identity is not among the declarations: it is a cyclic
- * relation among three distinct components, not a slot permutation. See
- * docs/TENSOR.md.
+ * For covariant/contravariant Riemann and Weyl tensors the bridge additionally
+ * declares the (2,2) Young module. This is not smuggled into the signed slot
+ * group: component import separately proves P_T(T) = T, after which
+ * YoungReduce can impose the first Bianchi identity on abstract expressions.
+ * See docs/TENSOR.md.
  */
 #ifndef PHY_GR_BRIDGE_H
 #define PHY_GR_BRIDGE_H

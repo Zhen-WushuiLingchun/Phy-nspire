@@ -65,7 +65,7 @@ four, which is what "stateful" buys.
 | `IndexSpace` | `IndexSpace[...]` | dimension and metric descriptor |
 | `TensorHead` | `TensorHead[...]` | rank, commutation and generator count |
 | `AbstractTensor` | indexed tensor-head products | typed-IR indexed tensor expression |
-| `AbstractExpression` | `YoungProject[...]` | collected typed-IR indexed tensor sum |
+| `AbstractExpression` | `YoungProject[...]`, `GarnirRelation[...]`, `YoungReduce[...]` | collected typed-IR indexed tensor sum |
 | `ComponentBasis` | `ComponentBasis[...]` | space, dimension and coordinate/basis descriptor |
 | `TensorComponents` | sparse realization of a `TensorHead` | head, runtime rank and stored-entry count |
 | `Vector` | `Vector[{...}]`, matrix-vector operations | exact `List` |
@@ -102,7 +102,11 @@ one character of lookahead. `Set[name, value]` is the FullForm spelling.
 | `A[Down[i],Up[j],...]` | typed `phy_tensor_monomial` factor using the spaces declared by `A` |
 | products of indexed heads and scalar coefficients | exact monomial coefficient/factor merge and Einstein census |
 | `TensorCanonicalize[monomial]` | bounded signed BSGS double-coset canonicalizer |
-| `YoungProject[monomial, factor?, {{slots...},...}]` | normalized Young row symmetrizer/column antisymmetrizer and exact term collection |
+| `YoungProject[expression, factor?, {{slots...},...}, order?]` | normalized Young row/column projector and exact term collection |
+| `YoungDeclare[head,{{slots...},...},order?]` | attach a checked Young module without changing the signed slot group |
+| `YoungReduce[expression]` | project every factor carrying a declared Young module and collect exactly |
+| `GarnirRelation[monomial,factor,relation]` | construct one readable antisymmetrized Garnir relation |
+| `YoungDimension[{{slots...},...},dimension]` | exact hook-content dimension of the Schur module |
 
 `metric` is `NoMetric`, `SymmetricMetric`, or `AntisymmetricMetric`.
 `property` is `Commuting`, `NonCommuting`, or the rank-two shortcut
@@ -114,13 +118,19 @@ direct application rejects an explicit `Down[i,W]` when that slot belongs to
 notebook environment; returned monomials own their copied factor/index arrays,
 so canonical results do not dangle when an intermediate is swept.
 
-Factor and tableau slot positions are one-based at the reader surface; the
-factor argument defaults to one. `YoungProject` returns a real multi-term
-abstract expression, not an inert operator: every generated monomial passes
-through the monoterm canonicalizer, equal structures are collected with exact
-coefficients, and the resulting sum uses the same MathTree renderer. A general
-Garnir-basis reducer for arbitrary pre-existing sums remains outside the
-current boundary.
+Factor, relation and tableau slot positions are one-based at the reader
+surface; the factor argument defaults to one. `order` is `RowLast` (the
+default) or `ColumnLast`. `YoungProject` returns a real multi-term abstract
+expression, not an inert operator: every generated monomial passes through the
+monoterm canonicalizer, equal structures are collected with exact
+coefficients, and the resulting sum uses the same MathTree renderer.
+`YoungDeclare` first proves every existing signed generator is manifest on the
+projector image. `YoungReduce` then supplies an equality gate modulo the
+projector kernel; for a `(2,2)` Riemann head the cyclic first-Bianchi sum
+reduces to a zero expression while retaining its four typed free indices.
+Exact factorial arithmetic bounds this surface to tableaux of at most 20
+slots; generated terms, result terms, steps and temporary bytes have separate
+device-oriented ceilings.
 
 ### Exact vectors and matrices
 
@@ -171,7 +181,7 @@ publication; a zero expression retains its free-index signature.
 | --- | --- |
 | `ComponentBasis[V,{x,y}]`, `ComponentBasis[V,n]` | bind an index space to a concrete coordinate basis or unnamed basis |
 | `TensorComponents[head,{bases...},{Up/Down...},{{indices,value},...}]` | construct a sparse exact realization |
-| `ComponentLift[legacy,head,{bases...}]` | prove and import a legacy chart tensor into the sparse abstract/component realization |
+| `ComponentLift[legacy,head,{bases...}]` | prove and import a legacy chart tensor, including `P_T(T)=T` when the head declares a Young module |
 | `ComponentValue[expression,{realizations...},{free coordinates...}]` | explicit expression-wide abstract-to-component evaluation |
 | `CoordinateMap[source,target,{target-in-source...}]` | exact coordinate map and Jacobian |
 | `BasisTransition[source,target,{forward...},{inverse...}]` | two maps proved inverse in both directions |
@@ -191,7 +201,18 @@ backends. It requires an explicit abstract head and an explicit basis for every
 slot, copies no object merely by name, and verifies every dense source entry
 against the head's signed slot group before publishing. A stronger symmetry
 that the source does not satisfy is `PHY_ERR_ASSUMPTION`, with no partial
-realization retained.
+realization retained. If the head has a Young declaration, every dense
+component is also checked against its normalized projector; this is what keeps
+multi-term identities from becoming unverified metadata.
+
+`GRComponents[curvature,{Weyl,RiemannUpper}]` performs that lift for the full
+GR result. `GRSpace`, `GRBasis`, `GRHead[view,quantity]` and
+`GRTensor[view,quantity]` return its borrowed abstract/component views.
+Christoffel, Riemann and Ricci are still produced by the proven dense GR
+algorithm. What has migrated is the consumer side: contractions and
+multi-term identities can use the shared abstract evaluator, and the Riemann,
+RiemannUpper and Weyl heads carry `(2,2)` declarations only after component
+import proves them.
 
 ### Differential geometry
 

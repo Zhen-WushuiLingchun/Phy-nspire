@@ -69,6 +69,105 @@ static bool same_component_indices(const uint32_t *left,
            memcmp(left, right, rank * sizeof(*left)) == 0;
 }
 
+/*
+ * A signed slot group proves only monoterm identities. If the head also
+ * declares a Young module, prove the stronger multi-term statement against
+ * every imported component: P_T(T) = T. This uses the same public bridge a
+ * notebook expression uses, so no second component action convention can
+ * drift away from it.
+ */
+static phy_status verify_young_import(
+    const phy_tensor *source, const phy_abstract_tensor_head *head,
+    phy_component_basis *const *bases, phy_component_tensor *lifted)
+{
+    if (!phy_tensor_head_has_young_symmetry(head)) {
+        return PHY_OK;
+    }
+    const size_t rank = phy_tensor_head_slot_count(head);
+    if (rank == 0u || rank > PHY_TENSOR_MAX_RANK) {
+        return PHY_ERR_TYPE;
+    }
+    static const char *const names[PHY_TENSOR_MAX_RANK] = {
+        "y0", "y1", "y2", "y3"};
+    phy_abstract_index indices[PHY_TENSOR_MAX_RANK];
+    phy_status status = PHY_OK;
+    for (size_t slot = 0u; slot < rank && status == PHY_OK; ++slot) {
+        status = phy_abstract_index_make(
+            phy_tensor_head_slot_space(head, slot), names[slot],
+            phy_component_tensor_valence(lifted, slot),
+            &indices[slot]);
+    }
+    const phy_abstract_factor factor = {head, indices, rank};
+    phy_cas *cas =
+        phy_abstract_cas(phy_tensor_head_context(head));
+    phy_ir_ref one = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = phy_cas_number(cas, 1, 1, &one);
+    }
+    phy_tensor_monomial *monomial = NULL;
+    if (status == PHY_OK) {
+        status = phy_tensor_monomial_create(
+            phy_tensor_head_context(head), one, &factor, 1u,
+            &monomial);
+    }
+    phy_young_tableau tableau = {0};
+    if (status == PHY_OK) {
+        status = phy_tensor_head_young_symmetry(
+            head, &tableau, NULL);
+    }
+    phy_tensor_expression *projected = NULL;
+    if (status == PHY_OK) {
+        status = phy_tensor_monomial_young_project(
+            monomial, 0u, &tableau, NULL, &projected, NULL);
+    }
+    phy_component_binding *binding = NULL;
+    if (status == PHY_OK) {
+        status = phy_component_binding_create(
+            phy_tensor_head_context(head), NULL, &binding);
+    }
+    for (size_t slot = 0u; slot < rank && status == PHY_OK; ++slot) {
+        status = phy_component_binding_add_basis(binding, bases[slot]);
+    }
+    if (status == PHY_OK) {
+        status = phy_component_binding_add_tensor(binding, lifted);
+    }
+
+    const size_t count = phy_tensor_component_count(source);
+    unsigned source_indices[PHY_TENSOR_MAX_RANK];
+    uint32_t coordinates[PHY_TENSOR_MAX_RANK];
+    for (size_t flat = 0u; flat < count && status == PHY_OK; ++flat) {
+        status = phy_tensor_unflatten(source, flat, source_indices);
+        for (size_t slot = 0u; slot < rank && status == PHY_OK; ++slot) {
+            coordinates[slot] = (uint32_t)source_indices[slot];
+        }
+        phy_ir_ref image = PHY_IR_NULL;
+        phy_ir_ref original = PHY_IR_NULL;
+        phy_ir_ref difference = PHY_IR_NULL;
+        if (status == PHY_OK) {
+            status = phy_component_value_expression(
+                binding, projected, coordinates, rank, &image, NULL);
+        }
+        if (status == PHY_OK) {
+            status = phy_component_tensor_get(
+                lifted, coordinates, &original);
+        }
+        if (status == PHY_OK) {
+            status = phy_cas_sub(cas, image, original, &difference);
+        }
+        phy_cas_decision zero = PHY_CAS_UNKNOWN;
+        if (status == PHY_OK) {
+            status = phy_cas_is_zero(cas, difference, &zero);
+        }
+        if (status == PHY_OK && zero != PHY_CAS_ZERO) {
+            status = PHY_ERR_ASSUMPTION;
+        }
+    }
+    phy_component_binding_destroy(binding);
+    phy_tensor_expression_destroy(projected);
+    phy_tensor_monomial_destroy(monomial);
+    return status;
+}
+
 phy_status phy_component_tensor_import_legacy(
     const phy_tensor *source, const phy_abstract_tensor_head *head,
     phy_component_basis *const *bases,
@@ -168,6 +267,9 @@ phy_status phy_component_tensor_import_legacy(
         if (status == PHY_OK && zero != PHY_CAS_ZERO) {
             status = PHY_ERR_ASSUMPTION;
         }
+    }
+    if (status == PHY_OK) {
+        status = verify_young_import(source, head, bases, lifted);
     }
     if (status != PHY_OK) {
         phy_component_tensor_destroy(lifted);

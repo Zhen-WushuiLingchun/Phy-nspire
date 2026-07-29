@@ -17,7 +17,8 @@ now removes those limits without destabilizing that path:
 - `include/phy/abstract_tensor.h` defines runtime-rank `IndexSpace`,
   `TensorHead`, abstract indices, Einstein census, signed slot generators,
   bounded signed slot-orbit canonicalization with deterministic dummy
-  normalization, and normalized Young projectors;
+  normalization, normalized Young projectors, declared Young modules and
+  exact Garnir/multi-term reduction;
 - `include/phy/component_tensor.h` binds an abstract index space to an
   explicit runtime-dimension basis and stores only assigned canonical
   components in a bounded sparse table;
@@ -52,7 +53,7 @@ fail with no returned partial value.
 The expression bridge is now reader-facing. The evaluator owns
 `ComponentBasis` and `TensorComponents` handles and exposes
 `ComponentValue[expression,{realizations...},{free coordinates...}]`.
-Monomials, normalized Young projections, sums, exact scalar multiples and
+Monomials, normalized Young projections/reductions, sums, exact scalar multiples and
 distributive products pass through one canonical collection layer. A
 zero-term expression retains its typed free-index signature. Independent-
 component iteration into a new tensor and GR/QFT migration remain separate
@@ -62,7 +63,9 @@ The upward migration boundary is also explicit:
 `ComponentLift[legacy,head,{bases...}]` imports a legacy dense chart tensor
 into a sparse realization. Rank, dimensions, IR context, slot spaces,
 coordinates and valence are checked, then every dense source component is
-proved consistent with the abstract head's signed slot group. This makes
+proved consistent with the abstract head's signed slot group. If the head has
+a Young declaration, the same import also proves `P_T(T)=T` at every component.
+This makes
 existing GR results usable by `ComponentValue` without claiming that the GR
 algorithms themselves have already been rewritten over abstract expressions.
 Expression-native GR construction and the QFT local-index migration remain
@@ -83,6 +86,17 @@ TensorCanonicalize[A[Down[b],Down[a]]]
 TensorCanonicalize[A[Down[a],Down[b]] *
                    S[Up[a],Up[b]]]
 YoungProject[R[Down[a],Down[b],Down[c]], {{1,2},{3}}]
+
+R4 = TensorHead[{V,V,V,V}, Commuting,
+                {Symmetry[{2,1,3,4},-1],
+                 Symmetry[{1,2,4,3},-1],
+                 Symmetry[{3,4,1,2},1]}]
+YoungDeclare[R4,{{1,3},{2,4}},RowLast]
+B = R4[Down[a],Down[b],Down[c],Down[d]]
+  + R4[Down[a],Down[c],Down[d],Down[b]]
+  + R4[Down[a],Down[d],Down[b],Down[c]]
+YoungReduce[B]
+YoungDimension[{{1,3},{2,4}},4]
 
 xy = ComponentBasis[V,{x,y}]
 Ac = TensorComponents[A,{xy,xy},{Down,Down},{{{0,1},a}}]
@@ -121,14 +135,14 @@ native tensor API.
 
 | Landed | Deliberately deferred |
 | --- | --- |
-| legacy charts, coordinate symbols, rank, valence, head metadata | expression-native GR construction over the new bridge |
+| legacy charts, coordinate symbols, rank, valence, head metadata; proved GR consumer bridge | expression-native GR producer algorithms |
 | dense `n^r` storage plus runtime-rank sparse component binding | dense/sparse policy facade for legacy callers |
 | abstract free/dummy census, signed BSGS slot-orbit search, deterministic dummy normalization; bounded exhaustive \(DgS\) verifier | optimized Butler–Portugal double-coset traversal at device-sized group orders |
 | `IndexSpace`, `TensorHead`, indexed products and `TensorCanonicalize` in notebook cells | abstract metric contraction/raise/lower commands |
-| reader-facing normalized Young row/column projection with exact generated-term collection | Garnir/relation-basis reduction and general algebra on arbitrary pre-existing tensor sums |
+| normalized Young projection, checked declarations, explicit Garnir relations, expression-wide reduction and exact hook-content dimensions | optimized large-tableau straightening/projector traversal beyond bounded enumeration |
 | reader-facing sparse bases/components, `ComponentLift`, expression-wide `ComponentValue`, exact dynamic vectors/matrices | independent-component iteration |
 | verified atlas cocycles, maps, vector/covector operations and mixed-valence tensor pullback in notebook cells | automatic transition-path composition beyond registered direct edges |
-| exact contraction, inverse metric, raise/lower, component derivatives | first-Bianchi orbit canonicalization |
+| exact contraction, inverse metric, raise/lower, component derivatives; automatic abstract first-Bianchi reduction | implicit metric insertion remains forbidden by design |
 | canonical lookup, fill validation, allocation-failure unwind | optional xPerm integration |
 
 The scalar-dependent entries use the native exact CAS and its three-valued zero
@@ -160,6 +174,33 @@ Independent ceilings bound degree, both group orders, candidate products and
 bytes; crossing one is a typed refusal. This deliberately exhaustive path is
 for tests and small audit cases. Notebook evaluation continues to use the
 pruned production canonicalizer.
+
+### Young declarations and the multi-term gate
+
+Signed BSGS canonicalization and Young reduction stay separate. A head
+declaration first expands the selected `a_T b_T/h` or `b_T a_T/h` group
+algebra and proves `P_T g = sign(g) P_T` for every existing signed generator.
+It never inserts a cyclic relation into the slot group. The reducer instead
+projects all declared factors of each term simultaneously, canonicalizes every
+image, and collects exact coefficients. Because the normalized Young
+symmetrizer is idempotent, projection is an exact equality gate modulo its
+kernel.
+
+`GarnirRelation` exposes readable antisymmetrized relation sets, while the
+reducer uses the projector normal form. Tests cover shapes `(2,2)` and `(2,1)`,
+both projector orders, hook-length and hook-content counts, projector
+idempotence, allocation-failure unwind, and the Riemann cyclic sum. In four
+dimensions the legacy Riemann slot group still has 21 orbits; the declared
+`(2,2)` module has the correct 20 components. `ComponentLift` proves the
+projector equation component by component before accepting a dense source.
+The GR bridge uses this for covariant/contravariant Riemann and Weyl tensors,
+so their first-Bianchi reduction is backed by the actual lifted components.
+
+The exact combinatorics are deliberately bounded: tableau factorials fit in
+64 bits (at most 20 slots), standard-tableau enumeration stops above 4096
+outputs, and projector/reducer term, step, result and temporary-memory ceilings
+fail transactionally. This is a general bounded Young/Garnir layer, not a
+claim of workstation-scale Cadabra straightening performance.
 
 ## The scalar boundary, and why it falls on negation
 
@@ -354,9 +395,10 @@ allocation-failure sweep.
 
 The scalar-dependent slice now covers metric inversion, raise/lower
 involution, contraction against known traces, signed-component extraction, and
-component partial derivatives. The first Bianchi identity and abstract-index
-canonicalization remain separate work because they need algebra over index
-orbits rather than only dense component arithmetic.
+component partial derivatives. Abstract signed canonicalization, declared
+Young modules and automatic first-Bianchi reduction live in the separate
+runtime-rank layer above; the legacy dense independent-component counter
+intentionally remains a signed-slot-group counter.
 
 Test 6, dimension independence, is honoured throughout: every structural test
 that can run at more than one dimension does. A corpus that is almost entirely

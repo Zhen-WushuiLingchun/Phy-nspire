@@ -180,21 +180,25 @@ Output:
 - manifolds, charts, metrics, indices, symmetries, contraction, canonical dummy
   indices, covariant derivatives, and differential forms — forms, contraction,
   raise/lower, coordinate-metric GR, and component tensor covariant
-  derivatives are done; abstract monoterm dummy canonicalization is exposed,
+  derivatives are done; abstract monoterm dummy canonicalization, bounded
+  Young/Garnir reduction and automatic first-Bianchi reduction are exposed,
   together with explicit transition-map and atlas syntax;
 - the legacy component constructor covers ranks 0 through 4, while the abstract
   and sparse component libraries use runtime rank with explicit resource
   ceilings;
 - xPerm remains an independent reference/oracle rather than a linked runtime
-  dependency.
+  dependency; bounded exhaustive `DgS` and SymPy oracle checks are consistency
+  gates rather than a claim of a full optimized xPerm port.
 
 Deferred with named blocking dependencies:
 
 - independent-component iteration and automatic atlas path composition require
   a bounded output-shape/path planner;
 - GR now has a checked `ComponentLift` adapter from legacy dense tensor results
-  into the shared sparse abstract/component layer. Expression-native GR
-  construction and QFT's local-index migration remain open.
+  into the shared sparse abstract/component layer. It proves declared Young
+  projectors component by component, and `GRComponents` exposes Riemann/Weyl
+  heads with verified `(2,2)` declarations. Expression-native GR producer
+  algorithms and QFT's local-index migration remain open.
 
 Verification:
 

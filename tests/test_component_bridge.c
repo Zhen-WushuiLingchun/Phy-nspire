@@ -933,6 +933,91 @@ static void test_legacy_component_lift_is_exact_and_transactional(void)
     fixture_close(&f);
 }
 
+static void test_legacy_lift_proves_declared_young_module(void)
+{
+    fixture f = fixture_open();
+    const char *coordinates[4] = {"x0", "x1", "x2", "x3"};
+    phy_chart *chart = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_chart_create(f.ir, coordinates, 4u, &chart), PHY_OK);
+    static const phy_ir_variance lower[4] = {
+        PHY_IR_INDEX_LOWER, PHY_IR_INDEX_LOWER,
+        PHY_IR_INDEX_LOWER, PHY_IR_INDEX_LOWER};
+    phy_tensor *valid = NULL;
+    phy_tensor *invalid = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_create(chart, "validR", 4u, lower, &valid), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_create(chart, "invalidR", 4u, lower, &invalid), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_tensor_declare_riemann_symmetry(valid), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_tensor_declare_riemann_symmetry(invalid), PHY_OK);
+
+    static const unsigned abcd[4] = {0u, 1u, 2u, 3u};
+    static const unsigned acdb[4] = {0u, 2u, 3u, 1u};
+    static const unsigned adbc[4] = {0u, 3u, 1u, 2u};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_set(valid, abcd, phy_ir_integer(f.ir, 1)), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_set(valid, acdb, phy_ir_integer(f.ir, 1)), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_set(valid, adbc, phy_ir_integer(f.ir, -2)), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_set(invalid, abcd, phy_ir_integer(f.ir, 1)), PHY_OK);
+
+    phy_index_space *space =
+        make_space(&f, "YoungLiftSpace", 4, PHY_METRIC_SYMMETRIC);
+    phy_component_basis *basis = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_component_basis_create(
+            space, "coordinate", 4u, coordinates, NULL, &basis),
+        PHY_OK);
+    const phy_index_space *spaces[4] = {
+        space, space, space, space};
+    static const uint16_t swap_first[4] = {1u, 0u, 2u, 3u};
+    static const uint16_t swap_second[4] = {0u, 1u, 3u, 2u};
+    static const uint16_t exchange_pairs[4] = {2u, 3u, 0u, 1u};
+    const uint16_t *images[3] = {
+        swap_first, swap_second, exchange_pairs};
+    static const int signs[3] = {-1, -1, 1};
+    phy_abstract_tensor_head *head = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_create_with_symmetries(
+            f.abstract, "YoungLiftHead", spaces, 4u,
+            PHY_TENSOR_COMMUTING, images, signs, 3u, &head),
+        PHY_OK);
+    static const uint16_t young_slots[4] = {0u, 2u, 1u, 3u};
+    static const uint16_t young_rows[2] = {2u, 2u};
+    const phy_young_tableau tableau = {
+        young_slots, 4u, young_rows, 2u,
+        PHY_YOUNG_ROW_SYMMETRY_LAST};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_set_young_symmetry(head, &tableau, NULL),
+        PHY_OK);
+    phy_component_basis *bases[4] = {
+        basis, basis, basis, basis};
+
+    phy_component_tensor *lifted = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_component_tensor_import_legacy(
+            valid, head, bases, NULL, &lifted),
+        PHY_OK);
+    PHY_CHECK(lifted != NULL);
+    phy_component_tensor_destroy(lifted);
+
+    lifted = (phy_component_tensor *)(uintptr_t)1u;
+    PHY_CHECK_EQ_INT(
+        phy_component_tensor_import_legacy(
+            invalid, head, bases, NULL, &lifted),
+        PHY_ERR_ASSUMPTION);
+    PHY_CHECK(lifted == NULL);
+
+    phy_component_basis_destroy(basis);
+    phy_tensor_destroy(invalid);
+    phy_tensor_destroy(valid);
+    phy_chart_destroy(chart);
+    fixture_close(&f);
+}
+
 int main(void)
 {
     PHY_TEST_CASE(test_binding_is_idempotent_and_coherent);
@@ -942,5 +1027,6 @@ int main(void)
     PHY_TEST_CASE(test_young_expression_component_bridge);
     PHY_TEST_CASE(test_resource_failures_are_transactional);
     PHY_TEST_CASE(test_legacy_component_lift_is_exact_and_transactional);
+    PHY_TEST_CASE(test_legacy_lift_proves_declared_young_module);
     return PHY_TEST_REPORT("component_bridge");
 }

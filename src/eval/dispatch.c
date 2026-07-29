@@ -1223,7 +1223,7 @@ static phy_status eval_tensor_components(
                 indices[slot] = (uint32_t)integer;
             }
         }
-        phy_value component;
+        phy_value component = {0};
         if (status == PHY_OK) {
             status = eval_node(env, pair[1], &component);
         }
@@ -1688,8 +1688,8 @@ static phy_status eval_dot(
     if (arg_count(env, expr) != 2u) {
         return PHY_ERR_PARSE;
     }
-    phy_value left;
-    phy_value right;
+    phy_value left = {0};
+    phy_value right = {0};
     phy_status status = arg_value(env, expr, 0u, &left);
     if (status == PHY_OK) {
         status = arg_value(env, expr, 1u, &right);
@@ -1783,8 +1783,8 @@ static phy_status eval_linear_solve(
     if (arg_count(env, expr) != 2u) {
         return PHY_ERR_PARSE;
     }
-    phy_value matrix;
-    phy_value right;
+    phy_value matrix = {0};
+    phy_value right = {0};
     phy_status status = arg_typed(
         env, expr, 0u, PHY_VALUE_MATRIX, &matrix);
     if (status == PHY_OK) {
@@ -1996,8 +1996,8 @@ static phy_status eval_map_vector(
     if (arg_count(env, expr) != 2u) {
         return PHY_ERR_PARSE;
     }
-    phy_value owner;
-    phy_value vector;
+    phy_value owner = {0};
+    phy_value vector = {0};
     phy_status status = arg_value(env, expr, 0u, &owner);
     const phy_coordinate_map *map =
         status == PHY_OK ? map_from_value(&owner) : NULL;
@@ -2248,9 +2248,9 @@ static phy_status eval_atlas_add_transition(
     if (arg_count(env, expr) != 5u) {
         return PHY_ERR_PARSE;
     }
-    phy_value atlas;
-    phy_value source;
-    phy_value target;
+    phy_value atlas = {0};
+    phy_value source = {0};
+    phy_value target = {0};
     phy_status status =
         arg_typed(env, expr, 0u, PHY_VALUE_ATLAS, &atlas);
     if (status == PHY_OK) {
@@ -2314,10 +2314,10 @@ static phy_status eval_atlas_pullback(
     if (arg_count(env, expr) != 4u) {
         return PHY_ERR_PARSE;
     }
-    phy_value atlas;
-    phy_value source;
-    phy_value target;
-    phy_value tensor;
+    phy_value atlas = {0};
+    phy_value source = {0};
+    phy_value target = {0};
+    phy_value tensor = {0};
     phy_status status =
         arg_typed(env, expr, 0u, PHY_VALUE_ATLAS, &atlas);
     if (status == PHY_OK) {
