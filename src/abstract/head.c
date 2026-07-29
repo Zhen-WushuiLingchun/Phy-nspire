@@ -90,6 +90,12 @@ const char *phy_tensor_head_name(const phy_tensor_head *head)
                : NULL;
 }
 
+phy_abstract_context *phy_tensor_head_context(
+    const phy_tensor_head *head)
+{
+    return head != NULL ? head->context : NULL;
+}
+
 phy_ir_symbol phy_tensor_head_symbol(const phy_tensor_head *head)
 {
     return head != NULL ? head->symbol : PHY_IR_NO_SYMBOL;

@@ -67,6 +67,8 @@ phy_status phy_index_space_create(phy_abstract_context *context,
                                   phy_metric_symmetry metric,
                                   phy_index_space **out_space);
 const char *phy_index_space_name(const phy_index_space *space);
+phy_abstract_context *phy_index_space_context(
+    const phy_index_space *space);
 phy_ir_symbol phy_index_space_symbol(const phy_index_space *space);
 phy_ir_ref phy_index_space_dimension(const phy_index_space *space);
 bool phy_index_space_known_dimension(const phy_index_space *space,
@@ -83,6 +85,8 @@ phy_status phy_tensor_head_create(
     const phy_index_space *const *slot_spaces, size_t slot_count,
     phy_tensor_commutation commutation, phy_tensor_head **out_head);
 const char *phy_tensor_head_name(const phy_tensor_head *head);
+phy_abstract_context *phy_tensor_head_context(
+    const phy_tensor_head *head);
 phy_ir_symbol phy_tensor_head_symbol(const phy_tensor_head *head);
 size_t phy_tensor_head_slot_count(const phy_tensor_head *head);
 const phy_index_space *phy_tensor_head_slot_space(const phy_tensor_head *head,

@@ -203,6 +203,12 @@ bool phy_abstract_name_used(const phy_abstract_context *context,
     return false;
 }
 
+phy_abstract_context *phy_index_space_context(
+    const phy_index_space *space)
+{
+    return space != NULL ? space->context : NULL;
+}
+
 static phy_status validate_dimension(phy_ir_context *ir, phy_ir_ref dimension)
 {
     if (dimension == PHY_IR_NULL) {
