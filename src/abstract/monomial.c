@@ -257,6 +257,12 @@ phy_ir_ref phy_tensor_monomial_coefficient(
     return monomial != NULL ? monomial->coefficient : PHY_IR_NULL;
 }
 
+phy_abstract_context *phy_tensor_monomial_context(
+    const phy_tensor_monomial *monomial)
+{
+    return monomial != NULL ? monomial->context : NULL;
+}
+
 size_t phy_tensor_monomial_factor_count(
     const phy_tensor_monomial *monomial)
 {
@@ -313,4 +319,3 @@ phy_status phy_tensor_monomial_index_use(
     *out_use = monomial->uses[which];
     return PHY_OK;
 }
-

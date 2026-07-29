@@ -13,7 +13,8 @@
 #   symbol-report  largest symbols in the ELF
 #   ir-link-check  prove the expression IR links on device
 #   exact-link-check prove every bigint/bigrat entry point links on device
-#   tensor-link-check  prove the component tensor core links on device
+#   tensor-link-check  prove the legacy component tensor core links on device
+#   component-bridge-link-check prove the dynamic component bridge links
 #   cas-link-check prove the scalar CAS links on device
 #   algebraic-link-check prove certified real algebraic arithmetic links
 #   geom-link-check    prove manifolds and differential forms link on device
@@ -114,6 +115,7 @@ SOURCES := \
     src/abstract/young.c \
     src/component/basis.c \
     src/component/component.c \
+    src/component/bridge.c \
     src/component/map.c \
     src/component/atlas.c \
     src/permutation/perm.c \
@@ -251,7 +253,7 @@ QFT_BENCH_ELF := $(DISTDIR)/$(QFT_BENCH_EXE).elf
 QFT_BENCH_TNS := $(DISTDIR)/$(QFT_BENCH_EXE).tns
 
 .PHONY: all clean size-report symbol-report ir-link-check exact-link-check \
-        tensor-link-check \
+        tensor-link-check component-bridge-link-check \
         cas-link-check algebraic-link-check geom-link-check ym-link-check \
         eval-link-check \
         cas-smoke qft-bench check-sdk
@@ -336,6 +338,9 @@ eval-link-check: check-sdk
 
 tensor-link-check: check-sdk
 	@tools/tensor-link-check.sh
+
+component-bridge-link-check: $(C_OBJECTS)
+	@tools/component-bridge-link-check.sh
 
 $(CAS_SMOKE_BUILDDIR)/%.o: %.c | check-sdk
 	@mkdir -p $(dir $@)

@@ -65,8 +65,11 @@ slot-orbit canonicalization with deterministic dummy normalization,
 metric-aware zero detection, identical-factor exchange, and normalized Young
 projectors with exact generated-term collection. The runtime component layer
 binds coordinate or internal bases to bounded sparse component tables; the
-general abstract-to-component evaluator is being added through an explicit
-bridge rather than implicit expansion. Validated coordinate maps add
+first explicit abstract-to-component bridge now evaluates one monomial at
+selected free coordinates and contracts only its dummy indices with exact CAS
+arithmetic. It never inserts a metric or allocates the dense slot product.
+Expression-wide collection, independent-component iteration and the notebook
+`ComponentValue` object remain pending. Validated coordinate maps add
 exact Jacobians, proved two-way transitions, arbitrary-degree exterior-form
 pullbacks through exact minors, vector pushforwards along maps, a bounded atlas
 registry with exact triangle-cocycle checks, and general mixed-valence tensor
@@ -126,14 +129,17 @@ that touch every implemented evaluator head. Its distributable form contains 145
 source cells so opening does not eagerly rebuild all cached results; a separate
 fully evaluated copy is serialized, reopened, and replayed during generation.
 
-The strict Windows host suite passes 40/40. The WSL ASan/UBSan/leak suite
-passes 42/42, and the assertion-bearing executables contain 305,685 explicit
+The strict Windows host suite passes 41/41. The WSL ASan/UBSan/leak suite
+passes 43/43, and the assertion-bearing executables contain 306,137 explicit
 checks.
 
-The current native build is measured at 1,186,793 bytes, 18.9% of the 6 MiB
+The current native build is measured at 1,186,857 bytes, 18.9% of the 6 MiB
 ceiling. Its evaluator ARM probe links the complete current physics stack,
 retains 15/15 public evaluator entry points, packages to a `.tns`, and imports
 no libm, floating-point formatter, or ARM soft-float helper.
+The separate dynamic-component bridge probe retains 33/33 public entry points,
+packages to an 85,764-byte `.tns`, and also imports no floating-point
+formatter or parser.
 
 The native CAS smoke artifact has run on the target CX II and shown all seven
 exact symbolic checks passing. Returning from it restored Documents normally.

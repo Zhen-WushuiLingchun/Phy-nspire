@@ -159,10 +159,16 @@
 
 ### Task 7: Dynamic component tensors and bridge
 
+**Status: partially complete.** Runtime-rank sparse components, bases, and the
+bounded one-monomial component bridge live in
+`src/component/{basis,component,bridge}.c`. Dense/sparse policy selection,
+the legacy compatibility facade, expression-wide `ComponentValue`, and
+independent-component output iteration remain pending.
+
 **Files:**
 - Create: `include/phy/component_tensor.h`
-- Create: `src/component/storage.c`
-- Create: `src/component/ops.c`
+- Create: `src/component/basis.c`
+- Create: `src/component/component.c`
 - Create: `src/component/bridge.c`
 - Create: `tests/test_component_bridge.c`
 - Modify: `include/phy/tensor.h`

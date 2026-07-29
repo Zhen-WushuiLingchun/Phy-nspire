@@ -33,6 +33,27 @@ resource limits; they are no longer mathematical rank-four semantics. The
 legacy dense backend is deleted only after evaluator and GR parity tests have
 migrated.
 
+## Explicit component bridge
+
+`src/component/bridge.c` now implements the first downward-conversion slice.
+A `phy_component_binding` borrows exactly one basis for each `IndexSpace` and
+one sparse realization for each `TensorHead`. Rebinding the same object is
+idempotent; a conflicting binding is a typed error and leaves the environment
+unchanged.
+
+`phy_component_value_monomial` fixes free coordinates in first-occurrence
+census order and enumerates only dummy pairs. Every factor is read through the
+sparse component API and combined by the exact CAS. One upper plus one lower
+occurrence is required by the abstract census, so the bridge never inserts a
+metric, silently raises or lowers a slot, or allocates `dimension^rank`.
+Configured free-index, dummy-index, term, step and aggregate-memory ceilings
+fail with no returned partial value.
+
+This is deliberately not yet the complete reader-facing `ComponentValue`.
+Collection across a general tensor expression, independent-component
+iteration into a new tensor, evaluator ownership and GR/QFT migration remain
+separate acceptance gates.
+
 ## Notebook construction surface
 
 The reader-facing evaluator now has two deliberately distinct surfaces.
@@ -329,6 +350,12 @@ The expected symbol set is **derived from the header**, not listed in the
 script, so adding a public function without extending the probe fails the
 check instead of quietly going unlinked. All 45 public entry points are
 retained; no `_dtoa`, `_strtod`, or `_printf_float` reaches the image.
+
+`make component-bridge-link-check` performs the corresponding check for
+`include/phy/component_tensor.h`. It retains all 33 dynamic-basis,
+sparse-component and bridge entry points under ARM `--gc-sections`, rejects
+floating-point formatter/parser imports, and packages an isolated 85,764-byte
+probe. The probe is not linked into the product.
 
 The target is not a dependency of `all` and the probe is not in the Makefile's
 `SOURCES`. It builds into `build/arm-tensor-linkcheck/` and never touches

@@ -172,6 +172,8 @@ void phy_tensor_monomial_destroy(phy_tensor_monomial *monomial);
 
 phy_ir_ref phy_tensor_monomial_coefficient(
     const phy_tensor_monomial *monomial);
+phy_abstract_context *phy_tensor_monomial_context(
+    const phy_tensor_monomial *monomial);
 size_t phy_tensor_monomial_factor_count(
     const phy_tensor_monomial *monomial);
 phy_status phy_tensor_monomial_factor(

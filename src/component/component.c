@@ -531,8 +531,10 @@ phy_status phy_component_tensor_canonical_indices(
     if (!search.best_found) {
         return PHY_ERR_CORRUPT_DOCUMENT;
     }
-    memcpy(out_indices, tensor->best_indices,
-           tensor->rank * sizeof(*out_indices));
+    if (out_indices != tensor->best_indices) {
+        memcpy(out_indices, tensor->best_indices,
+               tensor->rank * sizeof(*out_indices));
+    }
     *out_sign = search.zero ? 0 : search.best_sign;
     return PHY_OK;
 }

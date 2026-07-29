@@ -108,6 +108,84 @@ phy_status phy_component_tensor_canonical_indices(
     phy_component_tensor *tensor, const uint32_t *indices,
     uint32_t *out_indices, int *out_sign);
 
+/* ------------------------------------------- abstract/component bridge */
+
+/*
+ * A binding is one explicit component picture: one borrowed basis per
+ * IndexSpace and one borrowed realization per TensorHead.  Borrowed objects
+ * must outlive the binding.
+ */
+typedef struct phy_component_binding phy_component_binding;
+
+typedef struct {
+    size_t max_bases;    /* bound index spaces; default 32 */
+    size_t max_tensors;  /* bound tensor heads; default 64 */
+    size_t max_free;     /* free indices in one monomial; default 16 */
+    size_t max_dummy;    /* contracted pairs in one monomial; default 16 */
+    size_t max_terms;    /* nonzero products accumulated; default 65536 */
+    uint32_t max_steps;  /* dummy-tree edges visited; default 2M */
+    size_t max_bytes;    /* binding plus one evaluation; default 64 KiB */
+} phy_bridge_limits;
+
+typedef struct {
+    size_t free_count;
+    size_t dummy_count;
+    uint64_t assignments; /* complete, non-pruned dummy assignments */
+    uint64_t pruned;      /* branches cut by an exactly zero component */
+    uint64_t terms;       /* nonzero products accumulated */
+    size_t bytes_used;    /* binding metadata plus evaluation scratch */
+} phy_bridge_stats;
+
+void phy_bridge_limits_defaults(phy_bridge_limits *out_limits);
+phy_status phy_component_binding_create(
+    phy_abstract_context *context, const phy_bridge_limits *limits,
+    phy_component_binding **out_binding);
+void phy_component_binding_destroy(phy_component_binding *binding);
+
+/*
+ * Adding the same pointer again is idempotent.  Binding a different basis to
+ * an already-bound space, or a different realization to an already-bound
+ * head, returns PHY_ERR_ALREADY_INITIALIZED and leaves the binding unchanged.
+ * A tensor may be added only after all of its slot spaces have bases.
+ */
+phy_status phy_component_binding_add_basis(
+    phy_component_binding *binding, phy_component_basis *basis);
+phy_status phy_component_binding_add_tensor(
+    phy_component_binding *binding, phy_component_tensor *tensor);
+
+size_t phy_component_binding_basis_count(
+    const phy_component_binding *binding);
+size_t phy_component_binding_tensor_count(
+    const phy_component_binding *binding);
+phy_component_basis *phy_component_binding_basis(
+    const phy_component_binding *binding, const phy_index_space *space);
+phy_component_tensor *phy_component_binding_tensor(
+    const phy_component_binding *binding,
+    const phy_abstract_tensor_head *head);
+
+/*
+ * Report free indices in monomial census order (first occurrence while
+ * scanning factors and slots).  This is exactly the coordinate order consumed
+ * by phy_component_value_monomial.
+ */
+phy_status phy_component_value_free_slots(
+    const phy_tensor_monomial *monomial, phy_abstract_index_use *out_uses,
+    size_t capacity, size_t *out_count);
+
+/*
+ * Evaluate one component of one coefficient-times-tensor-product monomial.
+ * Only dummy indices are enumerated.  A dummy is already one upper plus one
+ * lower occurrence, so the bridge never inserts a metric or changes valence.
+ * Missing or mismatched bindings are typed failures.
+ *
+ * On every failure *out_value is PHY_IR_NULL and out_stats is zeroed.  No
+ * dense product of slot dimensions is allocated.
+ */
+phy_status phy_component_value_monomial(
+    phy_component_binding *binding, const phy_tensor_monomial *monomial,
+    const uint32_t *free_indices, size_t free_count,
+    phy_ir_ref *out_value, phy_bridge_stats *out_stats);
+
 #ifdef __cplusplus
 }
 #endif
