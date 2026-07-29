@@ -59,9 +59,12 @@ struct phy_tensor_expression {
     phy_tensor_expression *next;
     bool linked;
     phy_tensor_monomial **terms;
+    phy_abstract_index_use *free_uses;
     size_t term_count;
     size_t term_capacity;
     size_t term_bytes;
+    size_t free_count;
+    size_t free_bytes;
 };
 
 struct phy_index_space {

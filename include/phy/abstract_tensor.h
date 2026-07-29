@@ -283,10 +283,54 @@ phy_status phy_tensor_monomial_young_project(
     phy_tensor_expression **out_expression, phy_young_stats *out_stats);
 
 void phy_tensor_expression_destroy(phy_tensor_expression *expression);
+phy_abstract_context *phy_tensor_expression_context(
+    const phy_tensor_expression *expression);
 size_t phy_tensor_expression_term_count(
     const phy_tensor_expression *expression);
 const phy_tensor_monomial *phy_tensor_expression_term(
     const phy_tensor_expression *expression, size_t which);
+size_t phy_tensor_expression_free_count(
+    const phy_tensor_expression *expression);
+phy_status phy_tensor_expression_free_use(
+    const phy_tensor_expression *expression, size_t which,
+    phy_abstract_index_use *out_use);
+
+typedef struct {
+    size_t max_generated_terms; /* distributive products; default 4096 */
+    size_t max_result_terms; /* after canonical collection; default 256 */
+    size_t max_bytes;        /* temporary rebuild storage; default 512 KiB */
+    phy_tensor_canonical_limits canonical;
+} phy_tensor_algebra_limits;
+
+void phy_tensor_algebra_limits_defaults(
+    phy_tensor_algebra_limits *out_limits);
+
+/*
+ * Linear algebra on typed abstract tensor expressions.
+ *
+ * Every incoming monomial is canonicalized and structurally equal terms are
+ * collected with the exact scalar CAS. Addition requires the same typed set
+ * of free indices, although census order may differ between expressions.
+ * The result owns cloned monomials and never aliases an input expression.
+ */
+phy_status phy_tensor_expression_from_monomial(
+    const phy_tensor_monomial *monomial,
+    const phy_tensor_algebra_limits *limits,
+    phy_tensor_expression **out_expression);
+phy_status phy_tensor_expression_add(
+    const phy_tensor_expression *left,
+    const phy_tensor_expression *right,
+    const phy_tensor_algebra_limits *limits,
+    phy_tensor_expression **out_expression);
+phy_status phy_tensor_expression_scale(
+    const phy_tensor_expression *expression, phy_ir_ref scalar,
+    const phy_tensor_algebra_limits *limits,
+    phy_tensor_expression **out_expression);
+phy_status phy_tensor_expression_multiply(
+    const phy_tensor_expression *left,
+    const phy_tensor_expression *right,
+    const phy_tensor_algebra_limits *limits,
+    phy_tensor_expression **out_expression);
 
 #ifdef __cplusplus
 }

@@ -588,6 +588,115 @@ static void test_only_dummy_axes_are_enumerated(void)
     fixture_close(&f);
 }
 
+static void test_young_expression_component_bridge(void)
+{
+    fixture f = fixture_open();
+    phy_index_space *space =
+        make_space(&f, "M", 2, PHY_METRIC_NONE);
+    phy_component_basis *basis = make_basis(space, "e", 2u);
+    const phy_index_space *slots[2] = {space, space};
+    phy_abstract_tensor_head *head =
+        make_head(&f, "T", slots, 2u);
+    phy_component_basis *bases[2] = {basis, basis};
+    const phy_ir_variance lower[2] = {
+        PHY_IR_INDEX_LOWER, PHY_IR_INDEX_LOWER};
+    phy_component_tensor *tensor =
+        make_tensor(head, bases, lower);
+    static const int64_t entries[2][2] = {{1, 2}, {3, 4}};
+    for (uint32_t row = 0u; row < 2u; ++row) {
+        for (uint32_t column = 0u; column < 2u; ++column) {
+            const uint32_t index[2] = {row, column};
+            set_integer(&f, tensor, index, entries[row][column]);
+        }
+    }
+
+    const phy_abstract_index indices[2] = {
+        make_index(space, "a", PHY_IR_INDEX_LOWER),
+        make_index(space, "b", PHY_IR_INDEX_LOWER)};
+    const phy_abstract_factor factor = {head, indices, 2u};
+    phy_tensor_monomial *monomial = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_create(
+            f.abstract, phy_ir_integer(f.ir, 1),
+            &factor, 1u, &monomial),
+        PHY_OK);
+
+    static const uint16_t tableau_slots[2] = {0u, 1u};
+    static const uint16_t row_lengths[1] = {2u};
+    const phy_young_tableau tableau = {
+        tableau_slots, 2u, row_lengths, 1u};
+    phy_tensor_expression *symmetric = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_young_project(
+            monomial, 0u, &tableau, NULL, &symmetric, NULL),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_term_count(symmetric), 2u);
+
+    phy_component_binding *binding = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_component_binding_create(f.abstract, NULL, &binding),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_component_binding_add_basis(binding, basis), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_component_binding_add_tensor(binding, tensor), PHY_OK);
+
+    /*
+     * The second projected term scans free indices as (b,a). The expression
+     * bridge must remap the caller's canonical (a,b) coordinates instead of
+     * accidentally evaluating T[0,1] twice.
+     */
+    const uint32_t a_zero_b_one[2] = {0u, 1u};
+    phy_ir_ref value = PHY_IR_NULL;
+    phy_bridge_stats stats = {0};
+    PHY_CHECK_EQ_INT(
+        phy_component_value_expression(
+            binding, symmetric, a_zero_b_one, 2u,
+            &value, &stats),
+        PHY_OK);
+    check_rational(&f, value, 5, 2);
+    PHY_CHECK_EQ_INT(stats.free_count, 2u);
+    PHY_CHECK_EQ_INT(stats.dummy_count, 0u);
+    PHY_CHECK_EQ_INT(stats.assignments, 2u);
+    PHY_CHECK_EQ_INT(stats.terms, 2u);
+    PHY_CHECK_EQ_INT(stats.steps, 0u);
+    PHY_CHECK(stats.bytes_used <= 64u * 1024u);
+
+    value = phy_ir_integer(f.ir, 99);
+    PHY_CHECK_EQ_INT(
+        phy_component_value_expression(
+            binding, symmetric, a_zero_b_one, 1u,
+            &value, NULL),
+        PHY_ERR_INVALID_ARGUMENT);
+    PHY_CHECK_EQ_INT(value, PHY_IR_NULL);
+
+    phy_bridge_limits one_term = {0};
+    one_term.max_terms = 1u;
+    phy_component_binding *bounded = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_component_binding_create(
+            f.abstract, &one_term, &bounded), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_component_binding_add_basis(bounded, basis), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_component_binding_add_tensor(bounded, tensor), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_component_value_expression(
+            bounded, symmetric, a_zero_b_one, 2u,
+            &value, NULL),
+        PHY_ERR_TERM_LIMIT);
+    PHY_CHECK_EQ_INT(value, PHY_IR_NULL);
+
+    phy_component_binding_destroy(bounded);
+    phy_component_binding_destroy(binding);
+    phy_tensor_expression_destroy(symmetric);
+    phy_tensor_monomial_destroy(monomial);
+    phy_component_tensor_destroy(tensor);
+    phy_component_basis_destroy(basis);
+    fixture_close(&f);
+}
+
 static void test_resource_failures_are_transactional(void)
 {
     fixture f = fixture_open();
@@ -648,7 +757,7 @@ static void test_resource_failures_are_transactional(void)
             phy_component_binding_add_tensor(binding, w), PHY_OK);
         phy_ir_ref value = phy_ir_integer(f.ir, 91);
         phy_bridge_stats stats = {
-            1u, 1u, 1u, 1u, 1u, 1u};
+            1u, 1u, 1u, 1u, 1u, 1u, 1u};
         PHY_CHECK_EQ_INT(
             phy_component_value_monomial(
                 binding, monomial, NULL, 0u, &value, &stats),
@@ -660,6 +769,7 @@ static void test_resource_failures_are_transactional(void)
         PHY_CHECK_EQ_INT(stats.pruned, 0);
         PHY_CHECK_EQ_INT(stats.terms, 0);
         PHY_CHECK_EQ_INT(stats.bytes_used, 0);
+        PHY_CHECK_EQ_INT(stats.steps, 0);
         phy_component_binding_destroy(binding);
     }
 
@@ -735,12 +845,101 @@ static void test_resource_failures_are_transactional(void)
     fixture_close(&f);
 }
 
+static void test_legacy_component_lift_is_exact_and_transactional(void)
+{
+    fixture f = fixture_open();
+    const char *coordinates[2] = {"x", "y"};
+    phy_chart *chart = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_chart_create(f.ir, coordinates, 2u, &chart), PHY_OK);
+    const phy_ir_variance lower[2] = {
+        PHY_IR_INDEX_LOWER, PHY_IR_INDEX_LOWER};
+    phy_tensor *source = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_create(chart, "legacy", 2u, lower, &source),
+        PHY_OK);
+    const unsigned source_indices[4][2] = {
+        {0u, 0u}, {0u, 1u}, {1u, 0u}, {1u, 1u}};
+    const int64_t source_values[4] = {1, 2, 2, 3};
+    for (size_t i = 0u; i < 4u; ++i) {
+        PHY_CHECK_EQ_INT(
+            phy_tensor_set(
+                source, source_indices[i],
+                phy_ir_integer(f.ir, source_values[i])),
+            PHY_OK);
+    }
+
+    phy_index_space *space =
+        make_space(&f, "LiftSpace", 2, PHY_METRIC_SYMMETRIC);
+    phy_component_basis *basis = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_component_basis_create(
+            space, "coordinate", 2u, coordinates, NULL, &basis),
+        PHY_OK);
+    const phy_index_space *spaces[2] = {space, space};
+    phy_abstract_tensor_head *head =
+        make_head(&f, "LiftHead", spaces, 2u);
+    const uint16_t transpose[2] = {1u, 0u};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_add_symmetry(head, transpose, 1), PHY_OK);
+    phy_component_basis *bases[2] = {basis, basis};
+
+    phy_component_tensor *lifted = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_component_tensor_import_legacy(
+            source, head, bases, NULL, &lifted),
+        PHY_OK);
+    PHY_CHECK(lifted != NULL);
+    PHY_CHECK_EQ_INT(phy_component_tensor_entry_count(lifted), 3);
+    uint32_t query[2] = {1u, 0u};
+    phy_ir_ref value = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_component_tensor_get(lifted, query, &value), PHY_OK);
+    check_rational(&f, value, 2, 1);
+    phy_component_tensor_destroy(lifted);
+
+    /*
+     * A stronger abstract symmetry must be proved by every dense component.
+     * Failure leaves the output null and the source untouched.
+     */
+    phy_tensor *mismatch = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_create(chart, "mismatch", 2u, lower, &mismatch),
+        PHY_OK);
+    const int64_t mismatch_values[4] = {1, 2, 9, 3};
+    for (size_t i = 0u; i < 4u; ++i) {
+        PHY_CHECK_EQ_INT(
+            phy_tensor_set(
+                mismatch, source_indices[i],
+                phy_ir_integer(f.ir, mismatch_values[i])),
+            PHY_OK);
+    }
+    lifted = (phy_component_tensor *)(uintptr_t)1u;
+    PHY_CHECK_EQ_INT(
+        phy_component_tensor_import_legacy(
+            mismatch, head, bases, NULL, &lifted),
+        PHY_ERR_ASSUMPTION);
+    PHY_CHECK(lifted == NULL);
+    phy_tensor_component component = {0};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_get(mismatch, source_indices[2], &component), PHY_OK);
+    PHY_CHECK_EQ_INT(component.ref, phy_ir_integer(f.ir, 9));
+
+    phy_component_basis_destroy(basis);
+    phy_tensor_destroy(mismatch);
+    phy_tensor_destroy(source);
+    phy_chart_destroy(chart);
+    fixture_close(&f);
+}
+
 int main(void)
 {
     PHY_TEST_CASE(test_binding_is_idempotent_and_coherent);
     PHY_TEST_CASE(test_exact_contraction_free_order_and_pruning);
     PHY_TEST_CASE(test_trace_sign_scalars_and_context);
     PHY_TEST_CASE(test_only_dummy_axes_are_enumerated);
+    PHY_TEST_CASE(test_young_expression_component_bridge);
     PHY_TEST_CASE(test_resource_failures_are_transactional);
+    PHY_TEST_CASE(test_legacy_component_lift_is_exact_and_transactional);
     return PHY_TEST_REPORT("component_bridge");
 }

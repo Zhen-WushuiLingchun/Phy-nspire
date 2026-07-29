@@ -159,11 +159,12 @@
 
 ### Task 7: Dynamic component tensors and bridge
 
-**Status: frontend slice complete, migration partial.** Runtime-rank sparse
-components, bases, the bounded one-monomial bridge, evaluator ownership,
+**Status: expression frontend complete, migration partial.** Runtime-rank sparse
+components, bases, the bounded expression bridge, evaluator ownership,
 `Component`/`Dimensions`, command-palette entries and reader-facing
-`ComponentValue` are live. Dense/sparse policy selection, the legacy
-compatibility facade, expression-wide `ComponentValue`, and
+`ComponentValue` are live. Exact abstract add/scale/distributive multiply,
+typed zero signatures, and Young-expression component evaluation are covered.
+Dense/sparse policy selection, the legacy compatibility facade, and
 independent-component output iteration remain pending.
 
 **Files:**

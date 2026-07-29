@@ -13,6 +13,7 @@
 #include <stdint.h>
 
 #include "phy/abstract_tensor.h"
+#include "phy/tensor.h"
 
 #ifdef __cplusplus
 extern "C" {
@@ -108,6 +109,25 @@ phy_status phy_component_tensor_canonical_indices(
     phy_component_tensor *tensor, const uint32_t *indices,
     uint32_t *out_indices, int *out_sign);
 
+/*
+ * Lift a legacy dense chart tensor into the dynamic sparse component layer.
+ *
+ * The caller supplies the abstract head and one concrete basis per slot.
+ * Rank, dimension, IR context, slot IndexSpace, coordinate names, and valence
+ * are checked before allocation. The import is then verified over every dense
+ * source component against the head's signed slot group; a source that
+ * violates a stronger abstract symmetry is rejected transactionally.
+ *
+ * This is the explicit bridge used while GR and the differential-geometric
+ * frontend still produce the proven legacy component objects. It never
+ * creates an abstract monomial and never guesses a basis.
+ */
+phy_status phy_component_tensor_import_legacy(
+    const phy_tensor *source, const phy_abstract_tensor_head *head,
+    phy_component_basis *const *bases,
+    const phy_component_limits *limits,
+    phy_component_tensor **out_tensor);
+
 /* ------------------------------------------- abstract/component bridge */
 
 /*
@@ -134,6 +154,7 @@ typedef struct {
     uint64_t pruned;      /* branches cut by an exactly zero component */
     uint64_t terms;       /* nonzero products accumulated */
     size_t bytes_used;    /* binding metadata plus evaluation scratch */
+    uint32_t steps;       /* dummy-tree edges visited */
 } phy_bridge_stats;
 
 void phy_bridge_limits_defaults(phy_bridge_limits *out_limits);
@@ -183,6 +204,25 @@ phy_status phy_component_value_free_slots(
  */
 phy_status phy_component_value_monomial(
     phy_component_binding *binding, const phy_tensor_monomial *monomial,
+    const uint32_t *free_indices, size_t free_count,
+    phy_ir_ref *out_value, phy_bridge_stats *out_stats);
+
+/*
+ * Evaluate a collected abstract expression in one component picture.
+ *
+ * `free_indices` follows the first term's free-index census. Every later term
+ * must carry the same typed free-index set; its local order is remapped by
+ * (IndexSpace, name, variance) before monomial evaluation. This is essential
+ * for Young projections, where a slot permutation can change census order
+ * without changing the tensor represented.
+ *
+ * Term products, dummy-tree steps, and temporary bytes share the binding's
+ * configured limits across the whole expression. Statistics are cumulative;
+ * `dummy_count` and `bytes_used` are the peak values over one term.
+ */
+phy_status phy_component_value_expression(
+    phy_component_binding *binding,
+    const phy_tensor_expression *expression,
     const uint32_t *free_indices, size_t free_count,
     phy_ir_ref *out_value, phy_bridge_stats *out_stats);
 

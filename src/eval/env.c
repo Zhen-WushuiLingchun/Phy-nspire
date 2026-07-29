@@ -18,7 +18,7 @@
 static const char *const kEvalHeadNames[EVAL_HEAD_COUNT] = {
     "IndexSpace",   "TensorHead",       "TensorCanonicalize",
     "YoungProject", "ComponentBasis",   "TensorComponents",
-    "ComponentValue",
+    "ComponentLift", "ComponentValue",
 
     "Vector",       "Matrix",           "Transpose",   "Dot",
     "Determinant",  "Inverse",          "RowReduce",   "MatrixRank",

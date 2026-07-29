@@ -920,6 +920,38 @@ static void test_curvature_pipeline(void)
     expect_decision(&f, "ZeroQ[Einstein[c]]", "True");
     expect_scalar(&f, "Component[InverseMetric[c], 0, 0]", "(^ a -2)");
     expect_scalar(&f, "Rank[Riemann[c]]", "4");
+
+    /*
+     * GR still computes through the proven dense pipeline, but its result now
+     * crosses an explicit, checked bridge into the shared abstract/component
+     * system. The abstract head supplies the Riemann slot group; ComponentLift
+     * proves all dense entries agree before publishing the sparse object.
+     */
+    (void)run(&f, "V = IndexSpace[2,SymmetricMetric]");
+    (void)run(&f, "e = ComponentBasis[V,2]");
+    (void)run(
+        &f,
+        "Rabs = TensorHead[{V,V,V,V},Commuting,{"
+        "Symmetry[{2,1,3,4},-1],"
+        "Symmetry[{1,2,4,3},-1],"
+        "Symmetry[{3,4,1,2},1]}]");
+    phy_value lifted = run(
+        &f,
+        "Rc = ComponentLift[Riemann[c],Rabs,{e,e,e,e}]");
+    PHY_CHECK_EQ_INT(lifted.kind, PHY_VALUE_COMPONENT_TENSOR);
+    expect_scalar(
+        &f, "Component[Rc,0,1,0,1]",
+        "(* (^ a 2) (^ (fn sin theta) 2))");
+    expect_scalar(
+        &f,
+        "ComponentValue["
+        "Rabs[Down[i],Down[j],Down[k],Down[l]],"
+        "{Rc},{0,1,0,1}]",
+        "(* (^ a 2) (^ (fn sin theta) 2))");
+    expect_status(
+        &f, "ComponentLift[Christoffel[c],Rabs,{e,e,e,e}]",
+        PHY_ERR_TYPE);
+
     expect_scalar(&f, "Kretschmann[c]", "(* 4 (^ a -4))");
     expect_decision(&f, "ZeroQ[Weyl[c]]", "True");
     expect_scalar(&f, "WeylSquared[c]", "0");
@@ -1708,11 +1740,28 @@ static void test_dynamic_component_frontend_and_bridge(void)
         "ComponentValue["
         "T[Down[i],Down[j]]*S[Up[j],Up[i]],{Tc,Sc},{}]",
         "31");
-    expect_status(
+    expect_scalar(
+        &f,
+        "ComponentValue["
+        "(T[Down[i],Down[j]]+T[Down[i],Down[j]])*"
+        "S[Up[j],Up[i]],{Tc,Sc},{}]",
+        "62");
+    expect_scalar(
         &f,
         "ComponentValue["
         "YoungProject[A[Down[i],Down[j]],{{1,2}}],{Ac},{0,1}]",
-        PHY_ERR_UNSUPPORTED);
+        "0");
+    expect_scalar(
+        &f,
+        "ComponentValue["
+        "A[Down[i],Down[j]]+A[Down[i],Down[j]],{Ac},{0,1}]",
+        "(* 2 a)");
+    expect_scalar(
+        &f,
+        "ComponentValue["
+        "2*YoungProject[A[Down[i],Down[j]],{{1},{2}}],"
+        "{Ac},{0,1}]",
+        "(* 2 a)");
 
     /* Rank is a runtime resource limit, not the legacy rank-four ceiling. */
     (void)run(&f, "W = IndexSpace[1, NoMetric]");

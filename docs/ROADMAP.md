@@ -188,10 +188,13 @@ Output:
 - xPerm remains an independent reference/oracle rather than a linked runtime
   dependency.
 
-Deferred with a named blocking dependency:
+Deferred with named blocking dependencies:
 
-- expression-wide abstract/component conversion and automatic atlas path
-  composition require the general tensor-expression algebra/relation layer.
+- independent-component iteration and automatic atlas path composition require
+  a bounded output-shape/path planner;
+- GR now has a checked `ComponentLift` adapter from legacy dense tensor results
+  into the shared sparse abstract/component layer. Expression-native GR
+  construction and QFT's local-index migration remain open.
 
 Verification:
 

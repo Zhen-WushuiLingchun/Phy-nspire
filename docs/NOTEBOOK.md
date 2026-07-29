@@ -138,8 +138,8 @@ braces. Both held modifiers and tap-then-key modifiers are accepted.
 ## Comprehensive CAS tour
 
 [`examples/phy-nspire-cas-tour.tns`](../examples/phy-nspire-cas-tour.tns) is a
-generated, executable notebook rather than a screenshot fixture. Its 164
-source cards contain sixteen Markdown/LaTeX explanations and 148 Math inputs
+generated, executable notebook rather than a screenshot fixture. Its 168
+source cards contain sixteen Markdown/LaTeX explanations and 152 Math inputs
 covering the implemented scalar CAS and calculus, exact dynamic linear
 algebra, abstract/component bridging, verified chart transitions and atlases,
 generic component tensors, manifolds, forms and Hodge operations, coordinate
@@ -151,7 +151,7 @@ that fully evaluated notebook, deserializes it into a fresh empty environment,
 and replays all cells. It then writes a separately round-tripped source-only
 document. This keeps the CX II's `FILE > Open` path free of eager cached-tree
 reconstruction while preserving full generation-time CAS coverage. Running all
-148 Math cells top-to-bottom grows the document to 312 cards. The 320-card
+152 Math cells top-to-bottom grows the document to 320 cards. The 320-card
 bound leaves 8 slots for small reader experiments; start a new notebook for
 extended work rather than appending a long calculation to the acceptance tour.
 

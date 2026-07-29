@@ -48,6 +48,10 @@ objects=(
     build/arm/src/ir/ir.o
     build/arm/src/ir/order.o
     build/arm/src/ir/text.o
+    build/arm/src/tensor/chart.o
+    build/arm/src/tensor/symmetry.o
+    build/arm/src/tensor/tensor.o
+    build/arm/src/tensor/ops.o
     build/arm/src/abstract/index.o
     build/arm/src/abstract/head.o
     build/arm/src/abstract/monomial.o

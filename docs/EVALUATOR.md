@@ -152,21 +152,27 @@ Ac = TensorComponents[A,{xy,xy},{Down,Down},{{{0,1},a}}]
 
 Component[Ac,1,0]
 ComponentValue[A[Down[i],Down[j]],{Ac},{0,1}]
+
+c  = Curvature[g]
+Rc = ComponentLift[Riemann[c],R,{xy,xy,xy,xy}]
 ```
 
 `TensorComponents` stores only supplied canonical entries and applies the
 head's signed slot symmetries on set/get. Runtime rank is bounded by configured
-resources, not the legacy rank-four API. `ComponentValue` currently accepts
-one abstract monomial, an explicit list of realizations, and free-index
-coordinates in first-occurrence order; it enumerates only dummy indices. A
-general `AbstractExpression` returns `PHY_ERR_UNSUPPORTED` until expression
-algebra lands, rather than dropping terms.
+resources, not the legacy rank-four API. `ComponentValue` accepts a monomial
+or a collected abstract expression, an explicit list of realizations, and
+free-index coordinates in the expression's typed census order. It remaps each
+term by `(IndexSpace,name,variance)`, enumerates only dummy indices, and shares
+term/step/memory ceilings across the full sum. Abstract addition, exact scalar
+multiplication and distributive multiplication canonicalize and collect before
+publication; a zero expression retains its free-index signature.
 
 | Spelling | Native action |
 | --- | --- |
 | `ComponentBasis[V,{x,y}]`, `ComponentBasis[V,n]` | bind an index space to a concrete coordinate basis or unnamed basis |
 | `TensorComponents[head,{bases...},{Up/Down...},{{indices,value},...}]` | construct a sparse exact realization |
-| `ComponentValue[monomial,{realizations...},{free coordinates...}]` | explicit abstract-to-component evaluation |
+| `ComponentLift[legacy,head,{bases...}]` | prove and import a legacy chart tensor into the sparse abstract/component realization |
+| `ComponentValue[expression,{realizations...},{free coordinates...}]` | explicit expression-wide abstract-to-component evaluation |
 | `CoordinateMap[source,target,{target-in-source...}]` | exact coordinate map and Jacobian |
 | `BasisTransition[source,target,{forward...},{inverse...}]` | two maps proved inverse in both directions |
 | `Jacobian[F]` | exact dynamic matrix |
@@ -179,6 +185,13 @@ No command changes basis implicitly. A component realization must match the
 transition's target basis in every slot, and an atlas pullback requires a
 registered verified edge. The dense transformation side is capped at 4096
 components; the result returns to sparse canonical storage.
+
+`ComponentLift` is the migration boundary for the existing GR/component
+backends. It requires an explicit abstract head and an explicit basis for every
+slot, copies no object merely by name, and verifies every dense source entry
+against the head's signed slot group before publishing. A stronger symmetry
+that the source does not satisfy is `PHY_ERR_ASSUMPTION`, with no partial
+realization retained.
 
 ### Differential geometry
 

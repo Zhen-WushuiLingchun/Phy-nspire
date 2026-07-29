@@ -207,10 +207,24 @@ static const tour_cell kTour[] = {
     {TOUR_INPUT, "g=Metric[M,{{1,0},{0,Sin[theta]^2}}]", NULL},
     {TOUR_INPUT, "HodgeStar[a,g]", NULL},
     {TOUR_INPUT, "c=Curvature[g]", NULL},
+    {TOUR_INPUT, "Vgr=IndexSpace[2,SymmetricMetric]", NULL},
+    {TOUR_INPUT, "egr=ComponentBasis[Vgr,2]", NULL},
+    {TOUR_INPUT,
+     "Rgr=TensorHead[{Vgr,Vgr,Vgr,Vgr},Commuting,"
+     "{Symmetry[{2,1,3,4},-1],Symmetry[{1,2,4,3},-1],"
+     "Symmetry[{3,4,1,2},1]}]",
+     NULL},
     {TOUR_INPUT, "InverseMetric[c]", NULL},
     {TOUR_INPUT, "Christoffel[c]", NULL},
     {TOUR_INPUT, "RiemannMixed[c]", NULL},
-    {TOUR_INPUT, "Riemann[c]", NULL},
+    {TOUR_INPUT,
+     "Rgrc=ComponentLift[Riemann[c],Rgr,{egr,egr,egr,egr}]",
+     NULL},
+    {TOUR_INPUT,
+     "ComponentValue["
+     "Rgr[Down[i],Down[j],Down[k],Down[l]],"
+     "{Rgrc},{0,1,0,1}]",
+     NULL},
     {TOUR_INPUT, "Ricci[c]", NULL},
     {TOUR_INPUT, "RicciScalar[c]", NULL},
     {TOUR_INPUT, "Einstein[c]", NULL},

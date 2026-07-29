@@ -49,12 +49,24 @@ metric, silently raises or lowers a slot, or allocates `dimension^rank`.
 Configured free-index, dummy-index, term, step and aggregate-memory ceilings
 fail with no returned partial value.
 
-The one-monomial bridge is now reader-facing. The evaluator owns
+The expression bridge is now reader-facing. The evaluator owns
 `ComponentBasis` and `TensorComponents` handles and exposes
-`ComponentValue[monomial,{realizations...},{free coordinates...}]`.
-Collection across a general tensor expression, independent-component
-iteration into a new tensor, and GR/QFT migration remain separate acceptance
-gates.
+`ComponentValue[expression,{realizations...},{free coordinates...}]`.
+Monomials, normalized Young projections, sums, exact scalar multiples and
+distributive products pass through one canonical collection layer. A
+zero-term expression retains its typed free-index signature. Independent-
+component iteration into a new tensor and GR/QFT migration remain separate
+acceptance gates.
+
+The upward migration boundary is also explicit:
+`ComponentLift[legacy,head,{bases...}]` imports a legacy dense chart tensor
+into a sparse realization. Rank, dimensions, IR context, slot spaces,
+coordinates and valence are checked, then every dense source component is
+proved consistent with the abstract head's signed slot group. This makes
+existing GR results usable by `ComponentValue` without claiming that the GR
+algorithms themselves have already been rewritten over abstract expressions.
+Expression-native GR construction and the QFT local-index migration remain
+separate acceptance gates.
 
 ## Notebook construction surface
 
@@ -75,6 +87,7 @@ YoungProject[R[Down[a],Down[b],Down[c]], {{1,2},{3}}]
 xy = ComponentBasis[V,{x,y}]
 Ac = TensorComponents[A,{xy,xy},{Down,Down},{{{0,1},a}}]
 ComponentValue[A[Down[i],Down[j]],{Ac},{0,1}]
+Rc = ComponentLift[Riemann[c],R,{xy,xy,xy,xy}]
 ```
 
 The first result is `-A[Down[a],Down[b]]`; the second vanishes when `S` is
@@ -108,12 +121,12 @@ native tensor API.
 
 | Landed | Deliberately deferred |
 | --- | --- |
-| legacy charts, coordinate symbols, rank, valence, head metadata | evaluator migration from legacy dense values |
+| legacy charts, coordinate symbols, rank, valence, head metadata | expression-native GR construction over the new bridge |
 | dense `n^r` storage plus runtime-rank sparse component binding | dense/sparse policy facade for legacy callers |
 | abstract free/dummy census, signed BSGS slot-orbit search, deterministic dummy normalization | explicit Butler–Portugal \(DgS\) search with committed xPerm/SymPy fixtures |
 | `IndexSpace`, `TensorHead`, indexed products and `TensorCanonicalize` in notebook cells | abstract metric contraction/raise/lower commands |
 | reader-facing normalized Young row/column projection with exact generated-term collection | Garnir/relation-basis reduction and general algebra on arbitrary pre-existing tensor sums |
-| reader-facing sparse bases/components, one-monomial `ComponentValue`, exact dynamic vectors/matrices | expression-wide `ComponentValue` and independent-component iteration |
+| reader-facing sparse bases/components, `ComponentLift`, expression-wide `ComponentValue`, exact dynamic vectors/matrices | independent-component iteration |
 | verified atlas cocycles, maps, vector/covector operations and mixed-valence tensor pullback in notebook cells | automatic transition-path composition beyond registered direct edges |
 | exact contraction, inverse metric, raise/lower, component derivatives | first-Bianchi orbit canonicalization |
 | canonical lookup, fill validation, allocation-failure unwind | optional xPerm integration |

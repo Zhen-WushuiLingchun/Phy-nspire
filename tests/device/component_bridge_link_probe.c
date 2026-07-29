@@ -125,7 +125,22 @@ int main(void)
             binding, monomial, coordinate, 1u, &value, &stats));
         sink((unsigned)stats.bytes_used);
     }
+    phy_tensor_expression *expression = NULL;
+    if (monomial != NULL) {
+        sink((unsigned)phy_tensor_expression_from_monomial(
+            monomial, NULL, &expression));
+    }
+    if (expression != NULL) {
+        phy_bridge_stats stats = {0};
+        sink((unsigned)phy_component_value_expression(
+            binding, expression, coordinate, 1u, &value, &stats));
+        sink((unsigned)stats.steps);
+    }
+    phy_component_tensor *invalid_lift = NULL;
+    sink((unsigned)phy_component_tensor_import_legacy(
+        NULL, NULL, NULL, NULL, &invalid_lift));
 
+    phy_tensor_expression_destroy(expression);
     phy_tensor_monomial_destroy(monomial);
     phy_component_binding_destroy(binding);
     phy_component_tensor_destroy(tensor);

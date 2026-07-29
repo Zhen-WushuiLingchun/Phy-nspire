@@ -1049,10 +1049,8 @@ static phy_status eval_component_value(
     if (status != PHY_OK) {
         return status;
     }
-    if (monomial.kind == PHY_VALUE_ABSTRACT_EXPRESSION) {
-        return PHY_ERR_UNSUPPORTED;
-    }
-    if (monomial.kind != PHY_VALUE_ABSTRACT_TENSOR) {
+    if (monomial.kind != PHY_VALUE_ABSTRACT_TENSOR &&
+        monomial.kind != PHY_VALUE_ABSTRACT_EXPRESSION) {
         return PHY_ERR_TYPE;
     }
 
@@ -1126,9 +1124,15 @@ static phy_status eval_component_value(
         }
     }
     phy_ir_ref result = PHY_IR_NULL;
-    if (status == PHY_OK) {
+    if (status == PHY_OK &&
+        monomial.kind == PHY_VALUE_ABSTRACT_TENSOR) {
         status = phy_component_value_monomial(
             binding, monomial.as.abstract_tensor,
+            free_count == 0u ? NULL : free_indices, free_count,
+            &result, NULL);
+    } else if (status == PHY_OK) {
+        status = phy_component_value_expression(
+            binding, monomial.as.abstract_expression,
             free_count == 0u ? NULL : free_indices, free_count,
             &result, NULL);
     }
@@ -1137,6 +1141,70 @@ static phy_status eval_component_value(
         *out_value = scalar_value(result);
     }
     return status;
+}
+
+static phy_status eval_component_lift(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 3u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value source;
+    phy_status status =
+        arg_typed(env, expr, 0u, PHY_VALUE_TENSOR, &source);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_value head;
+    status = arg_typed(
+        env, expr, 1u, PHY_VALUE_TENSOR_HEAD, &head);
+    if (status != PHY_OK) {
+        return status;
+    }
+    const size_t rank =
+        phy_tensor_head_slot_count(head.as.tensor_head);
+    if (rank > EVAL_ABSTRACT_MAX_SLOTS) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    phy_ir_ref raw_bases[EVAL_ABSTRACT_MAX_SLOTS];
+    size_t basis_count = 0u;
+    status = list_refs(
+        env, arg_ref(env, expr, 2u), raw_bases,
+        EVAL_ABSTRACT_MAX_SLOTS, &basis_count);
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (basis_count != rank) {
+        return PHY_ERR_PARSE;
+    }
+
+    phy_value dependencies[EVAL_ABSTRACT_MAX_SLOTS + 2u];
+    dependencies[0] = source;
+    dependencies[1] = head;
+    phy_component_basis *bases[EVAL_ABSTRACT_MAX_SLOTS];
+    for (size_t slot = 0u; slot < rank; ++slot) {
+        status = eval_node(
+            env, raw_bases[slot], &dependencies[slot + 2u]);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (dependencies[slot + 2u].kind !=
+            PHY_VALUE_COMPONENT_BASIS) {
+            return PHY_ERR_TYPE;
+        }
+        bases[slot] = (phy_component_basis *)(uintptr_t)
+            dependencies[slot + 2u].as.component_basis;
+    }
+
+    phy_component_tensor *lifted = NULL;
+    status = phy_component_tensor_import_legacy(
+        source.as.tensor, head.as.tensor_head,
+        rank == 0u ? NULL : bases, NULL, &lifted);
+    return status == PHY_OK
+               ? publish_many(
+                     env, PHY_VALUE_COMPONENT_TENSOR, lifted,
+                     dependencies, rank + 2u, out_value)
+               : status;
 }
 
 /* ------------------------------------------------ exact linear frontend */
@@ -4601,6 +4669,8 @@ static phy_status eval_operator(phy_env *env, phy_ir_ref expr,
         return eval_component_basis(env, expr, out_value);
     case EVAL_HEAD_TENSOR_COMPONENTS:
         return eval_tensor_components(env, expr, out_value);
+    case EVAL_HEAD_COMPONENT_LIFT:
+        return eval_component_lift(env, expr, out_value);
     case EVAL_HEAD_COMPONENT_VALUE:
         return eval_component_value(env, expr, out_value);
 
@@ -4792,7 +4862,14 @@ static phy_status eval_object_sum(phy_env *env, const phy_value *terms,
 {
     phy_value accumulator = terms[0];
     for (size_t i = 1u; i < count; ++i) {
-        if (terms[i].kind != accumulator.kind) {
+        const bool abstract_left =
+            accumulator.kind == PHY_VALUE_ABSTRACT_TENSOR ||
+            accumulator.kind == PHY_VALUE_ABSTRACT_EXPRESSION;
+        const bool abstract_right =
+            terms[i].kind == PHY_VALUE_ABSTRACT_TENSOR ||
+            terms[i].kind == PHY_VALUE_ABSTRACT_EXPRESSION;
+        if (terms[i].kind != accumulator.kind &&
+            !(abstract_left && abstract_right)) {
             return PHY_ERR_TYPE;
         }
         phy_status status = PHY_ERR_TYPE;
@@ -4837,6 +4914,43 @@ static phy_status eval_object_sum(phy_env *env, const phy_value *terms,
                 status = publish_linear(
                     env, accumulator.kind, sum, &next);
             }
+        } else if (abstract_left && abstract_right) {
+            status = PHY_OK;
+            const phy_tensor_expression *left = NULL;
+            const phy_tensor_expression *right = NULL;
+            phy_tensor_expression *owned_left = NULL;
+            phy_tensor_expression *owned_right = NULL;
+            if (accumulator.kind ==
+                PHY_VALUE_ABSTRACT_EXPRESSION) {
+                left = accumulator.as.abstract_expression;
+            } else {
+                status = phy_tensor_expression_from_monomial(
+                    accumulator.as.abstract_tensor, NULL,
+                    &owned_left);
+                left = owned_left;
+            }
+            if (status == PHY_OK &&
+                terms[i].kind ==
+                    PHY_VALUE_ABSTRACT_EXPRESSION) {
+                right = terms[i].as.abstract_expression;
+            } else if (status == PHY_OK) {
+                status = phy_tensor_expression_from_monomial(
+                    terms[i].as.abstract_tensor, NULL,
+                    &owned_right);
+                right = owned_right;
+            }
+            phy_tensor_expression *sum = NULL;
+            if (status == PHY_OK) {
+                status = phy_tensor_expression_add(
+                    left, right, NULL, &sum);
+            }
+            phy_tensor_expression_destroy(owned_right);
+            phy_tensor_expression_destroy(owned_left);
+            if (status == PHY_OK) {
+                status = publish(
+                    env, PHY_VALUE_ABSTRACT_EXPRESSION, sum,
+                    &accumulator, &terms[i], &next);
+            }
         }
         if (status != PHY_OK) {
             return status;
@@ -4851,6 +4965,66 @@ static phy_status eval_abstract_product(
     phy_env *env, const phy_value *values, size_t count,
     phy_ir_ref scalar, phy_value *out_value)
 {
+    bool has_expression = false;
+    for (size_t index = 0u; index < count; ++index) {
+        if (values[index].kind ==
+            PHY_VALUE_ABSTRACT_EXPRESSION) {
+            has_expression = true;
+        } else if (values[index].kind != PHY_VALUE_SCALAR &&
+                   values[index].kind !=
+                       PHY_VALUE_ABSTRACT_TENSOR) {
+            return PHY_ERR_TYPE;
+        }
+    }
+    if (has_expression) {
+        phy_ir_ref one = PHY_IR_NULL;
+        phy_status status =
+            phy_cas_number(env->cas, 1, 1, &one);
+        phy_tensor_expression *accumulator = NULL;
+        for (size_t index = 0u;
+             index < count && status == PHY_OK; ++index) {
+            if (values[index].kind == PHY_VALUE_SCALAR) {
+                continue;
+            }
+            const phy_tensor_expression *incoming = NULL;
+            phy_tensor_expression *converted = NULL;
+            if (values[index].kind ==
+                PHY_VALUE_ABSTRACT_EXPRESSION) {
+                incoming =
+                    values[index].as.abstract_expression;
+            } else {
+                status = phy_tensor_expression_from_monomial(
+                    values[index].as.abstract_tensor, NULL,
+                    &converted);
+                incoming = converted;
+            }
+            if (status == PHY_OK && accumulator == NULL) {
+                status = phy_tensor_expression_scale(
+                    incoming, one, NULL, &accumulator);
+            } else if (status == PHY_OK) {
+                phy_tensor_expression *product = NULL;
+                status = phy_tensor_expression_multiply(
+                    accumulator, incoming, NULL, &product);
+                phy_tensor_expression_destroy(accumulator);
+                accumulator = product;
+            }
+            phy_tensor_expression_destroy(converted);
+        }
+        phy_tensor_expression *scaled = NULL;
+        if (status == PHY_OK && accumulator != NULL) {
+            status = phy_tensor_expression_scale(
+                accumulator, scalar, NULL, &scaled);
+        } else if (status == PHY_OK) {
+            status = PHY_ERR_TYPE;
+        }
+        phy_tensor_expression_destroy(accumulator);
+        return status == PHY_OK
+                   ? publish(
+                         env, PHY_VALUE_ABSTRACT_EXPRESSION, scaled,
+                         NULL, NULL, out_value)
+                   : status;
+    }
+
     phy_abstract_factor factors[EVAL_ABSTRACT_MAX_SLOTS];
     size_t factor_count = 0u;
     phy_ir_ref coefficients[EVAL_MAX_LIST + 1u];
@@ -4935,6 +5109,16 @@ static phy_status eval_object_scale(phy_env *env, phy_value object,
         const phy_value values[1] = {object};
         return eval_abstract_product(
             env, values, 1u, scalar, out_value);
+    }
+    if (object.kind == PHY_VALUE_ABSTRACT_EXPRESSION) {
+        phy_tensor_expression *scaled = NULL;
+        status = phy_tensor_expression_scale(
+            object.as.abstract_expression, scalar, NULL, &scaled);
+        return status == PHY_OK
+                   ? publish(
+                         env, PHY_VALUE_ABSTRACT_EXPRESSION, scaled,
+                         &object, NULL, out_value)
+                   : status;
     }
     if (object.kind == PHY_VALUE_VECTOR ||
         object.kind == PHY_VALUE_MATRIX) {

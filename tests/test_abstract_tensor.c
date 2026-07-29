@@ -1437,6 +1437,191 @@ static void test_young_collection_hook_and_typed_validation(void)
     fixture_close(&f);
 }
 
+static void test_expression_algebra_collects_and_preserves_signature(void)
+{
+    fixture f = fixture_open(NULL);
+    phy_index_space *space = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_index_space_create(
+            f.abstract, "M", phy_ir_integer(f.ir, 3),
+            PHY_METRIC_NONE, &space),
+        PHY_OK);
+    const phy_index_space *slots[2] = {space, space};
+    phy_abstract_tensor_head *head = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_create(
+            f.abstract, "T", slots, 2u,
+            PHY_TENSOR_COMMUTING, &head),
+        PHY_OK);
+    phy_abstract_index a = {0};
+    phy_abstract_index b = {0};
+    phy_abstract_index c = {0};
+    PHY_CHECK_EQ_INT(
+        phy_abstract_index_make(
+            space, "a", PHY_IR_INDEX_LOWER, &a), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_abstract_index_make(
+            space, "b", PHY_IR_INDEX_LOWER, &b), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_abstract_index_make(
+            space, "c", PHY_IR_INDEX_LOWER, &c), PHY_OK);
+
+    const phy_abstract_index ab[2] = {a, b};
+    const phy_abstract_index ba[2] = {b, a};
+    const phy_abstract_index cb[2] = {c, b};
+    const phy_abstract_factor factor_ab = {head, ab, 2u};
+    const phy_abstract_factor factor_ba = {head, ba, 2u};
+    const phy_abstract_factor factor_cb = {head, cb, 2u};
+    phy_tensor_monomial *monomial_ab = NULL;
+    phy_tensor_monomial *monomial_ba = NULL;
+    phy_tensor_monomial *monomial_cb = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_create(
+            f.abstract, phy_ir_integer(f.ir, 1),
+            &factor_ab, 1u, &monomial_ab), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_create(
+            f.abstract, phy_ir_integer(f.ir, 1),
+            &factor_ba, 1u, &monomial_ba), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_create(
+            f.abstract, phy_ir_integer(f.ir, 1),
+            &factor_cb, 1u, &monomial_cb), PHY_OK);
+
+    phy_tensor_expression *expr_ab = NULL;
+    phy_tensor_expression *expr_ba = NULL;
+    phy_tensor_expression *expr_cb = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_from_monomial(
+            monomial_ab, NULL, &expr_ab), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_from_monomial(
+            monomial_ba, NULL, &expr_ba), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_from_monomial(
+            monomial_cb, NULL, &expr_cb), PHY_OK);
+    PHY_CHECK(
+        phy_tensor_expression_context(expr_ab) == f.abstract);
+    PHY_CHECK_EQ_INT(phy_tensor_expression_free_count(expr_ab), 2u);
+    phy_abstract_index_use free_use = {0};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_free_use(
+            expr_ab, 0u, &free_use), PHY_OK);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, free_use.name), "a");
+
+    phy_tensor_expression *sum = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_add(
+            expr_ab, expr_ba, NULL, &sum), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_tensor_expression_term_count(sum), 2u);
+    PHY_CHECK_EQ_INT(phy_tensor_expression_free_count(sum), 2u);
+    phy_tensor_expression_destroy(sum);
+
+    phy_tensor_expression *negative = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_scale(
+            expr_ab, phy_ir_integer(f.ir, -1), NULL, &negative),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_add(
+            expr_ab, negative, NULL, &sum), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_tensor_expression_term_count(sum), 0u);
+    PHY_CHECK_EQ_INT(phy_tensor_expression_free_count(sum), 2u);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_free_use(sum, 1u, &free_use), PHY_OK);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, free_use.name), "b");
+    phy_tensor_expression_destroy(sum);
+    phy_tensor_expression_destroy(negative);
+
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_add(
+            expr_ab, expr_cb, NULL, &sum), PHY_ERR_TYPE);
+    PHY_CHECK(sum == NULL);
+    phy_tensor_algebra_limits one_term = {0};
+    one_term.max_result_terms = 1u;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_add(
+            expr_ab, expr_ba, &one_term, &sum),
+        PHY_ERR_TERM_LIMIT);
+    PHY_CHECK(sum == NULL);
+
+    const phy_index_space *one_slot[1] = {space};
+    phy_abstract_tensor_head *vector = NULL;
+    phy_abstract_tensor_head *covector = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_create(
+            f.abstract, "V", one_slot, 1u,
+            PHY_TENSOR_COMMUTING, &vector), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_create(
+            f.abstract, "W", one_slot, 1u,
+            PHY_TENSOR_COMMUTING, &covector), PHY_OK);
+    phy_abstract_index a_up = {0};
+    PHY_CHECK_EQ_INT(
+        phy_abstract_index_make(
+            space, "a", PHY_IR_INDEX_UPPER, &a_up), PHY_OK);
+    const phy_abstract_factor vector_factor = {
+        vector, &a_up, 1u};
+    const phy_abstract_factor covector_factor = {
+        covector, &a, 1u};
+    phy_tensor_monomial *vector_monomial = NULL;
+    phy_tensor_monomial *covector_monomial = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_create(
+            f.abstract, phy_ir_integer(f.ir, 2),
+            &vector_factor, 1u, &vector_monomial), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_create(
+            f.abstract, phy_ir_integer(f.ir, 3),
+            &covector_factor, 1u, &covector_monomial), PHY_OK);
+    phy_tensor_expression *vector_expression = NULL;
+    phy_tensor_expression *covector_expression = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_from_monomial(
+            vector_monomial, NULL, &vector_expression), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_from_monomial(
+            covector_monomial, NULL, &covector_expression), PHY_OK);
+    phy_tensor_expression *product = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_multiply(
+            vector_expression, covector_expression, NULL, &product),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(phy_tensor_expression_free_count(product), 0u);
+    PHY_CHECK_EQ_INT(phy_tensor_expression_term_count(product), 1u);
+    check_exact_coefficient(
+        &f, phy_tensor_monomial_coefficient(
+                phy_tensor_expression_term(product, 0u)),
+        6, 1);
+    phy_tensor_expression_destroy(product);
+
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_add(
+            expr_ab, expr_ba, NULL, &sum), PHY_OK);
+    phy_tensor_algebra_limits three_generated = {0};
+    three_generated.max_generated_terms = 3u;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_multiply(
+            sum, sum, &three_generated, &product),
+        PHY_ERR_TERM_LIMIT);
+    PHY_CHECK(product == NULL);
+    phy_tensor_expression_destroy(sum);
+
+    phy_tensor_expression_destroy(covector_expression);
+    phy_tensor_expression_destroy(vector_expression);
+    phy_tensor_monomial_destroy(covector_monomial);
+    phy_tensor_monomial_destroy(vector_monomial);
+    phy_tensor_expression_destroy(expr_cb);
+    phy_tensor_expression_destroy(expr_ba);
+    phy_tensor_expression_destroy(expr_ab);
+    phy_tensor_monomial_destroy(monomial_cb);
+    phy_tensor_monomial_destroy(monomial_ba);
+    phy_tensor_monomial_destroy(monomial_ab);
+    fixture_close(&f);
+}
+
 static void test_transactional_head_declaration(void)
 {
     fixture f = fixture_open(NULL);
@@ -1498,6 +1683,7 @@ int main(void)
     PHY_TEST_CASE(test_symmetric_rank_nine_is_pruned_not_enumerated);
     PHY_TEST_CASE(test_young_row_and_column_projectors);
     PHY_TEST_CASE(test_young_collection_hook_and_typed_validation);
+    PHY_TEST_CASE(test_expression_algebra_collects_and_preserves_signature);
     PHY_TEST_CASE(test_transactional_head_declaration);
     return PHY_TEST_REPORT("abstract_tensor");
 }

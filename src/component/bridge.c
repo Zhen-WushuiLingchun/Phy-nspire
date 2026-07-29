@@ -20,6 +20,163 @@
 #define PHY_BRIDGE_DEFAULT_BYTES (64u * 1024u)
 #define PHY_BRIDGE_SUM_WINDOW 32u
 
+static phy_status legacy_import_validate(
+    const phy_tensor *source, const phy_abstract_tensor_head *head,
+    phy_component_basis *const *bases)
+{
+    if (source == NULL || head == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    const size_t rank = phy_tensor_head_slot_count(head);
+    if (rank != (size_t)phy_tensor_rank(source) ||
+        (rank != 0u && bases == NULL)) {
+        return PHY_ERR_TYPE;
+    }
+    phy_abstract_context *context = phy_tensor_head_context(head);
+    if (context == NULL ||
+        phy_cas_ir(phy_abstract_cas(context)) !=
+            phy_chart_ir(phy_tensor_chart(source))) {
+        return PHY_ERR_TYPE;
+    }
+    const size_t dimension = (size_t)phy_tensor_dimension(source);
+    const phy_chart *chart = phy_tensor_chart(source);
+    for (size_t slot = 0u; slot < rank; ++slot) {
+        if (bases[slot] == NULL ||
+            phy_component_basis_space(bases[slot]) !=
+                phy_tensor_head_slot_space(head, slot) ||
+            phy_component_basis_dimension(bases[slot]) != dimension) {
+            return PHY_ERR_TYPE;
+        }
+        if (phy_component_basis_has_coordinates(bases[slot])) {
+            for (size_t axis = 0u; axis < dimension; ++axis) {
+                if (phy_component_basis_coordinate_symbol(
+                        bases[slot], axis) !=
+                    phy_chart_coordinate_symbol(
+                        chart, (unsigned)axis)) {
+                    return PHY_ERR_TYPE;
+                }
+            }
+        }
+    }
+    return PHY_OK;
+}
+
+static bool same_component_indices(const uint32_t *left,
+                                   const uint32_t *right,
+                                   size_t rank)
+{
+    return rank == 0u ||
+           memcmp(left, right, rank * sizeof(*left)) == 0;
+}
+
+phy_status phy_component_tensor_import_legacy(
+    const phy_tensor *source, const phy_abstract_tensor_head *head,
+    phy_component_basis *const *bases,
+    const phy_component_limits *limits,
+    phy_component_tensor **out_tensor)
+{
+    if (out_tensor == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    *out_tensor = NULL;
+    phy_status status = legacy_import_validate(source, head, bases);
+    if (status != PHY_OK) {
+        return status;
+    }
+
+    const size_t rank = phy_tensor_head_slot_count(head);
+    phy_ir_variance valence[PHY_TENSOR_MAX_RANK];
+    for (size_t slot = 0u; slot < rank; ++slot) {
+        valence[slot] =
+            phy_tensor_valence(source, (unsigned)slot);
+    }
+    phy_component_tensor *lifted = NULL;
+    status = phy_component_tensor_create(
+        head, rank == 0u ? NULL : bases,
+        rank == 0u ? NULL : valence, limits, &lifted);
+    if (status != PHY_OK) {
+        return status;
+    }
+
+    /*
+     * Populate only destination orbit representatives. Populating every dense
+     * entry directly would let a later member silently overwrite an earlier
+     * representative when the abstract head declares a stronger symmetry.
+     */
+    const size_t count = phy_tensor_component_count(source);
+    unsigned source_indices[PHY_TENSOR_MAX_RANK];
+    uint32_t indices[PHY_TENSOR_MAX_RANK];
+    uint32_t canonical[PHY_TENSOR_MAX_RANK];
+    phy_cas *cas =
+        phy_abstract_cas(phy_tensor_head_context(head));
+    for (size_t flat = 0u; status == PHY_OK && flat < count; ++flat) {
+        status = phy_tensor_unflatten(
+            source, flat, rank == 0u ? NULL : source_indices);
+        for (size_t slot = 0u; status == PHY_OK && slot < rank; ++slot) {
+            indices[slot] = (uint32_t)source_indices[slot];
+        }
+        int sign = 0;
+        if (status == PHY_OK) {
+            status = phy_component_tensor_canonical_indices(
+                lifted, rank == 0u ? NULL : indices,
+                rank == 0u ? NULL : canonical, &sign);
+        }
+        if (status != PHY_OK || sign != 1 ||
+            !same_component_indices(indices, canonical, rank)) {
+            continue;
+        }
+        phy_ir_ref value = PHY_IR_NULL;
+        status = phy_tensor_component_expression(
+            cas, source, rank == 0u ? NULL : source_indices, &value);
+        if (status == PHY_OK) {
+            status = phy_component_tensor_set(
+                lifted, rank == 0u ? NULL : indices, value);
+        }
+    }
+
+    /*
+     * Prove every source component agrees with the sparse realization.
+     * Unknown equality is not enough: the bridge must not invent an identity
+     * that the exact CAS has failed to establish.
+     */
+    for (size_t flat = 0u; status == PHY_OK && flat < count; ++flat) {
+        status = phy_tensor_unflatten(
+            source, flat, rank == 0u ? NULL : source_indices);
+        for (size_t slot = 0u; status == PHY_OK && slot < rank; ++slot) {
+            indices[slot] = (uint32_t)source_indices[slot];
+        }
+        phy_ir_ref source_value = PHY_IR_NULL;
+        phy_ir_ref lifted_value = PHY_IR_NULL;
+        phy_ir_ref difference = PHY_IR_NULL;
+        if (status == PHY_OK) {
+            status = phy_tensor_component_expression(
+                cas, source, rank == 0u ? NULL : source_indices,
+                &source_value);
+        }
+        if (status == PHY_OK) {
+            status = phy_component_tensor_get(
+                lifted, rank == 0u ? NULL : indices, &lifted_value);
+        }
+        if (status == PHY_OK) {
+            status = phy_cas_sub(
+                cas, source_value, lifted_value, &difference);
+        }
+        phy_cas_decision zero = PHY_CAS_UNKNOWN;
+        if (status == PHY_OK) {
+            status = phy_cas_is_zero(cas, difference, &zero);
+        }
+        if (status == PHY_OK && zero != PHY_CAS_ZERO) {
+            status = PHY_ERR_ASSUMPTION;
+        }
+    }
+    if (status != PHY_OK) {
+        phy_component_tensor_destroy(lifted);
+        return status;
+    }
+    *out_tensor = lifted;
+    return PHY_OK;
+}
+
 struct phy_component_binding {
     phy_abstract_context *context;
     phy_cas *cas;
@@ -735,6 +892,7 @@ static void report_stats(const bridge_eval *eval,
     out_stats->terms = eval->terms;
     out_stats->bytes_used =
         eval->binding->persistent_bytes + eval->storage_bytes;
+    out_stats->steps = eval->steps;
 }
 
 phy_status phy_component_value_monomial(
@@ -789,5 +947,223 @@ phy_status phy_component_value_monomial(
         report_stats(&eval, out_stats);
     }
     eval_release(&eval);
+    return status;
+}
+
+static phy_status free_use_at(
+    const phy_tensor_monomial *monomial, size_t wanted,
+    phy_abstract_index_use *out_use)
+{
+    const size_t count =
+        phy_tensor_monomial_index_use_count(monomial);
+    size_t ordinal = 0u;
+    for (size_t index = 0u; index < count; ++index) {
+        phy_abstract_index_use use;
+        const phy_status status =
+            phy_tensor_monomial_index_use(monomial, index, &use);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (use.role != PHY_ABSTRACT_INDEX_FREE) {
+            continue;
+        }
+        if (ordinal == wanted) {
+            *out_use = use;
+            return PHY_OK;
+        }
+        ++ordinal;
+    }
+    return PHY_ERR_CORRUPT_DOCUMENT;
+}
+
+static bool same_free_use(const phy_abstract_index_use *left,
+                          const phy_abstract_index_use *right)
+{
+    return left->space == right->space &&
+           left->name == right->name &&
+           left->lower_count == right->lower_count &&
+           left->upper_count == right->upper_count &&
+           left->role == right->role;
+}
+
+static bool add_u64(uint64_t left, uint64_t right, uint64_t *out)
+{
+    if (right > UINT64_MAX - left) {
+        return false;
+    }
+    *out = left + right;
+    return true;
+}
+
+static bool add_u32(uint32_t left, uint32_t right, uint32_t *out)
+{
+    if (right > UINT32_MAX - left) {
+        return false;
+    }
+    *out = left + right;
+    return true;
+}
+
+phy_status phy_component_value_expression(
+    phy_component_binding *binding,
+    const phy_tensor_expression *expression,
+    const uint32_t *free_indices, size_t free_count,
+    phy_ir_ref *out_value, phy_bridge_stats *out_stats)
+{
+    if (out_value == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    *out_value = PHY_IR_NULL;
+    if (out_stats != NULL) {
+        memset(out_stats, 0, sizeof *out_stats);
+    }
+    if (binding == NULL || expression == NULL ||
+        (free_count != 0u && free_indices == NULL)) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+
+    const size_t term_count =
+        phy_tensor_expression_term_count(expression);
+    if (term_count > binding->limits.max_terms) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    if (phy_tensor_expression_context(expression) !=
+        binding->context) {
+        return PHY_ERR_TYPE;
+    }
+    const size_t expected_free =
+        phy_tensor_expression_free_count(expression);
+    if (free_count != expected_free ||
+        free_count > binding->limits.max_free) {
+        return free_count > binding->limits.max_free
+                   ? PHY_ERR_TERM_LIMIT
+                   : PHY_ERR_INVALID_ARGUMENT;
+    }
+
+    size_t remap_bytes = 0u;
+    if (free_count != 0u &&
+        sizeof(uint32_t) > SIZE_MAX / free_count) {
+        return PHY_ERR_MEMORY_LIMIT;
+    }
+    remap_bytes = free_count * sizeof(uint32_t);
+    if (binding->persistent_bytes > binding->limits.max_bytes ||
+        remap_bytes >
+            binding->limits.max_bytes - binding->persistent_bytes) {
+        return PHY_ERR_MEMORY_LIMIT;
+    }
+    uint32_t *remapped = NULL;
+    if (remap_bytes != 0u) {
+        remapped = phy_alloc(remap_bytes);
+        if (remapped == NULL) {
+            return PHY_ERR_MEMORY_LIMIT;
+        }
+    }
+
+    phy_bridge_stats combined;
+    memset(&combined, 0, sizeof combined);
+    combined.free_count = expected_free;
+    combined.bytes_used = binding->persistent_bytes + remap_bytes;
+    phy_ir_ref total = binding->zero;
+    phy_status status = PHY_OK;
+    for (size_t term_index = 0u;
+         term_index < term_count && status == PHY_OK; ++term_index) {
+        const phy_tensor_monomial *term =
+            phy_tensor_expression_term(expression, term_index);
+        if (term == NULL ||
+            phy_tensor_monomial_context(term) != binding->context) {
+            status = term == NULL ? PHY_ERR_CORRUPT_DOCUMENT
+                                  : PHY_ERR_TYPE;
+            break;
+        }
+        if (phy_tensor_monomial_free_count(term) != expected_free) {
+            status = PHY_ERR_TYPE;
+            break;
+        }
+        for (size_t local = 0u;
+             local < expected_free && status == PHY_OK; ++local) {
+            phy_abstract_index_use local_use = {0};
+            status = free_use_at(term, local, &local_use);
+            bool matched = false;
+            for (size_t reference = 0u;
+                 reference < expected_free &&
+                 status == PHY_OK && !matched; ++reference) {
+                phy_abstract_index_use reference_use = {0};
+                status = phy_tensor_expression_free_use(
+                    expression, reference, &reference_use);
+                if (status == PHY_OK &&
+                    same_free_use(&local_use, &reference_use)) {
+                    remapped[local] = free_indices[reference];
+                    matched = true;
+                }
+            }
+            if (status == PHY_OK && !matched) {
+                status = PHY_ERR_TYPE;
+            }
+        }
+
+        phy_component_binding constrained = *binding;
+        constrained.limits.max_bytes -= remap_bytes;
+        constrained.limits.max_terms -= (size_t)combined.terms;
+        constrained.limits.max_steps -= combined.steps;
+        phy_ir_ref value = PHY_IR_NULL;
+        phy_bridge_stats term_stats;
+        memset(&term_stats, 0, sizeof term_stats);
+        if (status == PHY_OK) {
+            status = phy_component_value_monomial(
+                &constrained, term,
+                expected_free == 0u ? NULL : remapped,
+                expected_free, &value, &term_stats);
+        }
+        uint64_t accumulated = 0u;
+        if (status == PHY_OK &&
+            (!add_u64(combined.assignments, term_stats.assignments,
+                      &accumulated))) {
+            status = PHY_ERR_OVERFLOW;
+        } else if (status == PHY_OK) {
+            combined.assignments = accumulated;
+        }
+        if (status == PHY_OK &&
+            !add_u64(combined.pruned, term_stats.pruned,
+                     &accumulated)) {
+            status = PHY_ERR_OVERFLOW;
+        } else if (status == PHY_OK) {
+            combined.pruned = accumulated;
+        }
+        if (status == PHY_OK &&
+            !add_u64(combined.terms, term_stats.terms,
+                     &accumulated)) {
+            status = PHY_ERR_OVERFLOW;
+        } else if (status == PHY_OK) {
+            combined.terms = accumulated;
+        }
+        uint32_t steps = 0u;
+        if (status == PHY_OK &&
+            !add_u32(combined.steps, term_stats.steps, &steps)) {
+            status = PHY_ERR_OVERFLOW;
+        } else if (status == PHY_OK) {
+            combined.steps = steps;
+        }
+        if (status == PHY_OK &&
+            term_stats.dummy_count > combined.dummy_count) {
+            combined.dummy_count = term_stats.dummy_count;
+        }
+        const size_t term_peak = term_stats.bytes_used + remap_bytes;
+        if (status == PHY_OK &&
+            term_peak > combined.bytes_used) {
+            combined.bytes_used = term_peak;
+        }
+        if (status == PHY_OK) {
+            const phy_ir_ref pair[2] = {total, value};
+            status = phy_cas_add(binding->cas, pair, 2u, &total);
+        }
+    }
+
+    phy_free(remapped, remap_bytes);
+    if (status == PHY_OK) {
+        *out_value = total;
+        if (out_stats != NULL) {
+            *out_stats = combined;
+        }
+    }
     return status;
 }

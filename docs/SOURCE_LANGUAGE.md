@@ -108,6 +108,7 @@ v  = Vector[{1,2,3}]
 A  = Matrix[{{1,2},{3,4}}]
 xy = ComponentBasis[V,{x,y}]
 Tc = TensorComponents[T,{xy,xy},{Down,Up},{{{0,0},a}}]
+Rc = ComponentLift[Riemann[c],R,{xy,xy,xy,xy}]
 ComponentValue[T[Down[i],Up[j]],{Tc},{0,0}]
 ```
 
@@ -125,7 +126,7 @@ The evaluated object heads are:
   `Determinant`, `Inverse`, `RowReduce`, `MatrixRank`, `LinearSolve`;
 - abstract/components — `IndexSpace`, `TensorHead`, indexed head application,
   `TensorCanonicalize`, `YoungProject`, `ComponentBasis`,
-  `TensorComponents`, `ComponentValue`;
+  `TensorComponents`, `ComponentLift`, `ComponentValue`;
 - maps/atlas — `CoordinateMap`, `BasisTransition`, `Jacobian`,
   `PullbackScalar`, `PullbackCovector`, `PushForwardVector`,
   `TransitionPullback`, `Atlas`, `AtlasAddTransition`, `AtlasVerify`,
