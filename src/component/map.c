@@ -4,6 +4,8 @@
 
 #define PHY_MAP_DEFAULT_DIMENSION 32u
 #define PHY_MAP_DEFAULT_BYTES (128u * 1024u)
+#define PHY_MAP_DEFAULT_FORM_COMPONENTS 4096u
+#define PHY_MAP_DEFAULT_PULLBACK_TERMS 250000u
 
 static size_t align_up(size_t value, size_t alignment)
 {
@@ -18,6 +20,10 @@ void phy_map_limits_defaults(phy_map_limits *out_limits)
     }
     out_limits->max_dimension = PHY_MAP_DEFAULT_DIMENSION;
     out_limits->max_bytes = PHY_MAP_DEFAULT_BYTES;
+    out_limits->max_form_components =
+        PHY_MAP_DEFAULT_FORM_COMPONENTS;
+    out_limits->max_pullback_terms =
+        PHY_MAP_DEFAULT_PULLBACK_TERMS;
     phy_linear_limits_defaults(&out_limits->linear);
 }
 
@@ -32,10 +38,20 @@ static phy_status resolve_limits(const phy_map_limits *requested,
         if (requested->max_bytes != 0u) {
             out->max_bytes = requested->max_bytes;
         }
+        if (requested->max_form_components != 0u) {
+            out->max_form_components =
+                requested->max_form_components;
+        }
+        if (requested->max_pullback_terms != 0u) {
+            out->max_pullback_terms =
+                requested->max_pullback_terms;
+        }
         out->linear = requested->linear;
     }
     if (out->max_dimension == 0u ||
-        out->max_bytes < sizeof(phy_coordinate_map)) {
+        out->max_bytes < sizeof(phy_coordinate_map) ||
+        out->max_form_components == 0u ||
+        out->max_pullback_terms == 0u) {
         return PHY_ERR_INVALID_ARGUMENT;
     }
     return PHY_OK;
@@ -307,6 +323,72 @@ const phy_matrix *phy_coordinate_map_jacobian(
     return map != NULL ? map->jacobian : NULL;
 }
 
+static size_t size_gcd(size_t left, size_t right)
+{
+    while (right != 0u) {
+        const size_t remainder = left % right;
+        left = right;
+        right = remainder;
+    }
+    return left;
+}
+
+static phy_status exterior_component_count(
+    size_t dimension, size_t degree, size_t limit, size_t *out_count)
+{
+    if (out_count == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    if (degree > dimension) {
+        *out_count = 0u;
+        return PHY_OK;
+    }
+    size_t choose = degree;
+    if (choose > dimension - choose) {
+        choose = dimension - choose;
+    }
+    size_t count = 1u;
+    for (size_t step = 1u; step <= choose; ++step) {
+        size_t numerator = dimension - choose + step;
+        size_t denominator = step;
+        size_t divisor = size_gcd(numerator, denominator);
+        numerator /= divisor;
+        denominator /= divisor;
+        divisor = size_gcd(count, denominator);
+        count /= divisor;
+        denominator /= divisor;
+        if (denominator != 1u ||
+            (numerator != 0u && count > SIZE_MAX / numerator)) {
+            return PHY_ERR_MEMORY_LIMIT;
+        }
+        count *= numerator;
+        if (count > limit) {
+            return PHY_ERR_TERM_LIMIT;
+        }
+    }
+    *out_count = count;
+    return PHY_OK;
+}
+
+phy_status phy_coordinate_map_form_component_counts(
+    const phy_coordinate_map *map, size_t degree,
+    size_t *out_target_count, size_t *out_source_count)
+{
+    if (map == NULL || out_target_count == NULL ||
+        out_source_count == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    phy_status status = exterior_component_count(
+        map->target->dimension, degree,
+        map->limits.max_form_components, out_target_count);
+    if (status == PHY_OK) {
+        status = exterior_component_count(
+            map->source->dimension, degree,
+            map->limits.max_form_components, out_source_count);
+    }
+    return status;
+}
+
 phy_status phy_coordinate_map_pullback_scalar(
     const phy_coordinate_map *map, phy_ir_ref target_scalar,
     phy_ir_ref *out_source_scalar)
@@ -320,84 +402,297 @@ phy_status phy_coordinate_map_pullback_scalar(
         map->target->dimension, out_source_scalar);
 }
 
+static void fill_combinations(size_t dimension, size_t degree,
+                              size_t count, size_t *out)
+{
+    if (degree == 0u || count == 0u) {
+        return;
+    }
+    for (size_t axis = 0u; axis < degree; ++axis) {
+        out[axis] = axis;
+    }
+    for (size_t row = 1u; row < count; ++row) {
+        size_t *previous = &out[(row - 1u) * degree];
+        size_t *current = &out[row * degree];
+        memcpy(current, previous, degree * sizeof(*current));
+        size_t axis = degree;
+        while (axis > 0u) {
+            --axis;
+            const size_t ceiling = dimension - degree + axis;
+            if (current[axis] < ceiling) {
+                ++current[axis];
+                for (size_t tail = axis + 1u;
+                     tail < degree; ++tail) {
+                    current[tail] = current[tail - 1u] + 1u;
+                }
+                break;
+            }
+        }
+    }
+}
+
+static bool add_scratch_bytes(size_t count, size_t element_size,
+                              size_t *total)
+{
+    if (count != 0u && element_size > SIZE_MAX / count) {
+        return false;
+    }
+    const size_t bytes = count * element_size;
+    if (*total > SIZE_MAX - bytes) {
+        return false;
+    }
+    *total += bytes;
+    return true;
+}
+
+phy_status phy_coordinate_map_pullback_form(
+    const phy_coordinate_map *map, size_t degree,
+    const phy_ir_ref *target_components,
+    phy_ir_ref *out_source_components)
+{
+    if (map == NULL || target_components == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    size_t target_count = 0u;
+    size_t source_count = 0u;
+    phy_status status = phy_coordinate_map_form_component_counts(
+        map, degree, &target_count, &source_count);
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (degree > map->target->dimension) {
+        return PHY_ERR_DOMAIN;
+    }
+    if (source_count != 0u && out_source_components == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    if (source_count == 0u) {
+        return PHY_OK;
+    }
+    if (degree == 0u) {
+        return phy_coordinate_map_pullback_scalar(
+            map, target_components[0], &out_source_components[0]);
+    }
+    if (target_count != 0u &&
+        source_count >
+            map->limits.max_pullback_terms / target_count) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    if (target_count > SIZE_MAX / degree ||
+        source_count > SIZE_MAX / degree ||
+        degree > SIZE_MAX / degree) {
+        return PHY_ERR_MEMORY_LIMIT;
+    }
+    const size_t target_index_count = target_count * degree;
+    const size_t source_index_count = source_count * degree;
+    const size_t minor_entry_count = degree * degree;
+    size_t scratch_bytes = 0u;
+    if (!add_scratch_bytes(
+            target_count, sizeof(phy_ir_ref), &scratch_bytes) ||
+        !add_scratch_bytes(
+            target_count, sizeof(phy_ir_ref), &scratch_bytes) ||
+        !add_scratch_bytes(
+            source_count, sizeof(phy_ir_ref), &scratch_bytes) ||
+        !add_scratch_bytes(
+            target_index_count, sizeof(size_t), &scratch_bytes) ||
+        !add_scratch_bytes(
+            source_index_count, sizeof(size_t), &scratch_bytes) ||
+        !add_scratch_bytes(
+            minor_entry_count, sizeof(phy_ir_ref), &scratch_bytes) ||
+        scratch_bytes > map->limits.max_bytes) {
+        return PHY_ERR_MEMORY_LIMIT;
+    }
+
+    phy_ir_ref *pulled =
+        phy_alloc(target_count * sizeof(*pulled));
+    phy_ir_ref *terms =
+        phy_alloc(target_count * sizeof(*terms));
+    phy_ir_ref *result =
+        phy_alloc(source_count * sizeof(*result));
+    size_t *target_indices =
+        phy_alloc(target_index_count * sizeof(*target_indices));
+    size_t *source_indices =
+        phy_alloc(source_index_count * sizeof(*source_indices));
+    phy_ir_ref *minor_entries =
+        phy_alloc(minor_entry_count * sizeof(*minor_entries));
+    if (pulled == NULL || terms == NULL || result == NULL ||
+        target_indices == NULL || source_indices == NULL ||
+        minor_entries == NULL) {
+        status = PHY_ERR_MEMORY_LIMIT;
+    }
+
+    for (size_t axis = 0u;
+         axis < target_count && status == PHY_OK; ++axis) {
+        if (!scalar_expression(
+                map->ir, target_components[axis], 0u)) {
+            status = PHY_ERR_TYPE;
+            break;
+        }
+        status = phy_cas_substitute(
+            map->cas, target_components[axis], map->rules,
+            map->target->dimension, &pulled[axis]);
+    }
+    if (status == PHY_OK) {
+        fill_combinations(
+            map->target->dimension, degree, target_count,
+            target_indices);
+        fill_combinations(
+            map->source->dimension, degree, source_count,
+            source_indices);
+    }
+
+    phy_matrix *minor = NULL;
+    if (status == PHY_OK) {
+        status = phy_matrix_create(
+            map->cas, degree, degree, NULL, &map->limits.linear,
+            &minor);
+    }
+    for (size_t source_component = 0u;
+         source_component < source_count && status == PHY_OK;
+         ++source_component) {
+        const size_t *source_axes =
+            &source_indices[source_component * degree];
+        for (size_t target_component = 0u;
+             target_component < target_count && status == PHY_OK;
+             ++target_component) {
+            const size_t *target_axes =
+                &target_indices[target_component * degree];
+            for (size_t row = 0u;
+                 row < degree && status == PHY_OK; ++row) {
+                for (size_t column = 0u;
+                     column < degree; ++column) {
+                    status = phy_matrix_get(
+                        map->jacobian, target_axes[row],
+                        source_axes[column],
+                        &minor_entries[row * degree + column]);
+                    if (status == PHY_OK) {
+                        status = phy_matrix_set(
+                            minor, row, column,
+                            minor_entries[row * degree + column]);
+                    }
+                    if (status != PHY_OK) {
+                        break;
+                    }
+                }
+            }
+            phy_ir_ref determinant = PHY_IR_NULL;
+            if (status == PHY_OK) {
+                status = phy_matrix_determinant(
+                    minor, &determinant);
+            }
+            const phy_ir_ref product[2] = {
+                pulled[target_component], determinant};
+            if (status == PHY_OK) {
+                status = phy_cas_mul(
+                    map->cas, product, 2u,
+                    &terms[target_component]);
+            }
+        }
+        if (status == PHY_OK) {
+            status = phy_cas_add(
+                map->cas, terms, target_count,
+                &result[source_component]);
+        }
+    }
+    if (status == PHY_OK) {
+        memcpy(out_source_components, result,
+               source_count * sizeof(*out_source_components));
+    }
+    phy_matrix_destroy(minor);
+    phy_free(
+        minor_entries,
+        minor_entry_count * sizeof(*minor_entries));
+    phy_free(
+        source_indices,
+        source_index_count * sizeof(*source_indices));
+    phy_free(
+        target_indices,
+        target_index_count * sizeof(*target_indices));
+    phy_free(result, source_count * sizeof(*result));
+    phy_free(terms, target_count * sizeof(*terms));
+    phy_free(pulled, target_count * sizeof(*pulled));
+    return status;
+}
+
 phy_status phy_coordinate_map_pullback_covector(
     const phy_coordinate_map *map,
     const phy_ir_ref *target_components,
     phy_ir_ref *out_source_components)
 {
-    if (map == NULL || target_components == NULL ||
-        out_source_components == NULL) {
+    return phy_coordinate_map_pullback_form(
+        map, 1u, target_components, out_source_components);
+}
+
+phy_status phy_coordinate_map_pushforward_vector_along(
+    const phy_coordinate_map *map,
+    const phy_ir_ref *source_components,
+    phy_ir_ref *out_target_components)
+{
+    if (map == NULL || source_components == NULL ||
+        out_target_components == NULL) {
         return PHY_ERR_INVALID_ARGUMENT;
     }
     const size_t source_dimension = map->source->dimension;
     const size_t target_dimension = map->target->dimension;
     if (source_dimension > SIZE_MAX - target_dimension ||
         source_dimension + target_dimension >
-            SIZE_MAX / sizeof(phy_ir_ref)) {
+            map->limits.max_bytes / sizeof(phy_ir_ref)) {
         return PHY_ERR_MEMORY_LIMIT;
     }
-    const size_t count = source_dimension + target_dimension;
-    const size_t bytes = count * sizeof(phy_ir_ref);
-    if (bytes > map->limits.max_bytes) {
+    const size_t term_bytes =
+        source_dimension * sizeof(phy_ir_ref);
+    const size_t result_bytes =
+        target_dimension * sizeof(phy_ir_ref);
+    phy_ir_ref *terms = phy_alloc(term_bytes);
+    phy_ir_ref *result = phy_alloc(result_bytes);
+    if (terms == NULL || result == NULL) {
+        phy_free(result, result_bytes);
+        phy_free(terms, term_bytes);
         return PHY_ERR_MEMORY_LIMIT;
     }
-    phy_ir_ref *scratch = phy_alloc(bytes);
-    if (scratch == NULL) {
-        return PHY_ERR_MEMORY_LIMIT;
-    }
-    phy_ir_ref *pulled = scratch;
-    phy_ir_ref *result = &scratch[target_dimension];
     phy_status status = PHY_OK;
-    for (size_t axis = 0u;
-         axis < target_dimension && status == PHY_OK; ++axis) {
-        if (!scalar_expression(map->ir, target_components[axis], 0u)) {
+    for (size_t source_axis = 0u;
+         source_axis < source_dimension; ++source_axis) {
+        if (!scalar_expression(
+                map->ir, source_components[source_axis], 0u) ||
+            contains_ref(
+                map->ir, source_components[source_axis],
+                map->target->coordinates, target_dimension, 0u)) {
             status = PHY_ERR_TYPE;
             break;
         }
-        status = phy_cas_substitute(
-            map->cas, target_components[axis], map->rules,
-            target_dimension, &pulled[axis]);
     }
-    phy_ir_ref *terms = NULL;
-    const size_t term_bytes =
-        target_dimension * sizeof(phy_ir_ref);
-    if (status == PHY_OK) {
-        terms = phy_alloc(term_bytes);
-        if (terms == NULL) {
-            status = PHY_ERR_MEMORY_LIMIT;
-        }
-    }
-    for (size_t source_axis = 0u;
-         source_axis < source_dimension && status == PHY_OK;
-         ++source_axis) {
-        for (size_t target_axis = 0u;
-             target_axis < target_dimension; ++target_axis) {
+    for (size_t target_axis = 0u;
+         target_axis < target_dimension && status == PHY_OK;
+         ++target_axis) {
+        for (size_t source_axis = 0u;
+             source_axis < source_dimension; ++source_axis) {
             phy_ir_ref derivative = PHY_IR_NULL;
             status = phy_matrix_get(
-                map->jacobian, target_axis, source_axis, &derivative);
+                map->jacobian, target_axis, source_axis,
+                &derivative);
             if (status != PHY_OK) {
                 break;
             }
             const phy_ir_ref product[2] = {
-                pulled[target_axis], derivative};
+                derivative, source_components[source_axis]};
             status = phy_cas_mul(
-                map->cas, product, 2u, &terms[target_axis]);
+                map->cas, product, 2u, &terms[source_axis]);
             if (status != PHY_OK) {
                 break;
             }
         }
         if (status == PHY_OK) {
             status = phy_cas_add(
-                map->cas, terms, target_dimension,
-                &result[source_axis]);
+                map->cas, terms, source_dimension,
+                &result[target_axis]);
         }
     }
     if (status == PHY_OK) {
-        memcpy(out_source_components, result,
-               source_dimension * sizeof(*out_source_components));
+        memcpy(out_target_components, result, result_bytes);
     }
+    phy_free(result, result_bytes);
     phy_free(terms, term_bytes);
-    phy_free(scratch, bytes);
     return status;
 }
 

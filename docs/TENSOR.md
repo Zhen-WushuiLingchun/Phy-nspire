@@ -21,7 +21,8 @@ now removes those limits without destabilizing that path:
   explicit runtime-dimension basis and stores only assigned canonical
   components in a bounded sparse table;
 - `include/phy/map.h` owns validated coordinate maps, exact Jacobians,
-  two-way transitions, and scalar/covector pullbacks.
+  two-way transitions, arbitrary-degree exterior-form pullbacks, and vector
+  pushforwards along maps.
 
 An abstract rank does not allocate components. A concrete rank-nine tensor can
 therefore carry one assigned component without allocating `dimension^9`
@@ -58,7 +59,7 @@ native tensor API.
 | legacy charts, coordinate symbols, rank, valence, head metadata | evaluator migration from legacy dense values |
 | dense `n^r` storage plus runtime-rank sparse component binding | general abstract expression evaluator heads |
 | abstract free/dummy census and signed double-coset canonicalization | full Garnir-basis reduction beyond explicit Young projection |
-| normalized Young row/column projectors with exact term collection | tensor pushforward and general p-form pullback |
+| normalized Young row/column projectors with exact term collection | general covariant/contravariant tensor pullback/pushforward |
 | exact contraction, inverse metric, raise/lower, component derivatives | first-Bianchi orbit canonicalization |
 | canonical lookup, fill validation, allocation-failure unwind | optional xPerm integration |
 

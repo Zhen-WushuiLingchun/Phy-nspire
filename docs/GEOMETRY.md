@@ -14,9 +14,10 @@ documented mostly-plus convention; an explicit list such as `{-1,-1,1,1}`
 selects any supported pseudo-Riemannian signature. Orientation is independently
 `Positive`, `Negative`, or `Unoriented`. The legacy `phy_form` surface remains
 dimension 1 through 4. The dynamic basis surface now supports validated
-coordinate maps, exact Jacobians, proved two-way chart transitions, scalar
-pullback and 1-form/covector pullback at runtime dimensions; general p-form
-pullback and migration of `phy_manifold` ownership are still pending.
+coordinate maps, exact Jacobians, proved two-way chart transitions,
+arbitrary-degree exterior-form pullback, and vector pushforward along a map at
+runtime dimensions. Migration of `phy_manifold` ownership and general
+non-alternating tensor transport are still pending.
 
 ## What has landed, and what has not
 
@@ -24,9 +25,9 @@ pullback and migration of `phy_manifold` ownership are still pending.
 | --- | --- |
 | manifold metadata: name, dimension ≤ 4, orientation, signature | migrate legacy manifold/form storage to dynamic bases |
 | bounded legacy charts plus dynamic coordinate bases | general atlas cocycle registry |
-| validated coordinate maps and exact Jacobians | general p-form/tensor pullback |
-| two-way transitions proved inverse by substitution | vector pushforward |
-| scalar and covector pullback | singular-locus/domain certificates |
+| validated coordinate maps and exact Jacobians | general non-alternating tensor transport |
+| two-way transitions proved inverse by substitution | atlas overlap/cocycle registry |
+| scalar, p-form pullback, and vector pushforward along a map | singular-locus/domain certificates |
 | canonical antisymmetric `C(n,p)` component storage | dynamic sparse forms |
 | exact wedge product | vector-field Lie bracket |
 | exact exterior derivative | connection, torsion, curvature 2-forms |
@@ -108,13 +109,24 @@ For `F: x -> y=phi(x)`, the implemented operations are
 
 ```
 F*(f)(x)       = f(phi(x))
-F*(alpha)_i(x) = sum_a alpha_a(phi(x)) d phi^a / d x^i
+F*(omega)_I(x) = sum_A omega_A(phi(x)) det(d phi^A / d x^I)
+(F_* X)^a|_x   = sum_i (d phi^a / d x^i) X^i(x)
 ```
 
-The tests cover a proved affine chart transition and the rectangular map
-`t -> (t,t^2)`, including pullback of `x dy` to `2 t^2 dt`. Converting a
-legacy `phy_form` directly through this map remains deferred so the old chart
-object is not silently identified with a dynamic basis.
+Here `A` and `I` are increasing degree-`p` index tuples, so the determinant is
+the induced exterior-power map. It specializes to substitution for `p=0` and
+the Jacobian contraction for `p=1`; if `p` exceeds the source dimension the
+pullback has zero components. The vector result is deliberately named
+"along": without an invertible transition it is a section of the pulled-back
+target tangent bundle, not a target vector field away from the image.
+
+The tests cover a proved affine chart transition, pullback of
+`u du^dv` with the exact orientation sign, and the rectangular map
+`t -> (t,t^2)`, including pullback of `x dy` to `2 t^2 dt`, vanishing of a
+pulled-back 2-form on the curve, and pushforward of `d/dt` to
+`d/dx + 2t d/dy`. Converting a legacy `phy_form` directly through this map
+remains deferred so the old chart object is not silently identified with a
+dynamic basis.
 
 ## Conventions
 
@@ -428,8 +440,9 @@ and retained no float formatter, libm call, or ARM soft-float helper.
 
 ## Not in the legacy form layer
 
-Direct dynamic-to-`phy_form` conversion, general p-form/tensor pullback, and
-vector pushforward. Vector-field Lie brackets. Connections, torsion, and
+Direct dynamic-to-`phy_form` conversion and general non-alternating tensor
+transport. Atlas overlap/cocycle registration. Vector-field Lie brackets.
+Connections, torsion, and
 curvature 2-forms — the Cartan structure
 equations are the natural next step and need only the wedge and the exterior
 derivative, both of which are here. Integration, Stokes' theorem, and anything

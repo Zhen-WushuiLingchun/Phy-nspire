@@ -195,6 +195,63 @@ static void test_scalar_and_covector_pullback(void)
     fixture_close(&f);
 }
 
+static void test_general_form_pullback(void)
+{
+    fixture f = fixture_open();
+    phy_ir_ref forward_components[2] = {0};
+    phy_ir_ref inverse_components[2] = {0};
+    affine_transition_components(
+        &f, forward_components, inverse_components);
+    phy_coordinate_map *map = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_coordinate_map_create(
+            f.xy, f.uv, forward_components, NULL, &map),
+        PHY_OK);
+
+    size_t target_count = 0u;
+    size_t source_count = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_coordinate_map_form_component_counts(
+            map, 2u, &target_count, &source_count),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(target_count, 1);
+    PHY_CHECK_EQ_INT(source_count, 1);
+
+    /* omega = u du^dv; det(d(u,v)/d(x,y)) = -2. */
+    const phy_ir_ref omega[1] = {f.u};
+    phy_ir_ref pulled[1] = {PHY_IR_NULL};
+    PHY_CHECK_EQ_INT(
+        phy_coordinate_map_pullback_form(
+            map, 2u, omega, pulled),
+        PHY_OK);
+    phy_ir_ref expected = PHY_IR_NULL;
+    const phy_ir_ref factors[2] = {
+        phy_ir_integer(f.ir, -2), forward_components[0]};
+    PHY_CHECK_EQ_INT(
+        phy_cas_mul(f.cas, factors, 2u, &expected), PHY_OK);
+    check_equal(&f, pulled[0], expected);
+
+    /* Degree zero shares the exact scalar substitution path. */
+    PHY_CHECK_EQ_INT(
+        phy_coordinate_map_form_component_counts(
+            map, 0u, &target_count, &source_count),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(target_count, 1);
+    PHY_CHECK_EQ_INT(source_count, 1);
+    const phy_ir_ref scalar[1] = {add2(&f, f.u, f.v)};
+    phy_ir_ref pulled_scalar[1] = {PHY_IR_NULL};
+    PHY_CHECK_EQ_INT(
+        phy_coordinate_map_pullback_form(
+            map, 0u, scalar, pulled_scalar),
+        PHY_OK);
+    check_equal(
+        &f, pulled_scalar[0],
+        add2(&f, forward_components[0], forward_components[1]));
+
+    phy_coordinate_map_destroy(map);
+    fixture_close(&f);
+}
+
 static void test_transition_rejects_false_inverse_and_capture(void)
 {
     fixture f = fixture_open();
@@ -280,6 +337,41 @@ static void test_rectangular_map_pullback(void)
     PHY_CHECK_EQ_INT(
         phy_cas_mul(f.cas, factors, 2u, &expected), PHY_OK);
     check_equal(&f, pulled[0], expected);
+
+    /* A two-form pulls back to zero on a one-dimensional source. */
+    size_t target_count = 0u;
+    size_t source_count = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_coordinate_map_form_component_counts(
+            map, 2u, &target_count, &source_count),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(target_count, 1);
+    PHY_CHECK_EQ_INT(source_count, 0);
+    const phy_ir_ref area_form[1] = {
+        phy_ir_integer(f.ir, 1)};
+    PHY_CHECK_EQ_INT(
+        phy_coordinate_map_pullback_form(
+            map, 2u, area_form, NULL),
+        PHY_OK);
+
+    /* Push d/dt along (t,t^2): d/dx + 2t d/dy. */
+    const phy_ir_ref tangent[1] = {
+        phy_ir_integer(f.ir, 1)};
+    phy_ir_ref pushed[2] = {PHY_IR_NULL, PHY_IR_NULL};
+    PHY_CHECK_EQ_INT(
+        phy_coordinate_map_pushforward_vector_along(
+            map, tangent, pushed),
+        PHY_OK);
+    check_equal(&f, pushed[0], phy_ir_integer(f.ir, 1));
+    const phy_ir_ref twice_t_factors[2] = {
+        phy_ir_integer(f.ir, 2), t};
+    phy_ir_ref twice_t = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_mul(
+            f.cas, twice_t_factors, 2u, &twice_t),
+        PHY_OK);
+    check_equal(&f, pushed[1], twice_t);
+
     phy_coordinate_map_destroy(map);
     phy_component_basis_destroy(t_basis);
     fixture_close(&f);
@@ -289,6 +381,7 @@ int main(void)
 {
     PHY_TEST_CASE(test_verified_transition_and_jacobian);
     PHY_TEST_CASE(test_scalar_and_covector_pullback);
+    PHY_TEST_CASE(test_general_form_pullback);
     PHY_TEST_CASE(test_transition_rejects_false_inverse_and_capture);
     PHY_TEST_CASE(test_rectangular_map_pullback);
     return PHY_TEST_REPORT("coordinate_map");

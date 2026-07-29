@@ -19,6 +19,8 @@ typedef struct phy_basis_transition phy_basis_transition;
 typedef struct {
     size_t max_dimension; /* source or target; default 32 */
     size_t max_bytes;     /* map metadata; default 128 KiB */
+    size_t max_form_components; /* one exterior-power basis; default 4096 */
+    uint32_t max_pullback_terms; /* minors accumulated; default 250000 */
     phy_linear_limits linear;
 } phy_map_limits;
 
@@ -51,7 +53,27 @@ phy_ir_ref phy_coordinate_map_component(
 const phy_matrix *phy_coordinate_map_jacobian(
     const phy_coordinate_map *map); /* J[a,i] = d y^a / d x^i */
 
-/* F* f and F* alpha for a scalar and a target covector, respectively. */
+/*
+ * Report target/source component counts for an alternating p-form.
+ * Components use increasing index tuples in lexicographic order. Degree zero
+ * has one scalar component. If degree exceeds a basis dimension, that side has
+ * zero components.
+ */
+phy_status phy_coordinate_map_form_component_counts(
+    const phy_coordinate_map *map, size_t degree,
+    size_t *out_target_count, size_t *out_source_count);
+
+/*
+ * Pull back an alternating p-form through exact Jacobian minors. The array
+ * lengths are reported by phy_coordinate_map_form_component_counts.
+ * `out_source_components` may be NULL only when its reported count is zero.
+ */
+phy_status phy_coordinate_map_pullback_form(
+    const phy_coordinate_map *map, size_t degree,
+    const phy_ir_ref *target_components,
+    phy_ir_ref *out_source_components);
+
+/* F* f and F* alpha remain convenient degree-zero/one wrappers. */
 phy_status phy_coordinate_map_pullback_scalar(
     const phy_coordinate_map *map, phy_ir_ref target_scalar,
     phy_ir_ref *out_source_scalar);
@@ -59,6 +81,16 @@ phy_status phy_coordinate_map_pullback_covector(
     const phy_coordinate_map *map,
     const phy_ir_ref *target_components,
     phy_ir_ref *out_source_components);
+
+/*
+ * Push a source vector forward along F. The result is expressed over source
+ * coordinates along the image; it is not a global target vector field away
+ * from F(source).
+ */
+phy_status phy_coordinate_map_pushforward_vector_along(
+    const phy_coordinate_map *map,
+    const phy_ir_ref *source_components,
+    phy_ir_ref *out_target_components);
 
 /*
  * A verified chart transition is a pair of coordinate maps proved inverse by

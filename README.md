@@ -65,7 +65,8 @@ double-coset canonicalization, metric-aware zero detection, identical-factor
 exchange, and normalized Young projectors with exact multi-term collection.
 Its explicit component bridge binds runtime-dimension coordinate or internal
 bases to bounded sparse component tables, while validated coordinate maps add
-exact Jacobians, proved two-way transitions, and scalar/covector pullbacks.
+exact Jacobians, proved two-way transitions, arbitrary-degree exterior-form
+pullbacks through exact minors, and vector pushforwards along maps.
 These new library APIs are host-tested and ARM-compiled but are not yet wired
 to notebook evaluator heads or the existing GR pipeline.
 The differential-geometry layer with oriented
