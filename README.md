@@ -61,10 +61,12 @@ the component tensor core with charts, dense storage, valence, signed slot
 symmetries, contraction, metric inversion, index raising/lowering, and
 component derivatives. A new abstract-index layer adds runtime-rank typed
 index spaces and tensor heads, exact free/dummy census, signed BSGS
-double-coset canonicalization, metric-aware zero detection, identical-factor
-exchange, and normalized Young projectors with exact multi-term collection.
-Its explicit component bridge binds runtime-dimension coordinate or internal
-bases to bounded sparse component tables, while validated coordinate maps add
+slot-orbit canonicalization with deterministic dummy normalization,
+metric-aware zero detection, identical-factor exchange, and normalized Young
+projectors with exact generated-term collection. The runtime component layer
+binds coordinate or internal bases to bounded sparse component tables; the
+general abstract-to-component evaluator is being added through an explicit
+bridge rather than implicit expansion. Validated coordinate maps add
 exact Jacobians, proved two-way transitions, arbitrary-degree exterior-form
 pullbacks through exact minors, vector pushforwards along maps, a bounded atlas
 registry with exact triangle-cocycle checks, and general mixed-valence tensor

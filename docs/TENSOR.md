@@ -16,7 +16,8 @@ now removes those limits without destabilizing that path:
 
 - `include/phy/abstract_tensor.h` defines runtime-rank `IndexSpace`,
   `TensorHead`, abstract indices, Einstein census, signed slot generators,
-  dummy double-coset canonicalization, and normalized Young projectors;
+  bounded signed slot-orbit canonicalization with deterministic dummy
+  normalization, and normalized Young projectors;
 - `include/phy/component_tensor.h` binds an abstract index space to an
   explicit runtime-dimension basis and stores only assigned canonical
   components in a bounded sparse table;
@@ -82,18 +83,19 @@ native tensor API.
 | --- | --- |
 | legacy charts, coordinate symbols, rank, valence, head metadata | evaluator migration from legacy dense values |
 | dense `n^r` storage plus runtime-rank sparse component binding | sparse component/basis evaluator objects |
-| abstract free/dummy census and signed double-coset canonicalization | full Garnir-basis reduction for arbitrary pre-existing sums |
+| abstract free/dummy census, signed BSGS slot-orbit search, deterministic dummy normalization | explicit Butler–Portugal \(DgS\) search with committed xPerm/SymPy fixtures |
 | `IndexSpace`, `TensorHead`, indexed products and `TensorCanonicalize` in notebook cells | abstract metric contraction/raise/lower commands |
-| reader-facing normalized Young row/column projection with exact term collection | general algebra on arbitrary pre-existing tensor sums |
+| reader-facing normalized Young row/column projection with exact generated-term collection | Garnir/relation-basis reduction and general algebra on arbitrary pre-existing tensor sums |
 | verified atlas cocycles and mixed-valence dense basis changes | atlas/change-basis evaluator commands |
 | exact contraction, inverse metric, raise/lower, component derivatives | first-Bianchi orbit canonicalization |
 | canonical lookup, fill validation, allocation-failure unwind | optional xPerm integration |
 
 The scalar-dependent entries use the native exact CAS and its three-valued zero
-decision; they are not numerical fallbacks. xPerm remains a host-side primary
-oracle rather than a linked dependency: the native monoterm implementation is
+decision; they are not numerical fallbacks. xPerm remains a host-side reference
+rather than a linked dependency. The current native monoterm implementation is
 bounded, allocation-accounted and specialized to Phy-nspire's typed Einstein
-model.
+model, but it must not be described as xPerm-equivalent until the explicit
+dummy-group double-coset algorithm and committed cross-oracle corpus both pass.
 
 ## The scalar boundary, and why it falls on negation
 

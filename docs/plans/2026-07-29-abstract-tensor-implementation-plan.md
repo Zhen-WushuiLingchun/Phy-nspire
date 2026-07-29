@@ -102,6 +102,12 @@
 
 ### Task 5: Butler–Portugal monoterm canonicalizer
 
+> Status note (2026-07-29): this section is the intended implementation plan,
+> not a completed-capability record. The repository currently has bounded
+> signed slot-group traversal plus per-candidate dummy normalization. It still
+> lacks an explicit dummy group \(D\), an explicit \(DgS\) double-coset
+> search, and the committed xPerm/SymPy fixture files listed below.
+
 **Files:**
 - Create: `src/abstract/canonical.c`
 - Create: `tests/test_tensor_canonical.c`
@@ -124,6 +130,11 @@
 8. Commit `feat(tensor): canonicalize abstract indexed monomials`.
 
 ### Task 6: Abstract sums and Young multi-term reduction
+
+> Status note (2026-07-29): normalized Young projection of one selected factor
+> and exact collection of the generated terms have landed. General expression
+> algebra, Garnir/relation-basis reduction, and automatic first-Bianchi
+> reduction have not.
 
 **Files:**
 - Create: `src/abstract/expression.c`

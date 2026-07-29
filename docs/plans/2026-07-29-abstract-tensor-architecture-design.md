@@ -98,7 +98,8 @@ Construction rejects:
 
 ## Monoterm canonicalization
 
-Canonicalization follows the Butler–Portugal double-coset formulation:
+The target canonicalizer follows the Butler–Portugal double-coset
+formulation:
 
 1. validate and classify the complete index census;
 2. encode factor slots and the current index assignment as a permutation;
@@ -115,11 +116,20 @@ Permutation, BSGS, orbit, transversal, and double-coset working memory comes
 from a caller-owned bounded arena.  Resource exhaustion returns a typed limit
 status and never produces a partially canonical answer.
 
-The official xPerm 1.3.0 `xperm.c`, verified at SHA-256
-`7a6c5f600868a3922668b020a15c0692f76574ff2a559808c62d460cef1b07be`,
+The official xPerm 1.2.4 `xperm.c`, verified at SHA-256
+`209363053d8342c2ac1a360ed815e8ddf3aad89f048e0dc223b8e2c965e3fd2f`,
 is retained outside the repository as a read-only oracle.  Its heap-driven
 MathLink implementation is not linked into the device binary.  SymPy
 `tensor_can` provides a second independent host oracle.
+
+Implementation-status boundary: the current native kernel builds a signed slot
+group with bounded BSGS traversal and normalizes dummy names/orientations while
+examining each surviving slot candidate. It does not yet construct the
+independent dummy group \(D\) or run an explicit \(D g S\) double-coset search,
+and the committed xPerm/SymPy fixture matrix described in the acceptance
+criteria is still pending. Until those two gates land, “Butler–Portugal” in
+this document names the target mathematical formulation, not a completed
+algorithm-equivalence claim.
 
 ## Multi-term identities
 
@@ -128,13 +138,14 @@ cyclic Jacobi-like relations, dimension-dependent Schouten identities, and
 general representation constraints are linear relations between distinct
 monomials.
 
-The second canonical layer therefore stores Young shapes/tableaux and builds
-bounded projection or relation matrices over exact rationals.  It reduces
-canonical monoterms against a deterministic row-echelon basis.  Built-in
-Riemann symmetry combines the monoterm signed slot group with the
-`R[a,b,c,d] + R[a,c,d,b] + R[a,d,b,c] = 0` multi-term relation.  Young
-reduction is opt-in per tensor head and reports a resource-limit status when
-the representation is too large for the configured arena.
+The second canonical layer therefore stores Young shapes/tableaux and is
+intended to build bounded projection or relation matrices over exact
+rationals. The current implementation provides a normalized row/column Young
+projector for one selected factor and exact collection of the generated
+monoterms. A general Garnir/relation-basis reducer for arbitrary existing sums,
+including automatic first-Bianchi reduction, remains pending. Multi-term
+reduction stays separate from signed slot symmetry and must report a typed
+resource-limit status rather than silently truncating.
 
 ## Abstract/component bridge
 
