@@ -7,7 +7,7 @@
 
 static void test_catalog_bounds_and_representative_entries(void)
 {
-    PHY_CHECK_EQ_INT(phy_palette_category_count(PHY_PALETTE_CAS), 6);
+    PHY_CHECK_EQ_INT(phy_palette_category_count(PHY_PALETTE_CAS), 7);
     PHY_CHECK_EQ_INT(phy_palette_category_count(PHY_PALETTE_LATEX), 6);
     PHY_CHECK_EQ_STR(phy_palette_category_name(PHY_PALETTE_CAS, 0u),
                      "Algebra");
@@ -24,21 +24,21 @@ static void test_catalog_bounds_and_representative_entries(void)
 
     PHY_CHECK(phy_palette_get(PHY_PALETTE_LATEX, 5u, 0u, &entry));
     PHY_CHECK(strstr(entry.snippet, "\\begin{matrix}") != NULL);
-    PHY_CHECK(phy_palette_get(PHY_PALETTE_CAS, 3u, 4u, &entry));
+    PHY_CHECK(phy_palette_get(PHY_PALETTE_CAS, 4u, 4u, &entry));
     PHY_CHECK(strstr(entry.snippet, "ComponentTensor[M") != NULL);
     PHY_CHECK(phy_palette_get(PHY_PALETTE_CAS, 1u, 15u, &entry));
     PHY_CHECK_EQ_STR(entry.snippet, "Re[]");
     PHY_CHECK(phy_palette_get(PHY_PALETTE_CAS, 1u, 18u, &entry));
     PHY_CHECK_EQ_STR(entry.snippet, "Abs[]");
-    PHY_CHECK(phy_palette_get(PHY_PALETTE_CAS, 4u, 0u, &entry));
-    PHY_CHECK_EQ_STR(entry.snippet, "M = Manifold[{t,x,y,z},Lorentzian]");
-    PHY_CHECK(phy_palette_get(PHY_PALETTE_CAS, 4u, 6u, &entry));
-    PHY_CHECK_EQ_STR(entry.snippet, "LieDerivative[a,v]");
-    PHY_CHECK(phy_palette_get(PHY_PALETTE_CAS, 4u, 7u, &entry));
-    PHY_CHECK_EQ_STR(entry.snippet, "HodgeStar[a,g]");
     PHY_CHECK(phy_palette_get(PHY_PALETTE_CAS, 5u, 0u, &entry));
-    PHY_CHECK_EQ_STR(entry.snippet, "G = LieGroup[SU2]");
+    PHY_CHECK_EQ_STR(entry.snippet, "M = Manifold[{t,x,y,z},Lorentzian]");
+    PHY_CHECK(phy_palette_get(PHY_PALETTE_CAS, 5u, 6u, &entry));
+    PHY_CHECK_EQ_STR(entry.snippet, "LieDerivative[a,v]");
     PHY_CHECK(phy_palette_get(PHY_PALETTE_CAS, 5u, 7u, &entry));
+    PHY_CHECK_EQ_STR(entry.snippet, "HodgeStar[a,g]");
+    PHY_CHECK(phy_palette_get(PHY_PALETTE_CAS, 6u, 0u, &entry));
+    PHY_CHECK_EQ_STR(entry.snippet, "G = LieGroup[SU2]");
+    PHY_CHECK(phy_palette_get(PHY_PALETTE_CAS, 6u, 7u, &entry));
     PHY_CHECK_EQ_STR(entry.snippet, "F = FieldStrength[A,g]");
     PHY_CHECK(!phy_palette_get(PHY_PALETTE_CAS, 20u, 0u, &entry));
     PHY_CHECK(!phy_palette_get(PHY_PALETTE_CAS, 0u, 20u, &entry));

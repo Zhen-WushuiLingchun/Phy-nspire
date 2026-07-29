@@ -28,8 +28,8 @@ Verification:
 - host smoke test — done; the suite covers the platform, relative pointer,
   source language, drawing, notebook, the stateful evaluator, IR, tensor
   storage, differential forms, GR, Lie/QFT foundations, CAS, QFT oracle, and
-  full lifecycle: Windows 40/40, WSL ASan/UBSan/leak 42/42, and 305,685
-  explicit checks;
+  full lifecycle: last strict Windows baseline 41/41, current WSL
+  ASan/UBSan/leak 43/43, and 306,862 explicit checks;
 - generated `.tns` size report — 1,186,793 bytes, 18.9% of the 6 MiB ceiling,
   with the current evaluator and physics stack linked;
 - launch of a Phy-nspire artifact on the real CX II — done on 2026-07-26 with
@@ -118,7 +118,7 @@ Verification:
   stale outputs, Markdown selection, independent run-badge hit testing, 2D
   metrics, nMarkdown LaTeX integration, memory return, and the framebuffer
   fixture;
-- evaluator tests — done, `tests/test_eval.c`, 2,126 checks. The physics cases
+- evaluator tests — done, `tests/test_eval.c`, 2,647 checks. The physics cases
   reproduce, through reader-facing source, results the backend suites already
   certify directly: the U(1) and SU(2) curvature components and vanishing
   Bianchi residuals of `tests/test_yang_mills.c`, the round two-sphere
@@ -133,7 +133,7 @@ Verification:
   initialization, matrices, metrics, RGB565 rendering, and local error
   recovery;
 - source, palette and pointer tests — done: 443 source-language checks
-  including assignment and reserved-head canonicalization, 892 palette checks
+  including assignment and reserved-head canonicalization, 1,103 palette checks
   including every CAS snippet parsing, and 29 relative touchpad checks.
 
 The IR carries no simplification, evaluation, or arithmetic: it is the
@@ -165,8 +165,10 @@ with
 [`docs/GEOMETRY.md`](GEOMETRY.md). The native library now also has exact
 transition maps, arbitrary p-form pullback, mixed-valence tensor coordinate
 change, a bounded atlas registry, and exact cocycle rejection. Reader-facing
-atlas/change-basis commands and higher-level covariant form operations remain
-open.
+component bases/tensors, exact dynamic vectors/matrices, maps, verified
+transitions, Jacobian actions, sparse tensor pullback, atlas registration and
+cocycle verification are now exposed. Automatic transition-path composition
+and higher-level covariant form operations remain open.
 
 The layer is now reachable from the notebook: `Manifold`, `ComponentTensor`,
 `DifferentialForm`, `Metric`, `VectorField`, `Wedge`, `ExteriorD`, `InteriorProduct`,
@@ -179,7 +181,7 @@ Output:
   indices, covariant derivatives, and differential forms — forms, contraction,
   raise/lower, coordinate-metric GR, and component tensor covariant
   derivatives are done; abstract monoterm dummy canonicalization is exposed,
-  while transition-map syntax remains outstanding;
+  together with explicit transition-map and atlas syntax;
 - the legacy component constructor covers ranks 0 through 4, while the abstract
   and sparse component libraries use runtime rank with explicit resource
   ceilings;
@@ -188,14 +190,13 @@ Output:
 
 Deferred with a named blocking dependency:
 
-- reader-facing atlas and change-of-basis objects, which require evaluator
-  ownership for coordinate bases and transition graphs; the native validated
-  map/atlas library is already present.
+- expression-wide abstract/component conversion and automatic atlas path
+  composition require the general tensor-expression algebra/relation layer.
 
 Verification:
 
 - tensor identities and canonicalization properties — the exterior-calculus
-  identities are done, `tests/test_geom.c`, 4,646 checks: graded commutativity
+  identities are done, `tests/test_geom.c`, 4,644 checks: graded commutativity
   and associativity of the wedge, `d^2 = 0`, both graded Leibniz rules,
   `iota_v iota_v = 0`, and `** = (-1)^{p(n-p)} sign(det g)` at every degree in
   Euclidean and Lorentzian 2D, Euclidean 3D and Minkowski 4D;

@@ -1654,6 +1654,296 @@ static void test_young_project_frontend(void)
     fixture_close(&f);
 }
 
+static void test_dynamic_component_frontend_and_bridge(void)
+{
+    fixture f = fixture_open();
+
+    (void)run(&f, "V = IndexSpace[2, SymmetricMetric]");
+    (void)run(&f, "A = TensorHead[{V,V}, Antisymmetric]");
+    phy_value value = run(&f, "e = ComponentBasis[V,{x,y}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_COMPONENT_BASIS);
+    PHY_CHECK_EQ_STR(
+        describe(&f, value),
+        "ComponentBasis e of V dim 2 coordinates");
+    expect_scalar(&f, "Dimension[e]", "2");
+    value = run(&f, "Dimensions[e]");
+    PHY_CHECK_EQ_STR(expansion(&f, value), "(fn List 2)");
+    expect_status(&f, "x = 1", PHY_ERR_ASSUMPTION);
+
+    value = run(
+        &f,
+        "Ac = TensorComponents["
+        "A,{e,e},{Down,Down},{{{0,1},a}}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_COMPONENT_TENSOR);
+    PHY_CHECK_EQ_STR(
+        describe(&f, value),
+        "TensorComponents A rank 2 sparse 1");
+    expect_scalar(&f, "Rank[Ac]", "2");
+    value = run(&f, "Dimensions[Ac]");
+    PHY_CHECK_EQ_STR(expansion(&f, value), "(fn List 2 2)");
+    expect_scalar(&f, "Component[Ac,0,1]", "a");
+    expect_scalar(&f, "Component[Ac,1,0]", "(* -1 a)");
+    expect_scalar(&f, "Component[Ac,0,0]", "0");
+    expect_scalar(
+        &f,
+        "ComponentValue[A[Down[i],Down[j]],{Ac},{0,1}]",
+        "a");
+
+    /*
+     * ComponentValue enumerates only dummy indices. This contraction is
+     * 2*5 + 3*7, with no dense rank-four temporary.
+     */
+    (void)run(&f, "T = TensorHead[{V,V}, Commuting]");
+    (void)run(&f, "S = TensorHead[{V,V}, Commuting]");
+    (void)run(
+        &f,
+        "Tc = TensorComponents["
+        "T,{e,e},{Down,Down},{{{0,0},2},{{1,1},3}}]");
+    (void)run(
+        &f,
+        "Sc = TensorComponents["
+        "S,{e,e},{Up,Up},{{{0,0},5},{{1,1},7}}]");
+    expect_scalar(
+        &f,
+        "ComponentValue["
+        "T[Down[i],Down[j]]*S[Up[j],Up[i]],{Tc,Sc},{}]",
+        "31");
+    expect_status(
+        &f,
+        "ComponentValue["
+        "YoungProject[A[Down[i],Down[j]],{{1,2}}],{Ac},{0,1}]",
+        PHY_ERR_UNSUPPORTED);
+
+    /* Rank is a runtime resource limit, not the legacy rank-four ceiling. */
+    (void)run(&f, "W = IndexSpace[1, NoMetric]");
+    (void)run(
+        &f,
+        "H = TensorHead[{W,W,W,W,W}, Commuting]");
+    (void)run(&f, "b = ComponentBasis[W,1]");
+    value = run(
+        &f,
+        "Hc = TensorComponents["
+        "H,{b,b,b,b,b},{Down,Down,Down,Down,Down},"
+        "{{{0,0,0,0,0},q}}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_COMPONENT_TENSOR);
+    expect_scalar(&f, "Rank[Hc]", "5");
+    expect_scalar(&f, "Component[Hc,0,0,0,0,0]", "q");
+
+    /*
+     * A component realization retains its head and every distinct basis even
+     * if their source names are cleared. This exercises the dependency bitmap
+     * after compaction, not only its no-op registration path.
+     */
+    (void)run(&f, "X = IndexSpace[1,NoMetric]");
+    (void)run(&f, "Y = IndexSpace[1,NoMetric]");
+    (void)run(&f, "Z = IndexSpace[1,NoMetric]");
+    (void)run(&f, "ex = ComponentBasis[X,1]");
+    (void)run(&f, "ey = ComponentBasis[Y,1]");
+    (void)run(&f, "ez = ComponentBasis[Z,1]");
+    (void)run(&f, "M = TensorHead[{X,Y,Z},Commuting]");
+    (void)run(
+        &f,
+        "Mc = TensorComponents["
+        "M,{ex,ey,ez},{Down,Down,Down},{{{0,0,0},r}}]");
+    (void)run(&f, "Clear[ex]");
+    (void)run(&f, "Clear[ey]");
+    (void)run(&f, "Clear[ez]");
+    (void)run(&f, "Clear[M]");
+    (void)run(&f, "Clear[X]");
+    (void)run(&f, "Clear[Y]");
+    (void)run(&f, "Clear[Z]");
+    expect_scalar(&f, "Component[Mc,0,0,0]", "r");
+    PHY_CHECK_EQ_INT(phy_env_validate(f.env), PHY_OK);
+
+    const size_t before = phy_env_object_count(f.env);
+    expect_status(
+        &f,
+        "bad = TensorComponents["
+        "A,{e,e},{Down,Down},{{{0,2},1}}]",
+        PHY_ERR_DOMAIN);
+    PHY_CHECK_EQ_INT(phy_env_object_count(f.env), before);
+
+    phy_env_reset(f.env);
+    PHY_CHECK_EQ_INT(phy_env_object_count(f.env), 0);
+    fixture_close(&f);
+}
+
+static void test_dynamic_exact_linear_algebra_frontend(void)
+{
+    fixture f = fixture_open();
+
+    phy_value value = run(&f, "v = Vector[{1,2,3}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_VECTOR);
+    PHY_CHECK_EQ_STR(describe(&f, value), "Vector length 3");
+    PHY_CHECK_EQ_STR(expansion(&f, value), "(fn List 1 2 3)");
+    expect_scalar(&f, "Rank[v]", "1");
+    expect_scalar(&f, "Dimension[v]", "3");
+    value = run(&f, "Dimensions[v]");
+    PHY_CHECK_EQ_STR(expansion(&f, value), "(fn List 3)");
+    expect_scalar(&f, "Component[v,1]", "2");
+    expect_status(&f, "Component[v,3]", PHY_ERR_DOMAIN);
+    (void)run(&f, "w = Vector[{4,5,6}]");
+    expect_scalar(&f, "Dot[v,w]", "32");
+
+    value = run(&f, "A = Matrix[{{1,2},{3,4}}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_MATRIX);
+    PHY_CHECK_EQ_STR(describe(&f, value), "Matrix 2x2");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List (fn List 1 2) (fn List 3 4))");
+    expect_scalar(&f, "Rank[A]", "2");
+    expect_scalar(&f, "MatrixRank[A]", "2");
+    expect_scalar(&f, "Determinant[A]", "-2");
+    value = run(&f, "Dimensions[A]");
+    PHY_CHECK_EQ_STR(expansion(&f, value), "(fn List 2 2)");
+    expect_scalar(&f, "Component[A,1,0]", "3");
+
+    value = run(&f, "At = Transpose[A]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_MATRIX);
+    expect_scalar(&f, "Component[At,0,1]", "3");
+    value = run(&f, "Ai = Inverse[A]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_MATRIX);
+    expect_scalar(&f, "Component[Ai,0,0]", "-2");
+    expect_scalar(&f, "Component[Ai,1,0]", "(rat 3 2)");
+    value = run(&f, "Ar = RowReduce[A]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_MATRIX);
+    expect_scalar(&f, "Component[Ar,0,0]", "1");
+    expect_scalar(&f, "Component[Ar,0,1]", "0");
+
+    value = run(&f, "p = Vector[{7,11}]");
+    value = run(&f, "Ap = Dot[A,p]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_VECTOR);
+    expect_scalar(&f, "Component[Ap,0]", "29");
+    expect_scalar(&f, "Component[Ap,1]", "65");
+    value = run(&f, "AA = Dot[A,A]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_MATRIX);
+    expect_scalar(&f, "Component[AA,0,0]", "7");
+    expect_scalar(&f, "Component[AA,1,1]", "22");
+
+    value = run(&f, "C = 2*A + A");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_MATRIX);
+    expect_scalar(&f, "Component[C,1,0]", "9");
+    expect_decision(&f, "EquivalentQ[C,3*A]", "True");
+    expect_decision(
+        &f, "ZeroQ[C + (-3)*A]", "True");
+
+    (void)run(&f, "L = Matrix[{{2,1},{1,-1}}]");
+    (void)run(&f, "rhs = Vector[{5,1}]");
+    value = run(&f, "sol = LinearSolve[L,rhs]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_VECTOR);
+    expect_scalar(&f, "Component[sol,0]", "2");
+    expect_scalar(&f, "Component[sol,1]", "1");
+
+    const size_t before = phy_env_object_count(f.env);
+    expect_status(
+        &f, "bad = Matrix[{{1},{2,3}}]", PHY_ERR_TYPE);
+    PHY_CHECK_EQ_INT(phy_env_object_count(f.env), before);
+    expect_status(&f, "Vector[{}]", PHY_ERR_PARSE);
+    expect_status(&f, "Dot[v,A]", PHY_ERR_TYPE);
+    expect_status(
+        &f, "Inverse[Matrix[{{1,2},{2,4}}]]",
+        PHY_ERR_DOMAIN);
+
+    phy_env_reset(f.env);
+    PHY_CHECK_EQ_INT(phy_env_object_count(f.env), 0);
+    fixture_close(&f);
+}
+
+static void test_coordinate_map_transition_and_atlas_frontend(void)
+{
+    fixture f = fixture_open();
+
+    (void)run(&f, "V = IndexSpace[2,NoMetric]");
+    (void)run(&f, "xy = ComponentBasis[V,{x,y}]");
+    (void)run(&f, "uv = ComponentBasis[V,{u,v}]");
+    phy_value value = run(
+        &f, "F = CoordinateMap[xy,uv,{x+y,x-y}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_COORDINATE_MAP);
+    PHY_CHECK_EQ_STR(describe(&f, value), "CoordinateMap xy -> uv");
+    expect_scalar(&f, "Component[F,0]", "(+ x y)");
+    expect_scalar(&f, "Component[F,1]", "(+ x (* -1 y))");
+
+    value = run(&f, "J = Jacobian[F]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_MATRIX);
+    expect_scalar(&f, "Component[J,0,0]", "1");
+    expect_scalar(&f, "Component[J,0,1]", "1");
+    expect_scalar(&f, "Component[J,1,0]", "1");
+    expect_scalar(&f, "Component[J,1,1]", "-1");
+    expect_scalar(
+        &f, "PullbackScalar[F,u^2+v]",
+        "(+ (^ (+ x y) 2) x (* -1 y))");
+
+    (void)run(&f, "alpha = Vector[{0,u}]");
+    value = run(&f, "Falpha = PullbackCovector[F,alpha]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_VECTOR);
+    expect_scalar(&f, "Component[Falpha,0]", "(+ x y)");
+    expect_scalar(&f, "Component[Falpha,1]", "(* -1 (+ x y))");
+    (void)run(&f, "vx = Vector[{x,y}]");
+    value = run(&f, "Fvx = PushForwardVector[F,vx]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_VECTOR);
+    expect_scalar(&f, "Component[Fvx,0]", "(+ x y)");
+    expect_scalar(&f, "Component[Fvx,1]", "(+ x (* -1 y))");
+
+    value = run(
+        &f,
+        "tr = BasisTransition["
+        "xy,uv,{x+y,x-y},{(u+v)/2,(u-v)/2}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_BASIS_TRANSITION);
+    PHY_CHECK_EQ_STR(
+        describe(&f, value),
+        "BasisTransition xy <-> uv verified");
+    value = run(&f, "Jtr = Jacobian[tr]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_MATRIX);
+    expect_scalar(&f, "Component[Jtr,1,1]", "-1");
+    expect_scalar(
+        &f, "PullbackScalar[tr,u+v]", "(* 2 x)");
+
+    (void)run(&f, "G = TensorHead[{V,V},Symmetric]");
+    (void)run(
+        &f,
+        "Guv = TensorComponents["
+        "G,{uv,uv},{Down,Down},"
+        "{{{0,0},1},{{1,1},1}}]");
+    value = run(&f, "Gxy = TransitionPullback[tr,Guv]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_COMPONENT_TENSOR);
+    expect_scalar(&f, "Component[Gxy,0,0]", "2");
+    expect_scalar(&f, "Component[Gxy,0,1]", "0");
+    expect_scalar(&f, "Component[Gxy,1,1]", "2");
+
+    value = run(&f, "AT = Atlas[{xy,uv}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_ATLAS);
+    PHY_CHECK_EQ_STR(
+        describe(&f, value), "Atlas charts 2 transitions 0");
+    value = run(
+        &f,
+        "AT = AtlasAddTransition["
+        "AT,xy,uv,{x+y,x-y},{(u+v)/2,(u-v)/2}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_ATLAS);
+    PHY_CHECK_EQ_STR(
+        describe(&f, value), "Atlas charts 2 transitions 1");
+    expect_scalar(&f, "AtlasVerify[AT]", "0");
+    value = run(&f, "Gxy2 = AtlasPullback[AT,xy,uv,Guv]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_COMPONENT_TENSOR);
+    expect_scalar(&f, "Component[Gxy2,0,0]", "2");
+    expect_scalar(&f, "Component[Gxy2,1,1]", "2");
+
+    const size_t before = phy_env_object_count(f.env);
+    expect_status(
+        &f,
+        "badtr = BasisTransition["
+        "xy,uv,{x+y,x-y},{(u+v)/2,(u+v)/2}]",
+        PHY_ERR_ASSUMPTION);
+    PHY_CHECK_EQ_INT(phy_env_object_count(f.env), before);
+    expect_status(
+        &f, "CoordinateMap[xy,uv,{u,v}]", PHY_ERR_TYPE);
+    expect_status(
+        &f, "PullbackCovector[F,Vector[{1}]]", PHY_ERR_TYPE);
+
+    phy_env_reset(f.env);
+    PHY_CHECK_EQ_INT(phy_env_object_count(f.env), 0);
+    fixture_close(&f);
+}
+
 int main(void)
 {
     if (phy_platform_init() != PHY_OK) {
@@ -1687,6 +1977,9 @@ int main(void)
     PHY_TEST_CASE(test_notebook_round_trip_keeps_series_data);
     PHY_TEST_CASE(test_abstract_tensor_frontend_and_canonicalization);
     PHY_TEST_CASE(test_young_project_frontend);
+    PHY_TEST_CASE(test_dynamic_component_frontend_and_bridge);
+    PHY_TEST_CASE(test_dynamic_exact_linear_algebra_frontend);
+    PHY_TEST_CASE(test_coordinate_map_transition_and_atlas_frontend);
     const int result = PHY_TEST_REPORT("test_eval");
     phy_platform_shutdown();
     return result;

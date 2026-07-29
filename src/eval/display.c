@@ -431,6 +431,60 @@ static phy_status abstract_expression_expansion(
     return phy_cas_add(env->cas, terms, count, out_ref);
 }
 
+static phy_status vector_expansion(
+    phy_env *env, const phy_vector *vector, phy_ir_ref *out_ref)
+{
+    const size_t length = phy_vector_length(vector);
+    if (length > DISPLAY_MAX_TERMS) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    phy_ir_ref entries[DISPLAY_MAX_TERMS];
+    for (size_t index = 0u; index < length; ++index) {
+        const phy_status status =
+            phy_vector_get(vector, index, &entries[index]);
+        if (status != PHY_OK) {
+            return status;
+        }
+    }
+    *out_ref =
+        phy_ir_function(env->ir, env->list_head, entries, length);
+    return *out_ref != PHY_IR_NULL
+               ? PHY_OK
+               : phy_ir_last_error(env->ir);
+}
+
+static phy_status matrix_expansion(
+    phy_env *env, const phy_matrix *matrix, phy_ir_ref *out_ref)
+{
+    const size_t rows = phy_matrix_rows(matrix);
+    const size_t columns = phy_matrix_columns(matrix);
+    if (rows > DISPLAY_MAX_TERMS ||
+        columns > DISPLAY_MAX_TERMS) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    phy_ir_ref row_refs[DISPLAY_MAX_TERMS];
+    phy_ir_ref entries[DISPLAY_MAX_TERMS];
+    for (size_t row = 0u; row < rows; ++row) {
+        for (size_t column = 0u; column < columns; ++column) {
+            const phy_status status = phy_matrix_get(
+                matrix, row, column, &entries[column]);
+            if (status != PHY_OK) {
+                return status;
+            }
+        }
+        row_refs[row] = phy_ir_function(
+            env->ir, env->list_head, entries, columns);
+        if (row_refs[row] == PHY_IR_NULL) {
+            return phy_ir_last_error(env->ir);
+        }
+    }
+    *out_ref =
+        phy_ir_function(env->ir, env->list_head, row_refs, rows);
+    return *out_ref != PHY_IR_NULL
+               ? PHY_OK
+               : phy_ir_last_error(env->ir);
+}
+
 phy_status phy_eval_value_expression(phy_env *env, phy_value value,
                                      phy_ir_ref *out_ref)
 {
@@ -456,6 +510,17 @@ phy_status phy_eval_value_expression(phy_env *env, phy_value value,
     case PHY_VALUE_ABSTRACT_EXPRESSION:
         return abstract_expression_expansion(
             env, value.as.abstract_expression, out_ref);
+    case PHY_VALUE_COMPONENT_BASIS:
+    case PHY_VALUE_COMPONENT_TENSOR:
+    case PHY_VALUE_COORDINATE_MAP:
+    case PHY_VALUE_BASIS_TRANSITION:
+    case PHY_VALUE_ATLAS:
+        /* These are handles; phy_eval_describe provides their display. */
+        return PHY_OK;
+    case PHY_VALUE_VECTOR:
+        return vector_expansion(env, value.as.vector, out_ref);
+    case PHY_VALUE_MATRIX:
+        return matrix_expansion(env, value.as.matrix, out_ref);
     default:
         break;
     }
@@ -639,6 +704,102 @@ phy_status phy_eval_describe(const phy_env *env, phy_value value, char *buffer,
             &writer,
             (unsigned)phy_tensor_expression_term_count(
                 value.as.abstract_expression));
+        break;
+    case PHY_VALUE_COMPONENT_BASIS: {
+        const phy_component_basis *basis =
+            value.as.component_basis;
+        write_text(&writer, " ");
+        write_text(&writer, phy_component_basis_name(basis));
+        write_text(&writer, " of ");
+        write_text(
+            &writer,
+            phy_index_space_name(
+                phy_component_basis_space(basis)));
+        write_text(&writer, " dim ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_component_basis_dimension(basis));
+        write_text(
+            &writer,
+            phy_component_basis_has_coordinates(basis)
+                ? " coordinates"
+                : " basis");
+        break;
+    }
+    case PHY_VALUE_COMPONENT_TENSOR:
+        write_text(&writer, " ");
+        write_text(
+            &writer,
+            phy_tensor_head_name(
+                phy_component_tensor_head(
+                    value.as.component_tensor)));
+        write_text(&writer, " rank ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_component_tensor_rank(
+                value.as.component_tensor));
+        write_text(&writer, " sparse ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_component_tensor_entry_count(
+                value.as.component_tensor));
+        break;
+    case PHY_VALUE_VECTOR:
+        write_text(&writer, " length ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_vector_length(value.as.vector));
+        break;
+    case PHY_VALUE_MATRIX:
+        write_text(&writer, " ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_matrix_rows(value.as.matrix));
+        write_text(&writer, "x");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_matrix_columns(value.as.matrix));
+        break;
+    case PHY_VALUE_COORDINATE_MAP:
+        write_text(&writer, " ");
+        write_text(
+            &writer,
+            phy_component_basis_name(
+                phy_coordinate_map_source(
+                    value.as.coordinate_map)));
+        write_text(&writer, " -> ");
+        write_text(
+            &writer,
+            phy_component_basis_name(
+                phy_coordinate_map_target(
+                    value.as.coordinate_map)));
+        break;
+    case PHY_VALUE_BASIS_TRANSITION: {
+        const phy_coordinate_map *forward =
+            phy_basis_transition_forward(
+                value.as.basis_transition);
+        write_text(&writer, " ");
+        write_text(
+            &writer,
+            phy_component_basis_name(
+                phy_coordinate_map_source(forward)));
+        write_text(&writer, " <-> ");
+        write_text(
+            &writer,
+            phy_component_basis_name(
+                phy_coordinate_map_target(forward)));
+        write_text(&writer, " verified");
+        break;
+    }
+    case PHY_VALUE_ATLAS:
+        write_text(&writer, " charts ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_atlas_chart_count(value.as.atlas));
+        write_text(&writer, " transitions ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_atlas_transition_count(value.as.atlas));
         break;
     default:
         break;

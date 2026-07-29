@@ -49,10 +49,12 @@ metric, silently raises or lowers a slot, or allocates `dimension^rank`.
 Configured free-index, dummy-index, term, step and aggregate-memory ceilings
 fail with no returned partial value.
 
-This is deliberately not yet the complete reader-facing `ComponentValue`.
+The one-monomial bridge is now reader-facing. The evaluator owns
+`ComponentBasis` and `TensorComponents` handles and exposes
+`ComponentValue[monomial,{realizations...},{free coordinates...}]`.
 Collection across a general tensor expression, independent-component
-iteration into a new tensor, evaluator ownership and GR/QFT migration remain
-separate acceptance gates.
+iteration into a new tensor, and GR/QFT migration remain separate acceptance
+gates.
 
 ## Notebook construction surface
 
@@ -69,6 +71,10 @@ TensorCanonicalize[A[Down[b],Down[a]]]
 TensorCanonicalize[A[Down[a],Down[b]] *
                    S[Up[a],Up[b]]]
 YoungProject[R[Down[a],Down[b],Down[c]], {{1,2},{3}}]
+
+xy = ComponentBasis[V,{x,y}]
+Ac = TensorComponents[A,{xy,xy},{Down,Down},{{{0,1},a}}]
+ComponentValue[A[Down[i],Down[j]],{Ac},{0,1}]
 ```
 
 The first result is `-A[Down[a],Down[b]]`; the second vanishes when `S` is
@@ -103,11 +109,12 @@ native tensor API.
 | Landed | Deliberately deferred |
 | --- | --- |
 | legacy charts, coordinate symbols, rank, valence, head metadata | evaluator migration from legacy dense values |
-| dense `n^r` storage plus runtime-rank sparse component binding | sparse component/basis evaluator objects |
+| dense `n^r` storage plus runtime-rank sparse component binding | dense/sparse policy facade for legacy callers |
 | abstract free/dummy census, signed BSGS slot-orbit search, deterministic dummy normalization | explicit Butler–Portugal \(DgS\) search with committed xPerm/SymPy fixtures |
 | `IndexSpace`, `TensorHead`, indexed products and `TensorCanonicalize` in notebook cells | abstract metric contraction/raise/lower commands |
 | reader-facing normalized Young row/column projection with exact generated-term collection | Garnir/relation-basis reduction and general algebra on arbitrary pre-existing tensor sums |
-| verified atlas cocycles and mixed-valence dense basis changes | atlas/change-basis evaluator commands |
+| reader-facing sparse bases/components, one-monomial `ComponentValue`, exact dynamic vectors/matrices | expression-wide `ComponentValue` and independent-component iteration |
+| verified atlas cocycles, maps, vector/covector operations and mixed-valence tensor pullback in notebook cells | automatic transition-path composition beyond registered direct edges |
 | exact contraction, inverse metric, raise/lower, component derivatives | first-Bianchi orbit canonicalization |
 | canonical lookup, fill validation, allocation-failure unwind | optional xPerm integration |
 

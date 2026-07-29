@@ -80,11 +80,18 @@ PHYSICS_SOURCES=(
     src/tensor/symmetry.c
     src/tensor/tensor.c
     src/tensor/ops.c
+    src/linear/matrix.c
+    src/linear/elimination.c
     src/abstract/index.c
     src/abstract/head.c
     src/abstract/monomial.c
     src/abstract/canonical.c
     src/abstract/young.c
+    src/component/basis.c
+    src/component/component.c
+    src/component/bridge.c
+    src/component/map.c
+    src/component/atlas.c
     src/permutation/perm.c
     src/permutation/bsgs.c
     src/permutation/orbit.c

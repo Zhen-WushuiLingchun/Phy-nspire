@@ -101,10 +101,35 @@ row tableau, optionally preceded by a one-based factor position, and returns
 the normalized, exactly collected multi-term expression. An explicit space in
 `Down[i,V]`/`Up[i,V]` is checked; an omitted space is inferred from the head.
 
+Concrete runtime shapes and the explicit bridge use:
+
+```text
+v  = Vector[{1,2,3}]
+A  = Matrix[{{1,2},{3,4}}]
+xy = ComponentBasis[V,{x,y}]
+Tc = TensorComponents[T,{xy,xy},{Down,Up},{{{0,0},a}}]
+ComponentValue[T[Down[i],Up[j]],{Tc},{0,0}]
+```
+
+Coordinate changes remain explicit:
+
+```text
+uv = ComponentBasis[V,{u,v}]
+tr = BasisTransition[xy,uv,{x+y,x-y},{(u+v)/2,(u-v)/2}]
+Txy = TransitionPullback[tr,Tuv]
+```
+
 The evaluated object heads are:
 
-- abstract tensors — `IndexSpace`, `TensorHead`, indexed head application,
-  `TensorCanonicalize`, `YoungProject`;
+- exact linear algebra — `Vector`, `Matrix`, `Dot`, `Transpose`,
+  `Determinant`, `Inverse`, `RowReduce`, `MatrixRank`, `LinearSolve`;
+- abstract/components — `IndexSpace`, `TensorHead`, indexed head application,
+  `TensorCanonicalize`, `YoungProject`, `ComponentBasis`,
+  `TensorComponents`, `ComponentValue`;
+- maps/atlas — `CoordinateMap`, `BasisTransition`, `Jacobian`,
+  `PullbackScalar`, `PullbackCovector`, `PushForwardVector`,
+  `TransitionPullback`, `Atlas`, `AtlasAddTransition`, `AtlasVerify`,
+  `AtlasPullback`;
 - geometry — `Manifold`, `ComponentTensor`, `DifferentialForm`, `Metric`, `VectorField`,
   `ExteriorD`, `InteriorProduct`, `LieDerivative`, `HodgeStar`, `Volume`;
 - Lie — `LieGroup`, `LieAlgebra`, `Generator`, `LieElement`, `LieBracket`,
@@ -119,7 +144,8 @@ The evaluated object heads are:
   `SUNF`, `SUND`, `SUNT`, `SUNTrace`,
   `SUNCommutator`, `SUNDeltaContract`, `SUNCF`, `SUNCA`, `SUNFComponent`,
   `SUNExpandCasimirs`, `SUNFundamentalCasimir`, `SUNAdjointCasimir`;
-- queries — `Component`, `Degree`, `Dimension`, `Rank`, `ZeroQ`, `EquivalentQ`.
+- queries — `Component`, `Degree`, `Dimension`, `Dimensions`, `Rank`, `ZeroQ`,
+  `EquivalentQ`.
 
 Each of them dispatches onto the corresponding native backend and returns a
 typed value; the argument shapes are in [`EVALUATOR.md`](EVALUATOR.md). None of

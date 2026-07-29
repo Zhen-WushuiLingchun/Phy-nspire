@@ -159,10 +159,11 @@
 
 ### Task 7: Dynamic component tensors and bridge
 
-**Status: partially complete.** Runtime-rank sparse components, bases, and the
-bounded one-monomial component bridge live in
-`src/component/{basis,component,bridge}.c`. Dense/sparse policy selection,
-the legacy compatibility facade, expression-wide `ComponentValue`, and
+**Status: frontend slice complete, migration partial.** Runtime-rank sparse
+components, bases, the bounded one-monomial bridge, evaluator ownership,
+`Component`/`Dimensions`, command-palette entries and reader-facing
+`ComponentValue` are live. Dense/sparse policy selection, the legacy
+compatibility facade, expression-wide `ComponentValue`, and
 independent-component output iteration remain pending.
 
 **Files:**
@@ -188,9 +189,11 @@ independent-component output iteration remain pending.
 
 ### Task 8: Atlas transition maps and pullback/pushforward
 
-**Status: native library complete.** The implementation lives in
+**Status: native library and evaluator surface complete.** The implementation lives in
 `include/phy/map.h` and `src/component/{map,atlas}.c`, beside the dynamic
-component bases it transforms. Evaluator ownership is tracked in Task 9.
+component bases it transforms. `CoordinateMap`, verified `BasisTransition`,
+Jacobian/scalar/covector/vector operations, sparse tensor pullback and bounded
+atlas creation/edge verification/pullback are reachable from notebook cells.
 
 **Files:**
 - Create: `src/geom/transition.c`
@@ -214,6 +217,12 @@ component bases it transforms. Evaluator ownership is tracked in Task 9.
 7. Commit `feat(geom): add transition maps and tensor pullbacks`.
 
 ### Task 9: Unified evaluator and physics migration
+
+**Status: frontend objects complete; physics migration pending.** Dynamic
+vectors/matrices, abstract heads/expressions, component bases/tensors, maps,
+transitions and atlases have value kinds, ownership, display, source commands,
+palette entries and evaluator tests. GR, Dirac, colour, Lie and Yang--Mills
+still require staged parity migration from their legacy/local index models.
 
 **Files:**
 - Modify: `include/phy/eval.h`

@@ -170,6 +170,39 @@ static void test_round_trip_preserves_cells_and_cached_ir(void)
     phy_platform_shutdown();
 }
 
+static void test_clear_output_round_trip(void)
+{
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    phy_notebook *source = phy_notebook_create();
+    PHY_CHECK(source != NULL);
+
+    size_t input = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_notebook_add_input(source, "x=1", &input), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_notebook_evaluate(source, input), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_notebook_add_input(source, "ClearAll[]", &input), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_notebook_evaluate(source, input), PHY_OK);
+
+    phy_notebook_cell_view clear_output;
+    PHY_CHECK(phy_notebook_cell(source, input + 1u, &clear_output));
+    PHY_CHECK_EQ_INT(clear_output.kind, PHY_NOTEBOOK_CELL_OUTPUT);
+    PHY_CHECK_EQ_INT(clear_output.expression, PHY_IR_NULL);
+    PHY_CHECK_EQ_STR(clear_output.primary, "");
+
+    const size_t bytes = serialize_sample(source);
+    phy_notebook *loaded = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_notebook_deserialize(g_document, bytes, &loaded), PHY_OK);
+    PHY_CHECK(loaded != NULL);
+    PHY_CHECK_EQ_INT(phy_notebook_cell_count(loaded), 4u);
+    PHY_CHECK_EQ_INT(phy_notebook_evaluate_all(loaded), PHY_OK);
+
+    phy_notebook_destroy(loaded);
+    phy_notebook_destroy(source);
+    phy_platform_shutdown();
+}
+
 static void expect_corrupt(const uint8_t *document, size_t bytes)
 {
     phy_notebook *loaded = (phy_notebook *)(uintptr_t)1u;
@@ -324,6 +357,7 @@ static void test_empty_document_round_trip(void)
 int main(void)
 {
     PHY_TEST_CASE(test_round_trip_preserves_cells_and_cached_ir);
+    PHY_TEST_CASE(test_clear_output_round_trip);
     PHY_TEST_CASE(test_header_crc_bounds_and_trailing_bytes);
     PHY_TEST_CASE(test_structural_validation_after_valid_crc);
     PHY_TEST_CASE(test_unparseable_input_source_degrades_to_stale);

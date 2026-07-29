@@ -261,7 +261,17 @@ static const constant_descriptor *known_constant(const char *name)
  */
 static const char *const kObjectHeads[] = {
     "IndexSpace",   "TensorHead",       "TensorCanonicalize",
-    "YoungProject",
+    "YoungProject", "ComponentBasis",   "TensorComponents",
+    "ComponentValue",
+
+    "Vector",       "Matrix",           "Transpose",    "Dot",
+    "Determinant",  "Inverse",          "RowReduce",    "MatrixRank",
+    "LinearSolve",
+
+    "CoordinateMap", "BasisTransition", "Jacobian",
+    "PullbackScalar", "PullbackCovector", "PushForwardVector",
+    "TransitionPullback", "Atlas",      "AtlasAddTransition",
+    "AtlasVerify",   "AtlasPullback",
 
     "Manifold",     "DifferentialForm", "Metric",        "VectorField",
     "ComponentTensor",
@@ -280,7 +290,8 @@ static const char *const kObjectHeads[] = {
     "Kretschmann",  "Weyl",             "WeylSquared",
     "GeodesicAcceleration",             "CovariantDerivative",
 
-    "Component",    "Degree",           "Dimension",     "Rank",
+    "Component",    "Degree",           "Dimension",     "Dimensions",
+    "Rank",
     "ZeroQ",        "EquivalentQ",      "MemoryStatus",
 
     "ScalarField",  "Propagator",       "Vertex",        "TadpoleIntegral",

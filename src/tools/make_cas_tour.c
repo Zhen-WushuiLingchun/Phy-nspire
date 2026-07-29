@@ -147,6 +147,48 @@ static const tour_cell kTour[] = {
      NULL},
     {TOUR_INPUT, "Rank[R5]", NULL},
 
+    {TOUR_MARKDOWN, "Exact dynamic linear algebra",
+     "$$A=\\begin{pmatrix}1&2\\\\3&4\\end{pmatrix},\\quad "
+     "\\det A=-2,\\quad A^{-1}\\in\\mathbb{Q}^{2\\times2}$$"
+     " Vector and matrix dimensions are runtime values. Elimination, inverse, "
+     "rank, products, and linear solves stay in the exact scalar domain."},
+    {TOUR_INPUT, "Dot[Vector[{1,2,3}],Vector[{4,5,6}]]", NULL},
+    {TOUR_INPUT, "lm=Matrix[{{1,2},{3,4}}]", NULL},
+    {TOUR_INPUT, "Determinant[lm]", NULL},
+    {TOUR_INPUT, "Inverse[lm]", NULL},
+    {TOUR_INPUT, "LinearSolve[Matrix[{{2,1},{1,-1}}],Vector[{5,1}]]",
+     NULL},
+
+    {TOUR_MARKDOWN, "Abstract tensors, components, maps and atlases",
+     "$$A_{ij}\\longmapsto A_{01}=a,\\qquad "
+     "(u,v)=(x+y,x-y)$$"
+     " ComponentValue is the explicit bridge: an abstract tensor never "
+     "allocates a dense component cube until bases and free coordinates are "
+     "provided. Verified chart transitions share the same exact Jacobian."},
+    {TOUR_INPUT, "Vb=IndexSpace[2,SymmetricMetric]", NULL},
+    {TOUR_INPUT, "Hb=TensorHead[{Vb,Vb},Antisymmetric]", NULL},
+    {TOUR_INPUT, "bxy=ComponentBasis[Vb,{xb,yb}]", NULL},
+    {TOUR_INPUT, "buv=ComponentBasis[Vb,{ub,vb}]", NULL},
+    {TOUR_INPUT,
+     "Hbc=TensorComponents[Hb,{bxy,bxy},{Down,Down},{{{0,1},h}}]",
+     NULL},
+    {TOUR_INPUT,
+     "ComponentValue[Hb[Down[ia],Down[ja]],{Hbc},{0,1}]",
+     NULL},
+    {TOUR_INPUT,
+     "btr=BasisTransition[bxy,buv,{xb+yb,xb-yb},"
+     "{(ub+vb)/2,(ub-vb)/2}]",
+     NULL},
+    {TOUR_INPUT, "Jacobian[btr]", NULL},
+    {TOUR_INPUT, "bat=Atlas[{bxy,buv}]", NULL},
+    {TOUR_INPUT,
+     "bat=AtlasAddTransition[bat,bxy,buv,{xb+yb,xb-yb},"
+     "{(ub+vb)/2,(ub-vb)/2}]",
+     NULL},
+    {TOUR_INPUT, "AtlasVerify[bat]", NULL},
+    {TOUR_INPUT, "ClearAll[]", NULL},
+    {TOUR_INPUT, "M=Manifold[{theta,phi},Riemannian]", NULL},
+
     {TOUR_MARKDOWN, "Exterior calculus",
      "$$d^2=0,\\quad \\mathcal{L}_v=d\\iota_v+\\iota_vd$$"},
     {TOUR_INPUT, "a=DifferentialForm[M,1,{0,Sin[theta]}]", NULL},
@@ -158,7 +200,6 @@ static const tour_cell kTour[] = {
     {TOUR_INPUT, "Volume[M]", NULL},
     {TOUR_INPUT, "Degree[a]", NULL},
     {TOUR_INPUT, "Dimension[M]", NULL},
-    {TOUR_INPUT, "Rank[T]", NULL},
 
     {TOUR_MARKDOWN, "Metric geometry and GR",
      "$$\\Gamma^{\\rho}{}_{\\mu\\nu},\\quad R_{\\mu\\nu},\\quad "
@@ -483,8 +524,8 @@ int main(int argc, char **argv)
 
     /*
      * The distributable document intentionally contains source cells only.
-     * Persisting all 131 cached input IR trees and all 131 output trees makes
-     * opening the 276-card validation document rebuild the entire physics
+     * Persisting every cached input IR tree and output tree makes opening the
+     * expanded validation document rebuild the entire physics
      * session at once. The cached artifact round-trips on the host, but the
      * byte-identical file was reported as corrupt by a CX II at open time. The
      * eager IR/heap reconstruction is the platform-specific part of that path.

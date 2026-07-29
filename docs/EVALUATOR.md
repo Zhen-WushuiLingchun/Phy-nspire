@@ -65,6 +65,14 @@ four, which is what "stateful" buys.
 | `IndexSpace` | `IndexSpace[...]` | dimension and metric descriptor |
 | `TensorHead` | `TensorHead[...]` | rank, commutation and generator count |
 | `AbstractTensor` | indexed tensor-head products | typed-IR indexed tensor expression |
+| `AbstractExpression` | `YoungProject[...]` | collected typed-IR indexed tensor sum |
+| `ComponentBasis` | `ComponentBasis[...]` | space, dimension and coordinate/basis descriptor |
+| `TensorComponents` | sparse realization of a `TensorHead` | head, runtime rank and stored-entry count |
+| `Vector` | `Vector[{...}]`, matrix-vector operations | exact `List` |
+| `Matrix` | `Matrix[{{...},...}]`, exact linear operations | exact nested `List` |
+| `CoordinateMap` | `CoordinateMap[...]` | source-to-target basis descriptor |
+| `BasisTransition` | `BasisTransition[...]` | verified two-way basis descriptor |
+| `Atlas` | `Atlas[...]` | chart and verified-transition counts |
 
 A form's expansion is real mathematics rather than a label: the coframe symbol
 of a coordinate is its name with a `d` in front, so a chart on `(r, theta)`
@@ -114,6 +122,64 @@ coefficients, and the resulting sum uses the same MathTree renderer. A general
 Garnir-basis reducer for arbitrary pre-existing sums remains outside the
 current boundary.
 
+### Exact vectors and matrices
+
+| Spelling | Backend/result |
+| --- | --- |
+| `Vector[{...}]` | runtime-length exact `phy_vector` |
+| `Matrix[{{...},...}]` | rectangular runtime-shape exact `phy_matrix` |
+| `Dot[v,w]` | exact vector dot product |
+| `Dot[A,B]`, `Dot[A,v]` | exact matrix product |
+| `Transpose[A]` | exact transpose |
+| `Determinant[A]`, `Inverse[A]` | exact determinant and inverse |
+| `RowReduce[A]`, `MatrixRank[A]` | exact RREF and algebraic rank |
+| `LinearSolve[A,b]` | exact square nonsingular solve with vector or matrix right side |
+
+Vectors and matrices have runtime shapes and share the scalar CAS for every
+entry. `Rank[v]`/`Rank[A]` report structural ranks 1/2;
+`MatrixRank[A]` reports algebraic rank. `Component`, `Dimensions`, `ZeroQ`,
+`EquivalentQ`, homogeneous addition and exact scalar multiplication all use
+the same objects. Matrix multiplication is explicit `Dot`, so ordinary
+commutative scalar multiplication never silently changes meaning.
+
+### Abstract/component bridge and coordinate changes
+
+```text
+V  = IndexSpace[2, SymmetricMetric]
+A  = TensorHead[{V,V}, Antisymmetric]
+xy = ComponentBasis[V,{x,y}]
+Ac = TensorComponents[A,{xy,xy},{Down,Down},{{{0,1},a}}]
+
+Component[Ac,1,0]
+ComponentValue[A[Down[i],Down[j]],{Ac},{0,1}]
+```
+
+`TensorComponents` stores only supplied canonical entries and applies the
+head's signed slot symmetries on set/get. Runtime rank is bounded by configured
+resources, not the legacy rank-four API. `ComponentValue` currently accepts
+one abstract monomial, an explicit list of realizations, and free-index
+coordinates in first-occurrence order; it enumerates only dummy indices. A
+general `AbstractExpression` returns `PHY_ERR_UNSUPPORTED` until expression
+algebra lands, rather than dropping terms.
+
+| Spelling | Native action |
+| --- | --- |
+| `ComponentBasis[V,{x,y}]`, `ComponentBasis[V,n]` | bind an index space to a concrete coordinate basis or unnamed basis |
+| `TensorComponents[head,{bases...},{Up/Down...},{{indices,value},...}]` | construct a sparse exact realization |
+| `ComponentValue[monomial,{realizations...},{free coordinates...}]` | explicit abstract-to-component evaluation |
+| `CoordinateMap[source,target,{target-in-source...}]` | exact coordinate map and Jacobian |
+| `BasisTransition[source,target,{forward...},{inverse...}]` | two maps proved inverse in both directions |
+| `Jacobian[F]` | exact dynamic matrix |
+| `PullbackScalar`, `PullbackCovector`, `PushForwardVector` | exact substitution/Jacobian action |
+| `TransitionPullback[tr,Tc]` | verified mixed-valence sparse tensor change of basis |
+| `Atlas[{charts...}]`, `AtlasAddTransition[...]`, `AtlasVerify[...]` | bounded chart registry with exact cocycle checks |
+| `AtlasPullback[atlas,source,target,Tc]` | registered-edge tensor pullback |
+
+No command changes basis implicitly. A component realization must match the
+transition's target basis in every slot, and an atlas pullback requires a
+registered verified edge. The dense transformation side is capped at 4096
+components; the result returns to sparse canonical storage.
+
 ### Differential geometry
 
 | Spelling | Backend |
@@ -134,9 +200,10 @@ current boundary.
 `Lorentzian`/`Minkowski` — mostly-plus, per
 [`references/GENERAL_RELATIVITY.md`](references/GENERAL_RELATIVITY.md) — or an
 explicit list of `+1`/`-1`. `orientation` is `Positive` (the default),
-`Negative`, or `Unoriented`/`None`. A manifold carries exactly one chart:
-`geom.h` registers charts but does not relate them, so a second one buys nothing
-until a validated `phy_map` exists.
+`Negative`, or `Unoriented`/`None`. A legacy `Manifold` still carries one
+legacy `phy_chart`. Multi-chart work uses the separate
+`ComponentBasis`/`CoordinateMap`/`BasisTransition`/`Atlas` surface above,
+whose transitions and cocycles are validated before use.
 
 `ComponentTensor` has one variance marker per slot and one nested `List` level
 per slot. A rank-0 tensor takes a scalar component. The native bound is
@@ -253,12 +320,14 @@ bounded to the textbook SU(2)/SU(3) tables; abstract `SUNF` works for symbolic
 
 ### Queries
 
-`Component[obj, indices...]`, `Degree[form]`, `Rank[tensor]`, `Dimension[obj]`,
-`ZeroQ[obj]`, `EquivalentQ[a, b]`, `MemoryStatus[]`.
+`Component[obj, indices...]`, `Degree[form]`, `Rank[obj]`, `Dimension[obj]`,
+`Dimensions[obj]`, `ZeroQ[obj]`, `EquivalentQ[a, b]`, `MemoryStatus[]`.
 
 `Component` of a Lie form takes the colour index first, then the form indices;
-a degree-0 form takes none. `Dimension` reports the underlying space where there
-is one, and the algebra or representation dimension otherwise.
+a degree-0 form takes none. `Dimension` reports the underlying space where
+there is one, and the algebra or representation dimension otherwise.
+`Dimensions` reports every concrete extent of vectors, matrices, legacy
+tensors, sparse component tensors and bases.
 
 The two decisions return the symbols `True`, `False` and `Unknown`, following
 `phy_cas_is_zero`: an undecided question stays visibly undecided instead of
@@ -270,8 +339,9 @@ collect; normal command evaluation already performs the object sweep.
 
 ### Structural algebra
 
-`alpha + beta` and `s * alpha` work on forms, algebra-valued forms and Lie
-elements, so `(g/2)*LieBracket[A, A]` reads as the formula it is. Subtraction
+`alpha + beta` and `s * alpha` work on forms, algebra-valued forms, Lie
+elements, vectors and matrices, so `(g/2)*LieBracket[A, A]` reads as the
+formula it is. Subtraction
 and division need no cases — the parser already writes `a - b` as `a + (-1)*b`
 and `a/2` as `a * 2^-1`. Sums are homogeneous, and a product admits at most one
 object factor, because the product of two forms is the wedge and has its own
@@ -293,9 +363,10 @@ manifolds, manifolds before charts, everything before the IR context.
 Evaluating a cell creates intermediates — `HodgeStar[Wedge[a, b]]` builds a
 wedge nobody names. After each command the environment sweeps: everything
 reachable from a binding or from the command's own result survives, the rest are
-destroyed newest-first. Reachability follows recorded dependencies, so binding a
-form keeps its manifold alive even when the manifold's own name was overwritten
-in the same cell. Survivors are then compacted with their order preserved, which
+destroyed newest-first. Reachability follows a bounded dependency bitmap, so a
+form keeps its manifold alive and a dynamic-rank tensor retains every distinct
+slot basis even after their own names are cleared. Survivors are then compacted
+with their order preserved, which
 is what keeps "created later" and "destroyed first" the same statement.
 
 The sweep runs on the failure path too. A command that failed half-way through a
@@ -357,7 +428,7 @@ its configured arenas.
 
 ## Verification
 
-`tests/test_eval.c`, 2,126 checks. The physics cases deliberately reproduce,
+`tests/test_eval.c`, 2,647 checks. The physics cases deliberately reproduce,
 through reader-facing source, results the backend suites already certify
 directly:
 

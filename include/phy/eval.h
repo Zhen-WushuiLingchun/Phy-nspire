@@ -109,9 +109,12 @@
 
 #include "phy/abstract_tensor.h"
 #include "phy/cas.h"
+#include "phy/component_tensor.h"
 #include "phy/geom.h"
 #include "phy/gr.h"
 #include "phy/ir.h"
+#include "phy/linear.h"
+#include "phy/map.h"
 #include "phy/lie.h"
 #include "phy/phy.h"
 #include "phy/source.h"
@@ -163,7 +166,14 @@ typedef enum {
     PHY_VALUE_INDEX_SPACE,
     PHY_VALUE_TENSOR_HEAD,
     PHY_VALUE_ABSTRACT_TENSOR,
-    PHY_VALUE_ABSTRACT_EXPRESSION
+    PHY_VALUE_ABSTRACT_EXPRESSION,
+    PHY_VALUE_COMPONENT_BASIS,
+    PHY_VALUE_COMPONENT_TENSOR,
+    PHY_VALUE_VECTOR,
+    PHY_VALUE_MATRIX,
+    PHY_VALUE_COORDINATE_MAP,
+    PHY_VALUE_BASIS_TRANSITION,
+    PHY_VALUE_ATLAS
 } phy_value_kind;
 
 /*
@@ -201,6 +211,13 @@ typedef struct {
         const phy_abstract_tensor_head *tensor_head;
         const phy_tensor_monomial *abstract_tensor;
         const phy_tensor_expression *abstract_expression;
+        const phy_component_basis *component_basis;
+        const phy_component_tensor *component_tensor;
+        const phy_vector *vector;
+        const phy_matrix *matrix;
+        const phy_coordinate_map *coordinate_map;
+        const phy_basis_transition *basis_transition;
+        phy_atlas *atlas;
     } as;
 } phy_value;
 

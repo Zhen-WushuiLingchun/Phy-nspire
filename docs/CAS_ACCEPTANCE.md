@@ -8,24 +8,27 @@ evidence.
 ## Executable notebook
 
 [`examples/phy-nspire-cas-tour.tns`](../examples/phy-nspire-cas-tour.tns) is a
-8,475-byte `PHYNB001` notebook with 145 source cards:
+10,008-byte `PHYNB001` notebook with 164 source cards:
 
-- fourteen Markdown cells with nMarkdown LaTeX;
-- 131 editable Math inputs;
+- sixteen Markdown cells with nMarkdown LaTeX;
+- 148 editable Math inputs;
 - no eagerly persisted output/IR cache.
 
 The generator evaluates a validation copy of the complete document, serializes
 it, opens it in a new notebook with an empty environment, and runs every cell
 again. It separately serializes and reopens the source-only artifact before
 writing it. Generation fails on any parse, evaluation, serialization, reopen,
-or replay error. The source-only form avoids rebuilding 262 cached IR trees
-during `FILE > Open`; running all inputs produces 131 typed outputs and
-a 276-card session. The inputs touch every currently implemented evaluator head
-at least once:
+or replay error. The source-only form avoids rebuilding 296 cached IR trees
+during `FILE > Open`; running all inputs produces 148 typed outputs and
+a 312-card session. The inputs touch every currently implemented evaluator
+family at least once:
 
 | Area | Successful reader-facing heads |
 | --- | --- |
 | scalar | bare exact expressions, protected constants and special values, arbitrary-precision Gaussian-rational arithmetic, `Re`, `Im`, `Conjugate`, `Abs`, assignment, `Simplify`, `FullSimplify`, `Expand`, `Together`, sparse multivariate `Cancel`, bounded exact `Factor`, `Apart`, `Series`, `Normal`, exact finite/directed/infinity `Limit`, exact polynomial and linear-system `Solve`, `Numerator`, `Denominator`, `D`, verified `Integrate`, inverse/hyperbolic/Gamma/error functions |
+| exact linear algebra | dynamic `Vector` / `Matrix`, `Dot`, `Determinant`, `Inverse`, `RowReduce`, `MatrixRank`, `LinearSolve`, `Transpose`, `Dimensions` |
+| abstract/component bridge | `IndexSpace`, `TensorHead`, `TensorCanonicalize`, `YoungProject`, `ComponentBasis`, `TensorComponents`, one-monomial `ComponentValue` |
+| maps and atlases | `CoordinateMap`, verified `BasisTransition`, `Jacobian`, scalar/covector/vector maps, sparse mixed-valence tensor pullback, direct-edge `Atlas` operations |
 | tensor/manifold | `Manifold`, `ComponentTensor`, `Metric`, `VectorField`, `Component`, `Rank`, `Dimension` |
 | exterior geometry | `DifferentialForm`, `Wedge`, `ExteriorD`, `InteriorProduct`, `LieDerivative`, `HodgeStar`, `Volume`, `Degree` |
 | Lie/Yang--Mills | `LieGroup`, `LieAlgebra`, `Generator`, `LieElement`, `LieBracket`, `StructureConstant`, `Killing`, `LieForm`, `GaugeConnection`, `CovariantD`, `FieldStrength`, `GaugeVariation`, `Bianchi`, `YangMillsLagrangian`, `ColorComponent` |
@@ -34,9 +37,10 @@ at least once:
 | SU(N) colour | `SUNDelta`, `SUNF`, `SUND`, `SUNT`, `SUNTrace`, `SUNCommutator`, `SUNDeltaContract`, `SUNCF`, `SUNCA`, `SUNFComponent`, `SUNExpandCasimirs`, `SUNFundamentalCasimir`, `SUNAdjointCasimir` |
 | decisions/resources | `ZeroQ`, `EquivalentQ`, `MemoryStatus` |
 
-`Clear` and `ClearAll` are covered by the evaluator tests rather than placed at
-the end of the tour, because clearing the environment would make later
-single-cell reruns inconvenient.
+The tour uses one staged `ClearAll[]` after its abstract/component bridge
+examples. This keeps the object table bounded, exercises the successful empty
+output document path, and then recreates the manifold needed by the remaining
+geometry and QFT cells.
 
 ## Meaning of a general tensor
 
@@ -52,10 +56,10 @@ where the QFT type checker must reject a cross-space operation.
 
 ## Automated evidence
 
-- Windows strict build and CTest: 40/40.
-- WSL ASan, UBSan, and leak detection: 42/42.
-- Assertion-bearing tests: 305,685 checks.
-- Ndless r2022 ARM product: 1,186,793 bytes, 18.9% of the 6 MiB ceiling.
+- Last Windows strict build and CTest: 41/41.
+- Current WSL ASan, UBSan, and leak detection: 43/43.
+- Assertion-bearing tests: 306,862 checks.
+- Ndless r2022 ARM product: 1,207,021 bytes, 19.2% of the 6 MiB ceiling.
 - Isolated exact-number ARM probe: 68/68 public APIs, 17,680 bytes of exact
   number text, 23,540-byte package, and no forbidden numeric dependency.
 - Isolated real-algebraic ARM probe: 28/28 public APIs, 24,256 bytes of
@@ -63,8 +67,8 @@ where the QFT type checker must reject a cross-space operation.
 - Isolated CAS ARM probe: 35/35 public APIs, 109,160 bytes of CAS text,
   154,996-byte package, and no float formatter, libm call, or ARM soft-float
   helper.
-- Isolated evaluator ARM probe: 15/15 public APIs, 35,070 bytes of evaluator
-  text, 268,388-byte package, and no float formatter, libm call, or ARM
+- Isolated evaluator ARM probe: 15/15 public APIs, 46,819 bytes of evaluator
+  text, 303,368-byte package, and no float formatter, libm call, or ARM
   soft-float helper.
 
 These results establish source, host, sanitizer, and ARM-link acceptance. They
@@ -78,10 +82,11 @@ exact artifacts are opened and exercised on the physical CX II.
 roots plus higher-degree all-real `Root` descriptors as documented in
 `docs/CAS.md`, plus exact simultaneous affine systems through eight
 equations/variables; unresolved higher complex factors and nonlinear systems
-remain typed unsupported. There are no reader-facing `Atlas`,
-`TransitionMap`, `Pullback`, or `ChangeBasis` commands yet; their native library
-layer now has exact two-way maps, p-form pullback, mixed-valence tensor
-transformation, and cocycle-checked atlas registration. There is no
+remain typed unsupported. Reader-facing `CoordinateMap`, `BasisTransition`,
+Jacobian scalar/covector/vector operations, sparse mixed-valence tensor
+pullback, and direct-edge `Atlas` commands are implemented. General automatic
+transition-path composition and expression-wide component conversion remain
+typed unsupported. There is no
 global-topology or named-manifold catalogue, no unlimited-resource tensor rank,
 no general Garnir-basis reducer, no gamma-five, and no general loop-integral
 reduction engine. Calling those absences implemented would turn a typed failure

@@ -28,8 +28,8 @@ tensors. Migration of legacy `phy_manifold` ownership remains pending.
 | bounded legacy charts plus dynamic coordinate bases | legacy `phy_manifold` ownership migration |
 | validated coordinate maps and exact Jacobians | transition-domain/singular-locus certificates |
 | two-way transitions proved inverse by substitution | automatic transition inference |
-| bounded atlas registry with exact triangle cocycles | atlas evaluator objects |
-| mixed-valence tensor change of coordinates across a transition | sparse-to-sparse tensor transport |
+| bounded atlas registry with exact triangle cocycles and evaluator objects | automatic transition-path composition |
+| mixed-valence sparse tensor change of coordinates across a transition | expression-wide tensor transport |
 | scalar, p-form pullback, and vector pushforward along a map | singular-locus/domain certificates |
 | canonical antisymmetric `C(n,p)` component storage | dynamic sparse forms |
 | exact wedge product | vector-field Lie bracket |
@@ -399,7 +399,7 @@ saying otherwise contradicts the storage. A value that merely cannot be
 
 ## Testing
 
-`tests/test_geom.c` has 4,646 checks in 33 cases. The separate
+`tests/test_geom.c` has 4,644 checks in 33 cases. The separate
 `tests/test_geom_metric.c` adds diagonal, non-diagonal, volume, singular, and
 orientation cases for the general-metric path.
 
@@ -459,8 +459,8 @@ and retained no float formatter, libm call, or ARM soft-float helper.
 
 ## Not in the legacy form layer
 
-Direct dynamic-to-`phy_form` conversion and general non-alternating tensor
-transport. Atlas overlap/cocycle registration. Vector-field Lie brackets.
+Direct dynamic-to-`phy_form` conversion. Automatic atlas transition-path
+composition. Vector-field Lie brackets.
 Connections, torsion, and
 curvature 2-forms — the Cartan structure
 equations are the natural next step and need only the wedge and the exterior

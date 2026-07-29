@@ -5,6 +5,7 @@
 #include <string.h>
 
 #include "phy/ir.h"
+#include "phy/source.h"
 #include "notebook_internal.h"
 
 #define DOCUMENT_HEADER_BYTES 32u
@@ -236,6 +237,24 @@ static bool degrades_to_stale_cell(phy_status status)
     }
 }
 
+static bool empty_success_output_is_clear(const phy_notebook *notebook,
+                                          const notebook_cell *cell)
+{
+    if (cell->owner_input >= notebook->count ||
+        notebook->cells[cell->owner_input].kind !=
+            PHY_NOTEBOOK_CELL_INPUT) {
+        return false;
+    }
+    phy_source_command command;
+    size_t error_offset = 0u;
+    const phy_status status = phy_source_parse(
+        notebook->ir, notebook->cells[cell->owner_input].primary,
+        &command, &error_offset);
+    (void)error_offset;
+    return status == PHY_OK &&
+           command.operation == PHY_SOURCE_CLEAR;
+}
+
 static phy_status parse_cell_expression(phy_notebook *notebook,
                                         notebook_cell *cell,
                                         const uint8_t *expression,
@@ -257,10 +276,13 @@ static phy_status parse_cell_expression(phy_notebook *notebook,
          * no expansion in the typed IR. An output with neither is a truncated
          * record.
          */
-        return cell->kind == PHY_NOTEBOOK_CELL_OUTPUT &&
-                       cell->status == PHY_OK && cell->primary[0] == '\0'
-                   ? PHY_ERR_CORRUPT_DOCUMENT
-                   : PHY_OK;
+        if (cell->kind == PHY_NOTEBOOK_CELL_OUTPUT &&
+            cell->status == PHY_OK && cell->primary[0] == '\0') {
+            return empty_success_output_is_clear(notebook, cell)
+                       ? PHY_OK
+                       : PHY_ERR_CORRUPT_DOCUMENT;
+        }
+        return PHY_OK;
     } else if (expression[expression_size - 1u] != '\0') {
         return PHY_ERR_CORRUPT_DOCUMENT;
     } else {
