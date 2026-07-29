@@ -932,20 +932,48 @@ static void parse_solve_body(source_reader *reader, char closer,
     if (reader->status == PHY_OK && !take(reader, ',')) {
         fail(reader, PHY_ERR_PARSE);
     }
-    phy_ir_ref variable = PHY_IR_NULL;
+    phy_ir_ref variable_spec = PHY_IR_NULL;
     if (reader->status == PHY_OK) {
-        variable = parse_expression(reader);
+        variable_spec = parse_expression(reader);
     }
-    if (reader->status == PHY_OK &&
-        phy_ir_kind_of(reader->ir, variable) != PHY_IR_SYMBOL) {
-        fail(reader, PHY_ERR_TYPE);
+    if (reader->status == PHY_OK) {
+        const phy_ir_kind kind = phy_ir_kind_of(reader->ir, variable_spec);
+        if (kind == PHY_IR_SYMBOL) {
+            command->variables[0] = variable_spec;
+            command->variable_count = 1u;
+        } else if (kind == PHY_IR_FUNCTION &&
+                   phy_ir_head(reader->ir, variable_spec) ==
+                       phy_ir_intern(reader->ir, "List")) {
+            const size_t count =
+                phy_ir_child_count(reader->ir, variable_spec);
+            if (count == 0u || count > PHY_SOURCE_MAX_VARIABLES) {
+                fail(reader, PHY_ERR_TERM_LIMIT);
+            }
+            for (size_t index = 0u;
+                 reader->status == PHY_OK && index < count; ++index) {
+                const phy_ir_ref variable =
+                    phy_ir_child(reader->ir, variable_spec, index);
+                if (phy_ir_kind_of(reader->ir, variable) != PHY_IR_SYMBOL) {
+                    fail(reader, PHY_ERR_TYPE);
+                    break;
+                }
+                for (size_t prior = 0u; prior < index; ++prior) {
+                    if (command->variables[prior] == variable) {
+                        fail(reader, PHY_ERR_TYPE);
+                        break;
+                    }
+                }
+                command->variables[index] = variable;
+            }
+            if (reader->status == PHY_OK) {
+                command->variable_count = count;
+            }
+        } else {
+            fail(reader, PHY_ERR_TYPE);
+        }
     }
     if (reader->status == PHY_OK && !take(reader, closer)) {
         fail(reader, PHY_ERR_PARSE);
-    }
-    if (reader->status == PHY_OK) {
-        command->variables[0] = variable;
-        command->variable_count = 1u;
     }
 }
 

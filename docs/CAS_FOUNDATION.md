@@ -61,10 +61,11 @@ special case, while explicit `I` has Gaussian-rational semantics.
 Status: the bounded univariate `Q[x]` GCD, reader-facing `Cancel`, Yun
 square-free decomposition, and degree-48 modular
 Berlekamp/Hensel/Zassenhaus `Factor` are implemented. Their coefficient
-containers use the F3 arbitrary-precision exact domain. A bounded mixed-radix
-multivariate cancellation subset is implemented with exact reconstruction
-checks. Reader-facing univariate `Apart` is implemented over the same bounded
-`Q[x]` domain; complete general multivariate GCD remains open.
+containers use the F3 arbitrary-precision exact domain. A distributed sparse
+multivariate kernel with explicit exponent vectors, recursive
+content/primitive-part extraction, primitive pseudo-remainder GCD, and exact
+reconstruction is the primary multivariate cancellation path. Reader-facing
+univariate `Apart` is implemented over the same bounded `Q[x]` domain.
 
 - A bounded polynomial view with explicit variable order.
 - Content/primitive-part extraction and exact coefficient division.
@@ -83,14 +84,15 @@ Landau--Mignotte bound, and exact recombination. Modular derivative GCD plus CRT
 prevents the initial square-free decomposition from falling back onto
 coefficient-swelling rational Euclid for promoted inputs.
 
-For expanded multivariate inputs whose Kronecker image has degree at most 48,
-the reducer computes an image GCD, decodes candidate divisors, and accepts one
-only if the decoded divisor times each decoded quotient exactly reconstructs
-both original polynomials. This closes a useful cancellation subset, including
-arbitrary-precision coefficients, without mistaking substitution artefacts for
-real common factors. A sparse polynomial representation plus a complete
-validated Brown/Zippel/subresultant-style algorithm is still required for the
-general milestone.
+For expanded multivariate inputs, the reducer first constructs a sparse exact
+rational polynomial with up to 8 variables, 192 terms, and degree 48 per
+variable. Its recursive primitive-PRS GCD is accepted only if both exact
+quotients reconstruct their original inputs. This removes the former
+mixed-radix degree bottleneck. The old Kronecker candidate path survives only
+as a separately reconstructed compatibility fallback. Faster modular
+Brown/Zippel-style algorithms remain a performance extension for expressions
+beyond the deterministic calculator work ceiling, not a missing correctness
+path inside the configured domain.
 
 The modular layer is now present end to end: a fixed-footprint exact `F_p[x]`
 kernel with verified-prime contexts, Euclidean and extended GCD, modular
@@ -114,12 +116,14 @@ implemented and flow through IR, source, scalar folding, evaluator,
 serialization, and MathTree display. Exact `I`, `Re`, `Im`, `Conjugate`, and
 `Abs` share that backend, including transactional allocation-failure tests and
 complete public-API ARM retention. Certified real-algebraic values now support
-exact rational translation, scaling, and reciprocal with transformed Sturm
-certificates. The certified real-algebraic foundation
+exact rational translation, scaling, reciprocal, resultant addition,
+subtraction, multiplication, division, and signed integer powers with fresh
+Sturm certificates. The certified real-algebraic foundation
 (primitive square-free defining polynomial, rational isolating interval, Sturm
 count/all-root isolation/refinement/comparison) is implemented and documented in
-[`ALGEBRAIC.md`](ALGEBRAIC.md). Resultant arithmetic between two non-rational
-algebraic values and canonical minimal-polynomial equality remain open. The univariate polynomial
+[`ALGEBRAIC.md`](ALGEBRAIC.md). Canonical minimal-polynomial equality remains
+open: arithmetic results are certified by a square-free defining polynomial
+and isolating interval, not falsely advertised as minimal. The univariate polynomial
 coefficient containers and rational LCD path have been migrated.
 
 - Native bounded-memory arbitrary-precision integers and rationals.
@@ -130,10 +134,10 @@ coefficient containers and rational LCD path have been migrated.
 - Safe root comparison and denominator rationalization on that certified
   domain.
 
-The native choice has host strict/ASan, serialization, allocation-failure, and
-complete public-API ARM link/size evidence. Physical CX II timing/peak-heap
-acceptance, non-rational resultant arithmetic, and canonical minimal-polynomial
-equality are still required before F3 can be closed.
+The native choice has host strict/ASan, serialization, allocation-failure,
+resultant-closure, and complete public-API ARM link/size evidence. Physical CX
+II timing/peak-heap acceptance and canonical minimal-polynomial equality are
+still separate gates before claiming an unbounded/canonical algebraic package.
 
 ### F4 — series, limits, and equations
 
@@ -160,16 +164,21 @@ fallback also handles proved constant coefficients over `Q(i)`. Higher real
 roots are typed
 `Root[List[a0,...,an],k]` values with `k` ordered among the factor's real roots
 by exact Sturm isolation. An unresolved complex factor of degree at least
-three, identity, multivariate or transcendental equation fails transactionally with a
-typed unsupported result; no partial root list is published.
+three, identity, nonlinear multivariate or transcendental equation fails
+transactionally with a typed unsupported result; no partial root list is
+published. Exact simultaneous affine systems through eight
+equations/variables use verified exact RREF over the shared scalar domain;
+unique, underdetermined and inconsistent cases are distinguished, and every
+solution is substituted back before publication.
 
 The remaining implementation is governed by
 [`plans/2026-07-28-cas-foundation-f4-f5.md`](plans/2026-07-28-cas-foundation-f4-f5.md).
 The compiled reader matrix is `tests/corpus/cas_foundation_cases.inc`.
 `NSolve` and `Reduce` remain typed unsupported until their corresponding exact
 backend, evaluator, display, and negative controls land together. Certified
-Complex roots, simultaneous systems, conditional solution sets, and algebraic
-arithmetic on `Root` values remain later extensions of `Solve`.
+complex roots of degree above two, conditional solution sets, and
+reader-facing algebraic arithmetic on `Root` values remain later extensions
+of `Solve`.
 
 - Truncated formal power-series arithmetic before reader-facing `Series`.
 - Extend the exact limit subset only alongside proof rules and negative

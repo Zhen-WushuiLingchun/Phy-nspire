@@ -12,11 +12,25 @@ The second domain is not a numerical approximation. Reduction modulo a chosen
 prime is an exact algebraic homomorphism and is the next layer needed by
 modular GCD and integer-polynomial factorization.
 
-The reducer also contains a bounded mixed-radix Kronecker candidate path for
-expanded multivariate cancellation. Since a univariate image can acquire
-spurious factors, decoded candidates are accepted only after exact
-reconstruction of both original polynomials. This is a sound subset, separate
-from the still-open complete sparse multivariate GCD layer.
+The reducer's primary multivariate path is now a distributed sparse
+polynomial over exact rational IR coefficients. Every term carries a complete
+exponent vector in deterministic lexicographic variable/monomial order. The
+configured calculator profile admits up to 8 variables, 192 terms, and degree
+48 in each variable; these are explicit resource ceilings rather than
+semantic restrictions to a Kronecker image.
+
+The sparse kernel implements exact addition, subtraction, multiplication,
+monomial scaling, powers, multivariate division, recursive
+content/primitive-part extraction, and a primitive pseudo-remainder GCD over
+the recursively selected coefficient ring. A proposed GCD is accepted only
+after exact division and multiplication reconstruct both original
+polynomials. `Cancel` normalizes the denominator to a deterministic monic
+form before publishing it.
+
+The older bounded mixed-radix Kronecker candidate path is retained only as a
+compatibility fallback when the sparse pass finds no cancellable divisor. It
+is not the semantic multivariate GCD implementation, and its candidates still
+require exact reconstruction before publication.
 
 ## Finite-field invariants
 
@@ -82,8 +96,9 @@ References:
   4,096-partition lattice;
 - a coefficient-generic subresultant path for arbitrary auxiliary GCDs, beyond
   the certified modular derivative-GCD and bounded cancellation paths;
-- sparse multivariate representation with explicit monomial order;
-- content/primitive-part and a complete validated multivariate GCD algorithm
-  beyond the bounded verified Kronecker cancellation subset;
+- faster modular Brown/Zippel-style sparse GCD for inputs that exceed the
+  calculator's deterministic primitive-PRS work ceiling;
+- complete multivariate factorization; reader-facing `Factor` remains the
+  exact bounded univariate `Q[x]` operation;
 - multivariate and algebraic-extension partial fractions beyond the current
   exact univariate `Q[x]` `Apart`.

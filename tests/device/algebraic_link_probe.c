@@ -87,6 +87,24 @@ int main(void)
         left, half, &scaled));
     sink((unsigned)phy_real_algebraic_reciprocal(
         left, &reciprocal));
+    phy_real_algebraic *sum = 0;
+    phy_real_algebraic *difference = 0;
+    phy_real_algebraic *product = 0;
+    phy_real_algebraic *quotient = 0;
+    phy_real_algebraic *power = 0;
+    sink((unsigned)phy_real_algebraic_add(left, right, &sum));
+    sink((unsigned)phy_real_algebraic_subtract(
+        left, right, &difference));
+    sink((unsigned)phy_real_algebraic_multiply(
+        left, right, &product));
+    sink((unsigned)phy_real_algebraic_divide(
+        left, right, &quotient));
+    sink((unsigned)phy_real_algebraic_pow_i32(left, 2, &power));
+    phy_real_algebraic_destroy(power);
+    phy_real_algebraic_destroy(quotient);
+    phy_real_algebraic_destroy(product);
+    phy_real_algebraic_destroy(difference);
+    phy_real_algebraic_destroy(sum);
     phy_real_algebraic_destroy(reciprocal);
     phy_real_algebraic_destroy(scaled);
     phy_real_algebraic_destroy(translated);

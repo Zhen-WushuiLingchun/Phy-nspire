@@ -1099,9 +1099,9 @@ static void test_reduce_cancels_known_factors(void)
         "(* (rat 1 950737950171172051122527404032) (^ x -1))");
 
     /*
-     * A hidden multivariate factor is recovered through bounded mixed-radix
-     * encoding, then accepted only after both decoded products reproduce the
-     * original expanded polynomials.
+     * A hidden multivariate factor is recovered by the sparse kernel, then
+     * accepted only after both exact quotient products reproduce the original
+     * expanded polynomials.
      */
     PHY_CHECK_EQ_INT(
         phy_cas_reduce(
@@ -1114,6 +1114,39 @@ static void test_reduce_cancels_known_factors(void)
     PHY_CHECK_EQ_STR(
         render(f.ir, reduced),
         "(* (+ 1 x) (^ (+ 1 y) -1))");
+
+    /*
+     * This common factor has a mixed-radix image of degree 215, beyond the
+     * old degree-48 Kronecker subset. The sparse recursive primitive-PRS
+     * kernel must cancel it without encoding monomials into one exponent.
+     */
+    PHY_CHECK_EQ_INT(
+        phy_cas_reduce(
+            f.cas,
+            parse(f.ir,
+                  "(* (+ (^ x 6) (* (^ x 5) y) (* x (^ y 5)) "
+                  "       (^ y 6) (* x (^ z 5)) (* y (^ z 5))) "
+                  "   (^ (+ (^ x 6) (* x (^ y 5)) (* x (^ z 5)) "
+                  "          (* 2 (^ x 5) z) (* 2 (^ y 5) z) "
+                  "          (* 2 (^ z 6))) -1))"),
+            &reduced),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(
+        render(f.ir, reduced),
+        "(* (+ x y) (^ (+ x (* 2 z)) -1))");
+
+    reduced = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_reduce(
+            f.cas,
+            parse(f.ir,
+                  "(* (+ (^ x 50) (* (^ x 49) y) (* x (^ y 49)) "
+                  "       (^ y 50)) "
+                  "   (^ (+ (^ x 50) (* x (^ y 49)) "
+                  "          (* 2 (^ x 49) y) (* 2 (^ y 50))) -1))"),
+            &reduced),
+        PHY_ERR_TERM_LIMIT);
+    PHY_CHECK_EQ_INT(reduced, PHY_IR_NULL);
 
     PHY_CHECK_EQ_INT(
         phy_cas_reduce(
@@ -1785,12 +1818,32 @@ static void test_cancellation(void)
     PHY_CHECK_EQ_INT(phy_cas_validate(f.cas), PHY_OK);
     PHY_CHECK_EQ_INT(phy_ir_validate(f.ir), PHY_OK);
 
+    polls = 0u;
+    out = PHY_IR_NULL;
+    const phy_ir_ref sparse_input = parse(
+        f.ir,
+        "(* (+ (^ x 31) (* (^ x 30) y) (* x (^ y 30)) (^ y 31)) "
+        "   (^ (+ (^ x 31) (* x (^ y 30)) "
+        "          (* 2 (^ x 30) y) (* 2 (^ y 31))) -1))");
+    PHY_CHECK_EQ_INT(
+        phy_cas_reduce(f.cas, sparse_input, &out),
+        PHY_ERR_INTERRUPTED);
+    PHY_CHECK_EQ_INT(out, PHY_IR_NULL);
+    PHY_CHECK(polls > 0u);
+    PHY_CHECK_EQ_INT(phy_cas_validate(f.cas), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_ir_validate(f.ir), PHY_OK);
+
     /* A hook that declines to cancel costs nothing but the poll. */
     phy_cas_set_cancel(f.cas, never_cancel, NULL);
     PHY_CHECK_EQ_INT(phy_cas_simplify(f.cas, parse(f.ir, "(+ x x)"), &out),
                      PHY_OK);
 
     phy_cas_set_cancel(f.cas, NULL, NULL);
+    PHY_CHECK_EQ_INT(
+        phy_cas_reduce(f.cas, sparse_input, &out), PHY_OK);
+    PHY_CHECK_EQ_STR(
+        render(f.ir, out),
+        "(* (+ x y) (^ (+ x (* 2 y)) -1))");
     close_fixture(&f);
 }
 

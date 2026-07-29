@@ -228,8 +228,20 @@ static void test_scalar_elementary_foundation(void)
         &f, "Integrate[Exp[-x^2],x]",
         "(* (rat 1 2) (^ Pi (rat 1 2)) (fn erf x))");
     expect_scalar(
+        &f, "Integrate[x Exp[x],x]",
+        "(+ (* -1 (fn exp x)) (* x (fn exp x)))");
+    expect_scalar(
+        &f, "Integrate[x^2 Sin[x],x]",
+        "(+ (* -2 (+ (* -1 (fn cos x)) (* -1 x (fn sin x)))) "
+        "(* -1 (^ x 2) (fn cos x)))");
+    expect_scalar(
         &f, "Cancel[(x^2-1)/(x^2-2x+1)]",
         "(* (+ 1 x) (^ (+ -1 x) -1))");
+    expect_scalar(
+        &f,
+        "Cancel[(x^31+x^30*y+x*y^30+y^31)"
+        "/(x^31+2*x^30*y+x*y^30+2*y^31)]",
+        "(* (+ x y) (^ (+ x (* 2 y)) -1))");
     expect_scalar(
         &f, "Factor[x^4-1]",
         "(* (+ -1 x) (+ 1 x) (+ 1 (^ x 2)))");
@@ -372,6 +384,42 @@ static void test_solve_reader_and_evaluator(void)
         PHY_ERR_UNSUPPORTED);
     expect_status(&f, "Solve[x==x,x]", PHY_ERR_UNSUPPORTED);
     expect_status(&f, "Solve[x,x]", PHY_ERR_TYPE);
+
+    value = run(&f, "Solve[{x+y==3,x-y==1},{x,y}]");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List (fn List (fn Rule x 2) (fn Rule y 1)))");
+    value = run(&f, "Solve[{x+y==3},{x,y}]");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List (fn List (fn Rule x (+ 3 (* -1 y)))))");
+    value = run(&f, "Solve[{x+y==1,x+y==2},{x,y}]");
+    PHY_CHECK_EQ_STR(expansion(&f, value), "(fn List)");
+    value = run(
+        &f,
+        "Solve[{x+y+z==6,2x-y+z==3,x+2y-z==2},{x,y,z}]");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List (fn List "
+        "(fn Rule x 1) "
+        "(fn Rule y 2) "
+        "(fn Rule z 3)))");
+    value = run(
+        &f,
+        "Solve[{1267650600228229401496703205376x+y"
+        "==1267650600228229401496703205377,x-y==0},{x,y}]");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List (fn List (fn Rule x 1) (fn Rule y 1)))");
+    value = run(&f, "Solve[{I*x+y==1,x-y==0},{x,y}]");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List (fn List "
+        "(fn Rule x (+ (rat 1 2) (* (rat -1 2) I))) "
+        "(fn Rule y (+ (rat 1 2) (* (rat -1 2) I)))))");
+    expect_status(
+        &f, "Solve[{x*y==1,x+y==2},{x,y}]",
+        PHY_ERR_UNSUPPORTED);
 
     expect_scalar(&f, "x = 4", "4");
     expect_status(&f, "Solve[x==4,x]", PHY_ERR_TYPE);

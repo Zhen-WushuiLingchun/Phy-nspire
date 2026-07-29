@@ -8,7 +8,7 @@ evidence.
 ## Executable notebook
 
 [`examples/phy-nspire-cas-tour.tns`](../examples/phy-nspire-cas-tour.tns) is a
-7,521-byte `PHYNB001` notebook with 134 source cards:
+7,568-byte `PHYNB001` notebook with 134 source cards:
 
 - thirteen Markdown cells with nMarkdown LaTeX;
 - 121 editable Math inputs;
@@ -25,7 +25,7 @@ at least once:
 
 | Area | Successful reader-facing heads |
 | --- | --- |
-| scalar | bare exact expressions, protected constants and special values, arbitrary-precision Gaussian-rational arithmetic, `Re`, `Im`, `Conjugate`, `Abs`, assignment, `Simplify`, `FullSimplify`, `Expand`, `Together`, `Cancel`, bounded exact `Factor`, `Apart`, `Series`, `Normal`, exact finite/directed/infinity `Limit`, exact bounded `Solve`, `Numerator`, `Denominator`, `D`, `Integrate`, inverse/hyperbolic/Gamma/error functions |
+| scalar | bare exact expressions, protected constants and special values, arbitrary-precision Gaussian-rational arithmetic, `Re`, `Im`, `Conjugate`, `Abs`, assignment, `Simplify`, `FullSimplify`, `Expand`, `Together`, sparse multivariate `Cancel`, bounded exact `Factor`, `Apart`, `Series`, `Normal`, exact finite/directed/infinity `Limit`, exact polynomial and linear-system `Solve`, `Numerator`, `Denominator`, `D`, verified `Integrate`, inverse/hyperbolic/Gamma/error functions |
 | tensor/manifold | `Manifold`, `ComponentTensor`, `Metric`, `VectorField`, `Component`, `Rank`, `Dimension` |
 | exterior geometry | `DifferentialForm`, `Wedge`, `ExteriorD`, `InteriorProduct`, `LieDerivative`, `HodgeStar`, `Volume`, `Degree` |
 | Lie/Yang--Mills | `LieGroup`, `LieAlgebra`, `Generator`, `LieElement`, `LieBracket`, `StructureConstant`, `Killing`, `LieForm`, `GaugeConnection`, `CovariantD`, `FieldStrength`, `GaugeVariation`, `Bianchi`, `YangMillsLagrangian`, `ColorComponent` |
@@ -54,15 +54,17 @@ where the QFT type checker must reject a cross-space operation.
 
 - Windows strict build and CTest: 34/34.
 - WSL ASan, UBSan, and leak detection: 36/36.
-- Assertion-bearing tests: 303,243 checks.
-- Ndless r2022 ARM product: 1,165,169 bytes, 18.5% of the 6 MiB ceiling.
+- Assertion-bearing tests: 303,492 checks.
+- Ndless r2022 ARM product: 1,173,026 bytes, 18.6% of the 6 MiB ceiling.
 - Isolated exact-number ARM probe: 68/68 public APIs, 17,680 bytes of exact
   number text, 23,540-byte package, and no forbidden numeric dependency.
-- Isolated CAS ARM probe: 34/34 public APIs, 97,259 bytes of CAS text,
-  142,684-byte package, and no float formatter, libm call, or ARM soft-float
+- Isolated real-algebraic ARM probe: 28/28 public APIs, 24,256 bytes of
+  algebraic text and a 43,160-byte package.
+- Isolated CAS ARM probe: 35/35 public APIs, 109,101 bytes of CAS text,
+  154,924-byte package, and no float formatter, libm call, or ARM soft-float
   helper.
-- Isolated evaluator ARM probe: 15/15 public APIs, 29,407 bytes of evaluator
-  text, 230,252-byte package, and no float formatter, libm call, or ARM
+- Isolated evaluator ARM probe: 15/15 public APIs, 29,512 bytes of evaluator
+  text, 242,540-byte package, and no float formatter, libm call, or ARM
   soft-float helper.
 
 These results establish source, host, sanitizer, and ARM-link acceptance. They
@@ -74,7 +76,9 @@ exact artifacts are opened and exercised on the physical CX II.
 `NSolve`, `Reduce`, `Refine`, and the `Trig*` family are registered but return
 `PHY_ERR_UNSUPPORTED`. `Solve` covers exact affine and real/complex quadratic
 roots plus higher-degree all-real `Root` descriptors as documented in
-`docs/CAS.md`; unresolved higher complex factors remain typed unsupported. There is no
+`docs/CAS.md`, plus exact simultaneous affine systems through eight
+equations/variables; unresolved higher complex factors and nonlinear systems
+remain typed unsupported. There is no
 multi-chart transition map or pullback, no
 global-topology or named-manifold catalogue, no unbounded tensor rank, no
 abstract dummy-index canonicalizer, no gamma-five, and no general loop-integral

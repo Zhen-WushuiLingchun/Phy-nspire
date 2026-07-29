@@ -162,6 +162,8 @@ add_library(phy_core STATIC
     src/cas/series.c
     src/cas/limit.c
     src/cas/solve.c
+    src/cas/linear_solve.c
+    src/cas/sparse_poly.c
     src/cas/engine.c
     src/cas/simplify.c
     src/cas/diff.c

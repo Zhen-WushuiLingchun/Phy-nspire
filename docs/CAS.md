@@ -204,15 +204,16 @@ coefficients. This closes cases such as
 `(x^2-1)/(x^2-2x+1) -> (x+1)/(x-1)` even though the hidden factor is not the
 whole denominator.
 
-Expanded polynomials in two or more symbols also have a bounded, sound
-cancellation path. Their exponent vectors are encoded by mixed-radix
-Kronecker substitution only when the resulting degree is at most 48. Because
-a univariate image can have factors that are not multivariate factors, every
-decoded candidate and quotient pair is multiplied back against both original
-polynomials. A complete-on-success divisor search is used on the currently
-factorable image class, with a separate exact path for the universal image
-roots `0`, `-1`, and `1`; otherwise the expression stays explicit. This is not
-yet a complete sparse multivariate GCD implementation.
+Expanded polynomials in two or more symbols use a distributed sparse kernel
+with explicit exponent vectors and deterministic lexicographic order. It
+implements exact multivariate arithmetic and division, recursive
+content/primitive-part extraction, and primitive pseudo-remainder GCD over
+exact rational coefficients. The calculator profile is bounded at 8
+variables, 192 terms, and degree 48 in each variable. A proposed divisor is
+published only after exact division and multiplication reconstruct both
+original polynomials. This covers sparse common factors whose mixed-radix
+Kronecker image is far beyond degree 48. The older image path remains only as
+an independently verified compatibility fallback, not as the semantic GCD.
 
 ### Complete-on-success `Factor`
 
@@ -367,6 +368,18 @@ preserves the denominator exclusion in
 `(x^2+1)/(x-I)==0`. General non-real roots of degree three and above still need
 the complex-algebraic extension.
 
+`phy_cas_solve_system` and
+`Solve[{equation,...},{variable,...}]` cover exact linear systems with up to
+eight equations and variables. Coefficients are extracted by exact symbolic
+differentiation; reconstruction proves that every equation is affine in the
+declared variables before elimination starts. Exact reduced row echelon form
+runs over the shared rational/Gaussian-rational scalar domain. Unique systems
+return constant rules, underdetermined systems return pivot variables in terms
+of the original free variables, and inconsistent systems return an empty
+solution list. Every published rule set is substituted into every original
+equation and exact-zero checked. A nonlinear term, undecidable pivot, duplicate
+variable, or resource ceiling produces a typed error and no partial solution.
+
 ### Why trigonometry is reduced, and to what
 
 `research/corpus/gr_golden.json` forced this. Four `sphere_2d` entries — in the
@@ -475,9 +488,20 @@ exp(-u^2)          -> sqrt(Pi) erf(u) / 2
 ```
 
 with the constant derivative of `u` divided out. `Erf` and `Erfc` themselves
-have exact linear-inner antiderivatives. Every rule is tested by
-differentiating its result back to the input. Outside this class the result is
-the explicit typed head `Integrate[expr,var]`.
+have exact linear-inner antiderivatives. Bounded repeated integration by parts
+also covers a polynomial of degree at most 12 multiplied by a linear-inner
+`Exp`, `Sin`, `Cos`, `Sinh`, or `Cosh`. Before a non-deferred antiderivative is
+published, the CAS differentiates it, subtracts the original integrand, and
+requires an exact zero proof. Outside this class the result is the explicit
+typed head `Integrate[expr,var]`.
+
+The evaluator applies the same publication rule to reader-facing algebraic
+rewrites. Results from `Simplify`, `FullSimplify`, `Expand`, `Together`,
+`Cancel`, `Factor`, and `Apart` are checked with exact
+`phy_cas_equivalent` against their input before they reach a notebook output
+cell. `D` is the typed structural derivative implementation itself and is
+covered by the shared evaluator corpus; `Integrate` has the stronger
+independent differentiate-and-zero-check described above.
 
 `Pi`, `E`, `I`, `EulerGamma`, and directed-limit `Infinity` are protected
 constants. The first elementary
@@ -553,12 +577,13 @@ answers `UNKNOWN` rather than deciding anything about it.
 
 ## Not in this layer
 
-General integration, unrestricted asymptotic/branch limits, and solving.
+General special-function integration, unrestricted asymptotic/branch limits,
+and nonlinear simultaneous solving.
 The exact bounded `Series`/`Normal` ring and the finite/directed/rational-
 infinity `Limit` subset live in `series.c` and `limit.c`; cases they cannot
-prove return a typed error rather than sampling. Complete general
-multivariate polynomial GCD and multivariate/algebraic-extension partial
-fractions. Matrices.
+prove return a typed error rather than sampling. Multivariate factorization
+and multivariate/algebraic-extension partial fractions. Matrix-valued symbolic
+algebra beyond the exact linear-system solver.
 Dummy-index canonicalization,
 contraction, and anything
 that consumes declared slot symmetries — this layer simplifies the operands of
@@ -605,14 +630,14 @@ counts are recorded in `CAS_ACCEPTANCE.md` after each clean build.
 
 Built with the pinned Ndless r2022 SDK and ARM GNU 14.3 toolchain using
 `-Os -marm`. The isolated link check compiles the complete scalar layer to
-97,259 bytes of ARM text; its dependency-complete probe packages to 142,684
+109,101 bytes of ARM text; its dependency-complete probe packages to 154,924
 bytes. These figures are deliberately measured by the link-check target rather
 than maintained as a hand-summed per-object table.
 
 The application now calls the CAS and the typed physics backends through
 editable notebook cells. The current product, including persistence,
-nMarkdown's math typesetter, and the reachable evaluator stack, is 1,165,169
-bytes (18.5% of the 6 MiB ceiling).
+nMarkdown's math typesetter, and the reachable evaluator stack, is 1,173,026
+bytes (18.6% of the 6 MiB ceiling).
 
 `make cas-link-check` closes the gap that leaves. It is the same guard as
 `make ir-link-check`, and `tools/link-check.sh` now serves both layers from one
@@ -629,8 +654,8 @@ dependency through its own gcd and its check passes, which is good evidence but
 not the check itself.
 
 `make cas-link-check` has been run with the real Ndless linker and packager:
-all **34/34** public entry points derived from `include/phy/cas.h` survive
-`--gc-sections`; the CAS+IR+platform probe packages to a **142,684-byte `.tns`**;
+all **35/35** public entry points derived from `include/phy/cas.h` survive
+`--gc-sections`; the CAS+IR+platform probe packages to a **154,924-byte `.tns`**;
 and no `_dtoa`, `_strtod`, `_printf_float`, libm, `stdio` formatting, or ARM
 soft-float helper reaches the image. Real IR atoms are ordered by their
 IEEE-754 bit keys rather than by executing a floating-point comparison. The

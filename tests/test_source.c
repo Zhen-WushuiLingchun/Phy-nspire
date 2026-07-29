@@ -93,6 +93,15 @@ static void test_commands_and_functions(void)
     PHY_CHECK_EQ_STR(render(ir, command.expression), "(^ (fn sin x) 2)");
     PHY_CHECK_EQ_STR(render(ir, command.variables[0]), "x");
 
+    command = parse(ir, "Solve[{x+y==3,x-y==1},{x,y}]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_SOLVE);
+    PHY_CHECK_EQ_INT(command.variable_count, 2);
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(fn List (= (+ x y) 3) (= (+ x (* -1 y)) 1))");
+    PHY_CHECK_EQ_STR(render(ir, command.variables[0]), "x");
+    PHY_CHECK_EQ_STR(render(ir, command.variables[1]), "y");
+
     command = parse(ir, "Expand[(x+1)^2]");
     PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_EXPAND);
     PHY_CHECK_EQ_STR(render(ir, command.expression), "(^ (+ 1 x) 2)");

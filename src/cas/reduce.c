@@ -25,6 +25,7 @@
 
 #include "cas_internal.h"
 #include "finite_poly.h"
+#include "sparse_poly.h"
 #include "phy/algebraic.h"
 
 #define REDUCE_MAX_FACTORS 24u
@@ -3560,6 +3561,19 @@ static phy_status cancel_multivariate_gcd(
     phy_cas *cas, phy_ir_ref numerator, phy_ir_ref denominator,
     phy_ir_ref *out_num, phy_ir_ref *out_den)
 {
+    bool sparse_matched = false;
+    phy_status sparse_status = phy_sparse_cancel_gcd(
+        cas, numerator, denominator, out_num, out_den, &sparse_matched);
+    if (sparse_status != PHY_OK || sparse_matched) {
+        return sparse_status;
+    }
+
+    /*
+     * Compatibility fallback when the sparse pass finds no cancellable
+     * divisor. New polynomial work goes through the recursive primitive-PRS
+     * path above; the old image search can still recover some legacy cells,
+     * but it is no longer the semantic GCD implementation.
+     */
     phy_ir_ref variables[REDUCE_MAX_CANDIDATES];
     size_t variable_count = 0u;
     phy_status status = collect_factor_variables(

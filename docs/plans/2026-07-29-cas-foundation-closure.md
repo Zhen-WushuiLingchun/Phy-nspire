@@ -30,13 +30,15 @@ serializable, resource-bounded, and covered by positive and negative tests:
 
 1. Real algebraic values support rational translate/scale/inverse and
    algebraic add, subtract, multiply, divide, and integer power.
-2. Algebraic results carry a primitive irreducible defining polynomial and a
+2. Algebraic results carry a primitive square-free defining polynomial and a
    certified isolating interval; equality is never decided numerically.
+   Irreducible minimal-polynomial canonicalization is a separate later gate.
 3. Sparse multivariate polynomials support any configured number of variables,
    deterministic monomial order, exact arithmetic, content/primitive part,
    division with remainder, and a general validated GCD path.
-4. `Factor`, `Cancel`, and `Together` use the general multivariate kernel when
-   the configured degree/term/step ceilings permit it.
+4. `Cancel` uses the general multivariate kernel when the configured
+   degree/term/step ceilings permit it. `Factor` and `Apart` remain explicitly
+   bounded univariate operations until multivariate factorization lands.
 5. The special-function registry covers the documented exact values,
    derivatives, symmetries, and recurrences for factorial/binomial,
    Pochhammer, polylogarithm, Bessel, Airy, and zeta families without fake
@@ -66,6 +68,33 @@ must expose and enforce:
 
 No completion claim is allowed without timeout, cancellation,
 allocation-failure, and transactional-retry tests at these boundaries.
+
+## Implementation snapshot — 2026-07-29
+
+Delivered and independently gated in this milestone:
+
+- Tasks 1--3: exact rational transforms and resultant
+  add/subtract/multiply/divide/integer-power closure for certified real
+  algebraic values. Results are square-free defining-polynomial certificates,
+  not falsely labelled minimal polynomials.
+- Tasks 4--5: one distributed sparse implementation in
+  `src/cas/sparse_poly.c`, including exact arithmetic/division,
+  content/primitive-part and recursive primitive-PRS GCD. `Cancel` uses it
+  first and verifies reconstruction of both inputs.
+- Task 7's bounded polynomial-times-elementary integration-by-parts class and
+  mandatory differentiate-back verification. General Hermite reduction is
+  still open.
+- Task 8: exact simultaneous affine systems with verified RREF and
+  substitution into all original equations.
+- Task 10 host/sanitizer/ARM link and package gates, plus a regenerated tour.
+  Physical CX II timing and peak-heap acceptance remain a separate device
+  gate.
+
+Tasks 6 and 9, general rational Hermite integration, multivariate
+factorization, minimal-polynomial canonicalization, and physical-device
+performance evidence remain explicit future work. They are not prerequisites
+for the scalar operations delivered above and must not be implied by a
+successful host or ARM link test.
 
 ## Task 1: Direct rational transforms of certified real algebraic values
 

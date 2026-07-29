@@ -63,7 +63,7 @@ typedef struct {
     phy_ir_ref variables[PHY_SOURCE_MAX_VARIABLES];
     /*
      * DIFFERENTIATE / INTEGRATE, one expansion symbol for SERIES/LIMIT, or
-     * the one unknown of SOLVE.
+     * the bounded list of unknowns of SOLVE.
      */
     size_t variable_count;
     /*

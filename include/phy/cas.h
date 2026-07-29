@@ -365,6 +365,21 @@ phy_status phy_cas_limit(phy_cas *cas, phy_ir_ref expr, phy_ir_ref var,
 phy_status phy_cas_solve(phy_cas *cas, phy_ir_ref equation, phy_ir_ref var,
                          phy_ir_ref *out_ref);
 
+/*
+ * Exact bounded linear systems.
+ *
+ * `equations` is one equation or List[equation,...]. Variables are distinct
+ * scalar symbols. Linearity is certified by exact reconstruction before
+ * proved-nonzero-pivot RREF. Underdetermined systems return rules for pivot
+ * variables in terms of the original free variables. Inconsistent systems
+ * return an empty List. Every result is substituted into every input equation
+ * and proved before publication.
+ */
+phy_status phy_cas_solve_system(
+    phy_cas *cas, phy_ir_ref equations,
+    const phy_ir_ref *variables, size_t variable_count,
+    phy_ir_ref *out_ref);
+
 /* ------------------------------------------------------------ the zero decision */
 
 /*

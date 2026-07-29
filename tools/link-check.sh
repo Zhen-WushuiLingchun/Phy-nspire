@@ -63,6 +63,8 @@ CAS_SOURCES=(
     src/cas/series.c
     src/cas/limit.c
     src/cas/solve.c
+    src/cas/linear_solve.c
+    src/cas/sparse_poly.c
     src/cas/engine.c
     src/cas/simplify.c
     src/cas/diff.c
@@ -318,16 +320,33 @@ mapfile -t missing_definitions < <(
              <(printf '%s\n' "${defined[@]}")
 )
 
-mapfile -t retained < <(
-    "$NM" --defined-only "$ELF" | awk '$2 == "T" { print $3 }' | sort -u
-)
+read_retained_symbols() {
+    "$NM" --defined-only "$ELF" |
+        awk '$2 == "T" { print $3 }' |
+        sort -u
+}
 
-missing=()
-for symbol in "${declared[@]}"; do
-    if ! printf '%s\n' "${retained[@]}" | grep -qx "$symbol"; then
-        missing+=("$symbol")
-    fi
-done
+find_missing_symbols() {
+    missing=()
+    for symbol in "${declared[@]}"; do
+        if ! printf '%s\n' "${retained[@]}" | grep -qx "$symbol"; then
+            missing+=("$symbol")
+        fi
+    done
+}
+
+mapfile -t retained < <(read_retained_symbols)
+find_missing_symbols
+
+# drvfs has occasionally exposed the just-linked ELF to the first nm scan
+# before every final directory update was visible. A file sync plus one
+# deterministic re-read removes that transport race without hiding a genuine
+# missing reference: the second scan is checked by the same exact symbol set.
+if [ "${#missing[@]}" -ne 0 ]; then
+    sync "$ELF" 2>/dev/null || sync
+    mapfile -t retained < <(read_retained_symbols)
+    find_missing_symbols
+fi
 
 if [ "${#declared[@]}" -lt "$MIN_ENTRY_POINTS" ]; then
     echo "  FAIL: only ${#declared[@]} entry points derived from $HEADER;" >&2

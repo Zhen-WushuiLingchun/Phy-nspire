@@ -71,7 +71,10 @@ equality.
 - exact rational scaling `r alpha`, including negative order reversal and the
   rational zero result;
 - exact reciprocal `1/alpha`, with private interval refinement when the
-  original certificate crosses zero.
+  original certificate crosses zero;
+- exact addition, subtraction, multiplication and division between two
+  certified real algebraic values;
+- exact signed integer powers, with zero and negative-power domain checks.
 
 Each rational transform constructs the new integer defining polynomial,
 normalizes its content and leading sign, transforms the interval with exact
@@ -80,10 +83,24 @@ the result. A source certificate is never modified. Rational results collapse
 to a canonical linear polynomial, and reciprocal of exact zero returns
 `PHY_ERR_DOMAIN`.
 
-Different defining polynomials whose irrational roots are equal require a
-resultant/minimal-polynomial proof. Until that layer exists, a comparison that
-cannot separate them returns `PHY_ERR_UNSUPPORTED`; it never guesses from
-decimal approximations.
+For two non-rational operands, the arithmetic path evaluates the exact
+Sylvester resultant at deterministic integer sample points, reconstructs it
+by exact Newton interpolation, removes repeated factors over `Q[x]`, makes the
+integer polynomial primitive, and isolates the unique interval selected by
+interval arithmetic. Addition uses
+`Res_y(p(y),q(x-y))`; multiplication uses
+`Res_y(p(y),y^deg(q) q(x/y))`. Subtraction and division are exact compositions
+with negation and reciprocal. The candidate is published only after a fresh
+Sturm certificate proves that its open rational interval contains one root.
+No floating-point sample participates in resultant construction or root
+selection.
+
+The output is deliberately a square-free **defining polynomial**, not a claim
+of an irreducible minimal polynomial. Consequently structural equality across
+unrelated defining polynomials is not generally canonical yet. Disjoint
+certified intervals, a shared defining polynomial, and equality to a rational
+point remain exact; otherwise comparison returns `PHY_ERR_UNSUPPORTED` rather
+than guessing.
 
 The scalar Q[x] factorizer now uses this API for irreducible factors of degree
 three or more. Reader-facing `Solve` emits
@@ -113,15 +130,15 @@ ceilings cover both root count and all-root isolation.
 Current reproducible evidence:
 
 - `test_exact`: 79,159 checks, zero failures;
-- `test_algebraic`: 81,582 checks, zero failures, including allocation-failure,
+- `test_algebraic`: 81,754 checks, zero failures, including allocation-failure,
   timeout, cancellation, arbitrary-precision and retry coverage for every
-  rational transform;
+  rational transform and resultant arithmetic;
 - strict Windows suite: 34/34 tests;
 - ASan/UBSan/leak suite: 36/36 tests;
 - Ndless exact-number link probe: 51/51 public entry points, 14,516 bytes of
   exact-layer ARM text, 19,912-byte packaged probe;
-- Ndless real-algebraic link probe: 23/23 public entry points, 16,384 bytes of
-  algebraic-layer ARM text, 34,424-byte packaged probe;
+- Ndless real-algebraic link probe: 28/28 public entry points, 24,256 bytes of
+  algebraic-layer ARM text, 43,160-byte packaged probe;
 - neither ARM probe retains a floating-point formatter, libm call, or
   soft-float helper.
 
@@ -130,16 +147,14 @@ acceptance remain separate evidence.
 
 ## Deliberate omissions
 
-This is the certificate and comparison foundation, not yet a complete
-algebraic closure:
+This is a bounded real-algebraic closure, not yet a canonical complex
+algebraic-number package:
 
-- no resultant-based `+`, `*`, `/`, or powers between two non-rational
-  algebraic values; rational translate/scale/inverse are implemented;
 - no proof of equality across unrelated irrational defining polynomials;
 - no complex isolating rectangles;
 - no radical-to-algebraic lowering in the typed IR;
 - no claim that a defining polynomial is minimal.
 
-Those operations depend on coefficient-generic polynomial arithmetic and
-general factorization. Adding them before that foundation would either duplicate
-the polynomial engine or make unproved canonicality claims.
+Every arithmetic call is subject to the documented degree, coefficient, step,
+memory and cancellation ceilings. Exceeding one is a typed resource error and
+does not publish a partial certificate.

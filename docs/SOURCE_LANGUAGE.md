@@ -122,18 +122,19 @@ semantics implicitly.
 | `FullSimplify` | normal form, then the decision-grade trig-basis rational form; the shorter of the two is returned, so `Sin[x]^2+Cos[x]^2` reaches `1` while `1/Tan[q]` keeps its spelling. On a typed object it passes through like `Simplify` |
 | `Expand` | bounded distributive expansion |
 | `Together` | native rational form reconstructed as one quotient |
-| `Cancel` | exact known-factor and bounded univariate Q[x] GCD cancellation |
+| `Cancel` | exact univariate Q[x] and bounded sparse multivariate GCD cancellation, with exact reconstruction before publication |
 | `Factor` | complete exact factorization on the documented bounded Q[x] class; unsupported rather than partial outside it |
 | `Apart` | exact polynomial division and partial fractions over the unique variable on the documented bounded Q[x] class |
 | `Numerator`, `Denominator` | selected part of native rational form |
 | `D[expr,x,...]` | repeated exact symbolic differentiation |
-| `Integrate[expr,x,...]` | exact symbolic antiderivative on the documented linear-inner class; otherwise an explicit unevaluated `Integrate` |
+| `Integrate[expr,x,...]` | exact symbolic antiderivative on the documented linear-inner and bounded polynomial-times-elementary classes; every evaluated result is differentiated back before publication |
 | `Series[expr,{x,a,n}]` | exact bounded Taylor/Laurent expansion through power `n`, retaining `O((x-a)^(n+1))` in typed `SeriesData` |
 | `Normal[series]` | remove a well-formed series order term; `Normal[Series[...]]` is supported as one combined reader action |
 | `Limit[expr,{x,a}]` | exact finite two-sided limit when both directions agree |
 | `Limit[expr,{x,a,FromAbove}]`, `Limit[expr,{x,a,FromBelow}]` | exact directed finite limit; `Direction->"FromAbove"` and `Direction->"FromBelow"` are equivalent spellings |
 | `Limit[expr,{x,Infinity}]`, `Limit[expr,{x,-Infinity}]` | exact rational/Laurent infinity limit through the certified `t=1/x` transform |
 | `Solve[equation,x]` | exact distinct roots for bounded reduced Q[x] equations: rational/constant affine roots, real or complex quadratic radicals, and certified `Root[{a0,...,an},k]` values when a higher irreducible factor is proved all-real; denominator roots are excluded |
+| `Solve[{equation,...},{x,...}]` | exact linear systems through eight equations/variables, including unique, underdetermined and inconsistent systems; every solution is substituted back |
 
 Every command except assignment, a bare expression, and the two simplifies is
 scalar algebra, so `Expand[M]` on a manifold is `PHY_ERR_TYPE` rather than a
@@ -168,8 +169,9 @@ scheduling is future work; the explicitly implemented
   order and a one-based index among that factor's increasing real roots; full
   complex-algebraic root ordering is deferred. An unresolved non-real factor
   of degree at least three, identity with
-  infinitely many solutions, multivariate equation, or transcendental
-  equation returns `PHY_ERR_UNSUPPORTED`; it never returns a partial root list;
+  infinitely many solutions, nonlinear multivariate equation, or
+  transcendental equation returns `PHY_ERR_UNSUPPORTED`; exact simultaneous
+  affine systems are supported and never return a partial rule list;
 - no `a+bi` literal token or numeric approximation command; exact complex
   expressions use the protected symbol `I`;
 - no implicit function application beyond bracket/parenthesis calls;

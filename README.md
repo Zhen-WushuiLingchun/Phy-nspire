@@ -51,9 +51,11 @@ exact rational arithmetic, a normal form, expansion, substitution,
 differentiation, bounded exact antiderivatives, arbitrary-precision exact
 integer/rational and Gaussian-rational promotion, exact `I`,
 `Re`/`Im`/`Conjugate`/`Abs`, bounded univariate factorization and partial
-fractions, exact Taylor/Laurent `Series`/`Normal`, proof-producing finite,
-directed and rational-infinity `Limit`, exact bounded polynomial `Solve`
-with complex quadratic roots and certified higher-degree real roots,
+fractions, bounded sparse multivariate GCD cancellation, certified
+real-algebraic resultant arithmetic, exact Taylor/Laurent `Series`/`Normal`,
+proof-producing finite, directed and rational-infinity `Limit`, exact bounded
+polynomial `Solve` with complex quadratic roots and certified higher-degree
+real roots, verified exact linear systems,
 and an exact zero decision;
 the component tensor core with charts, dense storage, valence, signed slot
 symmetries, contraction, metric inversion, index raising/lowering, and
@@ -107,10 +109,10 @@ source cells so opening does not eagerly rebuild all cached results; a separate
 fully evaluated copy is serialized, reopened, and replayed during generation.
 
 The strict Windows host suite passes 34/34. The WSL ASan/UBSan/leak suite
-passes 36/36, and the assertion-bearing executables contain 303,243 explicit
+passes 36/36, and the assertion-bearing executables contain 303,492 explicit
 checks.
 
-The current native build is measured at 1,165,169 bytes, 18.5% of the 6 MiB
+The current native build is measured at 1,173,026 bytes, 18.6% of the 6 MiB
 ceiling. Its evaluator ARM probe links the complete current physics stack,
 retains 15/15 public evaluator entry points, packages to a `.tns`, and imports
 no libm, floating-point formatter, or ARM soft-float helper.
@@ -125,7 +127,7 @@ requires an explicit calculator acceptance run after transfer; an ARM link and
 byte-identical upload do not establish on-device runtime or performance. That
 cached tour exposed a CX II load-time failure consistent with eager IR/heap
 pressure and has since been replaced by the 7,521-byte source-only tour; the
-replacement and the current 1,165,169-byte program have not been uploaded in
+replacement and the current 1,173,026-byte program have not been uploaded in
 this build and still require explicit calculator open/run checks. The
 separate baseline channel-order check remains tracked in
 [docs/BUILD.md](docs/BUILD.md).

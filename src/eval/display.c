@@ -609,19 +609,63 @@ static phy_status apply_scalar_operation(phy_env *env,
             env->cas, value, command->variables[0], command->parameter,
             (phy_cas_limit_direction)command->limit_direction, out_ref);
     case PHY_SOURCE_SOLVE:
-        if (command->variable_count != 1u) {
+        if (command->variable_count == 0u) {
             return PHY_ERR_CORRUPT_DOCUMENT;
         }
-        if (eval_lookup(
-                env, phy_ir_head(env->ir, command->variables[0]), NULL)) {
-            return PHY_ERR_TYPE;
+        for (size_t index = 0u;
+             index < command->variable_count; ++index) {
+            if (eval_lookup(
+                    env, phy_ir_head(env->ir, command->variables[index]),
+                    NULL)) {
+                return PHY_ERR_TYPE;
+            }
         }
-        return phy_cas_solve(
-            env->cas, value, command->variables[0], out_ref);
+        return phy_cas_solve_system(
+            env->cas, value, command->variables,
+            command->variable_count, out_ref);
     default:
         break;
     }
     return PHY_ERR_UNSUPPORTED;
+}
+
+static bool operation_requires_equivalence_proof(
+    phy_source_operation operation)
+{
+    return operation == PHY_SOURCE_SIMPLIFY ||
+           operation == PHY_SOURCE_FULL_SIMPLIFY ||
+           operation == PHY_SOURCE_EXPAND ||
+           operation == PHY_SOURCE_TOGETHER ||
+           operation == PHY_SOURCE_CANCEL ||
+           operation == PHY_SOURCE_FACTOR ||
+           operation == PHY_SOURCE_APART;
+}
+
+static phy_status verify_scalar_operation(
+    phy_env *env, phy_source_operation operation,
+    phy_ir_ref input, phy_ir_ref result)
+{
+    /*
+     * Integrate performs its stronger D[candidate,var]==input certificate in
+     * the CAS entry point. D is a structural derivation rather than a
+     * rewrite candidate. Every value-preserving evaluator rewrite below is
+     * independently checked by the zero-decision path before it is exposed.
+     */
+    if (!operation_requires_equivalence_proof(operation)) {
+        return PHY_OK;
+    }
+    phy_cas_decision decision = PHY_CAS_UNKNOWN;
+    const phy_status status =
+        phy_cas_equivalent(env->cas, input, result, &decision);
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (decision == PHY_CAS_ZERO) {
+        return PHY_OK;
+    }
+    return decision == PHY_CAS_UNKNOWN
+               ? PHY_ERR_UNSUPPORTED
+               : PHY_ERR_CORRUPT_DOCUMENT;
 }
 
 phy_status phy_eval_command(phy_env *env, const phy_source_command *command,
@@ -658,14 +702,15 @@ phy_status phy_eval_command(phy_env *env, const phy_source_command *command,
     env->pending_name = PHY_IR_NO_SYMBOL;
 
     /*
-     * FullSimplify of a typed object passes it through like Simplify does:
-     * the object's components are already in normal form, and refusing
+     * Simplify/FullSimplify of a typed object pass it through: the object's
+     * components are already in normal form, and refusing
      * FullSimplify[Ricci[c]] with a type error would punish the reader for
-     * asking politely.
+     * asking politely. Scalar values still traverse the common operation and
+     * verification path below.
      */
     if (status == PHY_OK && command->operation != PHY_SOURCE_ASSIGN &&
-        command->operation != PHY_SOURCE_SIMPLIFY &&
-        !(command->operation == PHY_SOURCE_FULL_SIMPLIFY &&
+        !((command->operation == PHY_SOURCE_SIMPLIFY ||
+           command->operation == PHY_SOURCE_FULL_SIMPLIFY) &&
           value.kind != PHY_VALUE_SCALAR)) {
         /*
          * Every remaining operation is scalar algebra. `Expand[M]` on a
@@ -677,6 +722,10 @@ phy_status phy_eval_command(phy_env *env, const phy_source_command *command,
             phy_ir_ref result = PHY_IR_NULL;
             status = apply_scalar_operation(env, command, value.as.scalar,
                                             &result);
+            if (status == PHY_OK) {
+                status = verify_scalar_operation(
+                    env, command->operation, value.as.scalar, result);
+            }
             if (status == PHY_OK) {
                 value.kind = PHY_VALUE_SCALAR;
                 value.as.scalar = result;

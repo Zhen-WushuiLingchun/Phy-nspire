@@ -324,7 +324,7 @@ its configured arenas.
 
 ## Verification
 
-`tests/test_eval.c`, 1,889 checks. The physics cases deliberately reproduce,
+`tests/test_eval.c`, 1,939 checks. The physics cases deliberately reproduce,
 through reader-facing source, results the backend suites already certify
 directly:
 
@@ -365,11 +365,11 @@ The ARM link check is `make eval-link-check` and
 stack behind one dispatcher, and the same no-float/no-libm/no-soft-float
 standard the CAS and geometry layers are held to. It now links 45 portable
 sources, retains 15/15 public evaluator entry points, contains no forbidden
-float/libm/soft-float dependency, and packages as a 230,252-byte isolated
+float/libm/soft-float dependency, and packages as a 242,540-byte isolated
 probe. That probe size includes its dependencies and is not an incremental
 product-size measurement.
 
 One consequence of this phase that the earlier link-check reports called out as
 future work has now happened: the application genuinely calls the geometry,
 Lie, Yang--Mills, and QFT layers, so `--gc-sections` no longer drops them.
-`dist/phy-nspire.tns` is currently 1,165,169 bytes.
+`dist-foundation/phy-nspire.tns` is currently 1,173,026 bytes.

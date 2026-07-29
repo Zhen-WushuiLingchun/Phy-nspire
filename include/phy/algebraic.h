@@ -132,6 +132,31 @@ phy_status phy_real_algebraic_reciprocal(
     const phy_real_algebraic *value, phy_real_algebraic **out_value);
 
 /*
+ * Resultant-closed exact real algebraic arithmetic.
+ *
+ * Both operands must belong to the same context. Non-rational pairs are
+ * eliminated exactly, the resultant is reduced to its square-free primitive
+ * part, and interval refinement selects one certified real root. Degree,
+ * coefficient, step, refinement, cancellation, and memory ceilings remain
+ * those of the algebraic/exact contexts. Failure is transactional.
+ */
+phy_status phy_real_algebraic_add(
+    const phy_real_algebraic *left, const phy_real_algebraic *right,
+    phy_real_algebraic **out_value);
+phy_status phy_real_algebraic_subtract(
+    const phy_real_algebraic *left, const phy_real_algebraic *right,
+    phy_real_algebraic **out_value);
+phy_status phy_real_algebraic_multiply(
+    const phy_real_algebraic *left, const phy_real_algebraic *right,
+    phy_real_algebraic **out_value);
+phy_status phy_real_algebraic_divide(
+    const phy_real_algebraic *left, const phy_real_algebraic *right,
+    phy_real_algebraic **out_value);
+phy_status phy_real_algebraic_pow_i32(
+    const phy_real_algebraic *base, int32_t exponent,
+    phy_real_algebraic **out_value);
+
+/*
  * Bisect the certified interval. If a midpoint is the exact root, the interval
  * becomes that rational point. Failure leaves the old interval unchanged.
  */

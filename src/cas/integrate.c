@@ -95,6 +95,94 @@ static phy_status integrate_sum(phy_cas *cas, phy_ir_ref expr,
     return status;
 }
 
+static bool monomial_degree(phy_cas *cas, phy_ir_ref expression,
+                            phy_ir_ref var, unsigned *out_degree)
+{
+    if (expression == var) {
+        *out_degree = 1u;
+        return true;
+    }
+    int64_t exponent = 0;
+    if (phy_ir_kind_of(cas->ir, expression) == PHY_IR_POW &&
+        phy_ir_child(cas->ir, expression, 0u) == var &&
+        phy_ir_integer_value(
+            cas->ir, phy_ir_child(cas->ir, expression, 1u),
+            &exponent) &&
+        exponent >= 0 && exponent <= 12) {
+        *out_degree = (unsigned)exponent;
+        return true;
+    }
+    return false;
+}
+
+static bool integration_by_parts_function(phy_cas *cas,
+                                          phy_ir_ref expression)
+{
+    const phy_cas_function function =
+        phy_cas_function_of(cas, expression);
+    return function == PHY_CAS_FN_EXP ||
+           function == PHY_CAS_FN_SIN ||
+           function == PHY_CAS_FN_COS ||
+           function == PHY_CAS_FN_SINH ||
+           function == PHY_CAS_FN_COSH;
+}
+
+/*
+ * Repeated exact integration by parts:
+ *   integral x^n f dx = x^n A - n integral x^(n-1) A dx,
+ * where A is the already-certified primitive of f.  The elementary families
+ * admitted above stay in the same finite cycle, so n is a strict recursion
+ * bound rather than an open-ended heuristic.
+ */
+static phy_status integrate_monomial_times_elementary(
+    phy_cas *cas, unsigned degree, phy_ir_ref dependent,
+    phy_ir_ref var, phy_ir_ref *out_ref)
+{
+    phy_ir_ref primitive = PHY_IR_NULL;
+    phy_status status =
+        phy_cas_integrate_node(cas, dependent, var, &primitive);
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (degree == 0u) {
+        *out_ref = primitive;
+        return PHY_OK;
+    }
+
+    phy_ir_ref degree_ref =
+        phy_ir_integer(cas->ir, (int64_t)degree);
+    if (degree_ref == PHY_IR_NULL) {
+        return phy_cas_ir_failure(cas);
+    }
+    phy_ir_ref power = PHY_IR_NULL;
+    status = phy_cas_pow_node(cas, var, degree_ref, &power);
+    phy_ir_ref leading = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        const phy_ir_ref factors[2] = {power, primitive};
+        status = phy_cas_mul_node(cas, factors, 2u, &leading);
+    }
+    phy_ir_ref tail = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = integrate_monomial_times_elementary(
+            cas, degree - 1u, primitive, var, &tail);
+    }
+    phy_ir_ref scaled_tail = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        const phy_ir_ref factors[2] = {degree_ref, tail};
+        status = phy_cas_mul_node(
+            cas, factors, 2u, &scaled_tail);
+    }
+    if (status == PHY_OK) {
+        phy_ir_ref negative = PHY_IR_NULL;
+        status = phy_cas_neg_node(cas, scaled_tail, &negative);
+        if (status == PHY_OK) {
+            const phy_ir_ref terms[2] = {leading, negative};
+            status = phy_cas_add_node(cas, terms, 2u, out_ref);
+        }
+    }
+    return status;
+}
+
 static phy_status integrate_product(phy_cas *cas, phy_ir_ref expr,
                                     phy_ir_ref var, phy_ir_ref *out_ref)
 {
@@ -103,7 +191,7 @@ static phy_status integrate_product(phy_cas *cas, phy_ir_ref expr,
     size_t constants = 0u;
     phy_status status = phy_cas_scratch_alloc(cas, count, &constants);
     size_t constant_count = 0u;
-    phy_ir_ref dependent = PHY_IR_NULL;
+    phy_ir_ref dependent[2] = {PHY_IR_NULL, PHY_IR_NULL};
     size_t dependent_count = 0u;
 
     for (size_t index = 0u; index < count && status == PHY_OK; ++index) {
@@ -114,7 +202,9 @@ static phy_status integrate_product(phy_cas *cas, phy_ir_ref expr,
             break;
         }
         if (varies) {
-            dependent = factor;
+            if (dependent_count < 2u) {
+                dependent[dependent_count] = factor;
+            }
             dependent_count++;
         } else {
             phy_cas_scratch_at(cas, constants)[constant_count++] = factor;
@@ -127,11 +217,40 @@ static phy_status integrate_product(phy_cas *cas, phy_ir_ref expr,
         status = phy_cas_mul_at(cas, constants, constant_count, &coefficient);
         if (status == PHY_OK) {
             status =
-                phy_cas_integrate_node(cas, dependent, var, &integrated);
+            phy_cas_integrate_node(cas, dependent[0], var, &integrated);
         }
         if (status == PHY_OK) {
             const phy_ir_ref factors[2] = {coefficient, integrated};
             status = phy_cas_mul_node(cas, factors, 2u, out_ref);
+        }
+    } else if (status == PHY_OK && dependent_count == 2u) {
+        unsigned degree = 0u;
+        phy_ir_ref elementary = PHY_IR_NULL;
+        if (monomial_degree(cas, dependent[0], var, &degree) &&
+            integration_by_parts_function(cas, dependent[1])) {
+            elementary = dependent[1];
+        } else if (monomial_degree(
+                       cas, dependent[1], var, &degree) &&
+                   integration_by_parts_function(cas, dependent[0])) {
+            elementary = dependent[0];
+        }
+        if (elementary != PHY_IR_NULL) {
+            phy_ir_ref integrated = PHY_IR_NULL;
+            status = integrate_monomial_times_elementary(
+                cas, degree, elementary, var, &integrated);
+            if (status == PHY_OK) {
+                phy_ir_ref coefficient = PHY_IR_NULL;
+                status = phy_cas_mul_at(
+                    cas, constants, constant_count, &coefficient);
+                if (status == PHY_OK) {
+                    const phy_ir_ref factors[2] = {
+                        coefficient, integrated};
+                    status = phy_cas_mul_node(
+                        cas, factors, 2u, out_ref);
+                }
+            }
+        } else {
+            status = defer_integral(cas, expr, var, out_ref);
         }
     } else if (status == PHY_OK) {
         status = defer_integral(cas, expr, var, out_ref);
@@ -621,6 +740,22 @@ phy_status phy_cas_integrate_node(phy_cas *cas, phy_ir_ref expr,
     return PHY_OK;
 }
 
+static bool contains_deferred_integral(const phy_cas *cas, phy_ir_ref expr)
+{
+    if (phy_ir_kind_of(cas->ir, expr) == PHY_IR_FUNCTION &&
+        phy_ir_head(cas->ir, expr) == cas->fn_integrate) {
+        return true;
+    }
+    const size_t count = phy_ir_child_count(cas->ir, expr);
+    for (size_t index = 0u; index < count; ++index) {
+        if (contains_deferred_integral(
+                cas, phy_ir_child(cas->ir, expr, index))) {
+            return true;
+        }
+    }
+    return false;
+}
+
 phy_status phy_cas_integrate(phy_cas *cas, phy_ir_ref expr, phy_ir_ref var,
                              phy_ir_ref *out_ref)
 {
@@ -641,9 +776,45 @@ phy_status phy_cas_integrate(phy_cas *cas, phy_ir_ref expr, phy_ir_ref var,
         return PHY_ERR_TYPE;
     }
     phy_ir_ref reduced = PHY_IR_NULL;
-    const phy_status status =
+    phy_status status =
         phy_cas_simplify_node(cas, expr, &reduced);
-    return status == PHY_OK
-               ? phy_cas_integrate_node(cas, reduced, var, out_ref)
-               : status;
+    phy_ir_ref candidate = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = phy_cas_integrate_node(
+            cas, reduced, var, &candidate);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (!contains_deferred_integral(cas, candidate)) {
+        phy_ir_ref derivative = PHY_IR_NULL;
+        phy_ir_ref negative_integrand = PHY_IR_NULL;
+        phy_ir_ref difference = PHY_IR_NULL;
+        status = phy_cas_diff_node(cas, candidate, var, &derivative);
+        if (status == PHY_OK) {
+            status = phy_cas_neg_node(
+                cas, reduced, &negative_integrand);
+        }
+        if (status == PHY_OK) {
+            const phy_ir_ref terms[2] = {
+                derivative, negative_integrand};
+            status = phy_cas_add_node(
+                cas, terms, 2u, &difference);
+        }
+        phy_cas_decision verified = PHY_CAS_UNKNOWN;
+        if (status == PHY_OK) {
+            status = phy_cas_decide_zero_node(
+                cas, difference, &verified);
+        }
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (verified != PHY_CAS_ZERO) {
+            return verified == PHY_CAS_UNKNOWN
+                       ? PHY_ERR_UNSUPPORTED
+                       : PHY_ERR_CORRUPT_DOCUMENT;
+        }
+    }
+    *out_ref = candidate;
+    return PHY_OK;
 }
