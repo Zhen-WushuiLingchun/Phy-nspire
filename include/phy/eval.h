@@ -230,6 +230,14 @@ typedef struct {
 /* Stable, allocation-free spelling of a kind. Never returns NULL. */
 const char *phy_value_kind_name(phy_value_kind kind);
 
+/*
+ * Complete reader-facing evaluator registry.  The command palette tests use
+ * this rather than maintaining a second hand-written list, so adding a native
+ * operation without a discoverable MENU entry fails the build.
+ */
+size_t phy_eval_head_count(void);
+const char *phy_eval_head_name(size_t index);
+
 /* ------------------------------------------------------------- environment */
 
 /*

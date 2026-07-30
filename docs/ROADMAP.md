@@ -29,8 +29,8 @@ Verification:
   source language, drawing, notebook, the stateful evaluator, IR, tensor
   storage, differential forms, GR, Lie/QFT foundations, CAS, QFT oracle, and
   full lifecycle: last strict Windows baseline 44/44, current WSL
-  ASan/leak and UBSan 46/46 each, and 309,529 explicit checks;
-- generated `.tns` size report — 1,221,725 bytes, 19.4% of the 6 MiB ceiling,
+  GCC, ASan/leak, and UBSan 46/46 each, and 337,746 explicit checks;
+- generated `.tns` size report — 1,222,416 bytes, 19.4% of the 6 MiB ceiling,
   with the current evaluator and physics stack linked;
 - launch of a Phy-nspire artifact on the real CX II — done on 2026-07-26 with
   the observable CAS smoke screen;
@@ -147,9 +147,9 @@ observable `phy-cas-smoke.tns` then ran seven symbolic cases on the physical
 CX II on 2026-07-26, displayed 7/7 PASS, and returned cleanly to Documents.
 
 The evaluator's real Ndless check now compiles 66 portable sources, retains
-15/15 public evaluator entry points, packages a 330,756-byte isolated probe,
+17/17 public evaluator entry points, packages a 330,816-byte isolated probe,
 and contains no float formatter, libm call, or ARM soft-float helper. The
-product is 1,221,725 bytes. The independent SU(N) colour probe retains 23/23
+product is 1,222,416 bytes. The independent SU(N) colour probe retains 23/23
 public APIs, 4,924 bytes of layer text, and packages to 52,764 bytes under the
 same no-float rule. These establish ARM link/package and size, not
 physical-device runtime or performance.

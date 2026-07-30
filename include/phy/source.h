@@ -98,6 +98,14 @@ phy_status phy_source_parse(phy_ir_context *ir, const char *source,
                             phy_source_command *out_command,
                             size_t *out_error_offset);
 
+/*
+ * Implemented top-level source commands, excluding the reserved commands that
+ * deliberately return PHY_ERR_UNSUPPORTED.  This is also the MENU coverage
+ * contract.
+ */
+size_t phy_source_supported_command_count(void);
+const char *phy_source_supported_command_name(size_t index);
+
 #ifdef __cplusplus
 }
 #endif

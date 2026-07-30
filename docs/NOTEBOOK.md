@@ -83,14 +83,17 @@ instead shrinks and then pans like a wide output card.
 
 Inside edit mode, `MENU` opens a context-sensitive insertion palette. Math
 cells expose only reader commands and functions already accepted by the
-current evaluator — `test_palette` parses every one of them — grouped as
-Algebra, Functions, Calculus/Syntax, Tensor/Indices, Differential Geometry, and
-Lie/QFT Objects.
+current evaluator. They are grouped as Algebra, Functions, Calculus/Syntax,
+Linear Algebra, Tensor/Indices, Differential Geometry, Lie/Yang-Mills, General
+Relativity, QFT/Colour, and Queries/State. `test_palette` checks that all 109
+registered evaluator heads and all 18 supported source commands occur in at
+least one insertion snippet, and parses every snippet.
 Markdown bodies expose nMarkdown-backed LaTeX templates for layout, calculus,
-Greek letters, accents/styles, and matrices. Left/right changes category,
-up/down selects, and Enter or a touch on a row inserts the template with the
-cursor in its first argument slot. Outside edit mode, `MENU` remains the file
-menu.
+Greek letters, accents/styles, and matrices. Left/right changes category and
+up/down selects through a seven-row viewport; `^` and `v` show that more rows
+exist. Enter or a touch on a visible row inserts the template with the cursor
+in its first argument slot. Keyboard selection and pointer hit testing share
+the same scroll window. Outside edit mode, `MENU` remains the file menu.
 
 The touchpad is relative. A new finger contact establishes a motion origin and
 does not teleport the cursor; movement continues from the last screen
@@ -164,8 +167,9 @@ extended work rather than appending a long calculation to the acceptance tour.
 - `test_eval`: 2,963 checks over the stateful evaluator, including the notebook
   integration — state flowing between cells, descriptor outputs, forward
   staleness, and a save/reopen that restores descriptors but not objects;
-- `test_palette`: 1,208 checks over every category, entry, snippet, and cursor
-  bound, and over every CAS snippet actually parsing;
+- `test_palette`: 29,408 checks over every category, entry, snippet, cursor
+  bound, registry-completeness rule, and scrolling window, and over every CAS
+  snippet actually parsing;
 - `test_formula`: 62 checks over lifecycle, metrics, matrices, RGB565 drawing,
   and malformed-formula recovery;
 - `test_source`: 443 checks over the permanent reader-facing grammar, the
@@ -173,9 +177,9 @@ extended work rather than appending a long calculation to the acceptance tour.
 - `test_pointer`: 29 checks over relative contact/motion behavior;
 - `test_modifier`: 8 checks over tapped and held Shift/Ctrl behavior;
 - `tests/fixtures/notebook_frame.digest`: bit-exact 320 × 240 host fixture;
-- last strict Windows baseline: 44/44; current WSL ASan/leak and UBSan suites:
-  46/46 each; 309,529 explicit checks;
-- Ndless r2022 ARM build: 1,221,725 bytes. The evaluator probe retains 15/15
+- last strict Windows baseline: 44/44; current WSL GCC, ASan/leak, and UBSan
+  suites: 46/46 each; 337,746 explicit checks;
+- Ndless r2022 ARM build: 1,222,416 bytes. The evaluator probe retains 17/17
   public APIs behind the complete physics stack and imports no forbidden
   float/libm/soft-float helper.
 

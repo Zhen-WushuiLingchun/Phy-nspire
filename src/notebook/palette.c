@@ -193,16 +193,21 @@ static const phy_palette_entry kCasGeometry[] = {
     {"Vanishing decision", "ZeroQ[a]", sizeof("ZeroQ[") - 1u},
 };
 
-static const phy_palette_entry kCasLieQft[] = {
+static const phy_palette_entry kCasLieYm[] = {
     {"Built-in Lie group", "G = LieGroup[SU2]",
      sizeof("G = LieGroup[") - 1u},
     {"Lie algebra of group", "su = LieAlgebra[G]",
      sizeof("su = LieAlgebra[") - 1u},
     {"Basis generator", "Generator[su,0]", sizeof("Generator[") - 1u},
+    {"Lie algebra element", "e = LieElement[su,{1,0,0}]",
+     sizeof("e = LieElement[") - 1u},
     {"Lie bracket", "LieBracket[X,Y]", sizeof("LieBracket[") - 1u},
     {"Structure constant", "StructureConstant[su,0,1,2]",
      sizeof("StructureConstant[") - 1u},
     {"Killing form", "Killing[su,0,0]", sizeof("Killing[") - 1u},
+    {"Lie-algebra-valued form",
+     "w = LieForm[su,M,1,{{0,0,0,0},{0,0,0,0},{0,0,0,0}}]",
+     sizeof("w = LieForm[") - 1u},
     {"Gauge connection", "A = GaugeConnection[su,M,{{0,0},{0,0},{0,0}}]",
      sizeof("A = GaugeConnection[") - 1u},
     {"Field strength", "F = FieldStrength[A,g]",
@@ -211,12 +216,26 @@ static const phy_palette_entry kCasLieQft[] = {
      sizeof("CovariantD[") - 1u},
     {"Gauge variation", "GaugeVariation[A,al,g]",
      sizeof("GaugeVariation[") - 1u},
-    {"Bianchi residual", "ZeroQ[Bianchi[A,g]]",
-     sizeof("ZeroQ[Bianchi[") - 1u},
+    {"Bianchi residual", "Bianchi[A,g]",
+     sizeof("Bianchi[") - 1u},
     {"Yang-Mills density", "YangMillsLagrangian[F,g]",
      sizeof("YangMillsLagrangian[") - 1u},
+    {"Colour component", "ColorComponent[F,0]",
+     sizeof("ColorComponent[") - 1u},
+};
+
+static const phy_palette_entry kCasGr[] = {
     {"Curvature bundle", "c = Curvature[g]", sizeof("c = Curvature[") - 1u},
+    {"Inverse metric", "InverseMetric[c]", sizeof("InverseMetric[") - 1u},
+    {"Christoffel symbols", "Christoffel[c]",
+     sizeof("Christoffel[") - 1u},
+    {"Covariant Riemann tensor", "Riemann[c]",
+     sizeof("Riemann[") - 1u},
+    {"Mixed Riemann tensor", "RiemannMixed[c]",
+     sizeof("RiemannMixed[") - 1u},
+    {"Ricci tensor", "Ricci[c]", sizeof("Ricci[") - 1u},
     {"Ricci scalar", "RicciScalar[c]", sizeof("RicciScalar[") - 1u},
+    {"Einstein tensor", "Einstein[c]", sizeof("Einstein[") - 1u},
     {"Kretschmann invariant", "Kretschmann[c]",
      sizeof("Kretschmann[") - 1u},
     {"Weyl tensor", "Weyl[c]", sizeof("Weyl[") - 1u},
@@ -233,10 +252,15 @@ static const phy_palette_entry kCasLieQft[] = {
      sizeof("gr = GRComponents[") - 1u},
     {"Curvature index space", "V = GRSpace[gr]",
      sizeof("V = GRSpace[") - 1u},
+    {"Curvature component basis", "egr = GRBasis[gr]",
+     sizeof("egr = GRBasis[") - 1u},
     {"Curvature abstract head", "Ric = GRHead[gr,Ricci]",
      sizeof("Ric = GRHead[") - 1u},
     {"Curvature realization", "Rc = GRTensor[gr,Ricci]",
      sizeof("Rc = GRTensor[") - 1u},
+};
+
+static const phy_palette_entry kCasQftColor[] = {
     {"QFT abstract/component system", "qft = QFTSystem[3]",
      sizeof("qft = QFTSystem[") - 1u},
     {"QFT index space", "L = QFTSpace[qft,Lorentz]",
@@ -292,6 +316,22 @@ static const phy_palette_entry kCasLieQft[] = {
      sizeof("SUNAdjointCasimir[") - 1u},
 };
 
+static const phy_palette_entry kCasQueriesState[] = {
+    {"Set variable", "Set[x,0]", sizeof("Set[x,") - 1u},
+    {"Clear variable", "Clear[x]", sizeof("Clear[") - 1u},
+    {"Clear entire environment", "ClearAll[]",
+     sizeof("ClearAll[") - 1u},
+    {"Component of object", "Component[a,0]", sizeof("Component[") - 1u},
+    {"Form degree", "Degree[a]", sizeof("Degree[") - 1u},
+    {"Object dimension", "Dimension[M]", sizeof("Dimension[") - 1u},
+    {"Shape", "Dimensions[A]", sizeof("Dimensions[") - 1u},
+    {"Tensor rank", "Rank[T]", sizeof("Rank[") - 1u},
+    {"Vanishing decision", "ZeroQ[x]", sizeof("ZeroQ[") - 1u},
+    {"Equivalence decision", "EquivalentQ[x,y]",
+     sizeof("EquivalentQ[") - 1u},
+    {"Memory usage", "MemoryStatus[]", sizeof("MemoryStatus[") - 1u},
+};
+
 static const palette_category kCasCategories[] = {
     {"Algebra", kCasAlgebra, ARRAY_COUNT(kCasAlgebra)},
     {"Functions", kCasFunctions, ARRAY_COUNT(kCasFunctions)},
@@ -299,7 +339,10 @@ static const palette_category kCasCategories[] = {
     {"Linear Algebra", kCasLinear, ARRAY_COUNT(kCasLinear)},
     {"Tensor/Indices", kCasPhysics, ARRAY_COUNT(kCasPhysics)},
     {"Differential Geometry", kCasGeometry, ARRAY_COUNT(kCasGeometry)},
-    {"Lie/QFT Objects", kCasLieQft, ARRAY_COUNT(kCasLieQft)},
+    {"Lie/Yang-Mills", kCasLieYm, ARRAY_COUNT(kCasLieYm)},
+    {"General Relativity", kCasGr, ARRAY_COUNT(kCasGr)},
+    {"QFT/Colour", kCasQftColor, ARRAY_COUNT(kCasQftColor)},
+    {"Queries/State", kCasQueriesState, ARRAY_COUNT(kCasQueriesState)},
 };
 
 static const phy_palette_entry kLatexLayout[] = {
@@ -422,4 +465,17 @@ bool phy_palette_get(phy_palette_kind kind, size_t category, size_t entry,
     }
     *out_entry = items[category].entries[entry];
     return true;
+}
+
+size_t phy_palette_first_visible(phy_palette_kind kind, size_t category,
+                                 size_t selected, size_t visible_count)
+{
+    const size_t count = phy_palette_entry_count(kind, category);
+    if (count == 0u || visible_count == 0u) {
+        return 0u;
+    }
+    if (selected >= count) {
+        selected = count - 1u;
+    }
+    return selected < visible_count ? 0u : selected - visible_count + 1u;
 }

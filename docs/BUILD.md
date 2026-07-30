@@ -172,12 +172,18 @@ installed.
 7. Touch an input body and edit it with letters, digits, arithmetic keys,
    parentheses, arrows, and `DEL`. `RUN`/`ENTER` must execute the visible
    source, and a parse failure must preserve it.
-8. Use the footer `+MD` and `+Math` buttons. Confirm the new cell is selected
+8. While editing a Math cell, press `MENU`. Use left/right to visit all ten
+   categories and up/down to scroll their seven-row viewport. In particular,
+   confirm `General Relativity`, `QFT/Colour`, and the final `Queries/State`
+   category are visible; press up on its first row to wrap to the last
+   `MemoryStatus[]` entry and confirm it is visible at the bottom. Touching a
+   visible row must insert that same row's template.
+9. Use the footer `+MD` and `+Math` buttons. Confirm the new cell is selected
    and enters edit mode; insert enough cells to make selection scroll.
-9. Open `FILE`, save a notebook, create a new blank notebook, then open the
+10. Open `FILE`, save a notebook, create a new blank notebook, then open the
    saved document. Confirm the source, cell kinds, outputs, and selection
    round-trip.
-10. Press `ESC` once to leave edit mode and again to return to Documents.
+11. Press `ESC` once to leave edit mode and again to return to Documents.
 
 The exit is the part that matters most. After `ESC` the Documents browser must
 come back rendering normally. The separate Phase 0 RGB/pointer diagnostic is
@@ -219,15 +225,15 @@ on 2026-07-30:
   probe package;
 - SU(N) colour: 23/23 APIs retained, 4,924 bytes of layer text, 52,764-byte
   probe package;
-- evaluator plus complete backend stack: 15/15 public evaluator APIs retained
-  from 66 portable sources, 52,423 bytes of evaluator text, 330,756-byte
+- evaluator plus complete backend stack: 17/17 public evaluator APIs retained
+  from 66 portable sources, 52,455 bytes of evaluator text, 330,816-byte
   isolated probe;
 - QFT abstract/component bridge: 13/13 APIs retained from 47 portable sources,
   2,940 bytes of bridge text, 94,952-byte isolated probe;
 - all five isolated probes contain no float formatter, libm call, or ARM
   soft-float helper.
 
-A clean product build from the same source is 1,221,725 bytes (19.4% of the
+A clean product build from the same source is 1,222,416 bytes (19.4% of the
 6 MiB ceiling). The product includes nMarkdown/FreeType/HarfBuzz and therefore
 has different retained dependencies from the exact isolated probes; the
 no-float statement above is specifically a property of those native symbolic

@@ -60,6 +60,31 @@ static const command_descriptor kCommands[] = {
     {"TrigFactor", PHY_SOURCE_SIMPLIFY, false, false},
 };
 
+size_t phy_source_supported_command_count(void)
+{
+    size_t count = 0u;
+    for (size_t i = 0u; i < sizeof kCommands / sizeof kCommands[0]; ++i) {
+        if (kCommands[i].supported) {
+            ++count;
+        }
+    }
+    return count;
+}
+
+const char *phy_source_supported_command_name(size_t index)
+{
+    for (size_t i = 0u; i < sizeof kCommands / sizeof kCommands[0]; ++i) {
+        if (!kCommands[i].supported) {
+            continue;
+        }
+        if (index == 0u) {
+            return kCommands[i].name;
+        }
+        --index;
+    }
+    return NULL;
+}
+
 static void skip_space(source_reader *reader)
 {
     while (reader->at < reader->length &&

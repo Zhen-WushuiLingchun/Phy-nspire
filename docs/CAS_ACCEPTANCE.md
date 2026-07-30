@@ -62,9 +62,11 @@ operation.
 ## Automated evidence
 
 - Last Windows strict build and CTest: 44/44.
-- Current WSL ASan/leak and UBSan runs: 46/46 each.
-- Assertion-bearing tests: 309,529 checks.
-- Ndless r2022 ARM product: 1,221,725 bytes, 19.4% of the 6 MiB ceiling.
+- Current WSL GCC, ASan/leak, and UBSan runs: 46/46 each.
+- Assertion-bearing executables: 337,746 checks.
+- Notebook MENU completeness: all 109 evaluator heads and all 18 supported
+  source commands are present in ten scrollable CAS categories.
+- Ndless r2022 ARM product: 1,222,416 bytes, 19.4% of the 6 MiB ceiling.
 - Isolated exact-number ARM probe: 68/68 public APIs, 17,680 bytes of exact
   number text, 23,540-byte package, and no forbidden numeric dependency.
 - Isolated real-algebraic ARM probe: 28/28 public APIs, 24,256 bytes of
@@ -72,8 +74,8 @@ operation.
 - Isolated CAS ARM probe: 35/35 public APIs, 109,160 bytes of CAS text,
   154,996-byte package, and no float formatter, libm call, or ARM soft-float
   helper.
-- Isolated evaluator ARM probe: 15/15 public APIs, 52,423 bytes of evaluator
-  text, 330,756-byte package, and no float formatter, libm call, or ARM
+- Isolated evaluator ARM probe: 17/17 public APIs, 52,455 bytes of evaluator
+  text, 330,816-byte package, and no float formatter, libm call, or ARM
   soft-float helper.
 - Isolated QFT abstract/component bridge probe: 13/13 public APIs, 2,940
   bytes of bridge text, 94,952-byte package, and the same no-float guarantee.
@@ -83,12 +85,14 @@ do not establish calculator interaction, timing, or heap headroom until the
 exact artifacts are opened and exercised on the physical CX II.
 
 On 2026-07-30 the repository CLI atomically deployed and read back the exact
-1,221,725-byte program (SHA-256
-`2fe57c30612daba926ebefd59f0367bae2f111faa97b8190fee6600d4ce781cc`) and
-12,200-byte tour (SHA-256
-`7afc7af56676fd6fe487225ac0c59b5e0507d861f4d7a26530c99c840eb06a9d`).
-It removed both rollback copies and confirmed `examples/` empty. This proves
-transport integrity only; calculator open/run acceptance remains pending.
+1,222,416-byte program (SHA-256
+`89d177b3ff56d5fd9addc8c9b5d86c783a1cbeeb17a92338e84ecf4baabdde15`).
+It removed the program rollback copy. The unchanged 12,200-byte tour already
+on the device has SHA-256
+`7afc7af56676fd6fe487225ac0c59b5e0507d861f4d7a26530c99c840eb06a9d`;
+the earlier sync also removed its rollback copy and confirmed `examples/`
+empty. This proves transport integrity only; calculator open/run acceptance
+remains pending.
 
 ## Explicit non-features
 

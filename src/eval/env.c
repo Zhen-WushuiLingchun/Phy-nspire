@@ -69,6 +69,16 @@ static const char *const kEvalHeadNames[EVAL_HEAD_COUNT] = {
     "ZeroQ",        "EquivalentQ",      "MemoryStatus",
 };
 
+size_t phy_eval_head_count(void)
+{
+    return (size_t)EVAL_HEAD_COUNT;
+}
+
+const char *phy_eval_head_name(size_t index)
+{
+    return index < (size_t)EVAL_HEAD_COUNT ? kEvalHeadNames[index] : NULL;
+}
+
 const char *phy_value_kind_name(phy_value_kind kind)
 {
     switch (kind) {

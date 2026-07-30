@@ -33,6 +33,8 @@ static void probe_environment(phy_env *env)
     sink(phy_env_lookup(env, "M", &value) ? 1u : 0u);
     sink((unsigned)phy_env_validate(env));
     sink(name != 0 ? 1u : 0u);
+    sink((unsigned)phy_eval_head_count());
+    sink(phy_eval_head_name(0u) != 0 ? 1u : 0u);
     phy_env_reset(env);
 }
 

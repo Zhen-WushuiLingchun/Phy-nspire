@@ -1,5 +1,6 @@
 #include <string.h>
 
+#include "phy/eval.h"
 #include "phy/palette.h"
 #include "phy/platform.h"
 #include "phy/source.h"
@@ -7,7 +8,7 @@
 
 static void test_catalog_bounds_and_representative_entries(void)
 {
-    PHY_CHECK_EQ_INT(phy_palette_category_count(PHY_PALETTE_CAS), 7);
+    PHY_CHECK_EQ_INT(phy_palette_category_count(PHY_PALETTE_CAS), 10);
     PHY_CHECK_EQ_INT(phy_palette_category_count(PHY_PALETTE_LATEX), 6);
     PHY_CHECK_EQ_STR(phy_palette_category_name(PHY_PALETTE_CAS, 0u),
                      "Algebra");
@@ -38,11 +39,122 @@ static void test_catalog_bounds_and_representative_entries(void)
     PHY_CHECK_EQ_STR(entry.snippet, "HodgeStar[a,g]");
     PHY_CHECK(phy_palette_get(PHY_PALETTE_CAS, 6u, 0u, &entry));
     PHY_CHECK_EQ_STR(entry.snippet, "G = LieGroup[SU2]");
-    PHY_CHECK(phy_palette_get(PHY_PALETTE_CAS, 6u, 7u, &entry));
+    PHY_CHECK(phy_palette_get(PHY_PALETTE_CAS, 6u, 9u, &entry));
     PHY_CHECK_EQ_STR(entry.snippet, "F = FieldStrength[A,g]");
+    PHY_CHECK_EQ_STR(phy_palette_category_name(PHY_PALETTE_CAS, 7u),
+                     "General Relativity");
+    PHY_CHECK_EQ_STR(phy_palette_category_name(PHY_PALETTE_CAS, 8u),
+                     "QFT/Colour");
+    PHY_CHECK_EQ_STR(phy_palette_category_name(PHY_PALETTE_CAS, 9u),
+                     "Queries/State");
+    PHY_CHECK_EQ_INT(phy_palette_entry_count(PHY_PALETTE_CAS, 9u), 11);
+    PHY_CHECK(phy_palette_get(PHY_PALETTE_CAS, 9u, 10u, &entry));
+    PHY_CHECK_EQ_STR(entry.snippet, "MemoryStatus[]");
     PHY_CHECK(!phy_palette_get(PHY_PALETTE_CAS, 20u, 0u, &entry));
     PHY_CHECK(!phy_palette_get(PHY_PALETTE_CAS, 0u, 20u, &entry));
     PHY_CHECK(!phy_palette_get(PHY_PALETTE_CAS, 0u, 0u, NULL));
+}
+
+static bool name_character(char character)
+{
+    return (character >= 'A' && character <= 'Z') ||
+           (character >= 'a' && character <= 'z') ||
+           (character >= '0' && character <= '9') || character == '_';
+}
+
+static bool snippet_calls(const char *snippet, const char *name)
+{
+    const size_t length = strlen(name);
+    const char *at = snippet;
+    while ((at = strstr(at, name)) != NULL) {
+        const bool left = at == snippet || !name_character(at[-1]);
+        if (left && at[length] == '[') {
+            return true;
+        }
+        ++at;
+    }
+    return false;
+}
+
+static bool cas_palette_mentions(const char *name)
+{
+    const size_t categories = phy_palette_category_count(PHY_PALETTE_CAS);
+    for (size_t category = 0u; category < categories; ++category) {
+        const size_t entries =
+            phy_palette_entry_count(PHY_PALETTE_CAS, category);
+        for (size_t item = 0u; item < entries; ++item) {
+            phy_palette_entry entry;
+            PHY_CHECK(phy_palette_get(
+                PHY_PALETTE_CAS, category, item, &entry));
+            if (snippet_calls(entry.snippet, name)) {
+                return true;
+            }
+        }
+    }
+    return false;
+}
+
+/*
+ * MENU is the reader's discovery surface.  The evaluator and source parser
+ * are authoritative registries; the palette is not allowed to drift behind
+ * either one.
+ */
+static void test_every_implemented_operation_is_discoverable(void)
+{
+    PHY_CHECK(phy_eval_head_count() > 100u);
+    for (size_t i = 0u; i < phy_eval_head_count(); ++i) {
+        const char *name = phy_eval_head_name(i);
+        PHY_CHECK(name != NULL);
+        if (!cas_palette_mentions(name)) {
+            fprintf(stderr, "  evaluator head missing from MENU: %s\n", name);
+        }
+        PHY_CHECK(cas_palette_mentions(name));
+    }
+    PHY_CHECK(phy_eval_head_name(phy_eval_head_count()) == NULL);
+
+    PHY_CHECK(phy_source_supported_command_count() > 10u);
+    for (size_t i = 0u; i < phy_source_supported_command_count(); ++i) {
+        const char *name = phy_source_supported_command_name(i);
+        PHY_CHECK(name != NULL);
+        if (!cas_palette_mentions(name)) {
+            fprintf(stderr, "  source command missing from MENU: %s\n", name);
+        }
+        PHY_CHECK(cas_palette_mentions(name));
+    }
+    PHY_CHECK(
+        phy_source_supported_command_name(
+            phy_source_supported_command_count()) == NULL);
+}
+
+static void test_scrolling_window_keeps_every_selection_visible(void)
+{
+    const phy_palette_kind kinds[] = {PHY_PALETTE_CAS, PHY_PALETTE_LATEX};
+    const size_t visible = 7u;
+    for (size_t kind = 0u; kind < sizeof kinds / sizeof kinds[0]; ++kind) {
+        const size_t categories = phy_palette_category_count(kinds[kind]);
+        for (size_t category = 0u; category < categories; ++category) {
+            const size_t count =
+                phy_palette_entry_count(kinds[kind], category);
+            for (size_t selected = 0u; selected < count; ++selected) {
+                const size_t first = phy_palette_first_visible(
+                    kinds[kind], category, selected, visible);
+                PHY_CHECK(first <= selected);
+                PHY_CHECK(selected < first + visible);
+                PHY_CHECK(first < count);
+                PHY_CHECK(first + visible <= count || first == 0u);
+            }
+            if (count > visible) {
+                PHY_CHECK_EQ_INT(
+                    phy_palette_first_visible(
+                        kinds[kind], category, count - 1u, visible),
+                    count - visible);
+            }
+        }
+    }
+    PHY_CHECK_EQ_INT(
+        phy_palette_first_visible(PHY_PALETTE_CAS, 0u, 5u, 0u), 0);
+    PHY_CHECK_EQ_INT(
+        phy_palette_first_visible(PHY_PALETTE_CAS, 999u, 5u, visible), 0);
 }
 
 static void test_every_cursor_is_inside_its_snippet(void)
@@ -112,6 +224,8 @@ int main(void)
 {
     PHY_TEST_CASE(test_catalog_bounds_and_representative_entries);
     PHY_TEST_CASE(test_every_cursor_is_inside_its_snippet);
+    PHY_TEST_CASE(test_every_implemented_operation_is_discoverable);
+    PHY_TEST_CASE(test_scrolling_window_keeps_every_selection_visible);
     PHY_TEST_CASE(test_every_cas_snippet_parses);
     return PHY_TEST_REPORT("test_palette");
 }
