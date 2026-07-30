@@ -61,12 +61,12 @@ operation.
 
 ## Automated evidence
 
-- Last Windows strict build and CTest: 44/44.
-- Current WSL GCC, ASan/leak, and UBSan runs: 46/46 each.
-- Assertion-bearing executables: 337,746 checks.
+- Last Windows strict build and CTest: 45/45.
+- Current WSL GCC, ASan/leak, and UBSan runs: 47/47 each.
+- Assertion-bearing executables: 337,894 checks.
 - Notebook MENU completeness: all 109 evaluator heads and all 18 supported
   source commands are present in ten scrollable CAS categories.
-- Ndless r2022 ARM product: 1,222,416 bytes, 19.4% of the 6 MiB ceiling.
+- Ndless r2022 ARM product: 1,224,221 bytes, 19.5% of the 6 MiB ceiling.
 - Isolated exact-number ARM probe: 68/68 public APIs, 17,680 bytes of exact
   number text, 23,540-byte package, and no forbidden numeric dependency.
 - Isolated real-algebraic ARM probe: 28/28 public APIs, 24,256 bytes of
@@ -74,11 +74,11 @@ operation.
 - Isolated CAS ARM probe: 35/35 public APIs, 109,160 bytes of CAS text,
   154,996-byte package, and no float formatter, libm call, or ARM soft-float
   helper.
-- Isolated evaluator ARM probe: 17/17 public APIs, 52,455 bytes of evaluator
-  text, 330,816-byte package, and no float formatter, libm call, or ARM
+- Isolated evaluator ARM probe: 17/17 public APIs, 53,814 bytes of evaluator
+  text, 332,748-byte package, and no float formatter, libm call, or ARM
   soft-float helper.
-- Isolated QFT abstract/component bridge probe: 13/13 public APIs, 2,940
-  bytes of bridge text, 94,952-byte package, and the same no-float guarantee.
+- Isolated QFT abstract/component bridge probe: 14/14 public APIs, 3,152
+  bytes of bridge text, 94,880-byte package, and the same no-float guarantee.
 
 These results establish source, host, sanitizer, and ARM-link acceptance. They
 do not establish calculator interaction, timing, or heap headroom until the

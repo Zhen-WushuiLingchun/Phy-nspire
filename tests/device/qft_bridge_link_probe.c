@@ -50,6 +50,8 @@ int main(void)
              ? 1u
              : 0u);
     sink(phy_qft_component_view_holds(view, PHY_QFT_SUN_F) ? 1u : 0u);
+    sink((unsigned)phy_qft_component_view_materialize(
+        view, PHY_QFT_SUN_F));
     sink(phy_qft_component_view_tensor(view, PHY_QFT_SUN_F) != NULL ? 1u
                                                                    : 0u);
 

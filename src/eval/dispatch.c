@@ -358,7 +358,7 @@ static phy_status publish_many(phy_env *env, phy_value_kind kind,
     } else if (kind == PHY_VALUE_GR_COMPONENTS) {
         value.as.gr_components = (const phy_gr_component_view *)object;
     } else if (kind == PHY_VALUE_QFT_COMPONENTS) {
-        value.as.qft_components = (const phy_qft_component_view *)object;
+        value.as.qft_components = (phy_qft_component_view *)object;
     } else {
         return PHY_ERR_INVALID_ARGUMENT;
     }
@@ -1686,6 +1686,11 @@ static phy_status eval_qft_part(phy_env *env, phy_ir_ref expr, eval_head head,
             part.as.tensor_head = phy_qft_component_view_head(
                 view.as.qft_components, quantity);
         } else if (head == EVAL_HEAD_QFT_TENSOR) {
+            status = phy_qft_component_view_materialize(
+                view.as.qft_components, quantity);
+            if (status != PHY_OK) {
+                return status;
+            }
             part.kind = PHY_VALUE_COMPONENT_TENSOR;
             part.as.component_tensor = phy_qft_component_view_tensor(
                 view.as.qft_components, quantity);

@@ -261,6 +261,47 @@ private:
         return add(node, children);
     }
 
+    /*
+     * Render exact reciprocal powers as roots without changing the typed IR.
+     * General p/q powers deliberately remain scripts: rewriting those would
+     * imply branch assumptions that belong in the CAS, not the display layer.
+     */
+    bool reciprocal_power(phy_ir_ref exponent, bool& negative,
+                          std::string& degree) const
+    {
+        if (phy_ir_kind_of(context_, exponent) != PHY_IR_RATIONAL) {
+            return false;
+        }
+        phy_ir_exact_view exact{};
+        if (!phy_ir_exact_decimal_view(context_, exponent, &exact)) {
+            return false;
+        }
+        const std::string_view numerator(
+            exact.numerator, exact.numerator_length);
+        /*
+         * exact.denominator may point into `exact.storage`, so a string_view
+         * would dangle as soon as this helper returns. Own the few bytes; ASan
+         * correctly exposes the otherwise layout-dependent square-root bug.
+         */
+        degree.assign(exact.denominator, exact.denominator_length);
+        negative = numerator == "-1";
+        return (numerator == "1" || negative) && degree != "1";
+    }
+
+    MathNodeId radical(phy_ir_ref radicand, std::string_view degree,
+                       unsigned depth)
+    {
+        MathNode node;
+        node.kind = MathNodeKind::Radical;
+        node.atom_class = AtomClass::Inner;
+        const MathNodeId body = build(radicand, depth + 1U, 0);
+        if (degree == "2") {
+            return add(node, {body});
+        }
+        return add(node,
+                   {body, text(MathNodeKind::Symbol, degree)});
+    }
+
     int precedence(phy_ir_ref expression) const
     {
         switch (phy_ir_kind_of(context_, expression)) {
@@ -301,6 +342,15 @@ private:
             return kInvalidMathNode;
         }
         const std::string_view name(raw);
+        if (name == "I") {
+            /*
+             * The reader syntax follows Mathematica and reserves capital I,
+             * but mathematical typography writes the imaginary unit as an
+             * upright lower-case i.
+             */
+            return styled(
+                text(MathNodeKind::Symbol, "i"), MathVariant::Roman);
+        }
         const std::string_view displayed = display_symbol(name);
         if (displayed == name && !roman && name.size() > 1U &&
             name[0] == 'd') {
@@ -797,6 +847,20 @@ private:
                 phy_ir_child(context_, expression, 0U);
             const phy_ir_ref exponent_ref =
                 phy_ir_child(context_, expression, 1U);
+            bool negative_root = false;
+            std::string degree;
+            if (reciprocal_power(exponent_ref, negative_root, degree)) {
+                const MathNodeId root = radical(base_ref, degree, depth);
+                if (!negative_root) {
+                    return root;
+                }
+                MathNode fraction;
+                fraction.kind = MathNodeKind::Fraction;
+                fraction.atom_class = AtomClass::Inner;
+                return add(
+                    fraction,
+                    {text(MathNodeKind::Symbol, "1"), root});
+            }
             MathNodeId base = child_with_precedence(
                 base_ref, depth, kPrecedencePower, true);
             MathNodeId exponent = build(exponent_ref, depth + 1U, 0);

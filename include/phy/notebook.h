@@ -62,9 +62,10 @@ typedef enum {
  * Read-only snapshot. Text pointers remain valid until the notebook is
  * modified; callers should not retain them across add/evaluate calls.
  *
- * For an output cell `primary` is the descriptor of a typed physics object and
- * is empty for an ordinary scalar result, which is carried by `expression`
- * instead. Exactly one of the two is populated on a successful output.
+ * Successful outputs normally carry a typed mathematical `expression`.
+ * `primary` is retained only for backward-compatible documents containing an
+ * older physics-object descriptor, or as a final diagnostic fallback when no
+ * structured constructor exists.
  */
 typedef struct {
     phy_notebook_cell_kind kind;

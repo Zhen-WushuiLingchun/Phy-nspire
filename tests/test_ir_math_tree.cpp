@@ -1,0 +1,115 @@
+#include <string>
+
+#include "ir_math_tree.h"
+#include "phy/ir.h"
+#include "phy_test.h"
+
+namespace {
+
+using nmarkdown::MathNodeId;
+using nmarkdown::MathNodeKind;
+using nmarkdown::MathTree;
+using nmarkdown::MathVariant;
+
+MathTree build_tree(phy_ir_context *ir, const char *source)
+{
+    phy_ir_ref expression = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_ir_read(ir, source, &expression, nullptr), PHY_OK);
+    MathTree tree;
+    std::string diagnostic;
+    PHY_CHECK(phy_build_ir_math_tree(ir, expression, tree, diagnostic));
+    PHY_CHECK(diagnostic.empty());
+    PHY_CHECK(tree.root != nmarkdown::kInvalidMathNode);
+    return tree;
+}
+
+bool contains(const MathTree& tree, MathNodeKind kind)
+{
+    for (const nmarkdown::MathNode& node : tree.nodes) {
+        if (node.kind == kind) {
+            return true;
+        }
+    }
+    return false;
+}
+
+const nmarkdown::MathNode *first(
+    const MathTree& tree, MathNodeKind kind)
+{
+    for (const nmarkdown::MathNode& node : tree.nodes) {
+        if (node.kind == kind) {
+            return &node;
+        }
+    }
+    return nullptr;
+}
+
+MathNodeId child(
+    const MathTree& tree, const nmarkdown::MathNode& node, std::size_t index)
+{
+    if (index >= node.child_count ||
+        node.first_child + index >= tree.children.size()) {
+        return nmarkdown::kInvalidMathNode;
+    }
+    return tree.children[node.first_child + index];
+}
+
+void test_reciprocal_powers_have_radical_nodes()
+{
+    phy_ir_context *ir = phy_ir_context_create(nullptr);
+    PHY_CHECK(ir != nullptr);
+
+    MathTree tree = build_tree(ir, "(* 6 (^ 2 (rat 1 2)))");
+    const nmarkdown::MathNode *radical =
+        first(tree, MathNodeKind::Radical);
+    PHY_CHECK(radical != nullptr);
+    PHY_CHECK_EQ_INT(radical != nullptr ? radical->child_count : 0u, 1u);
+
+    tree = build_tree(ir, "(^ x (rat 1 3))");
+    radical = first(tree, MathNodeKind::Radical);
+    PHY_CHECK(radical != nullptr);
+    PHY_CHECK_EQ_INT(radical != nullptr ? radical->child_count : 0u, 2u);
+
+    tree = build_tree(ir, "(^ x (rat -1 2))");
+    PHY_CHECK_EQ_INT(
+        tree.nodes[tree.root].kind, MathNodeKind::Fraction);
+    radical = first(tree, MathNodeKind::Radical);
+    PHY_CHECK(radical != nullptr);
+
+    tree = build_tree(ir, "(^ x (rat 3 2))");
+    PHY_CHECK(!contains(tree, MathNodeKind::Radical));
+    PHY_CHECK_EQ_INT(tree.nodes[tree.root].kind, MathNodeKind::Scripts);
+
+    phy_ir_context_destroy(ir);
+}
+
+void test_imaginary_unit_is_upright_lowercase()
+{
+    phy_ir_context *ir = phy_ir_context_create(nullptr);
+    PHY_CHECK(ir != nullptr);
+    const MathTree tree = build_tree(ir, "I");
+
+    PHY_CHECK_EQ_INT(tree.nodes[tree.root].kind, MathNodeKind::Styled);
+    PHY_CHECK_EQ_INT(
+        tree.nodes[tree.root].aux,
+        static_cast<unsigned>(MathVariant::Roman));
+    const MathNodeId symbol_id = child(tree, tree.nodes[tree.root], 0u);
+    PHY_CHECK(symbol_id != nmarkdown::kInvalidMathNode);
+    if (symbol_id != nmarkdown::kInvalidMathNode) {
+        const nmarkdown::MathNode& symbol = tree.nodes[symbol_id];
+        PHY_CHECK_EQ_INT(symbol.kind, MathNodeKind::Symbol);
+        PHY_CHECK(tree.text(symbol) == "i");
+    }
+
+    phy_ir_context_destroy(ir);
+}
+
+}  // namespace
+
+int main()
+{
+    PHY_TEST_CASE(test_reciprocal_powers_have_radical_nodes);
+    PHY_TEST_CASE(test_imaginary_unit_is_upright_lowercase);
+    return PHY_TEST_REPORT("test_ir_math_tree");
+}

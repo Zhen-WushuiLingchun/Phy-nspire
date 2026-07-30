@@ -271,10 +271,10 @@ static phy_status parse_cell_expression(phy_notebook *notebook,
     } else if (expression_size == 0u) {
         cell->expression = PHY_IR_NULL;
         /*
-         * A successful output with no expression is well-formed exactly when it
-         * carries an object descriptor instead: a manifold or a Lie group has
-         * no expansion in the typed IR. An output with neither is a truncated
-         * record.
+         * Legacy documents may carry a successful object descriptor without
+         * an expression. New documents store a typed constructor/signature,
+         * but retaining this branch keeps the codec backward compatible. An
+         * output with neither is a truncated record, except old Clear cells.
          */
         if (cell->kind == PHY_NOTEBOOK_CELL_OUTPUT &&
             cell->status == PHY_OK && cell->primary[0] == '\0') {

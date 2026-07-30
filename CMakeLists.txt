@@ -282,6 +282,14 @@ if(BUILD_TESTING)
     endforeach()
     target_include_directories(test_finite_poly PRIVATE src/cas)
 
+    add_executable(test_ir_math_tree tests/test_ir_math_tree.cpp)
+    target_link_libraries(
+        test_ir_math_tree PRIVATE phy_core phy_platform_host phy_warnings)
+    target_include_directories(
+        test_ir_math_tree PRIVATE
+        tests src/render ${NMARKDOWN_ROOT}/include)
+    add_test(NAME test_ir_math_tree COMMAND test_ir_math_tree)
+
     add_executable(test_series tests/test_series.c)
     target_link_libraries(
         test_series PRIVATE phy_core phy_platform_host phy_warnings)

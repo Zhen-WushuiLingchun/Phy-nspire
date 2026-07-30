@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <string.h>
 
+#include "phy/lie.h"
 #include "phy/platform.h"
 
 #define PHY_QFT_BRIDGE_DEFAULT_BYTES (8u * 1024u)
@@ -90,6 +91,8 @@ struct phy_qft_component_view {
     phy_component_basis *bases[PHY_QFT_SPACE_COUNT];
     const phy_abstract_tensor_head *heads[PHY_QFT_QUANTITY_COUNT];
     phy_component_tensor *tensors[PHY_QFT_QUANTITY_COUNT];
+    phy_component_limits component_limits;
+    size_t concrete_n;
 };
 
 static bool space_in_range(phy_qft_space space)
@@ -266,14 +269,12 @@ static phy_status create_lorentz_components(
     return status;
 }
 
-static phy_status create_color_components(
-    phy_qft_component_view *view, phy_color *color, size_t n,
+static phy_status create_color_delta_components(
+    phy_qft_component_view *view, size_t n,
     const phy_component_limits *limits)
 {
     static const phy_ir_variance delta_valence[2] = {
         PHY_IR_INDEX_UPPER, PHY_IR_INDEX_UPPER};
-    static const phy_ir_variance f_valence[3] = {
-        PHY_IR_INDEX_UPPER, PHY_IR_INDEX_UPPER, PHY_IR_INDEX_UPPER};
     const size_t adjoint = n * n - 1u;
     phy_status status = create_tensor(
         view, PHY_QFT_SUN_DELTA, delta_valence, limits);
@@ -281,18 +282,44 @@ static phy_status create_color_components(
         status = set_diagonal(
             view, PHY_QFT_SUN_DELTA, adjoint, false);
     }
-    if (status != PHY_OK || (n != 2u && n != 3u)) {
+    return status;
+}
+
+/*
+ * Build the Lie algebra once, then copy its exact structure constants. The
+ * old path rebuilt and revalidated the entire SU(3) algebra for each of the
+ * 56 independent triples, which is why QFTSystem[3] took minutes on CX II.
+ */
+static phy_status materialize_sun_f(phy_qft_component_view *view)
+{
+    static const phy_ir_variance f_valence[3] = {
+        PHY_IR_INDEX_UPPER, PHY_IR_INDEX_UPPER, PHY_IR_INDEX_UPPER};
+    const size_t n = view->concrete_n;
+    if (n != 2u && n != 3u) {
+        return PHY_ERR_NOT_INITIALIZED;
+    }
+    phy_status status = create_tensor(
+        view, PHY_QFT_SUN_F, f_valence, &view->component_limits);
+    if (status != PHY_OK) {
         return status;
     }
-    status = create_tensor(view, PHY_QFT_SUN_F, f_valence, limits);
+
+    phy_lie_group *group = NULL;
+    status = phy_lie_group_builtin(
+        view->cas, n == 2u ? PHY_LIE_GROUP_SU2 : PHY_LIE_GROUP_SU3,
+        &group);
+    const phy_lie_algebra *algebra =
+        status == PHY_OK ? phy_lie_group_algebra(group) : NULL;
+    const size_t adjoint = n * n - 1u;
     for (size_t a = 0u; status == PHY_OK && a < adjoint; ++a) {
         for (size_t b = a + 1u; status == PHY_OK && b < adjoint; ++b) {
             for (size_t c = b + 1u; status == PHY_OK && c < adjoint; ++c) {
-                phy_ir_ref value = PHY_IR_NULL;
-                status = phy_color_structure_constant_component(
-                    color, (unsigned)(a + 1u), (unsigned)(b + 1u),
-                    (unsigned)(c + 1u), &value);
-                if (status == PHY_OK) {
+                const phy_ir_ref value =
+                    phy_lie_structure_constant(
+                        algebra, (unsigned)a, (unsigned)b, (unsigned)c);
+                if (value == PHY_IR_NULL) {
+                    status = PHY_ERR_BACKEND;
+                } else {
                     const uint32_t indices[3] = {
                         (uint32_t)a, (uint32_t)b, (uint32_t)c};
                     status = phy_component_tensor_set(
@@ -300,6 +327,12 @@ static phy_status create_color_components(
                 }
             }
         }
+    }
+    phy_lie_group_destroy(group);
+    if (status != PHY_OK) {
+        phy_component_tensor_destroy(
+            view->tensors[PHY_QFT_SUN_F]);
+        view->tensors[PHY_QFT_SUN_F] = NULL;
     }
     return status;
 }
@@ -349,6 +382,7 @@ phy_status phy_qft_component_view_create(
     view->cas = cas;
     view->context = context;
     view->n = n;
+    view->component_limits = resolved.component;
 
     status = create_spaces(view, adjoint_dimension);
     if (status == PHY_OK) {
@@ -384,6 +418,8 @@ phy_status phy_qft_component_view_create(
         adjoint <= basis_max_dimension &&
         adjoint <= component_max_dimension &&
         adjoint <= component_max_entries;
+    view->concrete_n =
+        concrete_basis ? (size_t)n_value : 0u;
     if (status == PHY_OK) {
         status = create_bases(
             view, concrete_basis,
@@ -394,8 +430,8 @@ phy_status phy_qft_component_view_create(
         status = create_lorentz_components(view, &resolved.component);
     }
     if (status == PHY_OK && concrete_basis) {
-        status = create_color_components(
-            view, color, (size_t)n_value, &resolved.component);
+        status = create_color_delta_components(
+            view, (size_t)n_value, &resolved.component);
     }
     phy_color_destroy(color);
     if (status != PHY_OK) {
@@ -465,6 +501,21 @@ phy_component_tensor *phy_qft_component_view_tensor(
     return view != NULL && quantity_in_range(quantity)
                ? view->tensors[quantity]
                : NULL;
+}
+
+phy_status phy_qft_component_view_materialize(
+    phy_qft_component_view *view, phy_qft_quantity quantity)
+{
+    if (view == NULL || !quantity_in_range(quantity)) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    if (view->tensors[quantity] != NULL) {
+        return PHY_OK;
+    }
+    if (quantity == PHY_QFT_SUN_F) {
+        return materialize_sun_f(view);
+    }
+    return PHY_ERR_NOT_INITIALIZED;
 }
 
 phy_status phy_qft_component_view_bind(

@@ -154,19 +154,19 @@ that touch every implemented evaluator family. Its distributable form contains 1
 source cells so opening does not eagerly rebuild all cached results; a separate
 fully evaluated copy is serialized, reopened, and replayed during generation.
 
-The strict Windows host suite passes 44/44. The WSL GCC, ASan/leak, and UBSan
-suites each pass 46/46, and the assertion-bearing executables contain 337,746
+The strict Windows host suite passes 45/45. The WSL GCC, ASan/leak, and UBSan
+suites each pass 47/47, and the assertion-bearing executables contain 337,894
 explicit checks. The context-sensitive CAS menu is also checked against the
 authoritative evaluator and source-command registries: all 109 evaluator heads
 and all 18 supported source commands are discoverable through its ten
 scrollable categories.
 
-The current native build is measured at 1,222,416 bytes, 19.4% of the 6 MiB
+The current native build is measured at 1,224,221 bytes, 19.5% of the 6 MiB
 ceiling. Its evaluator ARM probe links the complete current physics stack,
 retains 17/17 public evaluator entry points, packages to a `.tns`, and imports
 no libm, floating-point formatter, or ARM soft-float helper.
-The QFT abstract/component probe independently retains 13/13 public entry
-points and packages with its dependencies to 94,952 bytes under the same
+The QFT abstract/component probe independently retains 14/14 public entry
+points and packages with its dependencies to 94,880 bytes under the same
 no-float rule.
 The separate dynamic-component bridge probe retains 35/35 public entry points,
 packages to a 97,196-byte `.tns`, and also imports no floating-point
@@ -183,10 +183,12 @@ byte-identical upload do not establish on-device runtime or performance. That
 cached tour exposed a CX II load-time failure consistent with eager IR/heap
 pressure and has since been replaced by the 12,200-byte source-only tour; that
 tour and the then-current 1,221,725-byte program were atomically deployed and
-downloaded back byte-identically on 2026-07-30. The current 1,222,416-byte
+downloaded back byte-identically on 2026-07-30. The previous 1,222,416-byte
 program, including the complete scrollable MENU, was subsequently deployed and
-read back byte-identically on the same date. It still requires an explicit
-calculator open/run check. The
+read back byte-identically on the same date. The current 1,224,221-byte build
+adds structured physics-object output and lazy/one-pass SU(3) initialization;
+its calculator transfer and open/run check are recorded separately after
+deployment. The
 separate baseline channel-order check remains tracked in
 [docs/BUILD.md](docs/BUILD.md).
 

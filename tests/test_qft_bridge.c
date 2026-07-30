@@ -118,7 +118,7 @@ static void test_spaces_heads_and_exact_components(void)
         view, PHY_QFT_MINKOWSKI_INVERSE));
     PHY_CHECK(phy_qft_component_view_holds(
         view, PHY_QFT_SUN_DELTA));
-    PHY_CHECK(phy_qft_component_view_holds(view, PHY_QFT_SUN_F));
+    PHY_CHECK(!phy_qft_component_view_holds(view, PHY_QFT_SUN_F));
     PHY_CHECK(!phy_qft_component_view_holds(view, PHY_QFT_SUN_D));
     PHY_CHECK(!phy_qft_component_view_holds(
         view, PHY_QFT_DIRAC_GAMMA));
@@ -142,6 +142,15 @@ static void test_spaces_heads_and_exact_components(void)
         PHY_OK);
     expect_integer(f.ir, value, 0);
 
+    /*
+     * The expensive SU(3) table is not part of system construction. It is
+     * built once, on explicit demand, and repeated demand is idempotent.
+     */
+    PHY_CHECK_EQ_INT(
+        phy_qft_component_view_materialize(view, PHY_QFT_SUN_F), PHY_OK);
+    PHY_CHECK(phy_qft_component_view_holds(view, PHY_QFT_SUN_F));
+    PHY_CHECK_EQ_INT(
+        phy_qft_component_view_materialize(view, PHY_QFT_SUN_F), PHY_OK);
     phy_component_tensor *structure = phy_qft_component_view_tensor(
         view, PHY_QFT_SUN_F);
     PHY_CHECK_EQ_INT(
@@ -234,6 +243,9 @@ static void test_component_availability_and_limits_are_explicit(void)
         PHY_CHECK(phy_qft_component_view_holds(
             view, PHY_QFT_SUN_DELTA));
         PHY_CHECK(!phy_qft_component_view_holds(view, PHY_QFT_SUN_F));
+        PHY_CHECK_EQ_INT(
+            phy_qft_component_view_materialize(view, PHY_QFT_SUN_F),
+            PHY_ERR_NOT_INITIALIZED);
         PHY_CHECK_EQ_INT(
             phy_component_basis_dimension(
                 phy_qft_component_view_basis(

@@ -226,14 +226,14 @@ on 2026-07-30:
 - SU(N) colour: 23/23 APIs retained, 4,924 bytes of layer text, 52,764-byte
   probe package;
 - evaluator plus complete backend stack: 17/17 public evaluator APIs retained
-  from 66 portable sources, 52,455 bytes of evaluator text, 330,816-byte
+  from 66 portable sources, 53,814 bytes of evaluator text, 332,748-byte
   isolated probe;
-- QFT abstract/component bridge: 13/13 APIs retained from 47 portable sources,
-  2,940 bytes of bridge text, 94,952-byte isolated probe;
+- QFT abstract/component bridge: 14/14 APIs retained from 47 portable sources,
+  3,152 bytes of bridge text, 94,880-byte isolated probe;
 - all five isolated probes contain no float formatter, libm call, or ARM
   soft-float helper.
 
-A clean product build from the same source is 1,222,416 bytes (19.4% of the
+A clean product build from the same source is 1,224,221 bytes (19.5% of the
 6 MiB ceiling). The product includes nMarkdown/FreeType/HarfBuzz and therefore
 has different retained dependencies from the exact isolated probes; the
 no-float statement above is specifically a property of those native symbolic

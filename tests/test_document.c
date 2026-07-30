@@ -187,7 +187,16 @@ static void test_clear_output_round_trip(void)
     phy_notebook_cell_view clear_output;
     PHY_CHECK(phy_notebook_cell(source, input + 1u, &clear_output));
     PHY_CHECK_EQ_INT(clear_output.kind, PHY_NOTEBOOK_CELL_OUTPUT);
-    PHY_CHECK_EQ_INT(clear_output.expression, PHY_IR_NULL);
+    PHY_CHECK_EQ_INT(
+        phy_ir_kind_of(
+            phy_notebook_ir(source), clear_output.expression),
+        PHY_IR_SYMBOL);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(
+            phy_notebook_ir(source),
+            phy_ir_head(
+                phy_notebook_ir(source), clear_output.expression)),
+        "Null");
     PHY_CHECK_EQ_STR(clear_output.primary, "");
 
     const size_t bytes = serialize_sample(source);
@@ -196,6 +205,7 @@ static void test_clear_output_round_trip(void)
         phy_notebook_deserialize(g_document, bytes, &loaded), PHY_OK);
     PHY_CHECK(loaded != NULL);
     PHY_CHECK_EQ_INT(phy_notebook_cell_count(loaded), 4u);
+    PHY_CHECK_EQ_STR(expression_text(loaded, input + 1u), "Null");
     PHY_CHECK_EQ_INT(phy_notebook_evaluate_all(loaded), PHY_OK);
 
     phy_notebook_destroy(loaded);

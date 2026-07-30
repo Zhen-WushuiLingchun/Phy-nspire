@@ -67,8 +67,12 @@ const char *phy_qft_quantity_name(phy_qft_quantity quantity);
  * N may stay symbolic.  Lorentz and spinor bases, together with both
  * Minkowski metric realizations, are always available.  A concrete adjoint
  * and fundamental basis is added when N is an exact integer whose dimensions
- * fit the configured basis limit.  SUNDelta then has exact components, and
- * SUNF additionally has components for the built-in SU(2) and SU(3) bases.
+ * fit the configured basis limit. SUNDelta then has exact components.
+ *
+ * The comparatively expensive built-in SU(2)/SU(3) SUNF table is lazy:
+ * construction declares its abstract head but does not calculate the concrete
+ * table. Call phy_qft_component_view_materialize() when those components are
+ * actually requested. Repeated materialization is idempotent.
  *
  * The fixed IndexSpace names intentionally match the existing exact engines:
  * "Lorentz", "Spinor", "ColorAdjoint", and "ColorFundamental".  Consequently
@@ -102,6 +106,17 @@ bool phy_qft_component_view_holds(
     const phy_qft_component_view *view, phy_qft_quantity quantity);
 phy_component_tensor *phy_qft_component_view_tensor(
     const phy_qft_component_view *view, phy_qft_quantity quantity);
+
+/*
+ * Materialize one supported exact component realization on demand.
+ *
+ * Already-realized quantities return PHY_OK. Currently SUNF is the only lazy
+ * quantity; it is available for concrete SU(2) and SU(3). Abstract-only
+ * quantities return PHY_ERR_NOT_INITIALIZED rather than pretending to have a
+ * component table.
+ */
+phy_status phy_qft_component_view_materialize(
+    phy_qft_component_view *view, phy_qft_quantity quantity);
 
 /* Add every available basis and realization to one explicit picture. */
 phy_status phy_qft_component_view_bind(

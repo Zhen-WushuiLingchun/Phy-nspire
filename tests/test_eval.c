@@ -1197,7 +1197,33 @@ static void test_qft_shared_abstract_component_frontend(void)
     PHY_CHECK_EQ_INT(system.kind, PHY_VALUE_QFT_COMPONENTS);
     PHY_CHECK_EQ_STR(
         describe(&f, system),
-        "QFTSystem SU(3) spaces 4 bases 4 tensors 4");
+        "QFTSystem SU(3) spaces 4 bases 4 tensors 3");
+    phy_ir_ref system_expression = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_eval_value_expression(f.env, system, &system_expression),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_ir_kind_of(f.ir, system_expression), PHY_IR_FUNCTION);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(
+            f.ir, phy_ir_head(f.ir, system_expression)),
+        "QFTSystem");
+    PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, system_expression), 4u);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(
+            f.ir,
+            phy_ir_head(f.ir, phy_ir_child(f.ir, system_expression, 1u))),
+        "IndexSpaces");
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(
+            f.ir,
+            phy_ir_head(f.ir, phy_ir_child(f.ir, system_expression, 2u))),
+        "TensorHeads");
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(
+            f.ir,
+            phy_ir_head(f.ir, phy_ir_child(f.ir, system_expression, 3u))),
+        "ExactComponents");
 
     PHY_CHECK_EQ_INT(
         run(&f, "L = QFTSpace[qft,Lorentz]").kind,
@@ -1548,6 +1574,34 @@ static void test_environment_bounds(void)
 
 /* ------------------------------------------------ notebook integration */
 
+static void test_notebook_clear_all_renders_successfully(void)
+{
+    phy_notebook *notebook = phy_notebook_create();
+    PHY_CHECK(notebook != NULL);
+    PHY_CHECK_EQ_INT(
+        phy_notebook_add_input(notebook, "a = 1", NULL), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_notebook_add_input(notebook, "ClearAll[]", NULL), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_notebook_evaluate_all(notebook), PHY_OK);
+
+    phy_notebook_cell_view view;
+    PHY_CHECK(phy_notebook_cell(notebook, 3u, &view));
+    PHY_CHECK_EQ_INT(view.kind, PHY_NOTEBOOK_CELL_OUTPUT);
+    PHY_CHECK_EQ_INT(view.status, PHY_OK);
+    PHY_CHECK_EQ_STR(view.primary, "");
+    PHY_CHECK_EQ_INT(
+        phy_ir_kind_of(phy_notebook_ir(notebook), view.expression),
+        PHY_IR_SYMBOL);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(
+            phy_notebook_ir(notebook),
+            phy_ir_head(phy_notebook_ir(notebook), view.expression)),
+        "Null");
+    PHY_CHECK_EQ_INT(
+        phy_env_binding_count(phy_notebook_environment(notebook)), 0u);
+    phy_notebook_destroy(notebook);
+}
+
 static void test_notebook_shares_state_between_cells(void)
 {
     phy_notebook *notebook = phy_notebook_create();
@@ -1576,12 +1630,20 @@ static void test_notebook_shares_state_between_cells(void)
     PHY_CHECK_EQ_INT(phy_notebook_evaluate_all(notebook), PHY_OK);
 
     phy_notebook_cell_view view;
-    /* The manifold output has a descriptor and no expression. */
+    /* Handles retain their typed constructor instead of an English sentence. */
     PHY_CHECK(phy_notebook_cell(notebook, manifold_cell + 1u, &view));
     PHY_CHECK_EQ_INT(view.kind, PHY_NOTEBOOK_CELL_OUTPUT);
-    PHY_CHECK_EQ_INT(view.expression, PHY_IR_NULL);
-    PHY_CHECK_EQ_STR(view.primary,
-                     "Manifold M dim 2 Riemannian +oriented (x,y)");
+    PHY_CHECK_EQ_INT(
+        phy_ir_kind_of(phy_notebook_ir(notebook), view.expression),
+        PHY_IR_EQUATION);
+    PHY_CHECK_EQ_STR(view.primary, "");
+    const phy_ir_ref manifold_constructor =
+        phy_ir_child(phy_notebook_ir(notebook), view.expression, 1u);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(
+            phy_notebook_ir(notebook),
+            phy_ir_head(phy_notebook_ir(notebook), manifold_constructor)),
+        "Manifold");
 
     /* The form output has the coframe expansion and no descriptor. */
     PHY_CHECK(phy_notebook_cell(notebook, form_cell + 2u, &view));
@@ -1611,7 +1673,7 @@ static void test_notebook_shares_state_between_cells(void)
     phy_notebook_destroy(notebook);
 }
 
-static void test_notebook_round_trip_keeps_descriptors(void)
+static void test_notebook_round_trip_keeps_structured_handles(void)
 {
     phy_notebook *notebook = phy_notebook_create();
     PHY_CHECK(notebook != NULL);
@@ -1632,7 +1694,17 @@ static void test_notebook_round_trip_keeps_descriptors(void)
     PHY_CHECK(phy_notebook_cell(loaded, 1u, &view));
     PHY_CHECK_EQ_INT(view.kind, PHY_NOTEBOOK_CELL_OUTPUT);
     PHY_CHECK_EQ_INT(view.status, PHY_OK);
-    PHY_CHECK_EQ_STR(view.primary, "LieGroup SU(3) rep 3 compact");
+    PHY_CHECK_EQ_STR(view.primary, "");
+    PHY_CHECK_EQ_INT(
+        phy_ir_kind_of(phy_notebook_ir(loaded), view.expression),
+        PHY_IR_EQUATION);
+    const phy_ir_ref group_constructor =
+        phy_ir_child(phy_notebook_ir(loaded), view.expression, 1u);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(
+            phy_notebook_ir(loaded),
+            phy_ir_head(phy_notebook_ir(loaded), group_constructor)),
+        "LieGroup");
 
     /*
      * The document restores cells, never objects: a loaded notebook has an
@@ -1716,6 +1788,23 @@ static void test_abstract_tensor_frontend_and_canonicalization(void)
     PHY_CHECK_EQ_STR(
         describe(&f, value),
         "TensorHead T5 rank 5 commuting sym 0");
+    phy_ir_ref signature = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_eval_value_expression(f.env, value, &signature), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_ir_kind_of(f.ir, signature), PHY_IR_TENSOR);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, signature)), "T5");
+    PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, signature), 5u);
+    for (size_t slot = 0u; slot < 5u; ++slot) {
+        phy_ir_variance variance = PHY_IR_INDEX_UPPER;
+        const phy_ir_ref index = phy_ir_child(f.ir, signature, slot);
+        PHY_CHECK(phy_ir_index_variance(f.ir, index, &variance));
+        PHY_CHECK_EQ_INT(variance, PHY_IR_INDEX_LOWER);
+        PHY_CHECK_EQ_STR(
+            phy_ir_symbol_name(
+                f.ir, phy_ir_index_space(f.ir, index)),
+            "V");
+    }
     expect_scalar(&f, "Rank[T5]", "5");
 
     (void)run(&f, "A = TensorHead[{V,V}, Antisymmetric]");
@@ -1994,6 +2083,25 @@ static void test_dynamic_component_frontend_and_bridge(void)
     PHY_CHECK_EQ_STR(
         describe(&f, value),
         "TensorComponents A rank 2 sparse 1");
+    phy_ir_ref component_signature = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_eval_value_expression(
+            f.env, value, &component_signature),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_ir_kind_of(f.ir, component_signature), PHY_IR_TENSOR);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(
+            f.ir, phy_ir_head(f.ir, component_signature)),
+        "A");
+    PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, component_signature), 2u);
+    for (size_t slot = 0u; slot < 2u; ++slot) {
+        phy_ir_variance variance = PHY_IR_INDEX_UPPER;
+        PHY_CHECK(phy_ir_index_variance(
+            f.ir, phy_ir_child(f.ir, component_signature, slot),
+            &variance));
+        PHY_CHECK_EQ_INT(variance, PHY_IR_INDEX_LOWER);
+    }
     expect_scalar(&f, "Rank[Ac]", "2");
     value = run(&f, "Dimensions[Ac]");
     PHY_CHECK_EQ_STR(expansion(&f, value), "(fn List 2 2)");
@@ -2307,8 +2415,9 @@ int main(void)
     PHY_TEST_CASE(test_every_evaluated_head_rejects_empty_arguments);
     PHY_TEST_CASE(test_objects_are_swept_and_never_leaked);
     PHY_TEST_CASE(test_environment_bounds);
+    PHY_TEST_CASE(test_notebook_clear_all_renders_successfully);
     PHY_TEST_CASE(test_notebook_shares_state_between_cells);
-    PHY_TEST_CASE(test_notebook_round_trip_keeps_descriptors);
+    PHY_TEST_CASE(test_notebook_round_trip_keeps_structured_handles);
     PHY_TEST_CASE(test_notebook_round_trip_keeps_series_data);
     PHY_TEST_CASE(test_abstract_tensor_frontend_and_canonicalization);
     PHY_TEST_CASE(test_young_project_frontend);

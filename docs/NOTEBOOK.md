@@ -22,7 +22,8 @@ Implemented cell kinds:
 - Markdown heading/body;
 - symbolic input;
 - typed-IR symbolic output;
-- typed physics-object output, shown as a descriptor line;
+- typed physics-object output, shown as a structured constructor or
+  abstract/component-index signature;
 - typed error output.
 
 ### Cells share state
@@ -34,11 +35,12 @@ consequences are visible in the shell:
 
 - running a cell marks every result *after* it stale, because a cell that binds
   a name changes what the cells below it mean;
-- an output whose value is a manifold, a Lie group, or a curvature bundle has no
-  expansion in the typed IR, so the card shows a descriptor line
-  (`Manifold M dim 2 Riemannian +oriented (x,y)`) instead. Objects that do have
-  an expansion — forms, algebra-valued forms, Lie elements, tensors up to rank
-  two — are drawn by the ordinary typed-IR renderer;
+- handles such as manifolds, groups, bases, atlases, and curvature bundles keep
+  their typed constructor in the output; tensor heads and component tensors
+  show abstract/component-index signatures. QFT systems additionally display
+  their SU(N), typed spaces, tensor heads, and currently exact component
+  tables. All of them use the same two-dimensional renderer as scalar CAS
+  output; old descriptor-only documents remain readable;
 - the document codec stores cells, never objects, so a reopened notebook starts
   with an empty environment. `FILE` > `Run all cells` replays it in order, which
   is `phy_notebook_evaluate_all`.
@@ -161,25 +163,25 @@ extended work rather than appending a long calculation to the acceptance tour.
 
 ## Verification
 
-- `test_notebook`: 215 checks over exact results, editing, insertion, stale
+- `test_notebook`: exact checks over results, editing, insertion, stale
   results, source/IR agreement, bounds, memory return, selection, `RUN` hit
   testing, Markdown LaTeX integration, 2D metrics, and deterministic pixels;
-- `test_eval`: 2,963 checks over the stateful evaluator, including the notebook
-  integration — state flowing between cells, descriptor outputs, forward
-  staleness, and a save/reopen that restores descriptors but not objects;
+- `test_eval`: exact checks over the stateful evaluator, including the notebook
+  integration — state flowing between cells, structured object output, forward
+  staleness, `ClearAll[]`, and save/reopen without persisting live objects;
 - `test_palette`: 29,408 checks over every category, entry, snippet, cursor
   bound, registry-completeness rule, and scrolling window, and over every CAS
   snippet actually parsing;
-- `test_formula`: 62 checks over lifecycle, metrics, matrices, RGB565 drawing,
+- `test_formula`: 103 checks over lifecycle, metrics, matrices, RGB565 drawing,
   and malformed-formula recovery;
 - `test_source`: 443 checks over the permanent reader-facing grammar, the
   command registry, assignment, and reserved-head canonicalization;
 - `test_pointer`: 29 checks over relative contact/motion behavior;
 - `test_modifier`: 8 checks over tapped and held Shift/Ctrl behavior;
 - `tests/fixtures/notebook_frame.digest`: bit-exact 320 × 240 host fixture;
-- last strict Windows baseline: 44/44; current WSL GCC, ASan/leak, and UBSan
-  suites: 46/46 each; 337,746 explicit checks;
-- Ndless r2022 ARM build: 1,222,416 bytes. The evaluator probe retains 17/17
+- last strict Windows baseline: 45/45; current WSL GCC, ASan/leak, and UBSan
+  suites: 47/47 each; 337,894 explicit checks;
+- Ndless r2022 ARM build: 1,224,221 bytes. The evaluator probe retains 17/17
   public APIs behind the complete physics stack and imports no forbidden
   float/libm/soft-float helper.
 

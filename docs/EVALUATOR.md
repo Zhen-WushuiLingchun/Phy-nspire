@@ -54,25 +54,25 @@ four, which is what "stateful" buys.
 | Kind | Produced by | Displays as |
 | --- | --- | --- |
 | `Scalar` | arithmetic, components, decisions | its own typed IR |
-| `Manifold` | `Manifold[...]` | descriptor line |
+| `Manifold` | `Manifold[...]` | structured constructor |
 | `Tensor` | `ComponentTensor`, `Metric`, `VectorField`, curvature parts | components: `List` of rows at rank <= 2; at rank 3 and 4 the `List` of nonvanishing components as `Gamma(theta,phi,phi) = ...` equations, up to 64 of them, named by the chart's coordinates |
 | `Form` | `DifferentialForm`, `Wedge`, `ExteriorD`, `HodgeStar`, `Volume`, `InteriorProduct`, `YangMillsLagrangian`, `ColorComponent` | coordinate-coframe expansion |
-| `LieGroup` | `LieGroup[...]` | descriptor line |
-| `LieAlgebra` | `LieAlgebra[G]` | descriptor line |
+| `LieGroup` | `LieGroup[...]` | structured constructor |
+| `LieAlgebra` | `LieAlgebra[G]` | structured constructor |
 | `LieElement` | `Generator`, `LieElement`, `LieBracket` | `sum_a c_a T_a` |
 | `LieForm` | `LieForm`, `GaugeConnection`, `FieldStrength`, `CovariantD`, `GaugeVariation`, `Bianchi` | `sum_a T_a . (coframe expansion)` |
-| `Curvature` | `Curvature[g]` | descriptor line |
-| `IndexSpace` | `IndexSpace[...]` | dimension and metric descriptor |
-| `TensorHead` | `TensorHead[...]` | rank, commutation and generator count |
+| `Curvature` | `Curvature[g]` | structured constructor |
+| `IndexSpace` | `IndexSpace[...]` | structured constructor |
+| `TensorHead` | `TensorHead[...]` | typed abstract-index signature |
 | `AbstractTensor` | indexed tensor-head products | typed-IR indexed tensor expression |
 | `AbstractExpression` | `YoungProject[...]`, `GarnirRelation[...]`, `YoungReduce[...]` | collected typed-IR indexed tensor sum |
-| `ComponentBasis` | `ComponentBasis[...]` | space, dimension and coordinate/basis descriptor |
-| `TensorComponents` | sparse realization of a `TensorHead` | head, runtime rank and stored-entry count |
+| `ComponentBasis` | `ComponentBasis[...]` | structured constructor with coordinates/basis |
+| `TensorComponents` | sparse realization of a `TensorHead` | typed component-index signature |
 | `Vector` | `Vector[{...}]`, matrix-vector operations | exact `List` |
 | `Matrix` | `Matrix[{{...},...}]`, exact linear operations | exact nested `List` |
-| `CoordinateMap` | `CoordinateMap[...]` | source-to-target basis descriptor |
-| `BasisTransition` | `BasisTransition[...]` | verified two-way basis descriptor |
-| `Atlas` | `Atlas[...]` | chart and verified-transition counts |
+| `CoordinateMap` | `CoordinateMap[...]` | structured constructor |
+| `BasisTransition` | `BasisTransition[...]` | structured constructor |
+| `Atlas` | `Atlas[...]` | structured constructor |
 
 A form's expansion is real mathematics rather than a label: the coframe symbol
 of a coordinate is its name with a `d` in front, so a chart on `(r, theta)`
@@ -233,7 +233,7 @@ fc   = QFTTensor[qft,SUNF]
 
 | Spelling | Result |
 | --- | --- |
-| `QFTSystem[]`, `QFTSystem[N]` | one shared QFT abstract/component view; omitted `N` is the symbol `N` |
+| `QFTSystem[]`, `QFTSystem[N]` | structured shared view showing SU(N), typed spaces, heads, and exact tables; omitted `N` is the symbol `N` |
 | `QFTSpace[qft,Lorentz\|Spinor\|ColorAdjoint\|ColorFundamental]` | a typed `IndexSpace` |
 | `QFTBasis[qft,space]` | its concrete basis when available |
 | `QFTHead[qft,quantity]` | the shared abstract `TensorHead` |
@@ -249,7 +249,9 @@ fundamental generators are noncommuting heads.
 The component boundary is intentionally narrower than the abstract one.
 Minkowski `diag(1,-1,-1,-1)` and its inverse are always bound. A concrete
 colour basis within the configured resource ceilings adds `SUNDelta`; the
-built-in SU(2)/SU(3) tables also add exact `SUNF`. `SUND`, `SUNT`, gamma
+built-in SU(2)/SU(3) `SUNF` table is materialized only by its first
+`QFTTensor` request. That lazy path constructs and validates the Lie algebra
+once, rather than once per independent component. `SUND`, `SUNT`, gamma
 matrices and general SU(N) numerical generators are not fabricated:
 `QFTTensor` returns `PHY_ERR_NOT_INITIALIZED` for them. With symbolic `N`,
 `Dimension[QFTSpace[qft,ColorAdjoint]]` is exactly `N^2-1`, while colour
@@ -510,7 +512,7 @@ its configured arenas.
 
 ## Verification
 
-`tests/test_eval.c`, 2,963 checks. The physics cases deliberately reproduce,
+`tests/test_eval.c`, 3,011 checks. The physics cases deliberately reproduce,
 through reader-facing source, results the backend suites already certify
 directly:
 
@@ -541,7 +543,7 @@ If the evaluator merely preserved operator heads, none of them would hold.
 The remaining cases cover state flow between cells, `Clear`/`ClearAll`, the
 capture rules, every typed-error path, the sweep's object accounting under
 rebinding and failure, the binding ceiling, and the notebook integration
-including save/reopen with descriptors.
+including save/reopen with structured physics objects.
 
 `tests/test_palette.c` additionally parses every CAS palette snippet, because a
 palette that inserts something the evaluator rejects is worse than no palette.
@@ -556,7 +558,7 @@ The ARM link check is `make eval-link-check` and
 stack behind one dispatcher, and the same no-float/no-libm/no-soft-float
 standard the CAS and geometry layers are held to. It now links 66 portable
 sources, retains 17/17 public evaluator entry points, contains no forbidden
-float/libm/soft-float dependency, and packages as a 330,816-byte isolated
+float/libm/soft-float dependency, and packages as a 332,748-byte isolated
 probe. That probe size includes its dependencies and is not an incremental
 product-size measurement.
 
@@ -565,7 +567,7 @@ future work has now happened: the application genuinely calls the geometry,
 Lie, Yang--Mills, and QFT layers, so `--gc-sections` no longer drops them.
 The preserved `dist-foundation/phy-nspire.tns` baseline is 1,173,026 bytes.
 The current `dist/phy-nspire.tns`, with the abstract tensor evaluator reachable,
-is 1,222,416 bytes (19.4% of the 6 MiB ceiling); the final ELF retains
+is 1,224,221 bytes (19.5% of the 6 MiB ceiling); the final ELF retains
 `phy_index_space_create`, `phy_tensor_head_create_with_symmetries`,
 `phy_tensor_monomial_create`, `phy_tensor_monomial_canonicalize`,
 `phy_tensor_monomial_young_project`, and

@@ -5,8 +5,9 @@
  * the reader anything. So an object with a canonical expansion in the typed IR
  * gets that expansion -- a form becomes its coframe sum, an algebra-valued form
  * a noncommutative sum over the algebra basis -- and the existing typed-IR
- * renderer draws it with no new layout code. Objects with no such expansion get
- * a descriptor line instead, and are honest about being a handle.
+ * renderer draws it with no new layout code. Handles with no finite expansion
+ * use a structured constructor/signature; English text remains a diagnostic
+ * API and legacy-document fallback, not the normal CAS output.
  */
 #include <limits.h>
 #include <string.h>
@@ -485,6 +486,176 @@ static phy_status matrix_expansion(
                : phy_ir_last_error(env->ir);
 }
 
+static void placeholder_index_name(size_t slot, char name[12])
+{
+    static const char alphabet[] = "abcdefghijklmnpqrstuvwxyz";
+    if (slot < sizeof alphabet - 1u) {
+        name[0] = alphabet[slot];
+        name[1] = '\0';
+        return;
+    }
+    name[0] = 'i';
+    size_t value = slot + 1u;
+    char reverse[9];
+    size_t count = 0u;
+    do {
+        reverse[count++] = (char)('0' + value % 10u);
+        value /= 10u;
+    } while (value != 0u && count < sizeof reverse);
+    for (size_t index = 0u; index < count; ++index) {
+        name[index + 1u] = reverse[count - index - 1u];
+    }
+    name[count + 1u] = '\0';
+}
+
+/*
+ * A TensorHead owns no component table, so its honest mathematical display is
+ * a generic abstract-index application. The constructor remains visible in
+ * the input cell; the output now shows the object the declaration created.
+ */
+static phy_status tensor_head_signature(
+    phy_env *env, const phy_abstract_tensor_head *head,
+    phy_ir_ref *out_ref)
+{
+    const size_t rank = phy_tensor_head_slot_count(head);
+    if (rank > DISPLAY_MAX_TERMS) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    phy_ir_ref indices[DISPLAY_MAX_TERMS];
+    for (size_t slot = 0u; slot < rank; ++slot) {
+        char name[12];
+        placeholder_index_name(slot, name);
+        const phy_index_space *space =
+            phy_tensor_head_slot_space(head, slot);
+        indices[slot] = phy_ir_index_in_space(
+            env->ir, phy_ir_intern(env->ir, name), PHY_IR_INDEX_LOWER,
+            phy_index_space_symbol(space));
+        if (indices[slot] == PHY_IR_NULL) {
+            return phy_ir_last_error(env->ir);
+        }
+    }
+    *out_ref = phy_ir_tensor(
+        env->ir, phy_tensor_head_symbol(head),
+        rank == 0u ? NULL : indices, rank);
+    return *out_ref != PHY_IR_NULL
+               ? PHY_OK
+               : phy_ir_last_error(env->ir);
+}
+
+static phy_status component_tensor_signature(
+    phy_env *env, const phy_component_tensor *tensor,
+    phy_ir_ref *out_ref)
+{
+    const size_t rank = phy_component_tensor_rank(tensor);
+    if (rank > DISPLAY_MAX_TERMS) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    phy_ir_ref indices[DISPLAY_MAX_TERMS];
+    for (size_t slot = 0u; slot < rank; ++slot) {
+        char name[12];
+        placeholder_index_name(slot, name);
+        const phy_component_basis *basis =
+            phy_component_tensor_basis(tensor, slot);
+        indices[slot] = phy_ir_index_in_space(
+            env->ir, phy_ir_intern(env->ir, name),
+            phy_component_tensor_valence(tensor, slot),
+            phy_index_space_symbol(phy_component_basis_space(basis)));
+        if (indices[slot] == PHY_IR_NULL) {
+            return phy_ir_last_error(env->ir);
+        }
+    }
+    *out_ref = phy_ir_tensor(
+        env->ir,
+        phy_tensor_head_symbol(phy_component_tensor_head(tensor)),
+        rank == 0u ? NULL : indices, rank);
+    return *out_ref != PHY_IR_NULL
+               ? PHY_OK
+               : phy_ir_last_error(env->ir);
+}
+
+static phy_ir_ref display_function(phy_env *env, const char *name,
+                                   const phy_ir_ref *arguments,
+                                   size_t count)
+{
+    const phy_ir_symbol head = phy_ir_intern(env->ir, name);
+    return head != PHY_IR_NO_SYMBOL
+               ? phy_ir_function(env->ir, head, arguments, count)
+               : PHY_IR_NULL;
+}
+
+/*
+ * A QFT system is not a scalar and has no single component expansion. Its
+ * reader-facing value is nevertheless mathematical structure, not a sentence:
+ *
+ *   QFTSystem[SU[3], IndexSpaces[...], TensorHeads[...],
+ *             ExactComponents[...]]
+ *
+ * Tensor heads carry typed abstract indices; the final list names only
+ * component tables already materialized, so the display remains truthful
+ * after SUNF became lazy.
+ */
+static phy_status qft_system_expression(
+    phy_env *env, const phy_qft_component_view *view,
+    phy_ir_ref *out_ref)
+{
+    phy_ir_ref su_args[1] = {phy_qft_component_view_n(view)};
+    const phy_ir_ref su = display_function(env, "SU", su_args, 1u);
+
+    phy_ir_ref spaces[PHY_QFT_SPACE_COUNT];
+    for (unsigned which = 0u; which < (unsigned)PHY_QFT_SPACE_COUNT;
+         ++which) {
+        const phy_index_space *space = phy_qft_component_view_space(
+            view, (phy_qft_space)which);
+        const phy_ir_ref arguments[2] = {
+            phy_ir_symbol_ref(env->ir, phy_index_space_symbol(space)),
+            phy_index_space_dimension(space)};
+        spaces[which] =
+            display_function(env, "IndexSpace", arguments, 2u);
+    }
+    const phy_ir_ref space_set = display_function(
+        env, "IndexSpaces", spaces, PHY_QFT_SPACE_COUNT);
+
+    phy_ir_ref heads[PHY_QFT_QUANTITY_COUNT];
+    for (unsigned quantity = 0u;
+         quantity < (unsigned)PHY_QFT_QUANTITY_COUNT; ++quantity) {
+        phy_status status = tensor_head_signature(
+            env,
+            phy_qft_component_view_head(
+                view, (phy_qft_quantity)quantity),
+            &heads[quantity]);
+        if (status != PHY_OK) {
+            return status;
+        }
+    }
+    const phy_ir_ref head_set = display_function(
+        env, "TensorHeads", heads, PHY_QFT_QUANTITY_COUNT);
+
+    phy_ir_ref components[PHY_QFT_QUANTITY_COUNT];
+    size_t component_count = 0u;
+    for (unsigned quantity = 0u;
+         quantity < (unsigned)PHY_QFT_QUANTITY_COUNT; ++quantity) {
+        phy_component_tensor *tensor = phy_qft_component_view_tensor(
+            view, (phy_qft_quantity)quantity);
+        if (tensor == NULL) {
+            continue;
+        }
+        const phy_status status = component_tensor_signature(
+            env, tensor, &components[component_count]);
+        if (status != PHY_OK) {
+            return status;
+        }
+        ++component_count;
+    }
+    const phy_ir_ref component_set = display_function(
+        env, "ExactComponents", components, component_count);
+    const phy_ir_ref arguments[4] = {
+        su, space_set, head_set, component_set};
+    *out_ref = display_function(env, "QFTSystem", arguments, 4u);
+    return *out_ref != PHY_IR_NULL
+               ? PHY_OK
+               : phy_ir_last_error(env->ir);
+}
+
 phy_status phy_eval_value_expression(phy_env *env, phy_value value,
                                      phy_ir_ref *out_ref)
 {
@@ -493,6 +664,12 @@ phy_status phy_eval_value_expression(phy_env *env, phy_value value,
     }
     *out_ref = PHY_IR_NULL;
     switch (value.kind) {
+    case PHY_VALUE_NONE:
+        *out_ref = phy_ir_symbol_ref(
+            env->ir, phy_ir_intern(env->ir, "Null"));
+        return *out_ref != PHY_IR_NULL
+                   ? PHY_OK
+                   : phy_ir_last_error(env->ir);
     case PHY_VALUE_SCALAR:
         *out_ref = value.as.scalar;
         return PHY_OK;
@@ -510,13 +687,20 @@ phy_status phy_eval_value_expression(phy_env *env, phy_value value,
     case PHY_VALUE_ABSTRACT_EXPRESSION:
         return abstract_expression_expansion(
             env, value.as.abstract_expression, out_ref);
-    case PHY_VALUE_COMPONENT_BASIS:
+    case PHY_VALUE_TENSOR_HEAD:
+        return tensor_head_signature(
+            env, value.as.tensor_head, out_ref);
     case PHY_VALUE_COMPONENT_TENSOR:
+        return component_tensor_signature(
+            env, value.as.component_tensor, out_ref);
+    case PHY_VALUE_QFT_COMPONENTS:
+        return qft_system_expression(
+            env, value.as.qft_components, out_ref);
+    case PHY_VALUE_COMPONENT_BASIS:
     case PHY_VALUE_COORDINATE_MAP:
     case PHY_VALUE_BASIS_TRANSITION:
     case PHY_VALUE_ATLAS:
     case PHY_VALUE_GR_COMPONENTS:
-    case PHY_VALUE_QFT_COMPONENTS:
         /* These are handles; phy_eval_describe provides their display. */
         return PHY_OK;
     case PHY_VALUE_VECTOR:

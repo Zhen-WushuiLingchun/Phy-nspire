@@ -28,9 +28,9 @@ Verification:
 - host smoke test — done; the suite covers the platform, relative pointer,
   source language, drawing, notebook, the stateful evaluator, IR, tensor
   storage, differential forms, GR, Lie/QFT foundations, CAS, QFT oracle, and
-  full lifecycle: last strict Windows baseline 44/44, current WSL
-  GCC, ASan/leak, and UBSan 46/46 each, and 337,746 explicit checks;
-- generated `.tns` size report — 1,222,416 bytes, 19.4% of the 6 MiB ceiling,
+  full lifecycle: last strict Windows baseline 45/45, current WSL
+  GCC, ASan/leak, and UBSan 47/47 each, and 337,894 explicit checks;
+- generated `.tns` size report — 1,224,221 bytes, 19.5% of the 6 MiB ceiling,
   with the current evaluator and physics stack linked;
 - launch of a Phy-nspire artifact on the real CX II — done on 2026-07-26 with
   the observable CAS smoke screen;
@@ -113,12 +113,12 @@ Verification:
   form, exact arithmetic and arbitrary-precision promotion, differentiation, bounded
   exact factorization, and the zero decision, including the four `sphere_2d`
   corpus entries whose stated trigonometric form differs from the computed one.
-- notebook tests — done, `tests/test_notebook.c`, 215 checks covering bounded
+- notebook tests — done, `tests/test_notebook.c`, 231 checks covering bounded
   cell storage, exact seeded results, editing, insertion, source/IR agreement,
   stale outputs, Markdown selection, independent run-badge hit testing, 2D
   metrics, nMarkdown LaTeX integration, memory return, and the framebuffer
   fixture;
-- evaluator tests — done, `tests/test_eval.c`, 2,963 checks. The physics cases
+- evaluator tests — done, `tests/test_eval.c`, 3,011 checks. The physics cases
   reproduce, through reader-facing source, results the backend suites already
   certify directly: the U(1) and SU(2) curvature components and vanishing
   Bianchi residuals of `tests/test_yang_mills.c`, the round two-sphere
@@ -129,7 +129,7 @@ Verification:
   combinatorics. The remaining cases cover state flow between cells,
   every typed-error path, the ownership sweep under rebinding and failure, the
   binding ceiling, and save/reopen;
-- formula bridge tests — done, `tests/test_formula.c`, 62 checks covering
+- formula bridge tests — done, `tests/test_formula.c`, 103 checks covering
   initialization, matrices, metrics, RGB565 rendering, and local error
   recovery;
 - source, palette and pointer tests — done: 443 source-language checks
@@ -147,9 +147,9 @@ observable `phy-cas-smoke.tns` then ran seven symbolic cases on the physical
 CX II on 2026-07-26, displayed 7/7 PASS, and returned cleanly to Documents.
 
 The evaluator's real Ndless check now compiles 66 portable sources, retains
-17/17 public evaluator entry points, packages a 330,816-byte isolated probe,
+17/17 public evaluator entry points, packages a 332,748-byte isolated probe,
 and contains no float formatter, libm call, or ARM soft-float helper. The
-product is 1,222,416 bytes. The independent SU(N) colour probe retains 23/23
+product is 1,224,221 bytes. The independent SU(N) colour probe retains 23/23
 public APIs, 4,924 bytes of layer text, and packages to 52,764 bytes under the
 same no-float rule. These establish ARM link/package and size, not
 physical-device runtime or performance.

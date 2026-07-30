@@ -17,6 +17,7 @@
 #endif
 
 static uint16_t g_pixels[PHY_SCREEN_PIXELS];
+static uint8_t g_document[PHY_NOTEBOOK_DOCUMENT_MAX_BYTES];
 
 static FILE *open_fixture_file(const char *name, char *path,
                                size_t path_capacity)
@@ -524,6 +525,57 @@ static void test_saturated_context_recovers(void)
     phy_platform_shutdown();
 }
 
+static void test_qft_system_is_structured_renderable_and_persistent(void)
+{
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_formula_initialize(), PHY_OK);
+    phy_notebook *notebook = phy_notebook_create();
+    PHY_CHECK(notebook != NULL);
+    PHY_CHECK_EQ_INT(
+        phy_notebook_add_input(notebook, "qft=QFTSystem[3]", NULL),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(phy_notebook_evaluate_all(notebook), PHY_OK);
+
+    phy_notebook_cell_view view;
+    PHY_CHECK(phy_notebook_cell(notebook, 1u, &view));
+    PHY_CHECK_EQ_STR(view.primary, "");
+    PHY_CHECK_EQ_INT(
+        phy_ir_kind_of(phy_notebook_ir(notebook), view.expression),
+        PHY_IR_FUNCTION);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(
+            phy_notebook_ir(notebook),
+            phy_ir_head(phy_notebook_ir(notebook), view.expression)),
+        "QFTSystem");
+
+    memset(g_pixels, 0, sizeof g_pixels);
+    const phy_surface surface = {g_pixels, PHY_SCREEN_WIDTH, PHY_SCREEN_HEIGHT};
+    phy_notebook_draw(&surface, notebook, -1, -1);
+    PHY_CHECK(phy_gfx_digest(&surface) != 0u);
+
+    size_t size = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_notebook_serialize(
+            notebook, g_document, sizeof g_document, &size),
+        PHY_OK);
+    phy_notebook *loaded = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_notebook_deserialize(g_document, size, &loaded), PHY_OK);
+    PHY_CHECK(loaded != NULL);
+    PHY_CHECK(phy_notebook_cell(loaded, 1u, &view));
+    PHY_CHECK_EQ_STR(view.primary, "");
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(
+            phy_notebook_ir(loaded),
+            phy_ir_head(phy_notebook_ir(loaded), view.expression)),
+        "QFTSystem");
+
+    phy_notebook_destroy(loaded);
+    phy_notebook_destroy(notebook);
+    phy_formula_shutdown();
+    phy_platform_shutdown();
+}
+
 int main(void)
 {
     PHY_TEST_CASE(test_seeded_cell_model_and_exact_results);
@@ -537,6 +589,7 @@ int main(void)
     PHY_TEST_CASE(test_markdown_mixed_flow_wraps);
     PHY_TEST_CASE(test_markdown_body_grid_editing);
     PHY_TEST_CASE(test_saturated_context_recovers);
+    PHY_TEST_CASE(test_qft_system_is_structured_renderable_and_persistent);
     PHY_TEST_CASE(test_notebook_frame_fixture);
     return PHY_TEST_REPORT("test_notebook");
 }
