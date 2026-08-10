@@ -6,24 +6,25 @@ denominator rationalization.
 
 ## Representation
 
-A real algebraic value is stored as:
+A real algebraic value is stored canonically as:
 
-1. a primitive, square-free polynomial in `Z[x]`, with positive leading
-   coefficient; and
-2. an exact rational open interval containing exactly one real root of that
-   polynomial.
+1. its primitive, irreducible polynomial in `Z[x]`, with positive leading
+   coefficient;
+2. its one-based position among the real roots of that polynomial; and
+3. a deterministic exact dyadic open interval containing exactly that root.
 
-The polynomial is called a **defining polynomial**, not a minimal polynomial.
-That distinction is mathematical, not cosmetic: square-free plus an isolating
-interval uniquely identifies one root, but irreducibility over `Q` is a
-separate certificate. General modular factorization must exist before this
-project can canonicalize every value by a minimal polynomial.
+The polynomial is therefore the value's **minimal polynomial over `Q`**, not
+merely a defining polynomial. Construction may start from a reducible
+polynomial and any valid isolating interval: the bounded modular
+Berlekamp/Hensel/Zassenhaus path factors the square-free input, exact Sturm
+counts select the unique irreducible factor, and deterministic bisection
+normalizes the interval. Equality and hashing depend only on the normalized
+minimal polynomial and real-root index; caller interval choices and allocator
+identity are irrelevant.
 
-This representation matches the deliberately non-minimal traditional
-representation documented by CGAL's univariate Algebraic Kernel: a square-free
-polynomial plus an isolating interval. FLINT `qqbar`, by contrast, uses a
-minimal polynomial and a complex enclosure; it is the later, more expensive
-canonical target, not a claim made by this milestone.
+This is the real-algebraic analogue of the canonical identity used by FLINT
+`qqbar`. It intentionally stops short of FLINT's complex enclosure and complete
+complex-algebraic arithmetic.
 
 References:
 
@@ -40,14 +41,15 @@ Construction:
 2. removes high zero coefficients and rejects degree zero;
 3. divides by the positive coefficient content and makes the leading
    coefficient positive;
-4. constructs the exact `Q[x]` Sturm sequence
+4. computes the square-free part, factors it over `Q`, and retains only the
+   irreducible factor with one root in the supplied interval;
+5. constructs the exact `Q[x]` Sturm sequence
    `f, f', -rem(f,f'), ...`;
-5. rejects a zero remainder before the constant stage, which proves that
-   `gcd(f,f')` has positive degree and the input is not square-free;
 6. evaluates the sequence exactly at both rational endpoints, ignoring zero
    intermediate sequence values as Sturm's theorem requires;
-7. accepts a value only when the variation difference is exactly one and
-   neither endpoint is a root.
+7. computes the selected factor's absolute real-root index; and
+8. bisects from a deterministic Cauchy bound until the canonical dyadic cell
+   for that indexed root is obtained.
 
 No floating-point sample participates in root existence, ordering, or
 equality.
@@ -58,14 +60,12 @@ equality.
 - automatic isolation of every real root inside a conservative exact Cauchy
   bound, returned in strictly increasing order;
 - certified construction and structural validation;
-- access to the canonical defining polynomial and interval;
+- access to the canonical minimal polynomial, root index and interval;
 - transactional bisection refinement;
 - collapse to an exact rational point when a midpoint is the root;
 - safe comparison using disjoint intervals;
-- certified equality for overlapping isolating intervals of the same defining
-  polynomial;
-- certified equality between a rational point and any defining polynomial that
-  vanishes there.
+- exact canonical equality and stable hashing across unrelated input
+  certificates that describe the same real algebraic value;
 - exact rational translation `alpha + r`, including arbitrary-precision
   offsets;
 - exact rational scaling `r alpha`, including negative order reversal and the
@@ -76,12 +76,11 @@ equality.
   certified real algebraic values;
 - exact signed integer powers, with zero and negative-power domain checks.
 
-Each rational transform constructs the new integer defining polynomial,
-normalizes its content and leading sign, transforms the interval with exact
-rational arithmetic, and runs the Sturm certificate again before publishing
-the result. A source certificate is never modified. Rational results collapse
-to a canonical linear polynomial, and reciprocal of exact zero returns
-`PHY_ERR_DOMAIN`.
+Each rational transform constructs a candidate integer polynomial, selects its
+irreducible factor, normalizes the root identity and interval, and runs the
+Sturm certificate again before publishing the result. A source certificate is
+never modified. Rational results collapse to a canonical linear polynomial,
+and reciprocal of exact zero returns `PHY_ERR_DOMAIN`.
 
 For two non-rational operands, the arithmetic path evaluates the exact
 Sylvester resultant at deterministic integer sample points, reconstructs it
@@ -95,12 +94,10 @@ Sturm certificate proves that its open rational interval contains one root.
 No floating-point sample participates in resultant construction or root
 selection.
 
-The output is deliberately a square-free **defining polynomial**, not a claim
-of an irreducible minimal polynomial. Consequently structural equality across
-unrelated defining polynomials is not generally canonical yet. Disjoint
-certified intervals, a shared defining polynomial, and equality to a rational
-point remain exact; otherwise comparison returns `PHY_ERR_UNSUPPORTED` rather
-than guessing.
+The square-free resultant is never published directly. It is factored and the
+interval-selected irreducible factor is canonicalized first. This closes
+addition, subtraction, multiplication and division under exact equality and
+hashing for the supported bounded real-algebraic domain.
 
 The scalar Q[x] factorizer now uses this API for irreducible factors of degree
 three or more. Reader-facing `Solve` emits
@@ -130,15 +127,15 @@ ceilings cover both root count and all-root isolation.
 Current reproducible evidence:
 
 - `test_exact`: 79,159 checks, zero failures;
-- `test_algebraic`: 81,754 checks, zero failures, including allocation-failure,
-  timeout, cancellation, arbitrary-precision and retry coverage for every
-  rational transform and resultant arithmetic;
+- `test_algebraic`: 157,070 checks, zero failures, including allocation-failure,
+  timeout, cancellation, arbitrary-precision, minimal-polynomial selection,
+  canonical equality/hash and retry coverage;
 - strict Windows suite: 34/34 tests;
 - ASan/UBSan/leak suite: 36/36 tests;
-- Ndless exact-number link probe: 51/51 public entry points, 14,516 bytes of
-  exact-layer ARM text, 19,912-byte packaged probe;
-- Ndless real-algebraic link probe: 28/28 public entry points, 24,256 bytes of
-  algebraic-layer ARM text, 43,160-byte packaged probe;
+- Ndless exact-number link probe: 68/68 public entry points, 17,680 bytes of
+  exact-layer ARM text, 23,540-byte packaged probe;
+- Ndless real-algebraic link probe: 31/31 public entry points, 38,720 bytes of
+  algebraic-layer ARM text, 66,572-byte packaged probe;
 - neither ARM probe retains a floating-point formatter, libm call, or
   soft-float helper.
 
@@ -147,13 +144,13 @@ acceptance remain separate evidence.
 
 ## Deliberate omissions
 
-This is a bounded real-algebraic closure, not yet a canonical complex
+This is a canonical bounded **real** algebraic closure, not a complete complex
 algebraic-number package:
 
-- no proof of equality across unrelated irrational defining polynomials;
 - no complex isolating rectangles;
 - no radical-to-algebraic lowering in the typed IR;
-- no claim that a defining polynomial is minimal.
+- no reader-facing arithmetic directly on serialized `Root[...]` objects yet;
+- no asymptotically fast large-degree factor selection.
 
 Every arithmetic call is subject to the documented degree, coefficient, step,
 memory and cancellation ceilings. Exceeding one is a typed resource error and

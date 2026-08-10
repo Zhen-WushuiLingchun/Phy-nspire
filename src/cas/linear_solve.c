@@ -1,4 +1,5 @@
 #include "cas_internal.h"
+#include "sparse_poly.h"
 
 /*
  * Certified exact linear systems over the scalar field already understood by
@@ -427,6 +428,11 @@ phy_status phy_cas_solve_system(
     for (size_t row = 0u; row < equation_count; ++row) {
         status = extract_linear_row(
             cas, equations[row], variables, variable_count, matrix[row]);
+        if (status == PHY_ERR_UNSUPPORTED) {
+            return phy_sparse_solve_polynomial_system(
+                cas, equations, equation_count, variables, variable_count,
+                out_ref);
+        }
         if (status != PHY_OK) {
             return status;
         }

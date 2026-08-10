@@ -39,7 +39,7 @@ PHY_FOUNDATION_CASE(
     "conditional_exact_solution")
 PHY_FOUNDATION_CASE(
     nsolve_numeric_layer, "NSolve", "NSolve[x^5-x-1==0,x]",
-    PHY_ERR_UNSUPPORTED, "future_ball_arithmetic")
+    PHY_OK, "certified_real_ball_roots")
 PHY_FOUNDATION_CASE(
     reduce_logic, "Reduce", "Reduce[x^2-1==0,x]",
     PHY_ERR_UNSUPPORTED, "future_semialgebraic_logic")

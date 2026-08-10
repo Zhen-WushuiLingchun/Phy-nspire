@@ -102,6 +102,37 @@ static void test_commands_and_functions(void)
     PHY_CHECK_EQ_STR(render(ir, command.variables[0]), "x");
     PHY_CHECK_EQ_STR(render(ir, command.variables[1]), "y");
 
+    command = parse(ir, "Resultant[x^2+1,x+1,x]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_RESULTANT);
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(fn List (+ 1 (^ x 2)) (+ 1 x))");
+    PHY_CHECK_EQ_STR(render(ir, command.variables[0]), "x");
+
+    command = parse(ir, "Discriminant[x^3-2x+4,x]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_DISCRIMINANT);
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression), "(+ 4 (* -1 2 x) (^ x 3))");
+
+    command = parse(ir, "GroebnerBasis[{x*y-1,y^2-1},{x,y}]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_GROEBNER_BASIS);
+    PHY_CHECK_EQ_INT(command.variable_count, 2);
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(fn List (+ -1 (* x y)) (+ -1 (^ y 2)))");
+
+    command = parse(ir, "N[Pi,24]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_NUMERIC);
+    PHY_CHECK_EQ_INT(command.series_order, 24);
+    PHY_CHECK_EQ_STR(render(ir, command.expression), "Pi");
+
+    command = parse(ir, "NSolve[x^5-x-1==0,x]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_NUMERIC_SOLVE);
+    PHY_CHECK_EQ_INT(command.variable_count, 1);
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(= (+ -1 (* -1 x) (^ x 5)) 0)");
+
     command = parse(ir, "Expand[(x+1)^2]");
     PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_EXPAND);
     PHY_CHECK_EQ_STR(render(ir, command.expression), "(^ (+ 1 x) 2)");
@@ -208,6 +239,20 @@ static void test_commands_and_functions(void)
     PHY_CHECK_EQ_STR(
         render(ir, command.expression),
         "(+ (fn erf z) (fn erfc w) (fn gammafn x) (fn loggamma y))");
+    command = parse(
+        ir, "Factorial[n] + Pochhammer[a,3] + Binomial[n,k]");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(+ (fn binomial n k) (fn factorial n) (fn pochhammer a 3))");
+    command = parse(ir, "RisingFactorial[a,3]");
+    PHY_CHECK_EQ_STR(render(ir, command.expression),
+                     "(fn pochhammer a 3)");
+    command = parse(ir, "Digamma[x]");
+    PHY_CHECK_EQ_STR(render(ir, command.expression), "(fn digamma x)");
+    command = parse(ir, "BernoulliB[10] + HarmonicNumber[5]");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(+ (fn bernoulli 10) (fn harmonic 5))");
 
     command = parse(ir, "2x + (x+1)(x-1) == {x, y}");
     PHY_CHECK_EQ_STR(

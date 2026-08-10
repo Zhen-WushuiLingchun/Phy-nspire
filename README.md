@@ -52,10 +52,14 @@ differentiation, bounded exact antiderivatives, arbitrary-precision exact
 integer/rational and Gaussian-rational promotion, exact `I`,
 `Re`/`Im`/`Conjugate`/`Abs`, bounded univariate factorization and partial
 fractions, bounded sparse multivariate GCD cancellation, certified
-real-algebraic resultant arithmetic, exact Taylor/Laurent `Series`/`Normal`,
+real-algebraic resultant arithmetic with canonical minimal-polynomial identity,
+exact Taylor/Laurent `Series`/`Normal`,
 proof-producing finite, directed and rational-infinity `Limit`, exact bounded
 polynomial `Solve` with complex quadratic roots and certified higher-degree
-real roots, verified exact linear systems,
+real roots, verified exact linear and zero-dimensional polynomial systems,
+bounded `Resultant`/`Discriminant`/`GroebnerBasis`, exact
+Bernoulli/Harmonic/Digamma/Gamma recurrences, and a certified real rational-ball
+layer for bounded `N`/univariate-real `NSolve`,
 and an exact zero decision;
 the component tensor core with charts, dense storage, valence, signed slot
 symmetries, contraction, metric inversion, index raising/lowering, and
@@ -149,19 +153,19 @@ survived a round trip and nothing computed.
 
 The generated
 [`examples/phy-nspire-cas-tour.tns`](examples/phy-nspire-cas-tour.tns)
-notebook combines sixteen Markdown/LaTeX explanations with 176 executable examples
-that touch every implemented evaluator family. Its distributable form contains 192
+notebook combines sixteen Markdown/LaTeX explanations with 180 executable examples
+that touch every implemented evaluator family. Its distributable form contains 196
 source cells so opening does not eagerly rebuild all cached results; a separate
 fully evaluated copy is serialized, reopened, and replayed during generation.
 
-The strict Windows host suite passes 45/45. The WSL GCC, ASan/leak, and UBSan
-suites each pass 47/47, and the assertion-bearing executables contain 337,894
-explicit checks. The context-sensitive CAS menu is also checked against the
-authoritative evaluator and source-command registries: all 109 evaluator heads
-and all 18 supported source commands are discoverable through its ten
-scrollable categories.
+The last recorded strict Windows host suite passes 45/45. The current WSL GCC
+and combined ASan/UBSan/leak suites pass 48/48, and the assertion-bearing
+executables contain 458,095 explicit checks. The context-sensitive CAS menu is
+also checked against the authoritative evaluator and source-command registries:
+every supported operation is discoverable through its ten scrollable
+categories.
 
-The current native build is measured at 1,224,221 bytes, 19.5% of the 6 MiB
+The current native build is measured at 1,246,500 bytes, 19.8% of the 6 MiB
 ceiling. Its evaluator ARM probe links the complete current physics stack,
 retains 17/17 public evaluator entry points, packages to a `.tns`, and imports
 no libm, floating-point formatter, or ARM soft-float helper.
@@ -185,10 +189,10 @@ pressure and has since been replaced by the 12,200-byte source-only tour; that
 tour and the then-current 1,221,725-byte program were atomically deployed and
 downloaded back byte-identically on 2026-07-30. The previous 1,222,416-byte
 program, including the complete scrollable MENU, was subsequently deployed and
-read back byte-identically on the same date. The current 1,224,221-byte build
-adds structured physics-object output and lazy/one-pass SU(3) initialization;
-its calculator transfer and open/run check are recorded separately after
-deployment. The
+read back byte-identically on the same date. A later 1,226,713-byte build added
+structured physics-object output and lazy/one-pass SU(3) initialization. The
+current 1,246,500-byte foundation build has not been uploaded in this work
+round; its calculator transfer and open/run check remain a separate gate. The
 separate baseline channel-order check remains tracked in
 [docs/BUILD.md](docs/BUILD.md).
 
@@ -206,6 +210,7 @@ Start here:
 - [Yang--Mills symbolic layer](docs/YANG_MILLS.md)
 - [Scalar computer algebra](docs/CAS.md)
 - [Certified real algebraic foundation](docs/ALGEBRAIC.md)
+- [Certified real ball arithmetic and numeric solving](docs/BALL_ARITHMETIC.md)
 - [Notebook shell and 2D layout](docs/NOTEBOOK.md)
 - [Reader-facing symbolic source language](docs/SOURCE_LANGUAGE.md)
 - [Stateful notebook evaluator](docs/EVALUATOR.md)

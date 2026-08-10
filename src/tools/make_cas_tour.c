@@ -93,6 +93,10 @@ static const tour_cell kTour[] = {
      "Solve[{x+y+z==6,2x-y+z==3,x+2y-z==2},{x,y,z}]",
      NULL},
     {TOUR_INPUT, "Gamma[6]+LogGamma[2]+Erfc[0]", NULL},
+    {TOUR_INPUT, "Factorial[50]", NULL},
+    {TOUR_INPUT, "Pochhammer[x,5]", NULL},
+    {TOUR_INPUT, "Binomial[100,50]", NULL},
+    {TOUR_INPUT, "D[Factorial[x],x]", NULL},
     {TOUR_INPUT, "EquivalentQ[Sin[x]^2+Cos[x]^2,1]", NULL},
 
     {TOUR_MARKDOWN, "Manifolds and component tensors",

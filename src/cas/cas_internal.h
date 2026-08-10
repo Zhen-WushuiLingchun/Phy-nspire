@@ -143,6 +143,12 @@ typedef enum {
     PHY_CAS_FN_LOGGAMMA,
     PHY_CAS_FN_ERF,
     PHY_CAS_FN_ERFC,
+    PHY_CAS_FN_FACTORIAL,
+    PHY_CAS_FN_POCHHAMMER,
+    PHY_CAS_FN_BINOMIAL,
+    PHY_CAS_FN_BERNOULLI,
+    PHY_CAS_FN_HARMONIC,
+    PHY_CAS_FN_DIGAMMA,
     PHY_CAS_FN_COUNT
 } phy_cas_function;
 
@@ -178,6 +184,7 @@ typedef struct {
     phy_cas_zero_value zero_value;
     uint8_t singularities;
     bool nonzero_where_defined;
+    uint8_t arity;
 } phy_cas_function_descriptor;
 
 struct phy_cas {
@@ -362,6 +369,18 @@ phy_status phy_cas_gaussian_function(phy_cas *cas, phy_ir_symbol head,
 phy_status phy_cas_rebuild_at(phy_cas *cas, phy_ir_kind kind,
                               phy_ir_symbol head, size_t offset, size_t count,
                               phy_ir_ref *out_ref);
+
+/*
+ * Exact bounded discrete special functions.  `out_matched` is false when the
+ * arguments are outside the implemented exact/symbolic class, in which case
+ * the caller preserves the function application unchanged.  A true value
+ * means the operation owns the result status, including domain and resource
+ * failures.
+ */
+phy_status phy_cas_discrete_function(
+    phy_cas *cas, phy_cas_function function,
+    const phy_ir_ref *arguments, size_t count,
+    phy_ir_ref *out_ref, bool *out_matched);
 
 /* --------------------------------------------------------------- diff.c */
 

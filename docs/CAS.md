@@ -281,6 +281,23 @@ result. The result supports improper fractions, repeated factors, irreducible
 quadratic and higher factors, rational leading coefficients, and promoted
 integer coefficients.
 
+### Exact bounded elimination and polynomial systems
+
+`phy_cas_resultant`, `phy_cas_discriminant`, and
+`phy_cas_groebner_basis` share the distributed sparse exact-rational
+polynomial representation. `Resultant[f,g,x]` evaluates the Sylvester
+determinant by exact rational Gaussian elimination. `Discriminant[f,x]` uses
+the derivative/resultant identity including its exact sign and leading-factor
+normalization. `GroebnerBasis[{f,...},{x,...}]` uses lexicographic Buchberger
+reduction with monic normalization.
+
+Publication is certificate-driven: every original generator must reduce to
+zero by the proposed basis and every retained S-pair must also reduce to zero.
+The device-oriented ceilings are eight variables, 192 terms per polynomial,
+degree 48, 16 basis elements, 120 S-pairs, and a 32-row Sylvester matrix.
+Crossing a ceiling returns a typed resource status rather than a truncated
+basis or determinant.
+
 `phy_cas_full_simplify` — the notebook's `FullSimplify` — is the one door from
 the display normal form into this machinery. It runs the plain simplifier,
 then the trig-basis rational form, and returns whichever of the two prints
@@ -377,8 +394,27 @@ runs over the shared rational/Gaussian-rational scalar domain. Unique systems
 return constant rules, underdetermined systems return pivot variables in terms
 of the original free variables, and inconsistent systems return an empty
 solution list. Every published rule set is substituted into every original
-equation and exact-zero checked. A nonlinear term, undecidable pivot, duplicate
-variable, or resource ceiling produces a typed error and no partial solution.
+equation and exact-zero checked. An undecidable pivot, duplicate variable, or
+resource ceiling produces a typed error and no partial solution; a nonlinear
+rational-polynomial system may continue through the bounded path below.
+
+When a system is nonlinear but remains polynomial over `Q`, the same entry
+point falls through to the bounded lexicographic Gröbner kernel. A solution is
+published only when the basis is zero-dimensional and triangular, every
+univariate branch can be represented in the exact scalar domain, and exact
+substitution proves every original equation. Positive-dimensional ideals,
+non-triangular bases after the bounded run, or branches requiring an
+unsupported algebraic extension remain typed unsupported.
+
+`phy_cas_n` and reader-facing `N[expr,digits]` form the first certified numeric
+layer. It evaluates exact real arithmetic, `Pi`, `E`, `EulerGamma`, integer
+powers and square roots into an exact rational
+`Around[midpoint,radius]`; requested precision is capped at 36 decimal digits.
+`phy_cas_nsolve`/`NSolve[equation,x]` isolates every real root of a bounded
+univariate rational polynomial by exact Sturm arithmetic, refines the root to
+a rational ball, evaluates the reduced denominator over that ball, and
+publishes only when zero is excluded. It intentionally does not claim complex
+or multivariate numerical solving yet.
 
 ### Why trigonometry is reduced, and to what
 
@@ -460,13 +496,15 @@ An unevaluated derivative is a correct answer a later layer can refine. A wrong
 zero is a curvature tensor that vanishes for a spacetime that curves.
 
 The known table includes the elementary, inverse trigonometric, hyperbolic,
-inverse hyperbolic, and first special-function pack (`Gamma`, `LogGamma`,
-`Erf`, `Erfc`). `tan` differentiates to `1/cos(u)^2` rather than to
+inverse hyperbolic, and bounded special-function packs (`Gamma`, `LogGamma`,
+`Erf`, `Erfc`, and `Factorial`). `tan` differentiates to `1/cos(u)^2` rather than to
 `1 + tan(u)^2` so that the result lands on the same basis the zero decision
 reduces to; the other form would need the identity applied before anything
 could cancel against it. `Gamma'` is represented exactly as
-`Gamma(u) Digamma(u)`; Digamma remains an explicit special function outside
-this first table.
+`Gamma(u) Digamma(u)`; similarly `Factorial(u)'` is represented as
+`Factorial(u) Digamma(u+1)` through its meromorphic continuation. Digamma
+has exact positive integer and half-integer values plus a bounded integer-shift
+recurrence; outside that certified table it remains explicit.
 
 `d(u^v)` uses the power rule when the exponent is constant, which avoids
 introducing a logarithm of a base that may be negative, and the general
@@ -515,13 +553,24 @@ covered by the shared evaluator corpus; `Integrate` has the stronger
 independent differentiate-and-zero-check described above.
 
 `Pi`, `E`, `I`, `EulerGamma`, and directed-limit `Infinity` are protected
-constants. The first elementary
-table includes exact trigonometric values at supported multiples of `Pi`,
-positive exact square-factor extraction (`Sqrt[72] -> 6 Sqrt[2]`),
-`Gamma[n]` while `(n-1)!` fits `int64`, `Gamma[1/2]`, and the zero values of
-`Erf`/`Erfc`. `I^2=-1`, integral powers reduce exactly, and closed
+constants. The elementary and discrete exact table includes trigonometric
+values at supported multiples of `Pi`,
+positive exact square-factor extraction (`Sqrt[72] -> 6 Sqrt[2]`), exact
+positive-integer and positive-half-integer `Gamma`, `BernoulliB[n]` through
+64, `HarmonicNumber[n]` through 4096, exact integer/half-integer `Digamma`, and
+the zero values of `Erf`/`Erfc`. `I^2=-1`, integral powers reduce exactly, and closed
 Gaussian-rational arithmetic plus `Re`, `Im`, `Conjugate`, and `Abs` uses the
 native arbitrary-precision domain described above.
+
+`Factorial[n]` is exact for `0 <= n <= 512`; `Pochhammer[a,n]` (also read as
+`RisingFactorial[a,n]`) and `Binomial[a,n]` evaluate exact rational arguments
+with at most 512 multiplicative factors. Symbolic integer-order products use a
+64-factor ceiling. Gamma, Digamma and Pochhammer also apply bounded exact
+integer-shift recurrences. Negative factorials and actual reciprocal-product poles are
+domain errors, while noninteger symbolic orders stay unevaluated. These heads
+never call floating-point or libm code. The MathTree display uses postfix `!`
+for factorial and scripted Pochhammer notation; the stored IR keeps stable
+canonical function names.
 
 ## Memory and budget
 
@@ -589,11 +638,14 @@ answers `UNKNOWN` rather than deciding anything about it.
 ## Not in this layer
 
 General special-function integration, unrestricted asymptotic/branch limits,
-and nonlinear simultaneous solving.
+positive-dimensional/conditional polynomial systems, complex `NSolve`, and
+general nonlinear simultaneous solving.
 The exact bounded `Series`/`Normal` ring and the finite/directed/rational-
 infinity `Limit` subset live in `series.c` and `limit.c`; cases they cannot
 prove return a typed error rather than sampling. Multivariate factorization
-and multivariate/algebraic-extension partial fractions. Matrix-valued symbolic
+and multivariate/algebraic-extension partial fractions. The exact
+Gröbner/resultant/discriminant layer is deliberately bounded as documented
+above. Matrix-valued symbolic
 algebra beyond the exact linear-system solver.
 Dummy-index canonicalization,
 contraction, and anything
@@ -641,14 +693,14 @@ counts are recorded in `CAS_ACCEPTANCE.md` after each clean build.
 
 Built with the pinned Ndless r2022 SDK and ARM GNU 14.3 toolchain using
 `-Os -marm`. The isolated link check compiles the complete scalar layer to
-109,160 bytes of ARM text; its dependency-complete probe packages to 154,996
+130,036 bytes of ARM text; its dependency-complete probe packages to 197,464
 bytes. These figures are deliberately measured by the link-check target rather
 than maintained as a hand-summed per-object table.
 
 The application now calls the CAS and the typed physics backends through
 editable notebook cells. The current product, including persistence,
-nMarkdown's math typesetter, and the reachable evaluator stack, is 1,224,221
-bytes (19.5% of the 6 MiB ceiling).
+nMarkdown's math typesetter, and the reachable evaluator stack, is 1,246,500
+bytes (19.8% of the 6 MiB ceiling).
 
 `make cas-link-check` closes the gap that leaves. It is the same guard as
 `make ir-link-check`, and `tools/link-check.sh` now serves both layers from one
@@ -665,8 +717,8 @@ dependency through its own gcd and its check passes, which is good evidence but
 not the check itself.
 
 `make cas-link-check` has been run with the real Ndless linker and packager:
-all **35/35** public entry points derived from `include/phy/cas.h` survive
-`--gc-sections`; the CAS+IR+platform probe packages to a **154,924-byte `.tns`**;
+all **40/40** public entry points derived from `include/phy/cas.h` survive
+`--gc-sections`; the CAS+IR+platform probe packages to a **197,464-byte `.tns`**;
 and no `_dtoa`, `_strtod`, `_printf_float`, libm, `stdio` formatting, or ARM
 soft-float helper reaches the image. Real IR atoms are ordered by their
 IEEE-754 bit keys rather than by executing a floating-point comparison. The

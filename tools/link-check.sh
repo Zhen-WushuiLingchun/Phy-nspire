@@ -22,7 +22,7 @@
 # Nothing here touches dist/. The probe is built into its own directory and
 # is never linked into the product.
 #
-# Usage: tools/link-check.sh [ir|exact|cas|algebraic|geom|ym|color|qftbridge|eval]
+# Usage: tools/link-check.sh [ir|exact|ball|cas|algebraic|geom|ym|color|qftbridge|eval]
 #        (default ir)
 #        after eval "$(tools/bootstrap-ndless.sh --env-only)"
 
@@ -56,6 +56,7 @@ CAS_SOURCES=(
     src/exact/rational.c
     src/exact/gaussian.c
     src/exact/algebraic.c
+    src/exact/ball.c
     src/cas/num.c
     src/cas/big_num.c
     src/cas/complex.c
@@ -65,6 +66,8 @@ CAS_SOURCES=(
     src/cas/solve.c
     src/cas/linear_solve.c
     src/cas/sparse_poly.c
+    src/cas/ball_eval.c
+    src/cas/special.c
     src/cas/engine.c
     src/cas/simplify.c
     src/cas/diff.c
@@ -145,6 +148,20 @@ exact)
              src/exact/rational.c
              src/exact/gaussian.c)
     ;;
+ball)
+    LABEL="real ball"
+    PROBE="tests/device/ball_link_probe.c"
+    HEADER="include/phy/ball.h"
+    OBJECT_GLOB="src_exact_ball.o"
+    SYMBOL_RE='phy_real_ball_'
+    EXCLUDE='^$'
+    MIN_ENTRY_POINTS=15
+    SOURCES=("${COMMON_SOURCES[@]}"
+             src/exact/context.c
+             src/exact/integer.c
+             src/exact/rational.c
+             src/exact/ball.c)
+    ;;
 cas)
     LABEL="CAS"
     PROBE="tests/device/cas_link_probe.c"
@@ -167,7 +184,8 @@ algebraic)
              src/exact/integer.c
              src/exact/rational.c
              src/exact/gaussian.c
-             src/exact/algebraic.c)
+             src/exact/algebraic.c
+             src/cas/finite_poly.c)
     ;;
 geom)
     LABEL="geometry"
@@ -262,7 +280,7 @@ eval)
              src/eval/display.c)
     ;;
 *)
-    echo "usage: tools/link-check.sh [ir|exact|cas|algebraic|geom|ym|color|qftbridge|eval]" >&2
+    echo "usage: tools/link-check.sh [ir|exact|ball|cas|algebraic|geom|ym|color|qftbridge|eval]" >&2
     exit 2
     ;;
 esac
@@ -433,7 +451,8 @@ printf '  ok    %d/%d public entry points retained\n' \
 # form operation that reached libm would defeat the point of it.
 BANNED_PATTERN='(^|[[:space:]_])(_dtoa|_strtod|_printf_float|_scanf_float|_vfprintf|__sf_fake)'
 STRICT_FLOAT=0
-if [ "$LAYER" = "exact" ] || [ "$LAYER" = "cas" ] ||
+if [ "$LAYER" = "exact" ] || [ "$LAYER" = "ball" ] ||
+   [ "$LAYER" = "cas" ] ||
    [ "$LAYER" = "algebraic" ] ||
    [ "$LAYER" = "geom" ] ||
    [ "$LAYER" = "ym" ] || [ "$LAYER" = "color" ] ||

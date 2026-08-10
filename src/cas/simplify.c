@@ -1508,16 +1508,31 @@ phy_status phy_cas_rebuild_at(phy_cas *cas, phy_ir_kind kind,
         return phy_cas_pow_node(cas, base, exponent, out_ref);
     }
     case PHY_IR_FUNCTION:
-        /* Arity is part of recognition: a one-argument sin goes through the
-           rules, and anything else keeps its head and is rebuilt below. */
+    {
+        const phy_cas_function function = phy_cas_function_id(cas, head);
+        const phy_cas_function_descriptor *descriptor =
+            phy_cas_function_descriptor_for(function);
+        if (descriptor != NULL && count == descriptor->arity) {
+            bool matched = false;
+            phy_status status = phy_cas_discrete_function(
+                cas, function, phy_cas_scratch_at(cas, offset), count,
+                out_ref, &matched);
+            if (status != PHY_OK || matched) {
+                return status;
+            }
+        }
+        /* Arity is part of recognition: a one-argument elementary function
+           goes through the old unary rules, and a mismatched application stays
+           structural instead of being mistaken for a successful evaluation. */
         if (count == 1u &&
-            (phy_cas_is_known_head(cas, head) ||
+            ((descriptor != NULL && descriptor->arity == 1u) ||
              head == cas->fn_re || head == cas->fn_im ||
              head == cas->fn_conjugate || head == cas->fn_abs)) {
             return apply_function(cas, head, phy_cas_scratch_at(cas, offset)[0],
                                   out_ref);
         }
         break;
+    }
     default:
         break;
     }

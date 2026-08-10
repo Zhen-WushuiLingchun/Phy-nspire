@@ -118,32 +118,32 @@ serialization, and MathTree display. Exact `I`, `Re`, `Im`, `Conjugate`, and
 complete public-API ARM retention. Certified real-algebraic values now support
 exact rational translation, scaling, reciprocal, resultant addition,
 subtraction, multiplication, division, and signed integer powers with fresh
-Sturm certificates. The certified real-algebraic foundation
-(primitive square-free defining polynomial, rational isolating interval, Sturm
-count/all-root isolation/refinement/comparison) is implemented and documented in
-[`ALGEBRAIC.md`](ALGEBRAIC.md). Canonical minimal-polynomial equality remains
-open: arithmetic results are certified by a square-free defining polynomial
-and isolating interval, not falsely advertised as minimal. The univariate polynomial
-coefficient containers and rational LCD path have been migrated.
+Sturm certificates. Every value is reduced to a primitive irreducible
+positive-leading minimal polynomial, a canonical real-root index and a
+deterministic dyadic isolating interval. Exact equality and stable hashes are
+therefore independent of the input defining polynomial and interval. The
+implementation is documented in [`ALGEBRAIC.md`](ALGEBRAIC.md). The univariate
+polynomial coefficient containers and rational LCD path have been migrated.
 
 - Native bounded-memory arbitrary-precision integers and rationals.
 - Gaussian rationals and exact `I`, `Conjugate`, `Re`, `Im`, and `Abs`.
-- Real algebraic numbers represented by a primitive square-free defining polynomial
-  plus a certified rational isolating interval; canonical minimal-polynomial
-  equality follows after modular factorization can certify irreducibility.
+- Real algebraic numbers represented by a primitive irreducible minimal
+  polynomial, real-root index and certified rational isolating interval.
 - Safe root comparison and denominator rationalization on that certified
   domain.
 
 The native choice has host strict/ASan, serialization, allocation-failure,
-resultant-closure, and complete public-API ARM link/size evidence. Physical CX
-II timing/peak-heap acceptance and canonical minimal-polynomial equality are
-still separate gates before claiming an unbounded/canonical algebraic package.
+resultant-closure, canonical identity/hash, and complete public-API ARM
+link/size evidence. Physical CX II timing/peak-heap acceptance remains a
+separate gate; resource ceilings remain explicit, so this is not advertised as
+an unbounded algebraic package.
 
 ### F4 — series, limits, and equations
 
 Status: the exact bounded Taylor/Laurent ring, reader-facing `Series` /
-`Normal` path, a proof-producing exact `Limit` subset, and the first exact
-polynomial `Solve` subset are implemented.
+`Normal` path, a proof-producing exact `Limit` subset, exact polynomial
+`Solve`, bounded sparse Gröbner/resultant/discriminant operations, and exact
+zero-dimensional polynomial-system solving are implemented.
 Rational expressions expand about arbitrary
 exact rational centers; exact Maclaurin recurrence/composition covers
 `Exp`, `Sin`, `Cos`, `Tan`, `Sinh`, `Cosh`, `Tanh`, `ArcSin`, `ArcTan`,
@@ -169,16 +169,29 @@ transactionally with a typed unsupported result; no partial root list is
 published. Exact simultaneous affine systems through eight
 equations/variables use verified exact RREF over the shared scalar domain;
 unique, underdetermined and inconsistent cases are distinguished, and every
-solution is substituted back before publication.
+solution is substituted back before publication. Nonlinear rational systems
+enter the bounded sparse lexicographic Gröbner path. Only a triangular,
+zero-dimensional basis whose exact branches all verify against the original
+system is published; positive-dimensional, untriangularized, or extension-root
+cases return a typed unsupported/resource result without a partial branch.
+
+`Resultant[f,g,x]` uses an exact Sylvester determinant,
+`Discriminant[f,x]` uses the exact derivative/resultant identity, and
+`GroebnerBasis[{f,...},{x,...}]` uses bounded Buchberger reduction. A basis is
+published only after every original generator reduces to zero and all retained
+S-pairs reduce to zero. The calculator ceilings are eight variables, 192 terms
+per polynomial, degree 48, 16 basis elements and 120 S-pairs.
 
 The remaining implementation is governed by
 [`plans/2026-07-28-cas-foundation-f4-f5.md`](plans/2026-07-28-cas-foundation-f4-f5.md).
 The compiled reader matrix is `tests/corpus/cas_foundation_cases.inc`.
-`NSolve` and `Reduce` remain typed unsupported until their corresponding exact
-backend, evaluator, display, and negative controls land together. Certified
-complex roots of degree above two, conditional solution sets, and
-reader-facing algebraic arithmetic on `Root` values remain later extensions
-of `Solve`.
+`NSolve` now supplies certified real roots of a bounded univariate rational
+polynomial. It isolates roots with exact Sturm arithmetic, refines each root to
+a rational ball, and verifies that the original denominator excludes zero.
+Complex numerical roots, multivariate numerical systems and `Reduce` remain
+typed unsupported. Certified complex roots of degree above two, conditional
+solution sets, and reader-facing algebraic arithmetic on `Root` values remain
+later extensions of exact `Solve`.
 
 - Truncated formal power-series arithmetic before reader-facing `Series`.
 - Extend the exact limit subset only alongside proof rules and negative
@@ -189,15 +202,38 @@ of `Solve`.
 
 ### F5 — special-function kernel
 
-Status: first bounded pack implemented (`Gamma`, `LogGamma`, `Erf`, `Erfc`);
-Bessel families, polylogarithms, recurrence metadata, and a numerical layer
-remain open.
+Status: bounded packs implement `Gamma`, `LogGamma`, `Erf`, `Erfc`, exact
+`Factorial`, `Pochhammer`/`RisingFactorial`, `Binomial`, `BernoulliB`,
+`HarmonicNumber`, and `Digamma`. Bessel families, polylogarithms and general
+analytic continuation remain open.
 
-- `Gamma`, factorial/rising factorial, `Erf`/`Erfc`, Bessel families, and
-  polylogarithms are added by a descriptor table.
-- Each function starts with exact special values, derivatives, symmetries,
-  recurrences, and domain metadata. Numerical evaluation is a later,
-  separately bounded interval/ball layer.
+- The discrete pack is not a name-only parser extension. Exact arguments are
+  evaluated in the native arbitrary-precision rational domain: factorials up
+  to 512, and rising-factorial/binomial products with at most 512 factors.
+  Symbolic finite products use a separate 64-factor ceiling so compact input
+  cannot allocate an accidental thousand-term expression on the calculator.
+- Negative factorials and proved Pochhammer poles return `PHY_ERR_DOMAIN`;
+  oversized products return `PHY_ERR_TERM_LIMIT`. A noninteger symbolic order
+  remains an explicit typed function application.
+- `BernoulliB[n]` is exact through `n=64`; `HarmonicNumber[n]` is exact for
+  nonnegative integers through 4096. `Digamma` evaluates positive integers and
+  half-integers and applies bounded exact integer-shift recurrences.
+- `Gamma` evaluates positive integers with the native arbitrary-precision
+  factorial path, positive half-integers as a rational multiple of
+  `Sqrt[Pi]`, and bounded symbolic integer shifts. `Pochhammer` has matching
+  forward/backward recurrence simplification.
+- `D[Factorial[x],x]` uses the meromorphic continuation
+  `Factorial[x] Digamma[x+1]`.
+- Reader aliases, evaluator simplification, menu discovery, typed IR, and the
+  nMarkdown MathTree share one descriptor: factorial displays with postfix
+  `!`, and Pochhammer as a scripted rising factorial rather than a raw head.
+- Further analytic rules are added only with exact special values,
+  derivatives, symmetries, recurrences, and domain metadata. General-order
+  Pochhammer/Binomial derivatives are therefore still explicit.
+- The first separately bounded numeric layer is present: `N` evaluates the
+  supported real exact arithmetic/constants/square-root subset to a certified
+  rational `Around[midpoint,radius]`, and `NSolve` returns certified real root
+  balls. It never silently falls back to binary floating point.
 - An unsupported transform or integral remains explicit; table lookup never
   masquerades as a general integration algorithm.
 

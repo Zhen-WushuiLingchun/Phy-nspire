@@ -1177,6 +1177,68 @@ static phy_status apply_scalar_operation(phy_env *env,
         return phy_cas_solve_system(
             env->cas, value, command->variables,
             command->variable_count, out_ref);
+    case PHY_SOURCE_NUMERIC:
+        return phy_cas_n(
+            env->cas, value,
+            command->series_order == 0u ? 16u : command->series_order,
+            out_ref);
+    case PHY_SOURCE_NUMERIC_SOLVE:
+        if (command->variable_count != 1u) {
+            return PHY_ERR_UNSUPPORTED;
+        }
+        if (eval_lookup(
+                env, phy_ir_head(env->ir, command->variables[0]), NULL)) {
+            return PHY_ERR_TYPE;
+        }
+        return phy_cas_nsolve(
+            env->cas, value, command->variables[0], 16u, out_ref);
+    case PHY_SOURCE_RESULTANT:
+    case PHY_SOURCE_DISCRIMINANT:
+    case PHY_SOURCE_GROEBNER_BASIS:
+        if (command->variable_count == 0u) {
+            return PHY_ERR_CORRUPT_DOCUMENT;
+        }
+        for (size_t index = 0u;
+             index < command->variable_count; ++index) {
+            if (eval_lookup(
+                    env, phy_ir_head(env->ir, command->variables[index]),
+                    NULL)) {
+                return PHY_ERR_TYPE;
+            }
+        }
+        if (command->operation == PHY_SOURCE_DISCRIMINANT) {
+            if (command->variable_count != 1u) {
+                return PHY_ERR_CORRUPT_DOCUMENT;
+            }
+            return phy_cas_discriminant(
+                env->cas, value, command->variables[0], out_ref);
+        }
+        if (phy_ir_kind_of(env->ir, value) != PHY_IR_FUNCTION ||
+            phy_ir_head(env->ir, value) != env->list_head) {
+            return PHY_ERR_TYPE;
+        }
+        if (command->operation == PHY_SOURCE_RESULTANT) {
+            if (command->variable_count != 1u ||
+                phy_ir_child_count(env->ir, value) != 2u) {
+                return PHY_ERR_CORRUPT_DOCUMENT;
+            }
+            return phy_cas_resultant(
+                env->cas, phy_ir_child(env->ir, value, 0u),
+                phy_ir_child(env->ir, value, 1u),
+                command->variables[0], out_ref);
+        } else {
+            const size_t count = phy_ir_child_count(env->ir, value);
+            if (count == 0u || count > 16u) {
+                return PHY_ERR_TERM_LIMIT;
+            }
+            phy_ir_ref expressions[16];
+            for (size_t index = 0u; index < count; ++index) {
+                expressions[index] = phy_ir_child(env->ir, value, index);
+            }
+            return phy_cas_groebner_basis(
+                env->cas, expressions, count, command->variables,
+                command->variable_count, out_ref);
+        }
     default:
         break;
     }

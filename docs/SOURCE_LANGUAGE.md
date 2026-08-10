@@ -186,14 +186,18 @@ semantics implicitly.
 | `Limit[expr,{x,a,FromAbove}]`, `Limit[expr,{x,a,FromBelow}]` | exact directed finite limit; `Direction->"FromAbove"` and `Direction->"FromBelow"` are equivalent spellings |
 | `Limit[expr,{x,Infinity}]`, `Limit[expr,{x,-Infinity}]` | exact rational/Laurent infinity limit through the certified `t=1/x` transform |
 | `Solve[equation,x]` | exact distinct roots for bounded reduced Q[x] equations: rational/constant affine roots, real or complex quadratic radicals, and certified `Root[{a0,...,an},k]` values when a higher irreducible factor is proved all-real; denominator roots are excluded |
-| `Solve[{equation,...},{x,...}]` | exact linear systems through eight equations/variables, including unique, underdetermined and inconsistent systems; every solution is substituted back |
+| `Solve[{equation,...},{x,...}]` | exact linear systems through eight equations/variables, then bounded zero-dimensional sparse polynomial systems when a verified triangular Gröbner basis is obtained; every solution is substituted back |
+| `Resultant[f,g,x]` | exact bounded Sylvester resultant over the shared rational polynomial domain |
+| `Discriminant[f,x]` | exact derivative/resultant discriminant with the conventional leading-coefficient/sign normalization |
+| `GroebnerBasis[{f,...},{x,...}]` | bounded exact lexicographic Buchberger basis, published only after generator-membership and S-pair verification |
+| `N[expr]`, `N[expr,digits]` | certified real rational ball for the supported exact arithmetic/constants/square-root subset; up to 36 requested decimal digits |
+| `NSolve[equation,x]` | all certified real roots of a bounded univariate rational polynomial as `Around[midpoint,radius]` rules, with denominator exclusion |
 
 Every command except assignment, a bare expression, and the two simplifies is
 scalar algebra, so `Expand[M]` on a manifold is `PHY_ERR_TYPE` rather than a
 silently ignored request.
 
-Registered but not implemented commands include `NSolve`, `Reduce`,
-`Refine`, and the
+Registered but not implemented commands include `Reduce`, `Refine`, and the
 `Trig*` family. They return `PHY_ERR_UNSUPPORTED`. They are never accepted as
 opaque ordinary functions, because that would present a no-op as successful
 computer algebra.
@@ -212,9 +216,9 @@ scheduling is future work; the explicitly implemented
   arguments, replacement rules, patterns, or scoping;
 - binding a name a live chart uses as a coordinate is `PHY_ERR_ASSUMPTION`, in
   both directions — see [`EVALUATOR.md`](EVALUATOR.md);
-- no complex arbitrary-precision numeric approximation layer; exact integers,
-  rationals, and Gaussian rationals do promote natively under explicit resource
-  ceilings;
+- no complex arbitrary-precision numeric approximation layer; `N` currently
+  certifies a real arithmetic/constants/square-root subset and `NSolve`
+  certifies real roots of univariate rational polynomials only;
 - `Solve` publishes exact rational/constant affine roots, real and complex
   quadratic radicals, and certified roots of higher-degree all-real factors.
   `Root[{a0,...,an},k]` uses increasing coefficient
@@ -223,9 +227,10 @@ scheduling is future work; the explicitly implemented
   of degree at least three, identity with
   infinitely many solutions, nonlinear multivariate equation, or
   transcendental equation returns `PHY_ERR_UNSUPPORTED`; exact simultaneous
-  affine systems are supported and never return a partial rule list;
-- no `a+bi` literal token or numeric approximation command; exact complex
-  expressions use the protected symbol `I`;
+  affine and bounded triangular zero-dimensional polynomial systems are
+  supported and never return a partial rule list;
+- no `a+bi` literal token; exact complex expressions use the protected symbol
+  `I`, while the numeric ball layer is deliberately real-only;
 - no implicit function application beyond bracket/parenthesis calls;
 - no shorthand Einstein syntax yet; explicit `Up`/`Down` indices retain their
   Generic/Lorentz/Spinor/color space in typed IR;

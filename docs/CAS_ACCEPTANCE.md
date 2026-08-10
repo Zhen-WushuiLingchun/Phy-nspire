@@ -8,10 +8,10 @@ evidence.
 ## Executable notebook
 
 [`examples/phy-nspire-cas-tour.tns`](../examples/phy-nspire-cas-tour.tns) is a
-12,200-byte `PHYNB001` notebook with 192 source cards:
+12,341-byte `PHYNB001` notebook with 196 source cards:
 
 - sixteen Markdown cells with nMarkdown LaTeX;
-- 176 editable Math inputs;
+- 180 editable Math inputs;
 - no eagerly persisted output/IR cache.
 
 The generator evaluates a validation copy of the complete document, serializes
@@ -19,13 +19,13 @@ it, opens it in a new notebook with an empty environment, and runs every cell
 again. It separately serializes and reopens the source-only artifact before
 writing it. Generation fails on any parse, evaluation, serialization, reopen,
 or replay error. The source-only form avoids rebuilding the cached input/output
-IR trees during `FILE > Open`; running all inputs produces 176 typed outputs and
-a 368-card session. The inputs touch every currently implemented evaluator
+IR trees during `FILE > Open`; running all inputs produces 180 typed outputs and
+a 376-card session. The inputs touch every currently implemented evaluator
 family at least once:
 
 | Area | Successful reader-facing heads |
 | --- | --- |
-| scalar | bare exact expressions, protected constants and special values, arbitrary-precision Gaussian-rational arithmetic, `Re`, `Im`, `Conjugate`, `Abs`, assignment, `Simplify`, `FullSimplify`, `Expand`, `Together`, sparse multivariate `Cancel`, bounded exact `Factor`, `Apart`, `Series`, `Normal`, exact finite/directed/infinity `Limit`, exact polynomial and linear-system `Solve`, `Numerator`, `Denominator`, `D`, verified `Integrate`, inverse/hyperbolic/Gamma/error functions |
+| scalar | bare exact expressions, protected constants and special values, arbitrary-precision Gaussian-rational arithmetic, `Re`, `Im`, `Conjugate`, `Abs`, exact `Factorial`/`Pochhammer`/`Binomial`, assignment, `Simplify`, `FullSimplify`, `Expand`, `Together`, sparse multivariate `Cancel`, bounded exact `Factor`, `Apart`, `Series`, `Normal`, exact finite/directed/infinity `Limit`, exact polynomial and linear-system `Solve`, `Numerator`, `Denominator`, `D`, verified `Integrate`, inverse/hyperbolic/Gamma/error functions |
 | exact linear algebra | dynamic `Vector` / `Matrix`, `Dot`, `Determinant`, `Inverse`, `RowReduce`, `MatrixRank`, `LinearSolve`, `Transpose`, `Dimensions` |
 | abstract/component bridge | `IndexSpace`, formal exact dimensions, `TensorHead`, `TensorCanonicalize`, `YoungProject`, `YoungDeclare`, `YoungReduce`, `YoungDimension`, exact abstract expression algebra, `ComponentBasis`, `TensorComponents`, checked legacy `ComponentLift`, expression-wide `ComponentValue` |
 | maps and atlases | `CoordinateMap`, verified `BasisTransition`, `Jacobian`, scalar/covector/vector maps, sparse mixed-valence tensor pullback, direct-edge `Atlas` operations |
@@ -61,21 +61,26 @@ operation.
 
 ## Automated evidence
 
-- Last Windows strict build and CTest: 45/45.
-- Current WSL GCC, ASan/leak, and UBSan runs: 47/47 each.
-- Assertion-bearing executables: 337,894 checks.
-- Notebook MENU completeness: all 109 evaluator heads and all 18 supported
-  source commands are present in ten scrollable CAS categories.
-- Ndless r2022 ARM product: 1,224,221 bytes, 19.5% of the 6 MiB ceiling.
+- Last recorded Windows strict build and CTest: 45/45.
+- Current WSL GCC and combined ASan/UBSan/leak runs: 48/48 each.
+- Assertion-bearing executables: 458,095 checks.
+- Notebook MENU completeness: every supported evaluator/source command is
+  present in ten scrollable CAS categories.
+- Ndless r2022 ARM product: 1,246,500 bytes, 19.8% of the 6 MiB ceiling.
+- Rebuilt discrete-function CAS smoke and QFT bench packages link natively at
+  88,588 and 61,868 bytes respectively; this is ARM package evidence, not a
+  new physical-device run.
 - Isolated exact-number ARM probe: 68/68 public APIs, 17,680 bytes of exact
   number text, 23,540-byte package, and no forbidden numeric dependency.
-- Isolated real-algebraic ARM probe: 28/28 public APIs, 24,256 bytes of
-  algebraic text and a 43,160-byte package.
-- Isolated CAS ARM probe: 35/35 public APIs, 109,160 bytes of CAS text,
-  154,996-byte package, and no float formatter, libm call, or ARM soft-float
+- Isolated real-ball ARM probe: 17/17 public APIs, 4,988 bytes of ball text,
+  19,400-byte package, and no forbidden numeric dependency.
+- Isolated real-algebraic ARM probe: 31/31 public APIs, 38,720 bytes of
+  algebraic text and a 66,572-byte package.
+- Isolated CAS ARM probe: 40/40 public APIs, 130,036 bytes of CAS text,
+  197,464-byte package, and no float formatter, libm call, or ARM soft-float
   helper.
-- Isolated evaluator ARM probe: 17/17 public APIs, 53,814 bytes of evaluator
-  text, 332,748-byte package, and no float formatter, libm call, or ARM
+- Isolated evaluator ARM probe: 17/17 public APIs, 54,355 bytes of evaluator
+  text, 375,600-byte package, and no float formatter, libm call, or ARM
   soft-float helper.
 - Isolated QFT abstract/component bridge probe: 14/14 public APIs, 3,152
   bytes of bridge text, 94,880-byte package, and the same no-float guarantee.
@@ -96,12 +101,15 @@ remains pending.
 
 ## Explicit non-features
 
-`NSolve`, `Reduce`, `Refine`, and the `Trig*` family are registered but return
+`Reduce`, `Refine`, and the `Trig*` family are registered but return
 `PHY_ERR_UNSUPPORTED`. `Solve` covers exact affine and real/complex quadratic
 roots plus higher-degree all-real `Root` descriptors as documented in
-`docs/CAS.md`, plus exact simultaneous affine systems through eight
-equations/variables; unresolved higher complex factors and nonlinear systems
-remain typed unsupported. Reader-facing `CoordinateMap`, `BasisTransition`,
+`docs/CAS.md`, exact simultaneous affine systems through eight
+equations/variables, and bounded verified triangular zero-dimensional
+polynomial systems. `Resultant`, `Discriminant` and `GroebnerBasis` share the
+exact sparse polynomial domain. `N` and `NSolve` provide certified real balls
+for their documented bounded subsets; complex numerical roots and general
+nonlinear systems remain typed unsupported. Reader-facing `CoordinateMap`, `BasisTransition`,
 Jacobian scalar/covector/vector operations, sparse mixed-valence tensor
 pullback, and direct-edge `Atlas` commands are implemented. General automatic
 transition-path composition and independent-component output iteration remain

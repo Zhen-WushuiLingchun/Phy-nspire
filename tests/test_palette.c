@@ -124,6 +124,13 @@ static void test_every_implemented_operation_is_discoverable(void)
     PHY_CHECK(
         phy_source_supported_command_name(
             phy_source_supported_command_count()) == NULL);
+
+    /* These exact special functions are ordinary scalar heads rather than
+       top-level commands, so pin their discovery surface explicitly. */
+    PHY_CHECK(cas_palette_mentions("Factorial"));
+    PHY_CHECK(cas_palette_mentions("Pochhammer"));
+    PHY_CHECK(cas_palette_mentions("Binomial"));
+    PHY_CHECK(cas_palette_mentions("Digamma"));
 }
 
 static void test_scrolling_window_keeps_every_selection_visible(void)

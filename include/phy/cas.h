@@ -380,6 +380,41 @@ phy_status phy_cas_solve_system(
     const phy_ir_ref *variables, size_t variable_count,
     phy_ir_ref *out_ref);
 
+/* ------------------------------------------------ exact polynomial ideals */
+
+/*
+ * Exact bounded Q-polynomial operations.  GroebnerBasis uses lexicographic
+ * order with variables ordered exactly as supplied (the first is highest).
+ * The implementation publishes a basis only after Buchberger S-pair and
+ * generator-membership certificates pass.  Resultant uses an exact
+ * Sylvester determinant; Discriminant is certified from Resultant[f,D[f,x],x].
+ */
+phy_status phy_cas_resultant(phy_cas *cas, phy_ir_ref left,
+                             phy_ir_ref right, phy_ir_ref variable,
+                             phy_ir_ref *out_ref);
+phy_status phy_cas_discriminant(phy_cas *cas, phy_ir_ref expression,
+                                phy_ir_ref variable,
+                                phy_ir_ref *out_ref);
+phy_status phy_cas_groebner_basis(
+    phy_cas *cas, const phy_ir_ref *expressions, size_t expression_count,
+    const phy_ir_ref *variables, size_t variable_count,
+    phy_ir_ref *out_ref);
+
+/* ------------------------------------------------ certified numerics */
+
+/*
+ * Real certified numerical evaluation.  Results are Around[midpoint,radius]
+ * with exact rational fields. `decimal_digits` is a requested enclosure
+ * target, not a promise of a binary float.  NSolve currently returns all
+ * certified real roots of a bounded univariate rational polynomial and
+ * verifies rational-function denominators by ball exclusion.
+ */
+phy_status phy_cas_n(phy_cas *cas, phy_ir_ref expression,
+                     unsigned decimal_digits, phy_ir_ref *out_ref);
+phy_status phy_cas_nsolve(phy_cas *cas, phy_ir_ref equation,
+                          phy_ir_ref variable, unsigned decimal_digits,
+                          phy_ir_ref *out_ref);
+
 /* ------------------------------------------------------------ the zero decision */
 
 /*

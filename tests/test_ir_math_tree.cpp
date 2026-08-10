@@ -34,6 +34,18 @@ bool contains(const MathTree& tree, MathNodeKind kind)
     return false;
 }
 
+bool contains_text(const MathTree& tree, const char *text)
+{
+    for (const nmarkdown::MathNode& node : tree.nodes) {
+        if ((node.kind == MathNodeKind::Symbol ||
+             node.kind == MathNodeKind::Text) &&
+            tree.text(node) == text) {
+            return true;
+        }
+    }
+    return false;
+}
+
 const nmarkdown::MathNode *first(
     const MathTree& tree, MathNodeKind kind)
 {
@@ -105,11 +117,38 @@ void test_imaginary_unit_is_upright_lowercase()
     phy_ir_context_destroy(ir);
 }
 
+void test_discrete_functions_use_mathematical_notation()
+{
+    phy_ir_context *ir = phy_ir_context_create(nullptr);
+    PHY_CHECK(ir != nullptr);
+
+    MathTree tree = build_tree(ir, "(fn factorial (+ 1 x))");
+    PHY_CHECK_EQ_INT(tree.nodes[tree.root].kind, MathNodeKind::Row);
+    PHY_CHECK(contains_text(tree, "!"));
+    PHY_CHECK(!contains_text(tree, "factorial"));
+
+    tree = build_tree(ir, "(fn pochhammer a n)");
+    PHY_CHECK_EQ_INT(tree.nodes[tree.root].kind, MathNodeKind::Scripts);
+    PHY_CHECK(!contains_text(tree, "pochhammer"));
+
+    tree = build_tree(ir, "(fn binomial n k)");
+    PHY_CHECK(contains_text(tree, "Binomial"));
+    PHY_CHECK(!contains_text(tree, "binomial"));
+
+    tree = build_tree(ir, "(fn Around (rat 3 2) (rat 1 100))");
+    PHY_CHECK_EQ_INT(tree.nodes[tree.root].kind, MathNodeKind::Row);
+    PHY_CHECK(contains_text(tree, u8"±"));
+    PHY_CHECK(!contains_text(tree, "Around"));
+
+    phy_ir_context_destroy(ir);
+}
+
 }  // namespace
 
 int main()
 {
     PHY_TEST_CASE(test_reciprocal_powers_have_radical_nodes);
     PHY_TEST_CASE(test_imaginary_unit_is_upright_lowercase);
+    PHY_TEST_CASE(test_discrete_functions_use_mathematical_notation);
     return PHY_TEST_REPORT("test_ir_math_tree");
 }

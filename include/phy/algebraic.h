@@ -1,14 +1,10 @@
 /*
  * Certified real algebraic numbers over the native exact-number kernel.
  *
- * A value is a real root selected by:
- *   - a primitive, square-free integer defining polynomial; and
- *   - an exact rational interval containing exactly one real root.
- *
- * "Defining polynomial" is deliberate. Until irreducibility is certified by
- * the general factorization layer, this API does not call it a minimal
- * polynomial and does not claim canonical equality across unrelated
- * polynomials.
+ * A value is a real root selected by its primitive, irreducible,
+ * positive-leading minimal polynomial and its one-based position among that
+ * polynomial's real roots.  A deterministic exact rational isolating interval
+ * is retained as the executable certificate.
  */
 #ifndef PHY_ALGEBRAIC_H
 #define PHY_ALGEBRAIC_H
@@ -33,7 +29,7 @@ typedef struct {
 
 typedef struct {
     phy_exact_limits exact;
-    uint32_t max_degree;       /* defining polynomial degree; default 32 */
+    uint32_t max_degree;       /* input/result polynomial degree; default 32 */
     uint32_t max_steps;        /* polynomial operations per call */
     uint32_t max_refinements;  /* compare/refine bisections; default 128 */
     size_t max_metadata_bytes; /* handles/arrays, excluding exact limbs */
@@ -101,6 +97,8 @@ phy_status phy_real_algebraic_validate(
     const phy_real_algebraic *value);
 
 size_t phy_real_algebraic_degree(const phy_real_algebraic *value);
+uint32_t phy_real_algebraic_root_index(
+    const phy_real_algebraic *value);
 phy_status phy_real_algebraic_write_coefficient(
     const phy_real_algebraic *value, size_t degree, char *buffer,
     size_t capacity, size_t *out_required);
@@ -114,13 +112,26 @@ bool phy_real_algebraic_is_rational(
     const phy_real_algebraic *value);
 
 /*
+ * Canonical identity.  Equality and hashing use the normalized minimal
+ * polynomial plus the real-root index, never an approximate sample or the
+ * incidental interval supplied by a caller.  Equal values therefore hash
+ * equally even when they were constructed from different reducible input
+ * polynomials or different isolating intervals.
+ */
+phy_status phy_real_algebraic_equal(
+    const phy_real_algebraic *left, const phy_real_algebraic *right,
+    bool *out_equal);
+phy_status phy_real_algebraic_hash(
+    const phy_real_algebraic *value, uint64_t *out_hash);
+
+/*
  * Exact rational transforms.
  *
- * Each operation constructs a new independently owned certificate in the
- * source value's context. The defining polynomial is transformed over Z[x],
- * normalized to primitive positive-leading form, and the transformed interval
- * is re-certified before publication. On failure *out_value remains NULL and
- * the source value is unchanged.
+ * Each operation constructs a new independently owned canonical certificate
+ * in the source value's context. The transformed polynomial is reduced to the
+ * irreducible factor selected by the transformed real root, then its interval
+ * and root index are normalized before publication. On failure *out_value
+ * remains NULL and the source value is unchanged.
  */
 phy_status phy_real_algebraic_translate_rational(
     const phy_real_algebraic *value, phy_exact_rational_text translation,
@@ -135,8 +146,8 @@ phy_status phy_real_algebraic_reciprocal(
  * Resultant-closed exact real algebraic arithmetic.
  *
  * Both operands must belong to the same context. Non-rational pairs are
- * eliminated exactly, the resultant is reduced to its square-free primitive
- * part, and interval refinement selects one certified real root. Degree,
+ * eliminated exactly, the square-free resultant is factored over Q, and the
+ * interval selects the unique irreducible factor and real root. Degree,
  * coefficient, step, refinement, cancellation, and memory ceilings remain
  * those of the algebraic/exact contexts. Failure is transactional.
  */
@@ -164,12 +175,9 @@ phy_status phy_real_algebraic_refine(
     phy_real_algebraic *value, uint32_t rounds);
 
 /*
- * Safe comparison. Disjoint certified intervals decide immediately; otherwise
- * the values are refined up to max_refinements. Equal roots of the same
- * defining polynomial are recognized by a Sturm certificate. If distinct
- * defining polynomials remain inseparable without a resultant/minimal-
- * polynomial proof, the function returns PHY_ERR_UNSUPPORTED rather than
- * guessing. Comparison may refine both operands.
+ * Safe comparison. Canonical identity decides equality immediately; disjoint
+ * certificates decide order, and overlapping distinct roots are refined up to
+ * max_refinements. Comparison may refine both operands.
  */
 phy_status phy_real_algebraic_compare(
     phy_real_algebraic *left, phy_real_algebraic *right,

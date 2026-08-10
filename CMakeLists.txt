@@ -172,6 +172,7 @@ add_library(phy_core STATIC
     src/exact/context.c
     src/exact/integer.c
     src/exact/rational.c
+    src/exact/ball.c
     src/exact/gaussian.c
     src/exact/algebraic.c
     src/cas/num.c
@@ -183,7 +184,9 @@ add_library(phy_core STATIC
     src/cas/solve.c
     src/cas/linear_solve.c
     src/cas/sparse_poly.c
+    src/cas/ball_eval.c
     src/cas/engine.c
+    src/cas/special.c
     src/cas/simplify.c
     src/cas/diff.c
     src/cas/integrate.c
@@ -252,7 +255,7 @@ if(BUILD_TESTING)
                   test_notebook test_ir test_tensor test_gr test_lie
                   test_qft_scalar test_yang_mills test_cas test_geom
                   test_geom_metric test_eval test_lorentz test_mandelstam
-                  test_color test_exact test_algebraic test_finite_poly
+                  test_color test_exact test_ball test_algebraic test_finite_poly
                   test_linear test_abstract_tensor test_permutation
                   test_young_garnir
                   test_component_tensor test_component_bridge

@@ -39,6 +39,11 @@ typedef enum {
     PHY_SOURCE_NORMAL,
     PHY_SOURCE_LIMIT,
     PHY_SOURCE_SOLVE,
+    PHY_SOURCE_RESULTANT,
+    PHY_SOURCE_DISCRIMINANT,
+    PHY_SOURCE_GROEBNER_BASIS,
+    PHY_SOURCE_NUMERIC,
+    PHY_SOURCE_NUMERIC_SOLVE,
 
     /*
      * The two operations that read and write the notebook environment rather

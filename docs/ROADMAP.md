@@ -28,9 +28,9 @@ Verification:
 - host smoke test — done; the suite covers the platform, relative pointer,
   source language, drawing, notebook, the stateful evaluator, IR, tensor
   storage, differential forms, GR, Lie/QFT foundations, CAS, QFT oracle, and
-  full lifecycle: last strict Windows baseline 45/45, current WSL
-  GCC, ASan/leak, and UBSan 47/47 each, and 337,894 explicit checks;
-- generated `.tns` size report — 1,224,221 bytes, 19.5% of the 6 MiB ceiling,
+  full lifecycle: last strict Windows baseline 45/45, current WSL strict and
+  combined ASan/UBSan/leak runs 48/48 each, and 458,095 explicit checks;
+- generated `.tns` size report — 1,246,500 bytes, 19.8% of the 6 MiB ceiling,
   with the current evaluator and physics stack linked;
 - launch of a Phy-nspire artifact on the real CX II — done on 2026-07-26 with
   the observable CAS smoke screen;
@@ -132,24 +132,24 @@ Verification:
 - formula bridge tests — done, `tests/test_formula.c`, 103 checks covering
   initialization, matrices, metrics, RGB565 rendering, and local error
   recovery;
-- source, palette and pointer tests — done: 443 source-language checks
-  including assignment and reserved-head canonicalization, 1,103 palette checks
+- source, palette and pointer tests — done: 499 source-language checks
+  including assignment and reserved-head canonicalization, 32,397 palette checks
   including every CAS snippet parsing, and 29 relative touchpad checks.
 
 The IR carries no simplification, evaluation, or arithmetic: it is the
 substrate those work on. Dummy-index canonicalization and anything that
 consumes declared symmetries stay in Phase 2.
 
-The real Ndless r2022/ARM GNU toolchain link check is done for the CAS: 35/35
-CAS APIs survive garbage collection and the probe packages to a 154,924-byte
+The real Ndless r2022/ARM GNU toolchain link check is done for the CAS: 40/40
+CAS APIs survive garbage collection and the probe packages to a 197,472-byte
 `.tns` without float formatting, libm, or ARM soft-float dependencies. The
 observable `phy-cas-smoke.tns` then ran seven symbolic cases on the physical
 CX II on 2026-07-26, displayed 7/7 PASS, and returned cleanly to Documents.
 
-The evaluator's real Ndless check now compiles 66 portable sources, retains
-17/17 public evaluator entry points, packages a 332,748-byte isolated probe,
+The evaluator's real Ndless check now compiles 69 portable sources, retains
+17/17 public evaluator entry points, packages a 375,600-byte isolated probe,
 and contains no float formatter, libm call, or ARM soft-float helper. The
-product is 1,224,221 bytes. The independent SU(N) colour probe retains 23/23
+product is 1,246,500 bytes. The independent SU(N) colour probe retains 23/23
 public APIs, 4,924 bytes of layer text, and packages to 52,764 bytes under the
 same no-float rule. These establish ARM link/package and size, not
 physical-device runtime or performance.

@@ -197,6 +197,8 @@ with the production flags:
 
 ```sh
 make ir-link-check       # include/phy/ir.h
+make exact-link-check    # include/phy/exact.h
+make ball-link-check     # include/phy/ball.h
 make cas-link-check      # include/phy/cas.h
 make tensor-link-check   # include/phy/tensor.h
 make geom-link-check     # include/phy/geom.h
@@ -217,7 +219,16 @@ which the notebook now genuinely calls. The probes remain the only way to check
 symbol retention against the header and the no-floating-point rule in isolation.
 
 Measured on the pinned ARM toolchain, with the newest bridge probes refreshed
-on 2026-07-30:
+on 2026-08-10:
+
+- exact numbers: 68/68 public APIs retained, 17,680 bytes of layer text, and a
+  23,540-byte isolated package;
+- certified real balls: 17/17 public APIs retained, 4,988 bytes of layer text,
+  and a 19,400-byte isolated package;
+- canonical real algebraics: 31/31 public APIs retained, 38,720 bytes of layer
+  text, and a 66,572-byte isolated package;
+- scalar CAS: 40/40 public APIs retained, 130,036 bytes of layer text, and a
+  197,464-byte isolated package;
 
 - geometry: 45/45 APIs retained, 8,957 bytes of layer text, 62,428-byte probe
   package;
@@ -226,14 +237,14 @@ on 2026-07-30:
 - SU(N) colour: 23/23 APIs retained, 4,924 bytes of layer text, 52,764-byte
   probe package;
 - evaluator plus complete backend stack: 17/17 public evaluator APIs retained
-  from 66 portable sources, 53,814 bytes of evaluator text, 332,748-byte
+  from 69 portable sources, 54,355 bytes of evaluator text, 375,600-byte
   isolated probe;
 - QFT abstract/component bridge: 14/14 APIs retained from 47 portable sources,
   3,152 bytes of bridge text, 94,880-byte isolated probe;
 - all five isolated probes contain no float formatter, libm call, or ARM
   soft-float helper.
 
-A clean product build from the same source is 1,224,221 bytes (19.5% of the
+A product build from the same source is 1,246,500 bytes (19.8% of the
 6 MiB ceiling). The product includes nMarkdown/FreeType/HarfBuzz and therefore
 has different retained dependencies from the exact isolated probes; the
 no-float statement above is specifically a property of those native symbolic

@@ -43,6 +43,10 @@ static const command_descriptor kCommands[] = {
     {"Normal", PHY_SOURCE_NORMAL, true, false},
     {"Limit", PHY_SOURCE_LIMIT, true, false},
     {"Solve", PHY_SOURCE_SOLVE, true, false},
+    {"Resultant", PHY_SOURCE_RESULTANT, true, false},
+    {"Discriminant", PHY_SOURCE_DISCRIMINANT, true, false},
+    {"GroebnerBasis", PHY_SOURCE_GROEBNER_BASIS, true, false},
+    {"N", PHY_SOURCE_NUMERIC, true, false},
     {"Set", PHY_SOURCE_ASSIGN, true, false},
     {"Clear", PHY_SOURCE_CLEAR, true, false},
     {"ClearAll", PHY_SOURCE_CLEAR, true, false},
@@ -52,7 +56,7 @@ static const command_descriptor kCommands[] = {
      * exists. Treating Limit[x] as an opaque mathematical function would look
      * successful while doing no limit computation.
      */
-    {"NSolve", PHY_SOURCE_SIMPLIFY, false, false},
+    {"NSolve", PHY_SOURCE_NUMERIC_SOLVE, true, false},
     {"Reduce", PHY_SOURCE_SIMPLIFY, false, false},
     {"Refine", PHY_SOURCE_SIMPLIFY, false, false},
     {"TrigExpand", PHY_SOURCE_SIMPLIFY, false, false},
@@ -197,6 +201,27 @@ static const char *canonical_function(const char *name)
     }
     if (strcmp(name, "Erfc") == 0) {
         return "erfc";
+    }
+    if (strcmp(name, "Factorial") == 0) {
+        return "factorial";
+    }
+    if (strcmp(name, "Pochhammer") == 0 ||
+        strcmp(name, "RisingFactorial") == 0) {
+        return "pochhammer";
+    }
+    if (strcmp(name, "Binomial") == 0) {
+        return "binomial";
+    }
+    if (strcmp(name, "BernoulliB") == 0 ||
+        strcmp(name, "Bernoulli") == 0) {
+        return "bernoulli";
+    }
+    if (strcmp(name, "HarmonicNumber") == 0 ||
+        strcmp(name, "Harmonic") == 0) {
+        return "harmonic";
+    }
+    if (strcmp(name, "Digamma") == 0) {
+        return "digamma";
     }
     if (strcmp(name, "Re") == 0) {
         return "Re";
@@ -783,10 +808,17 @@ static phy_ir_ref parse_expression(source_reader *reader)
  * object head nor a known scalar function. Allowing `Sin = 2` would leave the
  * reader with a document in which `Sin[x]` means two different things depending
  * on cell order, which no diagnostic afterwards can untangle.
+ *
+ * N is the one deliberate exception.  Existing tensor notebooks commonly use
+ * N as an index-space or manifold name, while the numeric command is
+ * unambiguous because it is recognized only in the call form N[...].
  */
 static bool bindable_name(const char *name)
 {
-    return find_command(name) == NULL && canonical_object_head(name) == NULL &&
+    const command_descriptor *command = find_command(name);
+    const bool command_is_bindable =
+        command == NULL || command->operation == PHY_SOURCE_NUMERIC;
+    return command_is_bindable && canonical_object_head(name) == NULL &&
            canonical_function(name) == name && known_constant(name) == NULL;
 }
 
@@ -1024,6 +1056,117 @@ static void parse_solve_body(source_reader *reader, char closer,
     }
 }
 
+static void parse_polynomial_variables(source_reader *reader,
+                                       phy_ir_ref specification,
+                                       phy_source_command *command)
+{
+    const phy_ir_kind kind = phy_ir_kind_of(reader->ir, specification);
+    if (kind == PHY_IR_SYMBOL) {
+        command->variables[0] = specification;
+        command->variable_count = 1u;
+        return;
+    }
+    const phy_ir_symbol list = phy_ir_intern(reader->ir, "List");
+    if (kind != PHY_IR_FUNCTION || phy_ir_head(reader->ir, specification) != list) {
+        fail(reader, PHY_ERR_TYPE);
+        return;
+    }
+    const size_t count = phy_ir_child_count(reader->ir, specification);
+    if (count == 0u || count > PHY_SOURCE_MAX_VARIABLES) {
+        fail(reader, PHY_ERR_TERM_LIMIT);
+        return;
+    }
+    for (size_t index = 0u; index < count; ++index) {
+        const phy_ir_ref variable =
+            phy_ir_child(reader->ir, specification, index);
+        if (phy_ir_kind_of(reader->ir, variable) != PHY_IR_SYMBOL) {
+            fail(reader, PHY_ERR_TYPE);
+            return;
+        }
+        for (size_t prior = 0u; prior < index; ++prior) {
+            if (command->variables[prior] == variable) {
+                fail(reader, PHY_ERR_TYPE);
+                return;
+            }
+        }
+        command->variables[index] = variable;
+    }
+    command->variable_count = count;
+}
+
+static void parse_polynomial_command_body(
+    source_reader *reader, char closer, phy_source_operation operation,
+    phy_source_command *command)
+{
+    phy_ir_ref arguments[3] = {PHY_IR_NULL, PHY_IR_NULL, PHY_IR_NULL};
+    const size_t expected =
+        operation == PHY_SOURCE_RESULTANT ? 3u : 2u;
+    for (size_t index = 0u;
+         reader->status == PHY_OK && index < expected; ++index) {
+        arguments[index] = parse_expression(reader);
+        if (index + 1u < expected && !take(reader, ',')) {
+            fail(reader, PHY_ERR_PARSE);
+        }
+    }
+    if (reader->status == PHY_OK && !take(reader, closer)) {
+        fail(reader, PHY_ERR_PARSE);
+    }
+    if (reader->status != PHY_OK) {
+        return;
+    }
+    if (operation == PHY_SOURCE_RESULTANT) {
+        const phy_ir_symbol list = phy_ir_intern(reader->ir, "List");
+        command->expression =
+            phy_ir_function(reader->ir, list, arguments, 2u);
+        if (command->expression == PHY_IR_NULL) {
+            fail(reader, phy_ir_last_error(reader->ir));
+            return;
+        }
+        parse_polynomial_variables(reader, arguments[2], command);
+        if (command->variable_count != 1u) {
+            fail(reader, PHY_ERR_TYPE);
+        }
+        return;
+    }
+    command->expression = arguments[0];
+    if (operation == PHY_SOURCE_GROEBNER_BASIS) {
+        const phy_ir_symbol list = phy_ir_intern(reader->ir, "List");
+        if (phy_ir_kind_of(reader->ir, command->expression) !=
+                PHY_IR_FUNCTION ||
+            phy_ir_head(reader->ir, command->expression) != list ||
+            phy_ir_child_count(reader->ir, command->expression) == 0u) {
+            fail(reader, PHY_ERR_TYPE);
+            return;
+        }
+    }
+    parse_polynomial_variables(reader, arguments[1], command);
+    if (operation == PHY_SOURCE_DISCRIMINANT &&
+        command->variable_count != 1u) {
+        fail(reader, PHY_ERR_TYPE);
+    }
+}
+
+static void parse_numeric_body(source_reader *reader, char closer,
+                               phy_source_command *command)
+{
+    command->expression = parse_expression(reader);
+    command->series_order = 16u;
+    if (reader->status == PHY_OK && take(reader, ',')) {
+        const phy_ir_ref precision = parse_expression(reader);
+        int64_t digits = 0;
+        if (!phy_ir_integer_value(reader->ir, precision, &digits)) {
+            fail(reader, PHY_ERR_TYPE);
+        } else if (digits <= 0 || digits > 36) {
+            fail(reader, PHY_ERR_TERM_LIMIT);
+        } else {
+            command->series_order = (unsigned)digits;
+        }
+    }
+    if (reader->status == PHY_OK && !take(reader, closer)) {
+        fail(reader, PHY_ERR_PARSE);
+    }
+}
+
 phy_status phy_source_parse(phy_ir_context *ir, const char *source,
                             phy_source_command *out_command,
                             size_t *out_error_offset)
@@ -1113,9 +1256,21 @@ phy_status phy_source_parse(phy_ir_context *ir, const char *source,
         command.operation = PHY_SOURCE_LIMIT;
         parse_limit_body(&reader, closer, &command);
     } else if (descriptor != NULL && reader.status == PHY_OK &&
-               descriptor->operation == PHY_SOURCE_SOLVE) {
-        command.operation = PHY_SOURCE_SOLVE;
+               (descriptor->operation == PHY_SOURCE_SOLVE ||
+                descriptor->operation == PHY_SOURCE_NUMERIC_SOLVE)) {
+        command.operation = descriptor->operation;
         parse_solve_body(&reader, closer, &command);
+    } else if (descriptor != NULL && reader.status == PHY_OK &&
+               descriptor->operation == PHY_SOURCE_NUMERIC) {
+        command.operation = PHY_SOURCE_NUMERIC;
+        parse_numeric_body(&reader, closer, &command);
+    } else if (descriptor != NULL && reader.status == PHY_OK &&
+               (descriptor->operation == PHY_SOURCE_RESULTANT ||
+                descriptor->operation == PHY_SOURCE_DISCRIMINANT ||
+                descriptor->operation == PHY_SOURCE_GROEBNER_BASIS)) {
+        command.operation = descriptor->operation;
+        parse_polynomial_command_body(
+            &reader, closer, descriptor->operation, &command);
     } else if (descriptor != NULL && reader.status == PHY_OK) {
         command.operation = descriptor->operation;
         if (descriptor->operation == PHY_SOURCE_SERIES) {

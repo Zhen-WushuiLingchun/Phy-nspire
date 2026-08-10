@@ -78,6 +78,7 @@ static void probe_rewrites(phy_cas *cas, phy_ir_context *ir)
 {
     phy_ir_ref out = PHY_IR_NULL;
     phy_ir_ref expr = PHY_IR_NULL;
+    const phy_ir_ref two = phy_ir_integer(ir, 2);
     size_t offset = 0u;
 
     /* Built by the parser rather than by hand: the shapes below exercise
@@ -114,6 +115,16 @@ static void probe_rewrites(phy_cas *cas, phy_ir_context *ir)
         phy_ir_symbol_ref(ir, phy_ir_intern(ir, "x"))};
     sink((unsigned)phy_cas_solve_system(
         cas, equation, solve_variables, 1u, &out));
+    sink((unsigned)phy_cas_resultant(cas, expr, two,
+                                     solve_variables[0], &out));
+    sink((unsigned)phy_cas_discriminant(
+        cas, expr, solve_variables[0], &out));
+    const phy_ir_ref generators[1] = {expr};
+    sink((unsigned)phy_cas_groebner_basis(
+        cas, generators, 1u, solve_variables, 1u, &out));
+    sink((unsigned)phy_cas_n(cas, two, 8u, &out));
+    sink((unsigned)phy_cas_nsolve(
+        cas, equation, solve_variables[0], 8u, &out));
 
     const phy_cas_rule rule = {phy_ir_symbol_ref(ir, phy_ir_intern(ir, "x")),
                                phy_ir_integer(ir, 3)};

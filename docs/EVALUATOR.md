@@ -93,6 +93,24 @@ Assignment is `name = value`, distinguished from the equation `name == value` by
 one character of lookahead. `Set[name, value]` is the FullForm spelling.
 `Clear[name]` unbinds one name; `ClearAll[]` clears the environment.
 
+### Exact discrete functions
+
+| Spelling | Exact behavior |
+| --- | --- |
+| `Factorial[n]` | arbitrary-precision integer result for `0 <= n <= 512` |
+| `Pochhammer[a,n]`, `RisingFactorial[a,n]` | exact rational or bounded symbolic finite product for integer `n` |
+| `Binomial[a,n]` | exact generalized binomial coefficient or bounded symbolic finite product for integer `n` |
+| `BernoulliB[n]`, `Bernoulli[n]` | exact Bernoulli number for integer `0 <= n <= 64`, with `B_1=-1/2` |
+| `HarmonicNumber[n]`, `Harmonic[n]` | exact harmonic number for integer `0 <= n <= 4096` |
+| `Digamma[x]` | exact positive integer and half-integer values plus bounded symbolic integer-shift recurrence |
+| `Gamma[x]` | exact positive integers, positive half-integers and bounded symbolic integer shifts |
+
+Exact products admit at most 512 factors and symbolic expansions at most 64.
+Outside those ceilings the evaluator returns `PHY_ERR_TERM_LIMIT`; proved
+poles return `PHY_ERR_DOMAIN`, and unknown noninteger orders remain explicit.
+Bernoulli, harmonic and recurrence-specific ceilings are independent so a
+compact input cannot force an unbounded exact expansion.
+
 ### Abstract tensors
 
 | Spelling | Backend |
@@ -556,9 +574,9 @@ entry a test failure.
 The ARM link check is `make eval-link-check` and
 `tests/device/eval_link_probe.c`: 17 declared entry points, the whole physics
 stack behind one dispatcher, and the same no-float/no-libm/no-soft-float
-standard the CAS and geometry layers are held to. It now links 66 portable
+standard the CAS and geometry layers are held to. It now links 69 portable
 sources, retains 17/17 public evaluator entry points, contains no forbidden
-float/libm/soft-float dependency, and packages as a 332,748-byte isolated
+float/libm/soft-float dependency, and packages as a 375,600-byte isolated
 probe. That probe size includes its dependencies and is not an incremental
 product-size measurement.
 
@@ -567,7 +585,7 @@ future work has now happened: the application genuinely calls the geometry,
 Lie, Yang--Mills, and QFT layers, so `--gc-sections` no longer drops them.
 The preserved `dist-foundation/phy-nspire.tns` baseline is 1,173,026 bytes.
 The current `dist/phy-nspire.tns`, with the abstract tensor evaluator reachable,
-is 1,224,221 bytes (19.5% of the 6 MiB ceiling); the final ELF retains
+is 1,246,500 bytes (19.8% of the 6 MiB ceiling); the final ELF retains
 `phy_index_space_create`, `phy_tensor_head_create_with_symmetries`,
 `phy_tensor_monomial_create`, `phy_tensor_monomial_canonicalize`,
 `phy_tensor_monomial_young_project`, and

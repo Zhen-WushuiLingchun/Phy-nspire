@@ -137,6 +137,109 @@ static phy_status simplify_status(fixture *f, const char *text)
     return phy_cas_simplify(f->cas, parse(f->ir, text), &out);
 }
 
+static void test_exact_polynomial_ideal_operations(void)
+{
+    fixture f = open_fixture();
+    const phy_ir_ref x =
+        phy_ir_symbol_ref(f.ir, phy_ir_intern(f.ir, "x"));
+    const phy_ir_ref y =
+        phy_ir_symbol_ref(f.ir, phy_ir_intern(f.ir, "y"));
+    phy_ir_ref result = PHY_IR_NULL;
+
+    PHY_CHECK_EQ_INT(
+        phy_cas_resultant(
+            f.cas, parse(f.ir, "(+ (^ x 2) 1)"),
+            parse(f.ir, "(+ x 1)"), x, &result),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(render(f.ir, result), "2");
+
+    PHY_CHECK_EQ_INT(
+        phy_cas_resultant(
+            f.cas, parse(f.ir, "(+ (^ x 2) -1)"),
+            parse(f.ir, "(+ x -1)"), x, &result),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(render(f.ir, result), "0");
+
+    PHY_CHECK_EQ_INT(
+        phy_cas_discriminant(
+            f.cas, parse(f.ir, "(+ (^ x 3) (* -2 x) 4)"),
+            x, &result),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(render(f.ir, result), "-400");
+
+    const phy_ir_ref generators[2] = {
+        parse(f.ir, "(+ (* x y) -1)"),
+        parse(f.ir, "(+ (^ y 2) -1)")};
+    const phy_ir_ref variables[2] = {x, y};
+    PHY_CHECK_EQ_INT(
+        phy_cas_groebner_basis(
+            f.cas, generators, 2u, variables, 2u, &result),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(
+        render(f.ir, result),
+        "(fn List (+ -1 (* x y)) (+ -1 (^ y 2)) (+ x (* -1 y)))");
+    close_fixture(&f);
+}
+
+static void test_certified_numeric_ball_entry_points(void)
+{
+    fixture f = open_fixture();
+    phy_ir_ref result = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_n(f.cas, parse(f.ir, "(rat 1 3)"), 12u, &result),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(
+        render(f.ir, result), "(fn Around (rat 1 3) 0)");
+
+    PHY_CHECK_EQ_INT(
+        phy_cas_n(f.cas, parse(f.ir, "(^ 2 (rat 1 2))"), 36u, &result),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(phy_ir_kind_of(f.ir, result), PHY_IR_FUNCTION);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, result)), "Around");
+    phy_ir_exact_view radius_view;
+    PHY_CHECK(phy_ir_exact_decimal_view(
+        f.ir, phy_ir_child(f.ir, result, 1u), &radius_view));
+    PHY_CHECK(radius_view.numerator_length > 0u);
+    PHY_CHECK(!(radius_view.numerator_length == 1u &&
+                radius_view.numerator[0] == '0'));
+    PHY_CHECK(radius_view.numerator[0] != '-');
+    PHY_CHECK(radius_view.denominator_length > 0u);
+    PHY_CHECK(radius_view.denominator[0] != '-');
+
+    PHY_CHECK_EQ_INT(
+        phy_cas_n(f.cas, parse(f.ir, "2"), 37u, &result),
+        PHY_ERR_TERM_LIMIT);
+    PHY_CHECK_EQ_INT(result, PHY_IR_NULL);
+
+    const phy_ir_ref x =
+        phy_ir_symbol_ref(f.ir, phy_ir_intern(f.ir, "x"));
+    PHY_CHECK_EQ_INT(
+        phy_cas_nsolve(
+            f.cas, parse(f.ir, "(= (+ (^ x 5) (* -1 x) -1) 0)"),
+            x, 6u, &result),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, result), 1u);
+    const phy_ir_ref branch = phy_ir_child(f.ir, result, 0u);
+    const phy_ir_ref rule = phy_ir_child(f.ir, branch, 0u);
+    const phy_ir_ref around = phy_ir_child(f.ir, rule, 1u);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, around)), "Around");
+
+    PHY_CHECK_EQ_INT(
+        phy_cas_nsolve(
+            f.cas, parse(f.ir, "(= (+ (^ x 2) 1) 0)"),
+            x, 6u, &result),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, result), 0u);
+    PHY_CHECK_EQ_INT(
+        phy_cas_nsolve(
+            f.cas, parse(f.ir, "(= (^ x 2) 2)"), x, 37u, &result),
+        PHY_ERR_TERM_LIMIT);
+    PHY_CHECK_EQ_INT(result, PHY_IR_NULL);
+    close_fixture(&f);
+}
+
 static phy_cas_decision decide(fixture *f, const char *text)
 {
     phy_cas_decision decision = PHY_CAS_UNKNOWN;
@@ -559,6 +662,93 @@ static void test_known_functions(void)
     close_fixture(&f);
 }
 
+static void test_exact_discrete_special_functions(void)
+{
+    fixture f = open_fixture();
+
+    /* The integer cases stay in the arbitrary-precision exact domain. */
+    PHY_CHECK_EQ_STR(normal(&f, "(fn factorial 0)"), "1");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn factorial 10)"), "3628800");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(fn factorial 50)"),
+        "30414093201713378043612608166064768844377641568960512000000000000");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn pochhammer (rat 3 2) 4)"),
+                     "(rat 945 16)");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn binomial 100 50)"),
+                     "100891344545564193334812497256");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn binomial -5 3)"), "-35");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn binomial 5 8)"), "0");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn binomial x -1)"), "0");
+
+    /* Finite symbolic products use the same normal-form machinery. */
+    PHY_CHECK_EQ_INT(
+        compare(&f, "(fn pochhammer x 4)",
+                "(* x (+ x 1) (+ x 2) (+ x 3))"),
+        PHY_CAS_ZERO);
+    PHY_CHECK_EQ_INT(
+        compare(&f, "(fn pochhammer x -2)",
+                "(* (^ (+ x -1) -1) (^ (+ x -2) -1))"),
+        PHY_CAS_ZERO);
+    PHY_CHECK_EQ_INT(
+        compare(&f, "(fn binomial x 3)",
+                "(* (rat 1 6) x (+ x -1) (+ x -2))"),
+        PHY_CAS_ZERO);
+    PHY_CHECK_EQ_INT(
+        compare(&f, "(fn pochhammer a (+ n 2))",
+                "(* (fn pochhammer a n) (+ a n) (+ a n 1))"),
+        PHY_CAS_ZERO);
+    PHY_CHECK_EQ_INT(
+        compare(&f, "(fn pochhammer a (+ n -1))",
+                "(* (fn pochhammer a n) (^ (+ a n -1) -1))"),
+        PHY_CAS_ZERO);
+
+    /* Unknown symbolic orders remain structural; proved bad or oversized
+       finite products fail with a typed status instead of guessing. */
+    PHY_CHECK_EQ_STR(normal(&f, "(fn factorial x)"),
+                     "(fn factorial x)");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn pochhammer x n)"),
+                     "(fn pochhammer x n)");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn binomial x k)"),
+                     "(fn binomial x k)");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn bernoulli 0)"), "1");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn bernoulli 1)"), "(rat -1 2)");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn bernoulli 2)"), "(rat 1 6)");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn bernoulli 3)"), "0");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn bernoulli 10)"), "(rat 5 66)");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn harmonic 0)"), "0");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn harmonic 5)"), "(rat 137 60)");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn digamma 1)"),
+                     "(* -1 EulerGamma)");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn digamma 4)"),
+                     "(+ (rat 11 6) (* -1 EulerGamma))");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn digamma (rat 1 2))"),
+                     "(+ (* -2 (fn log 2)) (* -1 EulerGamma))");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn gammafn (rat 5 2))"),
+                     "(* (rat 3 4) (^ Pi (rat 1 2)))");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn gammafn (+ x 3))"),
+                     "(* x (+ 1 x) (+ 2 x) (fn gammafn x))");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn digamma (+ x 2))"),
+                     "(+ (^ x -1) (^ (+ 1 x) -1) (fn digamma x))");
+    PHY_CHECK_EQ_INT(simplify_status(&f, "(fn factorial -1)"),
+                     PHY_ERR_DOMAIN);
+    PHY_CHECK_EQ_INT(simplify_status(&f, "(fn pochhammer 2 -2)"),
+                     PHY_ERR_DOMAIN);
+    PHY_CHECK_EQ_INT(simplify_status(&f, "(fn factorial 513)"),
+                     PHY_ERR_TERM_LIMIT);
+    PHY_CHECK_EQ_INT(simplify_status(&f, "(fn pochhammer x 65)"),
+                     PHY_ERR_TERM_LIMIT);
+    PHY_CHECK_EQ_INT(simplify_status(&f, "(fn binomial x 65)"),
+                     PHY_ERR_TERM_LIMIT);
+    PHY_CHECK_EQ_INT(simplify_status(&f, "(fn bernoulli 65)"),
+                     PHY_ERR_TERM_LIMIT);
+    PHY_CHECK_EQ_INT(simplify_status(&f, "(fn harmonic -1)"),
+                     PHY_ERR_DOMAIN);
+    PHY_CHECK_EQ_INT(simplify_status(&f, "(fn digamma 0)"),
+                     PHY_ERR_DOMAIN);
+
+    close_fixture(&f);
+}
+
 static void test_simplify_is_idempotent(void)
 {
     static const char *const cases[] = {
@@ -748,6 +938,9 @@ static void test_differentiation(void)
                      "(* (fn digamma x) (fn gammafn x))");
     PHY_CHECK_EQ_STR(derivative(&f, "(fn loggamma x)", "x"),
                      "(fn digamma x)");
+    PHY_CHECK_EQ_STR(
+        derivative(&f, "(fn factorial x)", "x"),
+        "(* (+ (^ x -1) (fn digamma x)) (fn factorial x))");
     PHY_CHECK_EQ_STR(
         derivative(&f, "(fn erf x)", "x"),
         "(* 2 (^ Pi (rat -1 2)) (fn exp (* -1 (^ x 2))))");
@@ -2131,6 +2324,68 @@ static void test_promoted_exact_allocation_failure_is_transactional(void)
     phy_platform_shutdown();
 }
 
+static void test_discrete_function_allocation_failure_is_transactional(void)
+{
+    static const char expression[] = "(fn factorial 50)";
+    static const char expected[] =
+        "30414093201713378043612608166064768844377641568960512000000000000";
+
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    phy_ir_context *calibration_ir = phy_ir_context_create(NULL);
+    PHY_CHECK(calibration_ir != NULL);
+    phy_cas *calibration_cas = phy_cas_create(calibration_ir, NULL);
+    PHY_CHECK(calibration_cas != NULL);
+    const phy_ir_ref calibration_expr = parse(calibration_ir, expression);
+    const uint32_t attempts_before = phy_host_alloc_attempts();
+    phy_ir_ref calibration_out = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_simplify(calibration_cas, calibration_expr, &calibration_out),
+        PHY_OK);
+    const uint32_t allocations =
+        phy_host_alloc_attempts() - attempts_before;
+    PHY_CHECK_EQ_STR(render(calibration_ir, calibration_out), expected);
+    phy_cas_destroy(calibration_cas);
+    phy_ir_context_destroy(calibration_ir);
+    PHY_CHECK(allocations > 8u);
+
+    unsigned failures = 0u;
+    for (uint32_t nth = 1u; nth <= allocations; ++nth) {
+        phy_ir_context *ir = phy_ir_context_create(NULL);
+        PHY_CHECK(ir != NULL);
+        phy_cas *cas = phy_cas_create(ir, NULL);
+        PHY_CHECK(cas != NULL);
+        const phy_ir_ref expr = parse(ir, expression);
+
+        phy_host_fail_alloc_after(nth);
+        phy_ir_ref out = PHY_IR_NULL;
+        const phy_status status = phy_cas_simplify(cas, expr, &out);
+        phy_host_fail_alloc_after(0u);
+        PHY_CHECK(status == PHY_OK ||
+                  status == PHY_ERR_OUT_OF_MEMORY ||
+                  status == PHY_ERR_MEMORY_LIMIT);
+        failures += status == PHY_OK ? 0u : 1u;
+        PHY_CHECK_EQ_INT(phy_cas_validate(cas), PHY_OK);
+        PHY_CHECK_EQ_INT(phy_ir_validate(ir), PHY_OK);
+
+        phy_ir_clear_error(ir);
+        out = PHY_IR_NULL;
+        PHY_CHECK_EQ_INT(phy_cas_simplify(cas, expr, &out), PHY_OK);
+        PHY_CHECK_EQ_STR(render(ir, out), expected);
+        PHY_CHECK_EQ_INT(phy_cas_validate(cas), PHY_OK);
+        PHY_CHECK_EQ_INT(phy_ir_validate(ir), PHY_OK);
+
+        phy_cas_destroy(cas);
+        phy_ir_context_destroy(ir);
+        phy_telemetry telemetry;
+        phy_telemetry_get(&telemetry);
+        PHY_CHECK_EQ_INT(telemetry.bytes_live, 0);
+    }
+    PHY_CHECK(failures > 4u);
+
+    phy_host_fail_alloc_after(0u);
+    phy_platform_shutdown();
+}
+
 static void test_gaussian_allocation_failure_is_transactional(void)
 {
     static const char expression[] =
@@ -2214,6 +2469,7 @@ int main(void)
     PHY_TEST_CASE(test_power_rules);
     PHY_TEST_CASE(test_exact_gaussian_rationals);
     PHY_TEST_CASE(test_known_functions);
+    PHY_TEST_CASE(test_exact_discrete_special_functions);
     PHY_TEST_CASE(test_simplify_is_idempotent);
     PHY_TEST_CASE(test_errors_propagate_as_values);
     PHY_TEST_CASE(test_noncommutative_kinds_are_left_alone);
@@ -2231,6 +2487,8 @@ int main(void)
     PHY_TEST_CASE(test_exact_univariate_factorization);
     PHY_TEST_CASE(test_exact_univariate_partial_fractions);
     PHY_TEST_CASE(test_exact_polynomial_solve);
+    PHY_TEST_CASE(test_exact_polynomial_ideal_operations);
+    PHY_TEST_CASE(test_certified_numeric_ball_entry_points);
     PHY_TEST_CASE(test_trigonometric_identities);
     PHY_TEST_CASE(test_full_simplify);
     PHY_TEST_CASE(test_gr_corpus_sphere_2d);
@@ -2242,6 +2500,7 @@ int main(void)
     PHY_TEST_CASE(test_cache_survives_a_tight_byte_ceiling);
     PHY_TEST_CASE(test_allocation_failure_unwinds_scratch);
     PHY_TEST_CASE(test_promoted_exact_allocation_failure_is_transactional);
+    PHY_TEST_CASE(test_discrete_function_allocation_failure_is_transactional);
     PHY_TEST_CASE(test_gaussian_allocation_failure_is_transactional);
     return PHY_TEST_REPORT("test_cas");
 }

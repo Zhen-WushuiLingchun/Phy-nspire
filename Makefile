@@ -13,6 +13,7 @@
 #   symbol-report  largest symbols in the ELF
 #   ir-link-check  prove the expression IR links on device
 #   exact-link-check prove every bigint/bigrat entry point links on device
+#   ball-link-check prove certified real-ball arithmetic links on device
 #   tensor-link-check  prove the legacy component tensor core links on device
 #   component-bridge-link-check prove the dynamic component bridge links
 #   cas-link-check prove the scalar CAS links on device
@@ -136,6 +137,7 @@ SOURCES := \
     src/exact/context.c \
     src/exact/integer.c \
     src/exact/rational.c \
+    src/exact/ball.c \
     src/exact/gaussian.c \
     src/exact/algebraic.c \
     src/cas/num.c \
@@ -147,7 +149,9 @@ SOURCES := \
     src/cas/solve.c \
     src/cas/linear_solve.c \
     src/cas/sparse_poly.c \
+    src/cas/ball_eval.c \
     src/cas/engine.c \
+    src/cas/special.c \
     src/cas/simplify.c \
     src/cas/diff.c \
     src/cas/integrate.c \
@@ -213,12 +217,21 @@ TNS := $(DISTDIR)/$(EXE).tns
 
 CAS_SMOKE_SOURCES := \
     src/core/status.c \
+    src/input/modifier.c \
+    src/input/pointer.c \
     src/gfx/gfx.c \
+    src/exact/context.c \
+    src/exact/integer.c \
+    src/exact/rational.c \
+    src/exact/gaussian.c \
     src/ir/ir.c \
     src/ir/order.c \
     src/ir/text.c \
     src/cas/num.c \
+    src/cas/big_num.c \
+    src/cas/complex.c \
     src/cas/engine.c \
+    src/cas/special.c \
     src/cas/simplify.c \
     src/cas/diff.c \
     src/cas/integrate.c \
@@ -237,11 +250,18 @@ QFT_BENCH_SOURCES := \
     src/input/modifier.c \
     src/input/pointer.c \
     src/gfx/gfx.c \
+    src/exact/context.c \
+    src/exact/integer.c \
+    src/exact/rational.c \
+    src/exact/gaussian.c \
     src/ir/ir.c \
     src/ir/order.c \
     src/ir/text.c \
     src/cas/num.c \
+    src/cas/big_num.c \
+    src/cas/complex.c \
     src/cas/engine.c \
+    src/cas/special.c \
     src/cas/simplify.c \
     src/cas/diff.c \
     src/cas/integrate.c \
@@ -258,6 +278,7 @@ QFT_BENCH_ELF := $(DISTDIR)/$(QFT_BENCH_EXE).elf
 QFT_BENCH_TNS := $(DISTDIR)/$(QFT_BENCH_EXE).tns
 
 .PHONY: all clean size-report symbol-report ir-link-check exact-link-check \
+        ball-link-check \
         tensor-link-check component-bridge-link-check \
         cas-link-check algebraic-link-check geom-link-check ym-link-check \
         qft-bridge-link-check eval-link-check \
@@ -322,6 +343,9 @@ ir-link-check: check-sdk
 
 exact-link-check: check-sdk
 	@tools/link-check.sh exact
+
+ball-link-check: check-sdk
+	@tools/link-check.sh ball
 
 cas-link-check: check-sdk
 	@tools/link-check.sh cas

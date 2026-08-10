@@ -101,6 +101,24 @@ std::string_view display_function(std::string_view name)
     if (name == "loggamma") {
         return "LogGamma";
     }
+    if (name == "factorial") {
+        return "Factorial";
+    }
+    if (name == "pochhammer") {
+        return "Pochhammer";
+    }
+    if (name == "binomial") {
+        return "Binomial";
+    }
+    if (name == "digamma") {
+        return "Digamma";
+    }
+    if (name == "bernoulli") {
+        return "BernoulliB";
+    }
+    if (name == "harmonic") {
+        return "HarmonicNumber";
+    }
     return name;
 }
 
@@ -914,6 +932,19 @@ private:
                         depth + 1U, 0),
                 });
             }
+            if (head_name == "Around" && count == 2U) {
+                return row({
+                    build(
+                        phy_ir_child(context_, expression, 0U),
+                        depth + 1U, 0),
+                    text(
+                        MathNodeKind::Symbol, u8"±",
+                        AtomClass::Binary),
+                    build(
+                        phy_ir_child(context_, expression, 1U),
+                        depth + 1U, 0),
+                });
+            }
             if (head_name == "Abs" && count == 1U) {
                 return delimited(
                     build(
@@ -927,6 +958,27 @@ private:
                         phy_ir_child(context_, expression, 0U),
                         depth + 1U, 0),
                     MathAccent::Overline);
+            }
+            if (head_name == "factorial" && count == 1U) {
+                return row({
+                    child_with_precedence(
+                        phy_ir_child(context_, expression, 0U), depth,
+                        kPrecedencePower, true),
+                    text(MathNodeKind::Symbol, "!"),
+                });
+            }
+            if (head_name == "pochhammer" && count == 2U) {
+                const MathNodeId base = delimited(
+                    build(
+                        phy_ir_child(context_, expression, 0U),
+                        depth + 1U, 0),
+                    "(", ")");
+                return scripts(
+                    base,
+                    build(
+                        phy_ir_child(context_, expression, 1U),
+                        depth + 1U, 0),
+                    kInvalidMathNode);
             }
             MathNodeId head = function_head(expression);
             std::vector<std::size_t> positions;

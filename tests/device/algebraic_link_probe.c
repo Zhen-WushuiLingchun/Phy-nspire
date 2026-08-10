@@ -68,6 +68,7 @@ int main(void)
 
     sink((unsigned)phy_real_algebraic_validate(left));
     sink((unsigned)phy_real_algebraic_degree(left));
+    sink(phy_real_algebraic_root_index(left));
     size_t required = 0u;
     sink((unsigned)phy_real_algebraic_write_coefficient(
         left, 0u, 0, 0u, &required));
@@ -77,6 +78,12 @@ int main(void)
     sink((unsigned)phy_real_algebraic_write_upper(
         left, 0, 0u, &required));
     sink(phy_real_algebraic_is_rational(left) ? 1u : 0u);
+    bool equal = false;
+    uint64_t hash = 0u;
+    sink((unsigned)phy_real_algebraic_equal(left, right, &equal));
+    sink(equal ? 1u : 0u);
+    sink((unsigned)phy_real_algebraic_hash(left, &hash));
+    sink((unsigned)hash);
     phy_real_algebraic *translated = 0;
     phy_real_algebraic *scaled = 0;
     phy_real_algebraic *reciprocal = 0;

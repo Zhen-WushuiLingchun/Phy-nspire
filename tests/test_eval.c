@@ -192,6 +192,21 @@ static void test_scalar_elementary_foundation(void)
     expect_scalar(&f, "Gamma[1/2]", "(^ Pi (rat 1 2))");
     expect_scalar(&f, "Erf[0] + Erfc[0]", "1");
     expect_scalar(
+        &f, "Factorial[50]",
+        "30414093201713378043612608166064768844377641568960512000000000000");
+    expect_scalar(&f, "Pochhammer[3/2,4]", "(rat 945 16)");
+    expect_scalar(&f, "RisingFactorial[x,4]",
+                  "(* x (+ 1 x) (+ 2 x) (+ 3 x))");
+    expect_scalar(&f, "Binomial[100,50]",
+                  "100891344545564193334812497256");
+    expect_scalar(&f, "Binomial[x,3]",
+                  "(* (rat 1 6) x (+ -1 x) (+ -2 x))");
+    expect_scalar(
+        &f, "D[Factorial[x],x]",
+        "(* (fn digamma (+ 1 x)) (fn factorial x))");
+    expect_status(&f, "Factorial[-1]", PHY_ERR_DOMAIN);
+    expect_status(&f, "Factorial[513]", PHY_ERR_TERM_LIMIT);
+    expect_scalar(
         &f, "9223372036854775807 + 9223372036854775807",
         "18446744073709551614");
     expect_scalar(
@@ -439,12 +454,43 @@ static void test_solve_reader_and_evaluator(void)
         "(fn List (fn List "
         "(fn Rule x (+ (rat 1 2) (* (rat -1 2) I))) "
         "(fn Rule y (+ (rat 1 2) (* (rat -1 2) I)))))");
-    expect_status(
-        &f, "Solve[{x*y==1,x+y==2},{x,y}]",
-        PHY_ERR_UNSUPPORTED);
+    value = run(&f, "Solve[{x*y==1,x+y==2},{x,y}]");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List (fn List (fn Rule x 1) (fn Rule y 1)))");
+    value = run(&f, "Solve[{x*y==1,y^2==1},{x,y}]");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List "
+        "(fn List (fn Rule x -1) (fn Rule y -1)) "
+        "(fn List (fn Rule x 1) (fn Rule y 1)))");
 
     expect_scalar(&f, "x = 4", "4");
     expect_status(&f, "Solve[x==4,x]", PHY_ERR_TYPE);
+    fixture_close(&f);
+}
+
+static void test_polynomial_ideal_reader_and_evaluator(void)
+{
+    fixture f = fixture_open();
+    expect_scalar(&f, "Resultant[x^2+1,x+1,x]", "2");
+    expect_scalar(&f, "Resultant[x^2-1,x-1,x]", "0");
+    expect_scalar(&f, "Discriminant[x^3-2x+4,x]", "-400");
+    expect_scalar(
+        &f, "GroebnerBasis[{x*y-1,y^2-1},{x,y}]",
+        "(fn List (+ -1 (* x y)) (+ -1 (^ y 2)) (+ x (* -1 y)))");
+    expect_status(
+        &f, "GroebnerBasis[{Sin[x]},{x}]", PHY_ERR_UNSUPPORTED);
+    expect_scalar(&f, "N[1/3,12]", "(fn Around (rat 1 3) 0)");
+    phy_value value = run(&f, "NSolve[x^5-x-1==0,x]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_SCALAR);
+    const phy_ir_ref solutions = value.as.scalar;
+    PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, solutions), 1u);
+    const phy_ir_ref branch = phy_ir_child(f.ir, solutions, 0u);
+    const phy_ir_ref rule = phy_ir_child(f.ir, branch, 0u);
+    const phy_ir_ref around = phy_ir_child(f.ir, rule, 1u);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, around)), "Around");
     fixture_close(&f);
 }
 
@@ -1880,6 +1926,9 @@ static void test_abstract_tensor_frontend_and_canonicalization(void)
 
     (void)run(&f, "N = IndexSpace[n, NoMetric]");
     expect_scalar(&f, "Dimension[N]", "n");
+    /* Call syntax remains the certified numeric command even when N is a
+       valid bound index-space name in the same notebook. */
+    expect_scalar(&f, "N[1/3,8]", "(fn Around (rat 1 3) 0)");
 
     /* Reset destroys the bulk-owned abstract context and permits clean reuse. */
     phy_env_reset(f.env);
@@ -2396,6 +2445,7 @@ int main(void)
     PHY_TEST_CASE(test_series_reader_and_evaluator);
     PHY_TEST_CASE(test_limit_reader_and_evaluator);
     PHY_TEST_CASE(test_solve_reader_and_evaluator);
+    PHY_TEST_CASE(test_polynomial_ideal_reader_and_evaluator);
     PHY_TEST_CASE(test_clear_and_reset);
     PHY_TEST_CASE(test_binding_rejects_reserved_and_captured_names);
     PHY_TEST_CASE(test_manifolds_and_forms);

@@ -137,12 +137,14 @@ Mathematica / Maple / SymPy / TI 自带 CAS 这一档的通用系统。这份清
 - `FullSimplify` 接入判零级三角基:`cos²x − sin²x − cos2x → 0`、
   `tan x·cos x − sin x → 0`、`sin²+cos² → 1`(后者在普通正规形中即成立);
 - `D` 覆盖多项式、初等/反三角/双曲函数及
-  `Gamma`、`LogGamma`、`Erf`、`Erfc` 的首批精确规则;
+  `Gamma`、`LogGamma`、`Erf`、`Erfc`、`Factorial` 的首批精确规则;
 - `Integrate` 除线性内层类外,已覆盖
   `1/(1±u²)`、`1/√(1±u²)`、高斯 `exp(-u²)` 与 `Erf/Erfc`;
   每条新规则均以“再求导得到原式”验收,类外返回未求值的 `Integrate`;
 - `Pi/E/I/EulerGamma/Infinity` 为受保护常量;支持常用三角特殊角、
-  `Sqrt[72] → 6√2`、`Gamma[n]`、`Gamma[1/2]` 与误差函数零值;
+  `Sqrt[72] → 6√2`、`Gamma[n]`、`Gamma[1/2]` 与误差函数零值；
+  `Factorial`、`Pochhammer`/`RisingFactorial`、`Binomial` 已接通任意精度
+  精确内核，分别受 512 个精确因子与 64 个符号因子的资源上限保护;
 - 判零/等价决策:多生成元有理函数域上的精确判定,带资源预算与
   增量降级策略;
 - 假设系统雏形:非零与符号假设参与判零(`PHY_ERR_ASSUMPTION` 路径);
@@ -153,22 +155,22 @@ Mathematica / Maple / SymPy / TI 自带 CAS 这一档的通用系统。这份清
 | 能力 | 现状 | 主流 CAS 的做法 |
 | --- | --- | --- |
 | 多项式因式分解 / GCD | `Cancel` 有最高 48 次的 `Q[x]` GCD 与带精确重构的有界多元消因子；`Factor` 已接通模导数 GCD/CRT、Berlekamp、Hensel 和精确 Zassenhaus 重组；`Apart` 已支持同一有界一元 `Q[x]` 域；完整稀疏多元 GCD 尚缺 | 更快的 van-Hoeij/LLL 重组、Brown/Zippel/子结果式多元 GCD、多元部分分式 |
-| 方程求解 | `Solve` 未实现 | 多项式求根、有理化、Gröbner 基、超越方程分支 |
+| 方程求解 | `Solve` 已覆盖精确仿射方程组、实/复二次式、有界实代数多项式根及经回验的零维三角多项式系统；已有有界 `Resultant`/`Discriminant`/`GroebnerBasis`，`NSolve` 可认证一元有理多项式的全部实根 | 复数值根、多元数值系统、条件系统与超越方程分支 |
 | 极限与级数 | 已有精确有界 Taylor/Laurent `Series`/`Normal`，以及有限点、显式单侧和有理无穷远 `Limit`；振荡、分支敏感和超出现有系数域的情形诚实返回类型化错误 | 更完整的渐近级数环、Gruntz 类比较与分支/条件系统 |
 | 积分覆盖面 | 已覆盖反三角核、双曲线性核和高斯/误差函数;分部积分、一般有理函数/Risch 尚缺 | Risch 结构定理、Meijer-G 表驱动 |
 | 根式化简 | 小型正有理根式可抽平方因子;`Sqrt[x²]` 仍保守保留(缺 `Abs`) | 根式正规形 + 分母有理化 + 假设驱动的 `|x|` |
 | 特殊值/常数表 | 常量和常见角已实现,尚无大规模恒等式/解析延拓表 | π/e 常数语义 + 大型特殊值表 |
 | 反三角/双曲函数 | 导数、奇偶性、零值与四个积分核已实现;完整恒等式族尚缺 | 完整导数/恒等式/特殊值表 |
 | 对称参数三角恒等式 | `sin(x+y)` 不展开(倍角 `sin(kx)` 已覆盖) | 完整 TrigExpand/TrigReduce 重写族 |
-| 复数 | `I` 只是符号,`I² ≠ −1`;无 `Conjugate/Re/Im/Abs` | 高斯有理域 + 复域假设 |
-| 数值层 | 完全没有浮点:`N[]` 不求值,小数字面量精确化为有理数 | 任意精度球算术 / 机器浮点双轨 |
+| 复数 | 任意精度高斯有理数及 `I²=-1`、`Conjugate/Re/Im/Abs` 已实现；一般复代数数域与复假设尚缺 | 高斯有理域 + 复域假设 |
+| 数值层 | 已有无二进制浮点的有理球算术；`N` 支持实精确算术、常数与平方根子集，`NSolve` 支持一元有理多项式实根并验证分母 | 复球、初等/特殊函数球算法、多元 `NSolve` 与可选机器浮点快路径 |
 | 大整数 | 原生受限任意精度整数/有理数已贯通 IR、CAS、序列化和二维排版；尚无快速乘法与代数扩域 | GMP/FLINT 的渐近快速算法与成熟代数数域 |
 | 模式匹配语言 | 仅结构替换,无 `x_` 通配/条件规则 | 完整规则重写语言 |
-| 特殊函数 | 首批 Γ/LogGamma/erf/erfc 已实现;Bessel/多对数与数值算法尚缺 | 大规模特殊函数库 |
+| 特殊函数 | Γ/LogGamma/erf/erfc、精确 Factorial/Pochhammer/Binomial、Bernoulli/Harmonic，以及整数/半整数 Digamma 和 Gamma/Pochhammer 递推已实现；Bessel/多对数与一般解析延拓尚缺 | 大规模特殊函数库 |
 | Kerr 级表达式膨胀 | 稠密 Riemann 展开超设备预算一个量级(实测 190 万节点/144 MiB),Kerr 曲率暂缓 | 不透明标量(Σ、Δ)+ 边关系的定向归约;见 `docs/references/GENERAL_RELATIVITY.md` |
 
-设计立场需要说明:**没有浮点是刻意的**(精确性是整个判零体系的地基),
-但一个"求个数值看看"的受控数值层(区间或定点)在路线图上;类外 `Factor` 和 `Apart`
+设计立场需要说明:**不让未经认证的浮点参与符号结论是刻意的**(精确性是整个判零体系的地基)。
+现在“求个数值看看”走的是显式有理球证书，而不是裸 `double`；类外 `Factor` 和 `Apart`
 返回 UNSUPPORTED 而不是伪装成不透明函数,也是刻意的——宁可诚实失败,
 不做看起来成功的空操作。
 
