@@ -403,11 +403,16 @@ phy_status phy_cas_groebner_basis(
 /* ------------------------------------------------ certified numerics */
 
 /*
- * Real certified numerical evaluation.  Results are Around[midpoint,radius]
- * with exact rational fields. `decimal_digits` is a requested enclosure
- * target, not a promise of a binary float.  NSolve currently returns all
- * certified real roots of a bounded univariate rational polynomial and
- * verifies rational-function denominators by ball exclusion.
+ * Certified numerical evaluation. Real results are Around[midpoint,radius]
+ * and non-real results are ComplexAround[real_ball,imaginary_ball], with
+ * exact rational fields throughout. `decimal_digits` is a requested
+ * enclosure target, not a promise of a binary float. Principal branch cuts
+ * are explicit and unresolved rectangular crossings fail closed.
+ *
+ * NSolve returns all certified real roots of the bounded univariate rational
+ * polynomial class and, for irreducible quadratics over Q, both certified
+ * complex roots. Higher-degree non-real root isolation is not yet claimed;
+ * rational-function denominators are always checked by ball exclusion.
  */
 phy_status phy_cas_n(phy_cas *cas, phy_ir_ref expression,
                      unsigned decimal_digits, phy_ir_ref *out_ref);

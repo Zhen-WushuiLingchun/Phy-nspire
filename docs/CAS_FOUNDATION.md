@@ -185,11 +185,12 @@ per polynomial, degree 48, 16 basis elements and 120 S-pairs.
 The remaining implementation is governed by
 [`plans/2026-07-28-cas-foundation-f4-f5.md`](plans/2026-07-28-cas-foundation-f4-f5.md).
 The compiled reader matrix is `tests/corpus/cas_foundation_cases.inc`.
-`NSolve` now supplies certified real roots of a bounded univariate rational
-polynomial. It isolates roots with exact Sturm arithmetic, refines each root to
-a rational ball, and verifies that the original denominator excludes zero.
-Complex numerical roots, multivariate numerical systems and `Reduce` remain
-typed unsupported. Certified complex roots of degree above two, conditional
+`NSolve` supplies certified real roots of a bounded univariate rational
+polynomial and both certified non-real roots of an irreducible quadratic. It
+uses exact Sturm arithmetic for real roots, the exact discriminant for the
+complex quadratic path, and verifies that the original denominator excludes
+zero over each ball. Multivariate numerical systems and `Reduce` remain typed
+unsupported. Certified complex roots of degree above two, conditional
 solution sets, and reader-facing algebraic arithmetic on `Root` values remain
 later extensions of exact `Solve`.
 
@@ -230,10 +231,11 @@ analytic continuation remain open.
 - Further analytic rules are added only with exact special values,
   derivatives, symmetries, recurrences, and domain metadata. General-order
   Pochhammer/Binomial derivatives are therefore still explicit.
-- The separately bounded numeric layer evaluates real exact arithmetic,
-  constants, square roots, `Exp`, `Log`, `Sin`, `Cos`, and `Tan` to certified
-  rational `Around[midpoint,radius]` values; `NSolve` returns certified real
-  root balls. It never silently falls back to binary floating point.
+- The separately bounded numeric layer evaluates real/complex exact
+  arithmetic, principal elementary/inverse/hyperbolic functions, and bounded
+  real `Erf`/`Erfc` to certified rational balls; `NSolve` returns certified
+  real roots and certified complex quadratics. It never silently falls back
+  to binary floating point.
 - An unsupported transform or integral remains explicit; table lookup never
   masquerades as a general integration algorithm.
 

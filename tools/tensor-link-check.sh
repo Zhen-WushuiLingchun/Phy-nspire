@@ -46,6 +46,7 @@ SOURCES=(
     src/exact/gaussian.c
     src/exact/algebraic.c
     src/exact/ball.c
+    src/exact/complex_ball.c
     src/cas/num.c
     src/cas/big_num.c
     src/cas/complex.c

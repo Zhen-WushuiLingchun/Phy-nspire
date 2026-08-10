@@ -490,11 +490,219 @@ static void test_elementary_allocation_failures_are_transactional(void)
     check_elementary_allocation_failures(phy_real_ball_tan);
 }
 
+static void test_certified_inverse_hyperbolic_and_special_functions(void)
+{
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    phy_exact_context *exact = phy_exact_context_create(NULL);
+    PHY_CHECK(exact != NULL);
+    phy_real_ball input;
+    phy_real_ball result;
+    PHY_CHECK_EQ_INT(phy_real_ball_init(exact, &input), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_real_ball_init(exact, &result), PHY_OK);
+    phy_bigrat lower;
+    phy_bigrat upper;
+    phy_bigrat zero;
+    PHY_CHECK_EQ_INT(phy_bigrat_init(exact, &lower), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_bigrat_init(exact, &upper), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_bigrat_init(exact, &zero), PHY_OK);
+    set_rat(&zero, 0, 1);
+
+    PHY_CHECK_EQ_INT(phy_real_ball_set_i64(&input, 0, 1), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_real_ball_sinh(&input, 96u, &result), PHY_OK);
+    check_contains(&result, &zero);
+    PHY_CHECK_EQ_INT(phy_real_ball_cosh(&input, 96u, &result), PHY_OK);
+    set_rat(&lower, 1, 1);
+    check_contains(&result, &lower);
+    PHY_CHECK_EQ_INT(phy_real_ball_tanh(&input, 96u, &result), PHY_OK);
+    check_contains(&result, &zero);
+
+    PHY_CHECK_EQ_INT(phy_real_ball_set_i64(&input, 1, 1), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_real_ball_atan(&input, 96u, &result), PHY_OK);
+    set_rat(&lower, 785398, 1000000);
+    set_rat(&upper, 785399, 1000000);
+    check_inside(&result, &lower, &upper);
+    PHY_CHECK_EQ_INT(phy_real_ball_asinh(&input, 96u, &result), PHY_OK);
+    set_rat(&lower, 881373, 1000000);
+    set_rat(&upper, 881374, 1000000);
+    check_inside(&result, &lower, &upper);
+
+    PHY_CHECK_EQ_INT(phy_real_ball_set_i64(&input, 1, 2), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_real_ball_asin(&input, 96u, &result), PHY_OK);
+    set_rat(&lower, 523598, 1000000);
+    set_rat(&upper, 523599, 1000000);
+    check_inside(&result, &lower, &upper);
+    PHY_CHECK_EQ_INT(phy_real_ball_acos(&input, 96u, &result), PHY_OK);
+    set_rat(&lower, 1047197, 1000000);
+    set_rat(&upper, 1047198, 1000000);
+    check_inside(&result, &lower, &upper);
+    PHY_CHECK_EQ_INT(phy_real_ball_atanh(&input, 96u, &result), PHY_OK);
+    set_rat(&lower, 549306, 1000000);
+    set_rat(&upper, 549307, 1000000);
+    check_inside(&result, &lower, &upper);
+    PHY_CHECK_EQ_INT(phy_real_ball_erf(&input, 96u, &result), PHY_OK);
+    set_rat(&lower, 520499, 1000000);
+    set_rat(&upper, 520500, 1000000);
+    check_inside(&result, &lower, &upper);
+    PHY_CHECK_EQ_INT(phy_real_ball_erfc(&input, 96u, &result), PHY_OK);
+    set_rat(&lower, 479500, 1000000);
+    set_rat(&upper, 479501, 1000000);
+    check_inside(&result, &lower, &upper);
+
+    PHY_CHECK_EQ_INT(phy_real_ball_set_i64(&input, 2, 1), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_real_ball_acosh(&input, 96u, &result), PHY_OK);
+    set_rat(&lower, 1316957, 1000000);
+    set_rat(&upper, 1316958, 1000000);
+    check_inside(&result, &lower, &upper);
+
+    PHY_CHECK_EQ_INT(phy_real_ball_set_i64(&result, 7, 1), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_real_ball_asin(&input, 96u, &result), PHY_ERR_DOMAIN);
+    PHY_CHECK_EQ_STR(text(&result.midpoint), "7");
+    PHY_CHECK_EQ_INT(phy_real_ball_atanh(&input, 96u, &result), PHY_ERR_DOMAIN);
+    PHY_CHECK_EQ_STR(text(&result.midpoint), "7");
+    PHY_CHECK_EQ_INT(phy_real_ball_erf(&input, 96u, &result), PHY_ERR_DOMAIN);
+    PHY_CHECK_EQ_STR(text(&result.midpoint), "7");
+
+    phy_bigrat_destroy(&zero);
+    phy_bigrat_destroy(&upper);
+    phy_bigrat_destroy(&lower);
+    phy_real_ball_destroy(&result);
+    phy_real_ball_destroy(&input);
+    PHY_CHECK_EQ_INT(phy_exact_validate(exact), PHY_OK);
+    phy_exact_context_destroy(exact);
+    phy_platform_shutdown();
+}
+
+static void test_certified_complex_ball_principal_branches(void)
+{
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    phy_exact_context *exact = phy_exact_context_create(NULL);
+    PHY_CHECK(exact != NULL);
+    phy_complex_ball a;
+    phy_complex_ball b;
+    phy_complex_ball result;
+    PHY_CHECK_EQ_INT(phy_complex_ball_init(exact, &a), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_complex_ball_init(exact, &b), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_complex_ball_init(exact, &result), PHY_OK);
+    phy_bigrat target;
+    phy_bigrat lower;
+    phy_bigrat upper;
+    PHY_CHECK_EQ_INT(phy_bigrat_init(exact, &target), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_bigrat_init(exact, &lower), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_bigrat_init(exact, &upper), PHY_OK);
+
+    PHY_CHECK_EQ_INT(phy_complex_ball_set_i64(&a, 1, 1, 2, 1), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_complex_ball_set_i64(&b, 3, 1, -1, 1), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_complex_ball_multiply(&a, &b, &result), PHY_OK);
+    PHY_CHECK_EQ_STR(text(&result.real.midpoint), "5");
+    PHY_CHECK_EQ_STR(text(&result.imaginary.midpoint), "5");
+    PHY_CHECK_EQ_INT(phy_complex_ball_divide(&a, &b, &result), PHY_OK);
+    PHY_CHECK_EQ_STR(text(&result.real.midpoint), "1/10");
+    PHY_CHECK_EQ_STR(text(&result.imaginary.midpoint), "7/10");
+
+    PHY_CHECK_EQ_INT(phy_complex_ball_set_i64(&a, -1, 1, 0, 1), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_complex_ball_sqrt(&a, 96u, &result), PHY_OK);
+    set_rat(&target, 0, 1);
+    check_contains(&result.real, &target);
+    set_rat(&target, 1, 1);
+    check_contains(&result.imaginary, &target);
+    PHY_CHECK_EQ_INT(phy_complex_ball_log(&a, 96u, &result), PHY_OK);
+    set_rat(&target, 0, 1);
+    check_contains(&result.real, &target);
+    set_rat(&lower, 3141592, 1000000);
+    set_rat(&upper, 3141593, 1000000);
+    check_inside(&result.imaginary, &lower, &upper);
+
+    PHY_CHECK_EQ_INT(phy_complex_ball_set_i64(&a, 0, 1, 1, 1), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_complex_ball_exp(&a, 96u, &result), PHY_OK);
+    set_rat(&lower, 540302, 1000000);
+    set_rat(&upper, 540303, 1000000);
+    check_inside(&result.real, &lower, &upper);
+    set_rat(&lower, 841470, 1000000);
+    set_rat(&upper, 841471, 1000000);
+    check_inside(&result.imaginary, &lower, &upper);
+
+    PHY_CHECK_EQ_INT(phy_complex_ball_set_i64(&a, 2, 1, 0, 1), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_complex_ball_asin(&a, 96u, &result), PHY_OK);
+    set_rat(&lower, 1570796, 1000000);
+    set_rat(&upper, 1570797, 1000000);
+    check_inside(&result.real, &lower, &upper);
+    set_rat(&lower, -1316960, 1000000);
+    set_rat(&upper, -1316957, 1000000);
+    check_inside(&result.imaginary, &lower, &upper);
+
+    PHY_CHECK_EQ_INT(phy_complex_ball_validate(&a), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_complex_ball_validate(&b), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_complex_ball_validate(&result), PHY_OK);
+    phy_bigrat_destroy(&upper);
+    phy_bigrat_destroy(&lower);
+    phy_bigrat_destroy(&target);
+    phy_complex_ball_destroy(&result);
+    phy_complex_ball_destroy(&b);
+    phy_complex_ball_destroy(&a);
+    PHY_CHECK_EQ_INT(phy_exact_validate(exact), PHY_OK);
+    phy_exact_context_destroy(exact);
+    phy_platform_shutdown();
+}
+
+static void test_complex_ball_allocation_failure_is_transactional(void)
+{
+    bool reached_success = false;
+    for (unsigned countdown = 1u; countdown <= 512u; ++countdown) {
+        PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+        phy_telemetry before;
+        phy_telemetry_get(&before);
+        phy_exact_context *exact = phy_exact_context_create(NULL);
+        PHY_CHECK(exact != NULL);
+        phy_complex_ball left = {0};
+        phy_complex_ball right = {0};
+        phy_complex_ball result = {0};
+        PHY_CHECK_EQ_INT(phy_complex_ball_init(exact, &left), PHY_OK);
+        PHY_CHECK_EQ_INT(phy_complex_ball_init(exact, &right), PHY_OK);
+        PHY_CHECK_EQ_INT(phy_complex_ball_init(exact, &result), PHY_OK);
+        PHY_CHECK_EQ_INT(
+            phy_complex_ball_set_i64(&left, 1, 1, 2, 1), PHY_OK);
+        PHY_CHECK_EQ_INT(
+            phy_complex_ball_set_i64(&right, 3, 1, -1, 1), PHY_OK);
+        PHY_CHECK_EQ_INT(
+            phy_complex_ball_set_i64(&result, 7, 1, 9, 1), PHY_OK);
+
+        phy_host_fail_alloc_after(countdown);
+        const phy_status status =
+            phy_complex_ball_multiply(&left, &right, &result);
+        phy_host_fail_alloc_after(0u);
+        PHY_CHECK(status == PHY_OK || status == PHY_ERR_OUT_OF_MEMORY);
+        PHY_CHECK_EQ_INT(phy_complex_ball_validate(&left), PHY_OK);
+        PHY_CHECK_EQ_INT(phy_complex_ball_validate(&right), PHY_OK);
+        PHY_CHECK_EQ_INT(phy_complex_ball_validate(&result), PHY_OK);
+        PHY_CHECK_EQ_INT(phy_exact_validate(exact), PHY_OK);
+        if (status == PHY_OK) {
+            reached_success = true;
+        } else {
+            PHY_CHECK_EQ_STR(text(&result.real.midpoint), "7");
+            PHY_CHECK_EQ_STR(text(&result.imaginary.midpoint), "9");
+        }
+
+        phy_complex_ball_destroy(&result);
+        phy_complex_ball_destroy(&right);
+        phy_complex_ball_destroy(&left);
+        phy_exact_context_destroy(exact);
+        phy_telemetry after;
+        phy_telemetry_get(&after);
+        PHY_CHECK_EQ_INT(after.bytes_live, before.bytes_live);
+        phy_platform_shutdown();
+        if (reached_success) break;
+    }
+    PHY_CHECK(reached_success);
+}
+
 int main(void)
 {
     PHY_TEST_CASE(test_certified_ball_arithmetic);
     PHY_TEST_CASE(test_ball_allocation_failures_are_transactional);
     PHY_TEST_CASE(test_certified_elementary_functions);
     PHY_TEST_CASE(test_elementary_allocation_failures_are_transactional);
+    PHY_TEST_CASE(test_certified_inverse_hyperbolic_and_special_functions);
+    PHY_TEST_CASE(test_certified_complex_ball_principal_branches);
+    PHY_TEST_CASE(test_complex_ball_allocation_failure_is_transactional);
     return PHY_TEST_REPORT("test_ball");
 }

@@ -71,6 +71,7 @@ objects=(
     build/arm/src/exact/gaussian.o
     build/arm/src/exact/algebraic.o
     build/arm/src/exact/ball.o
+    build/arm/src/exact/complex_ball.o
     build/arm/src/cas/num.o
     build/arm/src/cas/big_num.o
     build/arm/src/cas/complex.o

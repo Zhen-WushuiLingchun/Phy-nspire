@@ -57,6 +57,7 @@ CAS_SOURCES=(
     src/exact/gaussian.c
     src/exact/algebraic.c
     src/exact/ball.c
+    src/exact/complex_ball.c
     src/cas/num.c
     src/cas/big_num.c
     src/cas/complex.c
@@ -156,18 +157,19 @@ exact)
              src/exact/gaussian.c)
     ;;
 ball)
-    LABEL="real ball"
+    LABEL="real and complex ball"
     PROBE="tests/device/ball_link_probe.c"
     HEADER="include/phy/ball.h"
-    OBJECT_GLOB="src_exact_ball.o"
-    SYMBOL_RE='phy_real_ball_'
+    OBJECT_GLOB="src_exact_*ball.o"
+    SYMBOL_RE='phy_(real|complex)_ball_'
     EXCLUDE='^$'
-    MIN_ENTRY_POINTS=15
+    MIN_ENTRY_POINTS=45
     SOURCES=("${COMMON_SOURCES[@]}"
              src/exact/context.c
              src/exact/integer.c
              src/exact/rational.c
-             src/exact/ball.c)
+             src/exact/ball.c
+             src/exact/complex_ball.c)
     ;;
 cas)
     LABEL="CAS"

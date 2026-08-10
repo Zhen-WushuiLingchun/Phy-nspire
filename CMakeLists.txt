@@ -173,6 +173,7 @@ add_library(phy_core STATIC
     src/exact/integer.c
     src/exact/rational.c
     src/exact/ball.c
+    src/exact/complex_ball.c
     src/exact/gaussian.c
     src/exact/algebraic.c
     src/cas/num.c

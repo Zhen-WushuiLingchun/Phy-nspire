@@ -406,16 +406,19 @@ substitution proves every original equation. Positive-dimensional ideals,
 non-triangular bases after the bounded run, or branches requiring an
 unsupported algebraic extension remain typed unsupported.
 
-`phy_cas_n` and reader-facing `N[expr,digits]` form the first certified numeric
-layer. It evaluates exact real arithmetic, `Pi`, `E`, `EulerGamma`, integer
-powers, square roots, and real `Exp`/`Log`/`Sin`/`Cos`/`Tan` into an exact rational
-`Around[midpoint,radius]`; requested precision is capped at 36 decimal digits.
+`phy_cas_n` and reader-facing `N[expr,digits]` are certified numeric entry
+points. They evaluate exact arithmetic, constants, integer powers, principal
+square roots/logarithms, trigonometric/hyperbolic functions and their inverses
+through exact rational real or rectangular complex balls. Bounded real
+`Erf`/`Erfc` is included. Real results use `Around[midpoint,radius]`; non-real
+results use `ComplexAround[real_ball,imaginary_ball]`. Requested precision is
+capped at 36 decimal digits.
 `phy_cas_nsolve`/`NSolve[equation,x]` isolates every real root of a bounded
-univariate rational polynomial by exact Sturm arithmetic, refines the root to
-a rational ball, evaluates the reduced denominator over that ball, and
-publishes only when zero is excluded. Complex elementary arguments, general
-special-function balls, and complex or multivariate numerical solving remain
-explicitly unsupported.
+univariate rational polynomial by exact Sturm arithmetic and additionally
+publishes both certified complex roots of an irreducible quadratic. Every
+branch is checked against the reduced denominator. General complex special-
+function balls, higher-degree complex isolation, and multivariate numerical
+solving remain explicitly unsupported.
 
 ### Why trigonometry is reduced, and to what
 

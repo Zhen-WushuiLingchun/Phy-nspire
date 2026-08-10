@@ -58,9 +58,10 @@ proof-producing finite, directed and rational-infinity `Limit`, exact bounded
 polynomial `Solve` with complex quadratic roots and certified higher-degree
 real roots, verified exact linear and zero-dimensional polynomial systems,
 bounded `Resultant`/`Discriminant`/`GroebnerBasis`, exact
-Bernoulli/Harmonic/Digamma/Gamma recurrences, and a certified real rational-ball
-layer with elementary `Exp`/`Log`/`Sin`/`Cos`/`Tan` support for bounded
-`N`/univariate-real `NSolve`,
+Bernoulli/Harmonic/Digamma/Gamma recurrences, and certified real/complex
+rational-ball layers with elementary, inverse, hyperbolic and bounded error-
+function support for `N`; `NSolve` has certified real isolation plus exact
+complex quadratic rectangles,
 and an exact zero decision;
 the component tensor core with charts, dense storage, valence, signed slot
 symmetries, contraction, metric inversion, index raising/lowering, and

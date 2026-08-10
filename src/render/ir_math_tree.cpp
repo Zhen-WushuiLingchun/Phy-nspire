@@ -945,6 +945,24 @@ private:
                         depth + 1U, 0),
                 });
             }
+            if (head_name == "ComplexAround" && count == 2U) {
+                return row({
+                    build(
+                        phy_ir_child(context_, expression, 0U),
+                        depth + 1U, 0),
+                    text(
+                        MathNodeKind::Symbol, "+",
+                        AtomClass::Binary),
+                    styled(
+                        text(MathNodeKind::Symbol, "i"),
+                        MathVariant::Roman),
+                    delimited(
+                        build(
+                            phy_ir_child(context_, expression, 1U),
+                            depth + 1U, 0),
+                        "(", ")"),
+                });
+            }
             if (head_name == "Abs" && count == 1U) {
                 return delimited(
                     build(

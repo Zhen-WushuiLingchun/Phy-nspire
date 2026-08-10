@@ -488,7 +488,10 @@ static void test_polynomial_ideal_reader_and_evaluator(void)
         "N[Log[E],20]",
         "N[Sin[Pi/6],20]",
         "N[Cos[Pi/3],20]",
-        "N[Tan[Pi/4],20]"};
+        "N[Tan[Pi/4],20]",
+        "N[Sinh[1],20]",
+        "N[ArcTan[1],20]",
+        "N[Erf[1/2],20]"};
     for (size_t index = 0u;
          index < sizeof elementary / sizeof elementary[0]; ++index) {
         value = run(&f, elementary[index]);
@@ -498,9 +501,19 @@ static void test_polynomial_ideal_reader_and_evaluator(void)
                 f.ir, phy_ir_head(f.ir, value.as.scalar)),
             "Around");
     }
-    expect_status(&f, "N[Log[-1],20]", PHY_ERR_DOMAIN);
+    value = run(&f, "N[Log[-1],20]");
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, value.as.scalar)),
+        "ComplexAround");
     expect_status(&f, "N[Tan[Pi/2],20]", PHY_ERR_DOMAIN);
-    expect_status(&f, "N[Sin[I],20]", PHY_ERR_UNSUPPORTED);
+    value = run(&f, "N[Sin[I],20]");
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, value.as.scalar)),
+        "ComplexAround");
+    value = run(&f, "N[ArcSin[2],12]");
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, value.as.scalar)),
+        "ComplexAround");
     value = run(&f, "NSolve[x^5-x-1==0,x]");
     PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_SCALAR);
     const phy_ir_ref solutions = value.as.scalar;
@@ -510,6 +523,8 @@ static void test_polynomial_ideal_reader_and_evaluator(void)
     const phy_ir_ref around = phy_ir_child(f.ir, rule, 1u);
     PHY_CHECK_EQ_STR(
         phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, around)), "Around");
+    value = run(&f, "NSolve[x^2+1==0,x]");
+    PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, value.as.scalar), 2u);
     fixture_close(&f);
 }
 

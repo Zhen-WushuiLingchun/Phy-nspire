@@ -140,6 +140,15 @@ void test_discrete_functions_use_mathematical_notation()
     PHY_CHECK(contains_text(tree, u8"±"));
     PHY_CHECK(!contains_text(tree, "Around"));
 
+    tree = build_tree(
+        ir,
+        "(fn ComplexAround (fn Around 1 (rat 1 100)) "
+        "(fn Around 2 (rat 1 200)))");
+    PHY_CHECK_EQ_INT(tree.nodes[tree.root].kind, MathNodeKind::Row);
+    PHY_CHECK(contains_text(tree, u8"±"));
+    PHY_CHECK(contains_text(tree, "i"));
+    PHY_CHECK(!contains_text(tree, "ComplexAround"));
+
     phy_ir_context_destroy(ir);
 }
 

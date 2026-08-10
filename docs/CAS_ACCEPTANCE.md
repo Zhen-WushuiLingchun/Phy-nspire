@@ -107,9 +107,11 @@ roots plus higher-degree all-real `Root` descriptors as documented in
 `docs/CAS.md`, exact simultaneous affine systems through eight
 equations/variables, and bounded verified triangular zero-dimensional
 polynomial systems. `Resultant`, `Discriminant` and `GroebnerBasis` share the
-exact sparse polynomial domain. `N` and `NSolve` provide certified real balls
-for their documented bounded subsets; complex numerical roots and general
-nonlinear systems remain typed unsupported. Reader-facing `CoordinateMap`, `BasisTransition`,
+exact sparse polynomial domain. `N` provides certified real and rectangular
+complex balls for its documented bounded subset; `NSolve` adds certified
+complex quadratics to real Sturm isolation. Higher-degree complex numerical
+roots and general nonlinear systems remain typed unsupported. Reader-facing
+`CoordinateMap`, `BasisTransition`,
 Jacobian scalar/covector/vector operations, sparse mixed-valence tensor
 pullback, and direct-edge `Atlas` commands are implemented. General automatic
 transition-path composition and independent-component output iteration remain
