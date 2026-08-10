@@ -72,6 +72,7 @@ objects=(
     build/arm/src/exact/algebraic.o
     build/arm/src/exact/ball.o
     build/arm/src/exact/complex_ball.o
+    build/arm/src/exact/complex_special.o
     build/arm/src/cas/num.o
     build/arm/src/cas/big_num.o
     build/arm/src/cas/complex.o
@@ -82,6 +83,7 @@ objects=(
     build/arm/src/cas/linear_solve.o
     build/arm/src/cas/sparse_poly.o
     build/arm/src/cas/ball_eval.o
+    build/arm/src/cas/complex_roots.o
     build/arm/src/cas/special.o
     build/arm/src/cas/engine.o
     build/arm/src/cas/simplify.o

@@ -46,6 +46,16 @@ project `examples/` directory empty. The verified hashes were
 `2fe57c30612daba926ebefd59f0367bae2f111faa97b8190fee6600d4ce781cc`
 and `7afc7af56676fd6fe487225ac0c59b5e0507d861f4d7a26530c99c840eb06a9d`.
 
+On 2026-08-10 one usbipd session stopped exposing the calculator to each new
+CLI process after its predecessor exited. Reattaching bus 4-1 immediately
+before each process and using `--service-settle-ms 1000` deployed and read back
+the 1,271,953-byte application and 12,940-byte tour with SHA-256 values
+`552c20dab3cbb941f8a9d7025e2cc1550d288e6742ed50938313a8812a51124d`
+and `db27dd8be16e7e8ae24092dd93abff8c28bc38a57d40859739c31c008801ad7d`.
+This is a usbipd handle-lifetime observation, not evidence that the default
+250 ms settling is universally insufficient; a single `sync` process remains
+the preferred multi-file path when its freshly attached handle is available.
+
 Local inputs are read-only memory maps rather than file-sized heap buffers.
 There is no project-specific size threshold: every file length representable by
 the calculator protocol is accepted. The protocol's length field is 32-bit, so

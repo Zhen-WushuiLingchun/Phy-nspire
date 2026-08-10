@@ -514,17 +514,52 @@ static void test_polynomial_ideal_reader_and_evaluator(void)
     PHY_CHECK_EQ_STR(
         phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, value.as.scalar)),
         "ComplexAround");
+    static const char *complex_special[] = {
+        "N[Erf[1+I],10]",
+        "N[Gamma[1/3+I/4],10]",
+        "N[LogGamma[1/3+I/4],10]",
+        "N[Digamma[1/3+I/4],10]"};
+    for (size_t index = 0u;
+         index < sizeof complex_special / sizeof complex_special[0];
+         ++index) {
+        value = run(&f, complex_special[index]);
+        PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_SCALAR);
+        PHY_CHECK_EQ_STR(
+            phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, value.as.scalar)),
+            "ComplexAround");
+    }
+    value = run(&f, "N[Erf[2],10]");
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, value.as.scalar)),
+        "Around");
     value = run(&f, "NSolve[x^5-x-1==0,x]");
     PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_SCALAR);
     const phy_ir_ref solutions = value.as.scalar;
-    PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, solutions), 1u);
-    const phy_ir_ref branch = phy_ir_child(f.ir, solutions, 0u);
-    const phy_ir_ref rule = phy_ir_child(f.ir, branch, 0u);
-    const phy_ir_ref around = phy_ir_child(f.ir, rule, 1u);
-    PHY_CHECK_EQ_STR(
-        phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, around)), "Around");
+    PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, solutions), 5u);
+    for (size_t index = 0u; index < 5u; ++index) {
+        const phy_ir_ref branch = phy_ir_child(f.ir, solutions, index);
+        const phy_ir_ref rule = phy_ir_child(f.ir, branch, 0u);
+        const phy_ir_ref around = phy_ir_child(f.ir, rule, 1u);
+        PHY_CHECK_EQ_STR(
+            phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, around)),
+            "ComplexAround");
+    }
     value = run(&f, "NSolve[x^2+1==0,x]");
     PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, value.as.scalar), 2u);
+    value = run(&f, "NSolve[x^4+1==0,x]");
+    PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, value.as.scalar), 4u);
+    value = run(&f, "NSolve[x^3-1==0,x]");
+    PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, value.as.scalar), 3u);
+    value = run(&f, "NSolve[x^3-x==0,x]");
+    PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, value.as.scalar), 3u);
+    for (size_t index = 0u; index < 3u; ++index) {
+        const phy_ir_ref branch =
+            phy_ir_child(f.ir, value.as.scalar, index);
+        const phy_ir_ref rule_ref = phy_ir_child(f.ir, branch, 0u);
+        const phy_ir_ref around = phy_ir_child(f.ir, rule_ref, 1u);
+        PHY_CHECK_EQ_STR(
+            phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, around)), "Around");
+    }
     fixture_close(&f);
 }
 

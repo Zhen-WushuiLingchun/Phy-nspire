@@ -185,14 +185,13 @@ per polynomial, degree 48, 16 basis elements and 120 S-pairs.
 The remaining implementation is governed by
 [`plans/2026-07-28-cas-foundation-f4-f5.md`](plans/2026-07-28-cas-foundation-f4-f5.md).
 The compiled reader matrix is `tests/corpus/cas_foundation_cases.inc`.
-`NSolve` supplies certified real roots of a bounded univariate rational
-polynomial and both certified non-real roots of an irreducible quadratic. It
-uses exact Sturm arithmetic for real roots, the exact discriminant for the
-complex quadratic path, and verifies that the original denominator excludes
-zero over each ball. Multivariate numerical systems and `Reduce` remain typed
-unsupported. Certified complex roots of degree above two, conditional
-solution sets, and reader-facing algebraic arithmetic on `Root` values remain
-later extensions of exact `Solve`.
+`NSolve` supplies every distinct certified root of a bounded univariate
+rational polynomial. It uses exact Sturm arithmetic for the all-real case, an
+exact quadratic fast path, and rational Durand--Kerner candidate centres plus
+exact Pellet--Rouche one-root certificates for the general complex case. It
+verifies that the original denominator excludes zero over each published ball.
+Degree is capped at 48 and candidates at 64 iterations. Multivariate numerical
+systems, conditional solution sets, and `Reduce` remain typed unsupported.
 
 - Truncated formal power-series arithmetic before reader-facing `Series`.
 - Extend the exact limit subset only alongside proof rules and negative
@@ -206,7 +205,7 @@ later extensions of exact `Solve`.
 Status: bounded packs implement `Gamma`, `LogGamma`, `Erf`, `Erfc`, exact
 `Factorial`, `Pochhammer`/`RisingFactorial`, `Binomial`, `BernoulliB`,
 `HarmonicNumber`, and `Digamma`. Bessel families, polylogarithms and general
-analytic continuation remain open.
+analytic continuation outside the certified numerical contract remain open.
 
 - The discrete pack is not a name-only parser extension. Exact arguments are
   evaluated in the native arbitrary-precision rational domain: factorials up
@@ -232,9 +231,10 @@ analytic continuation remain open.
   derivatives, symmetries, recurrences, and domain metadata. General-order
   Pochhammer/Binomial derivatives are therefore still explicit.
 - The separately bounded numeric layer evaluates real/complex exact
-  arithmetic, principal elementary/inverse/hyperbolic functions, and bounded
-  real `Erf`/`Erfc` to certified rational balls; `NSolve` returns certified
-  real roots and certified complex quadratics. It never silently falls back
+  arithmetic, principal elementary/inverse/hyperbolic functions, complex
+  `Erf`/`Erfc`, and complex `Gamma`/`LogGamma`/`Digamma` to certified rational
+  balls. `NSolve` returns the complete certified distinct-root set for its
+  bounded univariate rational-polynomial domain. It never silently falls back
   to binary floating point.
 - An unsupported transform or integral remains explicit; table lookup never
   masquerades as a general integration algorithm.

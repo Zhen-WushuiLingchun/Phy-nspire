@@ -63,6 +63,20 @@ static const tour_cell kTour[] = {
     {TOUR_INPUT, "Re[3+4*I]+Im[3+4*I]", NULL},
     {TOUR_INPUT, "Conjugate[3+4*I]", NULL},
     {TOUR_INPUT, "Abs[3+4*I]", NULL},
+    {TOUR_MARKDOWN, "Certified complex numerics",
+     "Every displayed rectangle is an outward rational enclosure. "
+     "Complex special functions use bounded series or Stirling remainder "
+     "proofs, while higher-degree roots are published only after exact "
+     "Pellet--Rouche one-root certificates:"
+     "$$\\mathrm{erf}(1+i),\\quad "
+     "\\Gamma\\left(\\frac{1}{3}+\\frac{i}{4}\\right),\\quad "
+     "x^5-x-1=0.$$"},
+    {TOUR_INPUT, "N[Erf[1+I],10]", NULL},
+    {TOUR_INPUT, "N[Gamma[1/3+I/4],10]", NULL},
+    {TOUR_INPUT, "N[LogGamma[1/3+I/4],10]", NULL},
+    {TOUR_INPUT, "N[Digamma[1/3+I/4],10]", NULL},
+    {TOUR_INPUT, "NSolve[x^4+1==0,x]", NULL},
+    {TOUR_INPUT, "NSolve[x^5-x-1==0,x]", NULL},
     {TOUR_MARKDOWN, "Exact series",
      "$$e^x\\sin x=x+x^2+\\frac{x^3}{3}"
      "-\\frac{x^5}{30}+O(x^6)$$"},

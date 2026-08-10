@@ -4,15 +4,22 @@
 
 #include "phy/algebraic.h"
 #include "phy/ball.h"
+#include "complex_roots.h"
 #include "sparse_poly.h"
 
 #define BALL_MAX_DECIMAL_DIGITS 36u
 #define BALL_DEFAULT_DECIMAL_DIGITS 16u
 #define BALL_MAX_POLYNOMIAL_DEGREE 48u
-#define BALL_EXACT_STEP_MULTIPLIER 32u
+#define BALL_EXACT_STEP_MULTIPLIER 64u
 
 static const char kDecimalScale40[] =
     "10000000000000000000000000000000000000000";
+
+static uint32_t decimal_digits_to_root_bits(unsigned decimal_digits)
+{
+    /* ceil(log2(10) * digits) plus four certificate guard bits. */
+    return (uint32_t)((decimal_digits * 3322u + 999u) / 1000u + 4u);
+}
 
 static phy_exact_context *ball_exact_operation_context(phy_cas *cas)
 {
@@ -426,6 +433,16 @@ static phy_status eval_complex_ball_node(
                 status = phy_complex_ball_acosh(&argument, rounds, out);
             } else if (head == cas->functions[PHY_CAS_FN_ATANH]) {
                 status = phy_complex_ball_atanh(&argument, rounds, out);
+            } else if (head == cas->functions[PHY_CAS_FN_ERF]) {
+                status = phy_complex_ball_erf(&argument, rounds, out);
+            } else if (head == cas->functions[PHY_CAS_FN_ERFC]) {
+                status = phy_complex_ball_erfc(&argument, rounds, out);
+            } else if (head == cas->functions[PHY_CAS_FN_GAMMA]) {
+                status = phy_complex_ball_gamma(&argument, rounds, out);
+            } else if (head == cas->functions[PHY_CAS_FN_LOGGAMMA]) {
+                status = phy_complex_ball_loggamma(&argument, rounds, out);
+            } else if (head == cas->functions[PHY_CAS_FN_DIGAMMA]) {
+                status = phy_complex_ball_digamma(&argument, rounds, out);
             } else {
                 status = PHY_ERR_UNSUPPORTED;
             }
@@ -899,6 +916,97 @@ static phy_status nsolve_complex_quadratic(
     return status;
 }
 
+static phy_status nsolve_general_complex(
+    phy_cas *cas, phy_exact_context *exact, phy_ir_ref coefficients_ref,
+    phy_ir_ref denominator_expression, phy_ir_ref variable,
+    unsigned decimal_digits, phy_ir_ref *out_ref)
+{
+    const size_t coefficient_count =
+        phy_ir_child_count(cas->ir, coefficients_ref);
+    const size_t degree = coefficient_count - 1u;
+    phy_bigrat coefficients[BALL_MAX_POLYNOMIAL_DEGREE + 1u];
+    memset(coefficients, 0, sizeof coefficients);
+    size_t initialized_coefficients = 0u;
+    phy_status status = PHY_OK;
+    while (status == PHY_OK &&
+           initialized_coefficients < coefficient_count) {
+        status = phy_bigrat_init(
+            exact, &coefficients[initialized_coefficients]);
+        if (status == PHY_OK) initialized_coefficients++;
+    }
+    for (size_t index = 0u; status == PHY_OK && index < coefficient_count;
+         ++index) {
+        status = phy_cas_exact_load_ref(
+            cas, exact, phy_ir_child(cas->ir, coefficients_ref, index),
+            &coefficients[index]);
+    }
+    phy_complex_ball roots[BALL_MAX_POLYNOMIAL_DEGREE];
+    memset(roots, 0, sizeof roots);
+    size_t initialized_roots = 0u;
+    while (status == PHY_OK && initialized_roots < degree) {
+        status = phy_complex_ball_init(exact, &roots[initialized_roots]);
+        if (status == PHY_OK) initialized_roots++;
+    }
+    size_t root_count = 0u;
+    if (status == PHY_OK) {
+        status = phy_complex_roots_isolate(
+            exact, coefficients, coefficient_count,
+            decimal_digits_to_root_bits(decimal_digits), roots,
+            BALL_MAX_POLYNOMIAL_DEGREE, &root_count);
+    }
+    phy_ir_ref branches[BALL_MAX_POLYNOMIAL_DEGREE];
+    size_t branch_count = 0u;
+    const phy_ir_symbol list = phy_ir_intern(cas->ir, "List");
+    const phy_ir_symbol rule = phy_ir_intern(cas->ir, "Rule");
+    for (size_t index = 0u; status == PHY_OK && index < root_count; ++index) {
+        phy_complex_ball denominator_value = {0};
+        status = phy_complex_ball_init(exact, &denominator_value);
+        if (status == PHY_OK) {
+            status = eval_complex_ball_node(
+                cas, exact, denominator_expression, variable, &roots[index],
+                decimal_digits * 4u + 8u, &denominator_value);
+        }
+        bool denominator_zero = true;
+        if (status == PHY_OK) {
+            status = phy_complex_ball_contains_zero_checked(
+                &denominator_value, &denominator_zero);
+        }
+        if (status == PHY_OK && denominator_zero) {
+            status = PHY_ERR_UNSUPPORTED;
+        }
+        phy_ir_ref around = PHY_IR_NULL;
+        if (status == PHY_OK) {
+            status = publish_complex_ball(cas, &roots[index], &around);
+        }
+        if (status == PHY_OK) {
+            const phy_ir_ref rule_arguments[2] = {variable, around};
+            const phy_ir_ref one_rule =
+                phy_ir_function(cas->ir, rule, rule_arguments, 2u);
+            branches[branch_count] =
+                one_rule == PHY_IR_NULL
+                    ? PHY_IR_NULL
+                    : phy_ir_function(cas->ir, list, &one_rule, 1u);
+            if (branches[branch_count] == PHY_IR_NULL) {
+                status = phy_cas_ir_failure(cas);
+            } else {
+                branch_count++;
+            }
+        }
+        phy_complex_ball_destroy(&denominator_value);
+    }
+    if (status == PHY_OK) {
+        *out_ref = phy_ir_function(cas->ir, list, branches, branch_count);
+        if (*out_ref == PHY_IR_NULL) status = phy_cas_ir_failure(cas);
+    }
+    while (initialized_roots != 0u) {
+        phy_complex_ball_destroy(&roots[--initialized_roots]);
+    }
+    while (initialized_coefficients != 0u) {
+        phy_bigrat_destroy(&coefficients[--initialized_coefficients]);
+    }
+    return status;
+}
+
 phy_status phy_cas_nsolve(phy_cas *cas, phy_ir_ref equation,
                           phy_ir_ref variable, unsigned decimal_digits,
                           phy_ir_ref *out_ref)
@@ -988,6 +1096,24 @@ phy_status phy_cas_nsolve(phy_cas *cas, phy_ir_ref equation,
         status = phy_algebraic_isolate_real_roots(
             algebraic, coefficient_text, coefficient_count, roots,
             BALL_MAX_POLYNOMIAL_DEGREE, &root_count);
+    }
+
+    const size_t polynomial_degree = coefficient_count - 1u;
+    const bool has_complex_roots =
+        status == PHY_OK && root_count < polynomial_degree;
+    if (has_complex_roots) {
+        status = nsolve_general_complex(
+            cas, exact, coefficients, denominator, variable,
+            decimal_digits, out_ref);
+        if (algebraic != NULL) {
+            phy_algebraic_context_destroy(algebraic);
+        }
+        if (coefficient_storage != NULL) {
+            phy_cas_temp_free(cas, coefficient_storage,
+                              coefficient_storage_bytes);
+        }
+        if (exact != NULL) phy_exact_context_destroy(exact);
+        return status;
     }
 
     phy_ir_ref branches[BALL_MAX_POLYNOMIAL_DEGREE];

@@ -62,25 +62,29 @@ operation.
 ## Automated evidence
 
 - Last recorded Windows strict build and CTest: 45/45.
-- Current WSL GCC and combined ASan/UBSan/leak runs: 48/48 each.
+- Current WSL GCC Release suite: 48/48. Focused ball/CAS/evaluator
+  ASan/UBSan/leak runs passed 39,364, 32,811, and 3,187 checks respectively.
+- Wolfram development oracle for complex branches, special functions, and
+  polynomial roots: 19/19; this is independent cross-check evidence, not a
+  native runtime dependency.
 - Assertion-bearing executables: 458,095 checks.
 - Notebook MENU completeness: every supported evaluator/source command is
   present in ten scrollable CAS categories.
-- Ndless r2022 ARM product: 1,252,366 bytes, 19.9% of the 6 MiB ceiling.
+- Ndless r2022 ARM product: 1,271,953 bytes, 20.2% of the 6 MiB ceiling.
 - Rebuilt discrete-function CAS smoke and QFT bench packages link natively at
   88,588 and 61,868 bytes respectively; this is ARM package evidence, not a
   new physical-device run.
 - Isolated exact-number ARM probe: 68/68 public APIs, 17,680 bytes of exact
   number text, 23,540-byte package, and no forbidden numeric dependency.
-- Isolated real-ball ARM probe: 22/22 public APIs, 14,608 bytes of ball text,
-  30,248-byte package, and no forbidden numeric dependency.
+- Isolated real/complex-ball ARM probe: 67/67 public APIs, 61,478 bytes of
+  ball text, 64,532-byte package, and no forbidden numeric dependency.
 - Isolated real-algebraic ARM probe: 31/31 public APIs, 38,720 bytes of
   algebraic text and a 66,572-byte package.
-- Isolated CAS ARM probe: 40/40 public APIs, 130,392 bytes of CAS text,
-  207,616-byte package, and no float formatter, libm call, or ARM soft-float
+- Isolated CAS ARM probe: 40/40 public APIs, 144,058 bytes of CAS text,
+  253,668-byte package, and no float formatter, libm call, or ARM soft-float
   helper.
 - Isolated evaluator ARM probe: 17/17 public APIs, 54,355 bytes of evaluator
-  text, 385,752-byte package, and no float formatter, libm call, or ARM
+  text, 431,804-byte package, and no float formatter, libm call, or ARM
   soft-float helper.
 - Isolated QFT abstract/component bridge probe: 14/14 public APIs, 3,152
   bytes of bridge text, 101,588-byte package, and the same no-float guarantee.
@@ -89,15 +93,17 @@ These results establish source, host, sanitizer, and ARM-link acceptance. They
 do not establish calculator interaction, timing, or heap headroom until the
 exact artifacts are opened and exercised on the physical CX II.
 
-On 2026-07-30 the repository CLI atomically deployed and read back the exact
-1,222,416-byte program (SHA-256
-`89d177b3ff56d5fd9addc8c9b5d86c783a1cbeeb17a92338e84ecf4baabdde15`).
-It removed the program rollback copy. The unchanged 12,200-byte tour already
-on the device has SHA-256
-`7afc7af56676fd6fe487225ac0c59b5e0507d861f4d7a26530c99c840eb06a9d`;
-the earlier sync also removed its rollback copy and confirmed `examples/`
-empty. This proves transport integrity only; calculator open/run acceptance
-remains pending.
+On 2026-08-10 the repository CLI atomically deployed and read back the exact
+1,271,953-byte program (SHA-256
+`552c20dab3cbb941f8a9d7025e2cc1550d288e6742ed50938313a8812a51124d`)
+and the 12,940-byte tour (SHA-256
+`db27dd8be16e7e8ae24092dd93abff8c28bc38a57d40859739c31c008801ad7d`).
+Both rollback copies were removed; final listings found no `.upload` or
+`.previous` files and confirmed `examples/` empty. Under this usbipd session a
+fresh detach/attach was required before each new CLI process, so the two files
+were deployed in separate verified sessions with 1000 ms service settling.
+This proves transport integrity only; calculator open/run acceptance remains
+pending.
 
 ## Explicit non-features
 
@@ -108,9 +114,10 @@ roots plus higher-degree all-real `Root` descriptors as documented in
 equations/variables, and bounded verified triangular zero-dimensional
 polynomial systems. `Resultant`, `Discriminant` and `GroebnerBasis` share the
 exact sparse polynomial domain. `N` provides certified real and rectangular
-complex balls for its documented bounded subset; `NSolve` adds certified
-complex quadratics to real Sturm isolation. Higher-degree complex numerical
-roots and general nonlinear systems remain typed unsupported. Reader-facing
+complex balls for its documented bounded subset, including complex error and
+Gamma-family values; `NSolve` combines real Sturm isolation with exact
+Pellet--Rouche certification of every distinct complex root through degree 48.
+General multivariate nonlinear numerical systems remain typed unsupported. Reader-facing
 `CoordinateMap`, `BasisTransition`,
 Jacobian scalar/covector/vector operations, sparse mixed-valence tensor
 pullback, and direct-edge `Atlas` commands are implemented. General automatic

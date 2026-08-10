@@ -190,8 +190,8 @@ semantics implicitly.
 | `Resultant[f,g,x]` | exact bounded Sylvester resultant over the shared rational polynomial domain |
 | `Discriminant[f,x]` | exact derivative/resultant discriminant with the conventional leading-coefficient/sign normalization |
 | `GroebnerBasis[{f,...},{x,...}]` | bounded exact lexicographic Buchberger basis, published only after generator-membership and S-pair verification |
-| `N[expr]`, `N[expr,digits]` | certified real or rectangular complex rational ball for exact arithmetic, constants, principal roots/logarithms, trigonometric/hyperbolic and inverse functions, plus bounded real `Erf`/`Erfc`; up to 36 requested decimal digits |
-| `NSolve[equation,x]` | all certified real roots of a bounded univariate rational polynomial plus both certified complex roots for irreducible quadratics, with denominator exclusion |
+| `N[expr]`, `N[expr,digits]` | certified real or rectangular complex rational ball for exact arithmetic, constants, principal elementary/inverse/hyperbolic functions, complex `Erf`/`Erfc`, and bounded complex `Gamma`/`LogGamma`/`Digamma`; up to 36 requested decimal digits |
+| `NSolve[equation,x]` | every distinct certified root of a square-free univariate rational polynomial through degree 48, with exact denominator exclusion and a 64-iteration candidate ceiling |
 
 Every command except assignment, a bare expression, and the two simplifies is
 scalar algebra, so `Expand[M]` on a manifold is `PHY_ERR_TYPE` rather than a
@@ -217,10 +217,10 @@ scheduling is future work; the explicitly implemented
 - binding a name a live chart uses as a coordinate is `PHY_ERR_ASSUMPTION`, in
   both directions — see [`EVALUATOR.md`](EVALUATOR.md);
 - `N` now certifies real and rectangular complex arithmetic, principal
-  elementary/inverse/hyperbolic functions and bounded real error functions;
-  `NSolve` certifies all real roots of its univariate rational-polynomial
-  class and both non-real roots of irreducible quadratics. Higher-degree
-  complex isolation is still deferred;
+  elementary/inverse/hyperbolic functions, complex error functions, and the
+  bounded complex Gamma family; `NSolve` certifies every distinct root of its
+  bounded univariate rational-polynomial class, including higher-degree
+  non-real roots;
 - `Solve` publishes exact rational/constant affine roots, real and complex
   quadratic radicals, and certified roots of higher-degree all-real factors.
   `Root[{a0,...,an},k]` uses increasing coefficient
@@ -232,7 +232,7 @@ scheduling is future work; the explicitly implemented
   affine and bounded triangular zero-dimensional polynomial systems are
   supported and never return a partial rule list;
 - no `a+bi` literal token; exact complex expressions use the protected symbol
-  `I`, while the numeric ball layer is deliberately real-only;
+  `I`, and the numeric ball layer publishes rectangular complex enclosures;
 - no implicit function application beyond bracket/parenthesis calls;
 - no shorthand Einstein syntax yet; explicit `Up`/`Down` indices retain their
   Generic/Lorentz/Spinor/color space in typed IR;

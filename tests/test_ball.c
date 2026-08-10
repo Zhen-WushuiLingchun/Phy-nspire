@@ -695,6 +695,108 @@ static void test_complex_ball_allocation_failure_is_transactional(void)
     PHY_CHECK(reached_success);
 }
 
+static void test_certified_complex_special_functions(void)
+{
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    phy_exact_limits limits;
+    phy_exact_limits_defaults(&limits);
+    limits.max_steps = 32000000u;
+    limits.max_bytes = 2u * 1024u * 1024u;
+    phy_exact_context *exact = phy_exact_context_create(&limits);
+    PHY_CHECK(exact != NULL);
+    phy_complex_ball argument = {0};
+    phy_complex_ball result = {0};
+    PHY_CHECK_EQ_INT(phy_complex_ball_init(exact, &argument), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_complex_ball_init(exact, &result), PHY_OK);
+    phy_bigrat lower = {0};
+    phy_bigrat upper = {0};
+    PHY_CHECK_EQ_INT(phy_bigrat_init(exact, &lower), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_bigrat_init(exact, &upper), PHY_OK);
+
+    PHY_CHECK_EQ_INT(
+        phy_complex_ball_set_i64(&argument, 1, 1, 1, 1), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_complex_ball_erf(&argument, 80u, &result), PHY_OK);
+    set_rat(&lower, 1316151, 1000000);
+    set_rat(&upper, 1316152, 1000000);
+    check_inside(&result.real, &lower, &upper);
+    set_rat(&lower, 190453, 1000000);
+    set_rat(&upper, 190454, 1000000);
+    check_inside(&result.imaginary, &lower, &upper);
+
+    PHY_CHECK_EQ_INT(
+        phy_complex_ball_set_i64(&argument, 1, 3, 1, 4), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_complex_ball_loggamma(&argument, 80u, &result), PHY_OK);
+    set_rat(&lower, 728387, 1000000);
+    set_rat(&upper, 728388, 1000000);
+    check_inside(&result.real, &lower, &upper);
+    set_rat(&lower, -673637, 1000000);
+    set_rat(&upper, -673636, 1000000);
+    check_inside(&result.imaginary, &lower, &upper);
+
+    PHY_CHECK_EQ_INT(
+        phy_complex_ball_gamma(&argument, 80u, &result), PHY_OK);
+    set_rat(&lower, 1619184, 1000000);
+    set_rat(&upper, 1619185, 1000000);
+    check_inside(&result.real, &lower, &upper);
+    set_rat(&lower, -1292417, 1000000);
+    set_rat(&upper, -1292416, 1000000);
+    check_inside(&result.imaginary, &lower, &upper);
+
+    PHY_CHECK_EQ_INT(
+        phy_complex_ball_digamma(&argument, 80u, &result), PHY_OK);
+    set_rat(&lower, -2017933, 1000000);
+    set_rat(&upper, -2017932, 1000000);
+    check_inside(&result.real, &lower, &upper);
+    set_rat(&lower, 1708387, 1000000);
+    set_rat(&upper, 1708388, 1000000);
+    check_inside(&result.imaginary, &lower, &upper);
+
+    /* Analytic continuation across Re[z] < 0, away from Gamma poles. */
+    PHY_CHECK_EQ_INT(
+        phy_complex_ball_set_i64(&argument, -1, 2, 1, 4), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_complex_ball_gamma(&argument, 48u, &result), PHY_OK);
+    set_rat(&lower, -2754727, 1000000);
+    set_rat(&upper, -2754726, 1000000);
+    check_inside(&result.real, &lower, &upper);
+    set_rat(&lower, -31001, 1000000);
+    set_rat(&upper, -31000, 1000000);
+    check_inside(&result.imaginary, &lower, &upper);
+
+    PHY_CHECK_EQ_INT(
+        phy_complex_ball_loggamma(&argument, 48u, &result), PHY_OK);
+    set_rat(&lower, 1013381, 1000000);
+    set_rat(&upper, 1013382, 1000000);
+    check_inside(&result.real, &lower, &upper);
+    set_rat(&lower, -3130340, 1000000);
+    set_rat(&upper, -3130339, 1000000);
+    check_inside(&result.imaginary, &lower, &upper);
+
+    PHY_CHECK_EQ_INT(
+        phy_complex_ball_digamma(&argument, 48u, &result), PHY_OK);
+    set_rat(&lower, 61838, 1000000);
+    set_rat(&upper, 61839, 1000000);
+    check_inside(&result.real, &lower, &upper);
+    set_rat(&lower, 1830119, 1000000);
+    set_rat(&upper, 1830120, 1000000);
+    check_inside(&result.imaginary, &lower, &upper);
+
+    PHY_CHECK_EQ_INT(
+        phy_complex_ball_set_i64(&argument, 0, 1, 0, 1), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_complex_ball_gamma(&argument, 80u, &result), PHY_ERR_DOMAIN);
+    PHY_CHECK_EQ_INT(phy_complex_ball_validate(&result), PHY_OK);
+
+    phy_bigrat_destroy(&upper);
+    phy_bigrat_destroy(&lower);
+    phy_complex_ball_destroy(&result);
+    phy_complex_ball_destroy(&argument);
+    PHY_CHECK_EQ_INT(phy_exact_validate(exact), PHY_OK);
+    phy_exact_context_destroy(exact);
+    phy_platform_shutdown();
+}
+
 int main(void)
 {
     PHY_TEST_CASE(test_certified_ball_arithmetic);
@@ -704,5 +806,6 @@ int main(void)
     PHY_TEST_CASE(test_certified_inverse_hyperbolic_and_special_functions);
     PHY_TEST_CASE(test_certified_complex_ball_principal_branches);
     PHY_TEST_CASE(test_complex_ball_allocation_failure_is_transactional);
+    PHY_TEST_CASE(test_certified_complex_special_functions);
     return PHY_TEST_REPORT("test_ball");
 }

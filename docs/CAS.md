@@ -409,16 +409,18 @@ unsupported algebraic extension remain typed unsupported.
 `phy_cas_n` and reader-facing `N[expr,digits]` are certified numeric entry
 points. They evaluate exact arithmetic, constants, integer powers, principal
 square roots/logarithms, trigonometric/hyperbolic functions and their inverses
-through exact rational real or rectangular complex balls. Bounded real
-`Erf`/`Erfc` is included. Real results use `Around[midpoint,radius]`; non-real
+through exact rational real or rectangular complex balls. Bounded complex
+`Erf`/`Erfc` and `Gamma`/`LogGamma`/`Digamma` are included. Real results use
+`Around[midpoint,radius]`; non-real
 results use `ComplexAround[real_ball,imaginary_ball]`. Requested precision is
 capped at 36 decimal digits.
 `phy_cas_nsolve`/`NSolve[equation,x]` isolates every real root of a bounded
-univariate rational polynomial by exact Sturm arithmetic and additionally
-publishes both certified complex roots of an irreducible quadratic. Every
-branch is checked against the reduced denominator. General complex special-
-function balls, higher-degree complex isolation, and multivariate numerical
-solving remain explicitly unsupported.
+univariate rational polynomial by exact Sturm arithmetic when all roots are
+real. Otherwise, an exact quadratic fast path or rational Durand--Kerner
+candidates plus exact Pellet--Rouche tests certify one root per disjoint
+rectangle and prove completeness by the square-free degree. Every branch is
+checked against the reduced denominator. Degree is capped at 48 and candidate
+iterations at 64; multivariate numerical solving remains unsupported.
 
 ### Why trigonometry is reduced, and to what
 
@@ -642,8 +644,8 @@ answers `UNKNOWN` rather than deciding anything about it.
 ## Not in this layer
 
 General special-function integration, unrestricted asymptotic/branch limits,
-positive-dimensional/conditional polynomial systems, complex `NSolve`, and
-general nonlinear simultaneous solving.
+positive-dimensional/conditional polynomial systems, and general nonlinear
+simultaneous numerical solving.
 The exact bounded `Series`/`Normal` ring and the finite/directed/rational-
 infinity `Limit` subset live in `series.c` and `limit.c`; cases they cannot
 prove return a typed error rather than sampling. Multivariate factorization

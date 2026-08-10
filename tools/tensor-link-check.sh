@@ -47,6 +47,7 @@ SOURCES=(
     src/exact/algebraic.c
     src/exact/ball.c
     src/exact/complex_ball.c
+    src/exact/complex_special.c
     src/cas/num.c
     src/cas/big_num.c
     src/cas/complex.c
@@ -57,6 +58,7 @@ SOURCES=(
     src/cas/linear_solve.c
     src/cas/sparse_poly.c
     src/cas/ball_eval.c
+    src/cas/complex_roots.c
     src/cas/special.c
     src/cas/engine.c
     src/cas/simplify.c

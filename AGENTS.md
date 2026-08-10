@@ -31,7 +31,8 @@ This file applies to the entire repository.
   `tests/oracle/wolfram_complex_numeric.wlt`; run it through the Wolfram MCP
   `TestReport` tool after branch/special-function changes. On 2026-08-10 the
   semantic-context tool failed internally twice, while evaluator sessions and
-  `TestReport` were usable. Preserve that evidence boundary rather than
+  `TestReport` were usable; the complex-special/root extension passed all
+  19 oracle tests. Preserve that evidence boundary rather than
   skipping the context attempt or treating its failure as an evaluator failure.
 
 ## Resource and acceptance boundaries

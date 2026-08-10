@@ -181,6 +181,28 @@ phy_status phy_complex_ball_acosh(const phy_complex_ball *argument,
 phy_status phy_complex_ball_atanh(const phy_complex_ball *argument,
                                   uint32_t rounds, phy_complex_ball *out_value);
 
+/*
+ * Certified complex special functions.  Erf is entire and uses a globally
+ * convergent, resource-bounded series.  Gamma/LogGamma/Digamma use exact
+ * recurrence into the right half-plane followed by a Stirling expansion with
+ * an explicit Bernoulli remainder enclosure.  A rectangle containing a pole,
+ * or a request exceeding the bounded shift/series ceilings, fails closed.
+ */
+phy_status phy_complex_ball_erf(const phy_complex_ball *argument,
+                                uint32_t rounds, phy_complex_ball *out_value);
+phy_status phy_complex_ball_erfc(const phy_complex_ball *argument,
+                                 uint32_t rounds,
+                                 phy_complex_ball *out_value);
+phy_status phy_complex_ball_loggamma(const phy_complex_ball *argument,
+                                     uint32_t rounds,
+                                     phy_complex_ball *out_value);
+phy_status phy_complex_ball_gamma(const phy_complex_ball *argument,
+                                  uint32_t rounds,
+                                  phy_complex_ball *out_value);
+phy_status phy_complex_ball_digamma(const phy_complex_ball *argument,
+                                    uint32_t rounds,
+                                    phy_complex_ball *out_value);
+
 #ifdef __cplusplus
 }
 #endif

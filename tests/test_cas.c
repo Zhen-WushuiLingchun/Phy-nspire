@@ -274,6 +274,30 @@ static void test_certified_numeric_ball_entry_points(void)
     PHY_CHECK_EQ_STR(
         phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, result)),
         "ComplexAround");
+    static const char *complex_special[] = {
+        "(fn erf (+ 1 I))",
+        "(fn gammafn (+ (rat 1 3) (* I (rat 1 4))))",
+        "(fn loggamma (+ (rat 1 3) (* I (rat 1 4))))",
+        "(fn digamma (+ (rat 1 3) (* I (rat 1 4))))"};
+    for (size_t index = 0u;
+         index < sizeof complex_special / sizeof complex_special[0];
+         ++index) {
+        const phy_status special_status = phy_cas_n(
+            f.cas, parse(f.ir, complex_special[index]), 10u, &result);
+        if (special_status != PHY_OK) {
+            fprintf(stderr, "  N[%s] failed: %s\n", complex_special[index],
+                    phy_status_name(special_status));
+        }
+        PHY_CHECK_EQ_INT(special_status, PHY_OK);
+        PHY_CHECK_EQ_STR(
+            phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, result)),
+            "ComplexAround");
+    }
+    PHY_CHECK_EQ_INT(
+        phy_cas_n(f.cas, parse(f.ir, "(fn erf 2)"), 10u, &result),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, result)), "Around");
 
     PHY_CHECK_EQ_INT(
         phy_cas_n(f.cas, parse(f.ir, "2"), 37u, &result),
@@ -287,12 +311,15 @@ static void test_certified_numeric_ball_entry_points(void)
             f.cas, parse(f.ir, "(= (+ (^ x 5) (* -1 x) -1) 0)"),
             x, 6u, &result),
         PHY_OK);
-    PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, result), 1u);
-    const phy_ir_ref branch = phy_ir_child(f.ir, result, 0u);
-    const phy_ir_ref rule = phy_ir_child(f.ir, branch, 0u);
-    const phy_ir_ref around = phy_ir_child(f.ir, rule, 1u);
-    PHY_CHECK_EQ_STR(
-        phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, around)), "Around");
+    PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, result), 5u);
+    for (size_t index = 0u; index < 5u; ++index) {
+        const phy_ir_ref branch = phy_ir_child(f.ir, result, index);
+        const phy_ir_ref rule = phy_ir_child(f.ir, branch, 0u);
+        const phy_ir_ref around = phy_ir_child(f.ir, rule, 1u);
+        PHY_CHECK_EQ_STR(
+            phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, around)),
+            "ComplexAround");
+    }
 
     PHY_CHECK_EQ_INT(
         phy_cas_nsolve(
@@ -310,6 +337,39 @@ static void test_certified_numeric_ball_entry_points(void)
             phy_ir_symbol_name(
                 f.ir, phy_ir_head(f.ir, complex_around)),
             "ComplexAround");
+    }
+    PHY_CHECK_EQ_INT(
+        phy_cas_nsolve(
+            f.cas, parse(f.ir, "(= (+ (^ x 4) 1) 0)"),
+            x, 8u, &result),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, result), 4u);
+    for (size_t index = 0u; index < 4u; ++index) {
+        const phy_ir_ref branch = phy_ir_child(f.ir, result, index);
+        const phy_ir_ref rule_ref = phy_ir_child(f.ir, branch, 0u);
+        const phy_ir_ref around = phy_ir_child(f.ir, rule_ref, 1u);
+        PHY_CHECK_EQ_STR(
+            phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, around)),
+            "ComplexAround");
+    }
+    PHY_CHECK_EQ_INT(
+        phy_cas_nsolve(
+            f.cas, parse(f.ir, "(= (+ (^ x 3) -1) 0)"),
+            x, 8u, &result),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, result), 3u);
+    PHY_CHECK_EQ_INT(
+        phy_cas_nsolve(
+            f.cas, parse(f.ir, "(= (+ (^ x 3) (* -1 x)) 0)"),
+            x, 8u, &result),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, result), 3u);
+    for (size_t index = 0u; index < 3u; ++index) {
+        const phy_ir_ref branch = phy_ir_child(f.ir, result, index);
+        const phy_ir_ref rule_ref = phy_ir_child(f.ir, branch, 0u);
+        const phy_ir_ref around = phy_ir_child(f.ir, rule_ref, 1u);
+        PHY_CHECK_EQ_STR(
+            phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, around)), "Around");
     }
     PHY_CHECK_EQ_INT(
         phy_cas_nsolve(

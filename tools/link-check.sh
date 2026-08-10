@@ -58,6 +58,7 @@ CAS_SOURCES=(
     src/exact/algebraic.c
     src/exact/ball.c
     src/exact/complex_ball.c
+    src/exact/complex_special.c
     src/cas/num.c
     src/cas/big_num.c
     src/cas/complex.c
@@ -68,6 +69,7 @@ CAS_SOURCES=(
     src/cas/linear_solve.c
     src/cas/sparse_poly.c
     src/cas/ball_eval.c
+    src/cas/complex_roots.c
     src/cas/special.c
     src/cas/engine.c
     src/cas/simplify.c
@@ -160,7 +162,7 @@ ball)
     LABEL="real and complex ball"
     PROBE="tests/device/ball_link_probe.c"
     HEADER="include/phy/ball.h"
-    OBJECT_GLOB="src_exact_*ball.o"
+    OBJECT_GLOB="src_exact_*.o"
     SYMBOL_RE='phy_(real|complex)_ball_'
     EXCLUDE='^$'
     MIN_ENTRY_POINTS=45
@@ -169,7 +171,8 @@ ball)
              src/exact/integer.c
              src/exact/rational.c
              src/exact/ball.c
-             src/exact/complex_ball.c)
+             src/exact/complex_ball.c
+             src/exact/complex_special.c)
     ;;
 cas)
     LABEL="CAS"

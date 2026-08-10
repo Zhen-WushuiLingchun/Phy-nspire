@@ -120,6 +120,11 @@ int main(void)
     sink((unsigned)phy_complex_ball_asinh(&z, 8u, &complex_result));
     sink((unsigned)phy_complex_ball_acosh(&z, 8u, &complex_result));
     sink((unsigned)phy_complex_ball_atanh(&z, 8u, &complex_result));
+    sink((unsigned)phy_complex_ball_erf(&z, 8u, &complex_result));
+    sink((unsigned)phy_complex_ball_erfc(&z, 8u, &complex_result));
+    sink((unsigned)phy_complex_ball_loggamma(&z, 8u, &complex_result));
+    sink((unsigned)phy_complex_ball_gamma(&z, 8u, &complex_result));
+    sink((unsigned)phy_complex_ball_digamma(&z, 8u, &complex_result));
     phy_complex_ball_destroy(&complex_result);
     phy_complex_ball_destroy(&w);
     phy_complex_ball_destroy(&z);
