@@ -40,7 +40,23 @@ SOURCES=(
     src/tensor/symmetry.c
     src/tensor/tensor.c
     src/tensor/ops.c
+    src/exact/context.c
+    src/exact/integer.c
+    src/exact/rational.c
+    src/exact/gaussian.c
+    src/exact/algebraic.c
+    src/exact/ball.c
     src/cas/num.c
+    src/cas/big_num.c
+    src/cas/complex.c
+    src/cas/finite_poly.c
+    src/cas/series.c
+    src/cas/limit.c
+    src/cas/solve.c
+    src/cas/linear_solve.c
+    src/cas/sparse_poly.c
+    src/cas/ball_eval.c
+    src/cas/special.c
     src/cas/engine.c
     src/cas/simplify.c
     src/cas/diff.c

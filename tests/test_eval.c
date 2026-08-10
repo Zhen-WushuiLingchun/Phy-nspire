@@ -482,7 +482,26 @@ static void test_polynomial_ideal_reader_and_evaluator(void)
     expect_status(
         &f, "GroebnerBasis[{Sin[x]},{x}]", PHY_ERR_UNSUPPORTED);
     expect_scalar(&f, "N[1/3,12]", "(fn Around (rat 1 3) 0)");
-    phy_value value = run(&f, "NSolve[x^5-x-1==0,x]");
+    phy_value value;
+    static const char *elementary[] = {
+        "N[Exp[1],20]",
+        "N[Log[E],20]",
+        "N[Sin[Pi/6],20]",
+        "N[Cos[Pi/3],20]",
+        "N[Tan[Pi/4],20]"};
+    for (size_t index = 0u;
+         index < sizeof elementary / sizeof elementary[0]; ++index) {
+        value = run(&f, elementary[index]);
+        PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_SCALAR);
+        PHY_CHECK_EQ_STR(
+            phy_ir_symbol_name(
+                f.ir, phy_ir_head(f.ir, value.as.scalar)),
+            "Around");
+    }
+    expect_status(&f, "N[Log[-1],20]", PHY_ERR_DOMAIN);
+    expect_status(&f, "N[Tan[Pi/2],20]", PHY_ERR_DOMAIN);
+    expect_status(&f, "N[Sin[I],20]", PHY_ERR_UNSUPPORTED);
+    value = run(&f, "NSolve[x^5-x-1==0,x]");
     PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_SCALAR);
     const phy_ir_ref solutions = value.as.scalar;
     PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, solutions), 1u);

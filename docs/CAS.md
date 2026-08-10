@@ -408,13 +408,14 @@ unsupported algebraic extension remain typed unsupported.
 
 `phy_cas_n` and reader-facing `N[expr,digits]` form the first certified numeric
 layer. It evaluates exact real arithmetic, `Pi`, `E`, `EulerGamma`, integer
-powers and square roots into an exact rational
+powers, square roots, and real `Exp`/`Log`/`Sin`/`Cos`/`Tan` into an exact rational
 `Around[midpoint,radius]`; requested precision is capped at 36 decimal digits.
 `phy_cas_nsolve`/`NSolve[equation,x]` isolates every real root of a bounded
 univariate rational polynomial by exact Sturm arithmetic, refines the root to
 a rational ball, evaluates the reduced denominator over that ball, and
-publishes only when zero is excluded. It intentionally does not claim complex
-or multivariate numerical solving yet.
+publishes only when zero is excluded. Complex elementary arguments, general
+special-function balls, and complex or multivariate numerical solving remain
+explicitly unsupported.
 
 ### Why trigonometry is reduced, and to what
 
@@ -693,14 +694,14 @@ counts are recorded in `CAS_ACCEPTANCE.md` after each clean build.
 
 Built with the pinned Ndless r2022 SDK and ARM GNU 14.3 toolchain using
 `-Os -marm`. The isolated link check compiles the complete scalar layer to
-130,036 bytes of ARM text; its dependency-complete probe packages to 197,464
+130,392 bytes of ARM text; its dependency-complete probe packages to 207,616
 bytes. These figures are deliberately measured by the link-check target rather
 than maintained as a hand-summed per-object table.
 
 The application now calls the CAS and the typed physics backends through
 editable notebook cells. The current product, including persistence,
-nMarkdown's math typesetter, and the reachable evaluator stack, is 1,246,500
-bytes (19.8% of the 6 MiB ceiling).
+nMarkdown's math typesetter, and the reachable evaluator stack, is 1,252,366
+bytes (19.9% of the 6 MiB ceiling).
 
 `make cas-link-check` closes the gap that leaves. It is the same guard as
 `make ir-link-check`, and `tools/link-check.sh` now serves both layers from one
@@ -718,11 +719,11 @@ not the check itself.
 
 `make cas-link-check` has been run with the real Ndless linker and packager:
 all **40/40** public entry points derived from `include/phy/cas.h` survive
-`--gc-sections`; the CAS+IR+platform probe packages to a **197,464-byte `.tns`**;
+`--gc-sections`; the CAS+IR+platform probe packages to a **207,616-byte `.tns`**;
 and no `_dtoa`, `_strtod`, `_printf_float`, libm, `stdio` formatting, or ARM
 soft-float helper reaches the image. Real IR atoms are ordered by their
 IEEE-754 bit keys rather than by executing a floating-point comparison. The
-corresponding IR check retains **53/53** entry points. Execution of the CAS
+corresponding IR check retains **58/58** entry points. Execution of the CAS
 probe on the physical CX II is also complete: on 2026-07-26,
 `phy-cas-smoke.tns` displayed **7/7 PASS** on the target OS 6.4.0.74 / Ndless
 r2022 calculator and `ESC` returned normally to Documents. That test is an

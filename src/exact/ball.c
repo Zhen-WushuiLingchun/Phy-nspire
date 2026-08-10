@@ -669,3 +669,1232 @@ phy_status phy_real_ball_sqrt(const phy_real_ball *argument,
     }
     return status;
 }
+
+/* ------------------------------------------------ certified elementary pack */
+
+#define PHY_REAL_BALL_MAX_SERIES_ROUNDS 256u
+#define PHY_REAL_BALL_MAX_REDUCTIONS 32u
+#define PHY_REAL_BALL_MAX_SERIES_TERMS 68u
+#define PHY_REAL_BALL_MAX_LOG_TERMS 64u
+
+static uint32_t elementary_series_terms(uint32_t rounds)
+{
+    /* With |x| <= 1/16, the deliberately simple exp tail majorant
+       3*|x|^terms gains four binary bits per term.  Two guard terms plus a
+       ceiling division therefore make the analytic tail tighter than the
+       dyadic rounding grid requested by `rounds`.  Trigonometric factorial
+       tails are smaller still, so the same bound is safe for all three
+       series while keeping one auditable resource contract. */
+    uint32_t terms = 2u + (rounds + 3u) / 4u;
+    if (terms > PHY_REAL_BALL_MAX_SERIES_TERMS) {
+        terms = PHY_REAL_BALL_MAX_SERIES_TERMS;
+    }
+    return terms;
+}
+
+static uint32_t logarithm_series_terms(uint32_t rounds)
+{
+    /*
+     * After square-root reduction the atanh argument satisfies |y| <= 1/4.
+     * Each additional term then gains at least four binary bits in the tail.
+     * Keep a guard margin for the outward dyadic roundings performed by every
+     * arithmetic step, while retaining an absolute resource bound.
+     */
+    uint32_t terms = 8u + rounds / 4u;
+    if (terms > PHY_REAL_BALL_MAX_LOG_TERMS) {
+        terms = PHY_REAL_BALL_MAX_LOG_TERMS;
+    }
+    return terms;
+}
+
+static phy_status ball_magnitude_upper(const phy_real_ball *ball,
+                                       phy_bigrat *out)
+{
+    phy_status status = absolute_rational(&ball->midpoint, out);
+    if (status == PHY_OK) {
+        status = phy_bigrat_add(out, &ball->radius, out);
+    }
+    return status;
+}
+
+static phy_status ball_scale_i64(const phy_real_ball *value,
+                                 int64_t numerator, int64_t denominator,
+                                 phy_real_ball *out)
+{
+    phy_real_ball scalar;
+    memset(&scalar, 0, sizeof scalar);
+    phy_status status = init_like(out, &scalar);
+    if (status == PHY_OK) {
+        status = phy_real_ball_set_i64(&scalar, numerator, denominator);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_multiply(value, &scalar, out);
+    }
+    phy_real_ball_destroy(&scalar);
+    return status;
+}
+
+static phy_status ball_add_symmetric_error(const phy_real_ball *value,
+                                           const phy_bigrat *error,
+                                           phy_real_ball *out)
+{
+    if (phy_bigrat_sign(error) < 0) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    phy_real_ball temporary;
+    memset(&temporary, 0, sizeof temporary);
+    phy_status status = init_like(out, &temporary);
+    if (status == PHY_OK) {
+        status = phy_bigrat_copy(
+            &value->midpoint, &temporary.midpoint);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_add(
+            &value->radius, error, &temporary.radius);
+    }
+    if (status == PHY_OK) {
+        status = publish(&temporary, out);
+    }
+    phy_real_ball_destroy(&temporary);
+    return status;
+}
+
+static phy_status ball_clamp_unit(const phy_real_ball *value,
+                                  phy_real_ball *out)
+{
+    phy_exact_context *context = context_of(out);
+    phy_bigrat lower;
+    phy_bigrat upper;
+    phy_bigrat minus_one;
+    phy_bigrat one;
+    memset(&lower, 0, sizeof lower);
+    memset(&upper, 0, sizeof upper);
+    memset(&minus_one, 0, sizeof minus_one);
+    memset(&one, 0, sizeof one);
+    phy_bigrat *values[] = {&lower, &upper, &minus_one, &one};
+    size_t initialized_count = 0u;
+    phy_status status = PHY_OK;
+    while (status == PHY_OK &&
+           initialized_count < sizeof values / sizeof values[0]) {
+        status = phy_bigrat_init(context, values[initialized_count]);
+        if (status == PHY_OK) {
+            initialized_count++;
+        }
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_lower(value, &lower);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_upper(value, &upper);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_set_i64(&minus_one, -1, 1);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_set_i64(&one, 1, 1);
+    }
+    int order = 0;
+    if (status == PHY_OK) {
+        status = phy_bigrat_compare(&lower, &minus_one, &order);
+    }
+    if (status == PHY_OK && order < 0) {
+        status = phy_bigrat_copy(&minus_one, &lower);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_compare(&upper, &one, &order);
+    }
+    if (status == PHY_OK && order > 0) {
+        status = phy_bigrat_copy(&one, &upper);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_compare(&lower, &upper, &order);
+    }
+    if (status == PHY_OK && order > 0) {
+        status = PHY_ERR_CORRUPT_DOCUMENT;
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_set_interval(out, &lower, &upper);
+    }
+    while (initialized_count != 0u) {
+        phy_bigrat_destroy(values[--initialized_count]);
+    }
+    return status;
+}
+
+static phy_status ball_clamp_nonnegative(const phy_real_ball *value,
+                                         phy_real_ball *out)
+{
+    phy_exact_context *context = context_of(out);
+    phy_bigrat lower;
+    phy_bigrat upper;
+    phy_bigrat zero;
+    memset(&lower, 0, sizeof lower);
+    memset(&upper, 0, sizeof upper);
+    memset(&zero, 0, sizeof zero);
+    phy_bigrat *values[] = {&lower, &upper, &zero};
+    size_t initialized_count = 0u;
+    phy_status status = PHY_OK;
+    while (status == PHY_OK &&
+           initialized_count < sizeof values / sizeof values[0]) {
+        status = phy_bigrat_init(context, values[initialized_count]);
+        if (status == PHY_OK) {
+            initialized_count++;
+        }
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_lower(value, &lower);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_upper(value, &upper);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_set_i64(&zero, 0, 1);
+    }
+    if (status == PHY_OK && phy_bigrat_sign(&upper) < 0) {
+        status = PHY_ERR_CORRUPT_DOCUMENT;
+    }
+    if (status == PHY_OK && phy_bigrat_sign(&lower) < 0) {
+        status = phy_bigrat_copy(&zero, &lower);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_set_interval(out, &lower, &upper);
+    }
+    while (initialized_count != 0u) {
+        phy_bigrat_destroy(values[--initialized_count]);
+    }
+    return status;
+}
+
+static phy_status dyadic_bound(const phy_bigrat *value, uint32_t bits,
+                               bool upper_bound, phy_bigrat *out)
+{
+    phy_exact_context *context = phy_bigrat_numerator(value)->context;
+    phy_bigint two;
+    phy_bigint scale;
+    phy_bigint scaled_numerator;
+    phy_bigint quotient;
+    phy_bigint remainder;
+    phy_bigint one;
+    memset(&two, 0, sizeof two);
+    memset(&scale, 0, sizeof scale);
+    memset(&scaled_numerator, 0, sizeof scaled_numerator);
+    memset(&quotient, 0, sizeof quotient);
+    memset(&remainder, 0, sizeof remainder);
+    memset(&one, 0, sizeof one);
+    phy_bigint *integers[] = {
+        &two, &scale, &scaled_numerator, &quotient, &remainder, &one};
+    size_t initialized_count = 0u;
+    phy_status status = PHY_OK;
+    while (status == PHY_OK &&
+           initialized_count < sizeof integers / sizeof integers[0]) {
+        status = phy_bigint_init(context, integers[initialized_count]);
+        if (status == PHY_OK) {
+            initialized_count++;
+        }
+    }
+    if (status == PHY_OK) {
+        status = phy_bigint_set_i64(&two, 2);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigint_pow_u32(&two, bits, &scale);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigint_multiply(
+            phy_bigrat_numerator(value), &scale, &scaled_numerator);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigint_divmod(
+            &scaled_numerator, phy_bigrat_denominator(value),
+            &quotient, &remainder);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigint_set_i64(&one, 1);
+    }
+    const int sign = phy_bigrat_sign(value);
+    if (status == PHY_OK && phy_bigint_sign(&remainder) != 0 &&
+        ((upper_bound && sign > 0) || (!upper_bound && sign < 0))) {
+        status = upper_bound
+                     ? phy_bigint_add(&quotient, &one, &quotient)
+                     : phy_bigint_subtract(&quotient, &one, &quotient);
+    }
+    phy_bigrat scale_rat;
+    memset(&scale_rat, 0, sizeof scale_rat);
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context, &scale_rat);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_set_bigint(&quotient, out);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_set_bigint(&scale, &scale_rat);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_divide(out, &scale_rat, out);
+    }
+    if (phy_bigint_is_initialized(phy_bigrat_numerator(&scale_rat))) {
+        phy_bigrat_destroy(&scale_rat);
+    }
+    while (initialized_count != 0u) {
+        phy_bigint_destroy(integers[--initialized_count]);
+    }
+    return status;
+}
+
+static phy_status ball_round_dyadic(const phy_real_ball *value,
+                                    uint32_t bits, phy_real_ball *out)
+{
+    phy_exact_context *context = context_of(out);
+    phy_bigrat lower;
+    phy_bigrat upper;
+    phy_bigrat rounded_lower;
+    phy_bigrat rounded_upper;
+    memset(&lower, 0, sizeof lower);
+    memset(&upper, 0, sizeof upper);
+    memset(&rounded_lower, 0, sizeof rounded_lower);
+    memset(&rounded_upper, 0, sizeof rounded_upper);
+    phy_bigrat *values[] = {
+        &lower, &upper, &rounded_lower, &rounded_upper};
+    size_t initialized_count = 0u;
+    phy_status status = PHY_OK;
+    while (status == PHY_OK &&
+           initialized_count < sizeof values / sizeof values[0]) {
+        status = phy_bigrat_init(context, values[initialized_count]);
+        if (status == PHY_OK) {
+            initialized_count++;
+        }
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_lower(value, &lower);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_upper(value, &upper);
+    }
+    if (status == PHY_OK) {
+        status = dyadic_bound(&lower, bits, false, &rounded_lower);
+    }
+    if (status == PHY_OK) {
+        status = dyadic_bound(&upper, bits, true, &rounded_upper);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_set_interval(
+            out, &rounded_lower, &rounded_upper);
+    }
+    while (initialized_count != 0u) {
+        phy_bigrat_destroy(values[--initialized_count]);
+    }
+    return status;
+}
+
+static phy_status reciprocal_factorial(phy_exact_context *context,
+                                       uint32_t n, phy_bigrat *out)
+{
+    phy_bigrat divisor;
+    memset(&divisor, 0, sizeof divisor);
+    phy_status status = phy_bigrat_init(context, &divisor);
+    if (status == PHY_OK) {
+        status = phy_bigrat_set_i64(out, 1, 1);
+    }
+    for (uint32_t value = 2u; status == PHY_OK && value <= n; ++value) {
+        status = phy_bigrat_set_i64(&divisor, (int64_t)value, 1);
+        if (status == PHY_OK) {
+            status = phy_bigrat_divide(out, &divisor, out);
+        }
+    }
+    if (phy_bigint_is_initialized(phy_bigrat_numerator(&divisor))) {
+        phy_bigrat_destroy(&divisor);
+    }
+    return status;
+}
+
+static phy_status halve_to_unit(const phy_real_ball *argument,
+                                uint32_t precision_bits,
+                                phy_real_ball *out_reduced,
+                                uint32_t *out_reductions)
+{
+    if (precision_bits < 16u) {
+        precision_bits = 16u;
+    }
+    phy_exact_context *context = context_of(out_reduced);
+    phy_bigrat magnitude;
+    phy_bigrat threshold;
+    memset(&magnitude, 0, sizeof magnitude);
+    memset(&threshold, 0, sizeof threshold);
+    phy_status status = phy_bigrat_init(context, &magnitude);
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context, &threshold);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_set_i64(&threshold, 1, 16);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_copy(argument, out_reduced);
+    }
+    if (status == PHY_OK) {
+        status = ball_round_dyadic(
+            out_reduced, precision_bits, out_reduced);
+    }
+    phy_real_ball temporary;
+    memset(&temporary, 0, sizeof temporary);
+    if (status == PHY_OK) {
+        status = init_like(out_reduced, &temporary);
+    }
+    uint32_t reductions = 0u;
+    int order = 0;
+    while (status == PHY_OK) {
+        status = ball_magnitude_upper(out_reduced, &magnitude);
+        if (status == PHY_OK) {
+            status = phy_bigrat_compare(&magnitude, &threshold, &order);
+        }
+        if (status != PHY_OK || order <= 0) {
+            break;
+        }
+        if (reductions == PHY_REAL_BALL_MAX_REDUCTIONS) {
+            status = PHY_ERR_TERM_LIMIT;
+            break;
+        }
+        status = ball_scale_i64(out_reduced, 1, 2, &temporary);
+        if (status == PHY_OK) {
+            status = ball_round_dyadic(
+                &temporary, precision_bits, out_reduced);
+        }
+        reductions++;
+    }
+    if (status == PHY_OK) {
+        *out_reductions = reductions;
+    }
+    phy_real_ball_destroy(&temporary);
+    if (phy_bigint_is_initialized(phy_bigrat_numerator(&threshold))) {
+        phy_bigrat_destroy(&threshold);
+    }
+    if (phy_bigint_is_initialized(phy_bigrat_numerator(&magnitude))) {
+        phy_bigrat_destroy(&magnitude);
+    }
+    return status;
+}
+
+static phy_status trig_taylor_reduced(const phy_real_ball *argument,
+                                      uint32_t terms,
+                                      uint32_t precision_bits,
+                                      phy_real_ball *out_sine,
+                                      phy_real_ball *out_cosine)
+{
+    phy_real_ball x_squared;
+    phy_real_ball sine_term;
+    phy_real_ball cosine_term;
+    phy_real_ball sine_sum;
+    phy_real_ball cosine_sum;
+    phy_real_ball scalar;
+    phy_real_ball temporary;
+    phy_real_ball next;
+    phy_real_ball *balls[] = {
+        &x_squared, &sine_term, &cosine_term, &sine_sum,
+        &cosine_sum, &scalar, &temporary, &next};
+    memset(&x_squared, 0, sizeof x_squared);
+    memset(&sine_term, 0, sizeof sine_term);
+    memset(&cosine_term, 0, sizeof cosine_term);
+    memset(&sine_sum, 0, sizeof sine_sum);
+    memset(&cosine_sum, 0, sizeof cosine_sum);
+    memset(&scalar, 0, sizeof scalar);
+    memset(&temporary, 0, sizeof temporary);
+    memset(&next, 0, sizeof next);
+    size_t initialized_count = 0u;
+    phy_status status = PHY_OK;
+    while (status == PHY_OK &&
+           initialized_count < sizeof balls / sizeof balls[0]) {
+        status = init_like(out_sine, balls[initialized_count]);
+        if (status == PHY_OK) {
+            initialized_count++;
+        }
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_multiply(argument, argument, &x_squared);
+    }
+    if (status == PHY_OK) {
+        status = ball_round_dyadic(
+            &x_squared, precision_bits, &x_squared);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_copy(argument, &sine_term);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_copy(argument, &sine_sum);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_set_i64(&cosine_term, 1, 1);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_set_i64(&cosine_sum, 1, 1);
+    }
+    for (uint32_t index = 1u; status == PHY_OK && index < terms;
+         ++index) {
+        const int64_t sine_denominator =
+            (int64_t)(2u * index) * (int64_t)(2u * index + 1u);
+        status = phy_real_ball_multiply(
+            &sine_term, &x_squared, &temporary);
+        if (status == PHY_OK) {
+            status = phy_real_ball_set_i64(
+                &scalar, -1, sine_denominator);
+        }
+        if (status == PHY_OK) {
+            status = phy_real_ball_multiply(
+                &temporary, &scalar, &sine_term);
+        }
+        if (status == PHY_OK) {
+            status = ball_round_dyadic(
+                &sine_term, precision_bits, &sine_term);
+        }
+        if (status == PHY_OK) {
+            status = phy_real_ball_add(&sine_sum, &sine_term, &next);
+        }
+        if (status == PHY_OK) {
+            status = ball_round_dyadic(
+                &next, precision_bits, &sine_sum);
+        }
+
+        const int64_t cosine_denominator =
+            (int64_t)(2u * index - 1u) * (int64_t)(2u * index);
+        if (status == PHY_OK) {
+            status = phy_real_ball_multiply(
+                &cosine_term, &x_squared, &temporary);
+        }
+        if (status == PHY_OK) {
+            status = phy_real_ball_set_i64(
+                &scalar, -1, cosine_denominator);
+        }
+        if (status == PHY_OK) {
+            status = phy_real_ball_multiply(
+                &temporary, &scalar, &cosine_term);
+        }
+        if (status == PHY_OK) {
+            status = ball_round_dyadic(
+                &cosine_term, precision_bits, &cosine_term);
+        }
+        if (status == PHY_OK) {
+            status = phy_real_ball_add(
+                &cosine_sum, &cosine_term, &next);
+        }
+        if (status == PHY_OK) {
+            status = ball_round_dyadic(
+                &next, precision_bits, &cosine_sum);
+        }
+    }
+    phy_exact_context *context = context_of(out_sine);
+    phy_bigrat sine_error;
+    phy_bigrat cosine_error;
+    phy_bigrat magnitude;
+    phy_bigrat magnitude_power;
+    memset(&sine_error, 0, sizeof sine_error);
+    memset(&cosine_error, 0, sizeof cosine_error);
+    memset(&magnitude, 0, sizeof magnitude);
+    memset(&magnitude_power, 0, sizeof magnitude_power);
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context, &sine_error);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context, &cosine_error);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context, &magnitude);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context, &magnitude_power);
+    }
+    if (status == PHY_OK) {
+        /* Range reduction has already proved |argument| <= 1/16.  Using
+           that fixed dyadic majorant keeps the certificate denominator
+           bounded instead of raising a 100-bit input endpoint to a high
+           Taylor power. */
+        status = phy_bigrat_set_i64(&magnitude, 1, 16);
+    }
+    if (status == PHY_OK) {
+        status = reciprocal_factorial(
+            context, 2u * terms + 1u, &sine_error);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_pow_i32(
+            &magnitude, (int32_t)(2u * terms + 1u),
+            &magnitude_power);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_multiply(
+            &sine_error, &magnitude_power, &sine_error);
+    }
+    if (status == PHY_OK) {
+        status = reciprocal_factorial(
+            context, 2u * terms, &cosine_error);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_pow_i32(
+            &magnitude, (int32_t)(2u * terms), &magnitude_power);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_multiply(
+            &cosine_error, &magnitude_power, &cosine_error);
+    }
+    if (status == PHY_OK) {
+        status = ball_add_symmetric_error(
+            &sine_sum, &sine_error, &sine_sum);
+    }
+    if (status == PHY_OK) {
+        status = ball_round_dyadic(
+            &sine_sum, precision_bits, &sine_sum);
+    }
+    if (status == PHY_OK) {
+        status = ball_add_symmetric_error(
+            &cosine_sum, &cosine_error, &cosine_sum);
+    }
+    if (status == PHY_OK) {
+        status = ball_round_dyadic(
+            &cosine_sum, precision_bits, &cosine_sum);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_copy(&sine_sum, out_sine);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_copy(&cosine_sum, out_cosine);
+    }
+    if (phy_bigint_is_initialized(phy_bigrat_numerator(&cosine_error))) {
+        phy_bigrat_destroy(&cosine_error);
+    }
+    if (phy_bigint_is_initialized(phy_bigrat_numerator(&sine_error))) {
+        phy_bigrat_destroy(&sine_error);
+    }
+    if (phy_bigint_is_initialized(phy_bigrat_numerator(&magnitude_power))) {
+        phy_bigrat_destroy(&magnitude_power);
+    }
+    if (phy_bigint_is_initialized(phy_bigrat_numerator(&magnitude))) {
+        phy_bigrat_destroy(&magnitude);
+    }
+    while (initialized_count != 0u) {
+        phy_real_ball_destroy(balls[--initialized_count]);
+    }
+    return status;
+}
+
+static phy_status trig_core(const phy_real_ball *argument, uint32_t rounds,
+                            phy_real_ball *out_sine,
+                            phy_real_ball *out_cosine)
+{
+    const uint32_t precision_bits = rounds < 16u ? 16u : rounds;
+    phy_real_ball reduced;
+    phy_real_ball sine;
+    phy_real_ball cosine;
+    phy_real_ball next_sine;
+    phy_real_ball next_cosine;
+    phy_real_ball product;
+    phy_real_ball sine_square;
+    phy_real_ball cosine_square;
+    phy_real_ball *balls[] = {
+        &reduced, &sine, &cosine, &next_sine,
+        &next_cosine, &product, &sine_square, &cosine_square};
+    memset(&reduced, 0, sizeof reduced);
+    memset(&sine, 0, sizeof sine);
+    memset(&cosine, 0, sizeof cosine);
+    memset(&next_sine, 0, sizeof next_sine);
+    memset(&next_cosine, 0, sizeof next_cosine);
+    memset(&product, 0, sizeof product);
+    memset(&sine_square, 0, sizeof sine_square);
+    memset(&cosine_square, 0, sizeof cosine_square);
+    size_t initialized_count = 0u;
+    phy_status status = PHY_OK;
+    while (status == PHY_OK &&
+           initialized_count < sizeof balls / sizeof balls[0]) {
+        status = init_like(out_sine, balls[initialized_count]);
+        if (status == PHY_OK) {
+            initialized_count++;
+        }
+    }
+    uint32_t reductions = 0u;
+    if (status == PHY_OK) {
+        status = halve_to_unit(
+            argument, precision_bits, &reduced, &reductions);
+    }
+    if (status == PHY_OK) {
+        status = trig_taylor_reduced(
+            &reduced, elementary_series_terms(rounds), precision_bits,
+            &sine, &cosine);
+    }
+    for (uint32_t index = 0u;
+         status == PHY_OK && index < reductions; ++index) {
+        status = phy_real_ball_multiply(&sine, &cosine, &product);
+        if (status == PHY_OK) {
+            status = ball_scale_i64(&product, 2, 1, &next_sine);
+        }
+        if (status == PHY_OK) {
+            status = phy_real_ball_multiply(
+                &sine, &sine, &sine_square);
+        }
+        if (status == PHY_OK) {
+            status = phy_real_ball_multiply(
+                &cosine, &cosine, &cosine_square);
+        }
+        if (status == PHY_OK) {
+            status = phy_real_ball_subtract(
+                &cosine_square, &sine_square, &next_cosine);
+        }
+        if (status == PHY_OK) {
+            status = ball_clamp_unit(&next_sine, &next_sine);
+        }
+        if (status == PHY_OK) {
+            status = ball_round_dyadic(
+                &next_sine, precision_bits, &next_sine);
+        }
+        if (status == PHY_OK) {
+            status = ball_clamp_unit(&next_cosine, &next_cosine);
+        }
+        if (status == PHY_OK) {
+            status = ball_round_dyadic(
+                &next_cosine, precision_bits, &next_cosine);
+        }
+        if (status == PHY_OK) {
+            status = phy_real_ball_copy(&next_sine, &sine);
+        }
+        if (status == PHY_OK) {
+            status = phy_real_ball_copy(&next_cosine, &cosine);
+        }
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_copy(&sine, out_sine);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_copy(&cosine, out_cosine);
+    }
+    while (initialized_count != 0u) {
+        phy_real_ball_destroy(balls[--initialized_count]);
+    }
+    return status;
+}
+
+static phy_status exp_core(const phy_real_ball *argument, uint32_t rounds,
+                           phy_real_ball *out)
+{
+    const uint32_t precision_bits = rounds < 16u ? 16u : rounds;
+    phy_real_ball reduced;
+    phy_real_ball sum;
+    phy_real_ball term;
+    phy_real_ball scalar;
+    phy_real_ball temporary;
+    phy_real_ball next;
+    phy_real_ball *balls[] = {
+        &reduced, &sum, &term, &scalar, &temporary, &next};
+    memset(&reduced, 0, sizeof reduced);
+    memset(&sum, 0, sizeof sum);
+    memset(&term, 0, sizeof term);
+    memset(&scalar, 0, sizeof scalar);
+    memset(&temporary, 0, sizeof temporary);
+    memset(&next, 0, sizeof next);
+    size_t initialized_count = 0u;
+    phy_status status = PHY_OK;
+    while (status == PHY_OK &&
+           initialized_count < sizeof balls / sizeof balls[0]) {
+        status = init_like(out, balls[initialized_count]);
+        if (status == PHY_OK) {
+            initialized_count++;
+        }
+    }
+    uint32_t reductions = 0u;
+    if (status == PHY_OK) {
+        status = halve_to_unit(
+            argument, precision_bits, &reduced, &reductions);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_set_i64(&sum, 1, 1);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_set_i64(&term, 1, 1);
+    }
+    const uint32_t terms = elementary_series_terms(rounds);
+    for (uint32_t index = 1u; status == PHY_OK && index < terms;
+         ++index) {
+        status = phy_real_ball_multiply(&term, &reduced, &temporary);
+        if (status == PHY_OK) {
+            status = phy_real_ball_set_i64(
+                &scalar, 1, (int64_t)index);
+        }
+        if (status == PHY_OK) {
+            status = phy_real_ball_multiply(&temporary, &scalar, &term);
+        }
+        if (status == PHY_OK) {
+            status = ball_round_dyadic(&term, precision_bits, &term);
+        }
+        if (status == PHY_OK) {
+            status = phy_real_ball_add(&sum, &term, &next);
+        }
+        if (status == PHY_OK) {
+            status = ball_round_dyadic(&next, precision_bits, &sum);
+        }
+    }
+    phy_bigrat error;
+    phy_bigrat magnitude;
+    phy_bigrat magnitude_power;
+    memset(&error, 0, sizeof error);
+    memset(&magnitude, 0, sizeof magnitude);
+    memset(&magnitude_power, 0, sizeof magnitude_power);
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context_of(out), &error);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context_of(out), &magnitude);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context_of(out), &magnitude_power);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_set_i64(&magnitude, 1, 16);
+    }
+    if (status == PHY_OK) {
+        status = reciprocal_factorial(context_of(out), terms, &error);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_pow_i32(
+            &magnitude, (int32_t)terms, &magnitude_power);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_multiply(
+            &error, &magnitude_power, &error);
+    }
+    if (status == PHY_OK) {
+        phy_bigrat three;
+        memset(&three, 0, sizeof three);
+        status = phy_bigrat_init(context_of(out), &three);
+        if (status == PHY_OK) {
+            status = phy_bigrat_set_i64(&three, 3, 1);
+        }
+        if (status == PHY_OK) {
+            status = phy_bigrat_multiply(&error, &three, &error);
+        }
+        if (phy_bigint_is_initialized(phy_bigrat_numerator(&three))) {
+            phy_bigrat_destroy(&three);
+        }
+    }
+    if (status == PHY_OK) {
+        status = ball_add_symmetric_error(&sum, &error, &sum);
+    }
+    if (status == PHY_OK) {
+        status = ball_round_dyadic(&sum, precision_bits, &sum);
+    }
+    for (uint32_t index = 0u;
+         status == PHY_OK && index < reductions; ++index) {
+        status = phy_real_ball_multiply(&sum, &sum, &temporary);
+        if (status == PHY_OK) {
+            status = ball_clamp_nonnegative(&temporary, &next);
+        }
+        if (status == PHY_OK) {
+            status = ball_round_dyadic(&next, precision_bits, &next);
+        }
+        if (status == PHY_OK) {
+            status = phy_real_ball_copy(&next, &sum);
+        }
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_copy(&sum, out);
+    }
+    if (phy_bigint_is_initialized(phy_bigrat_numerator(&error))) {
+        phy_bigrat_destroy(&error);
+    }
+    if (phy_bigint_is_initialized(phy_bigrat_numerator(&magnitude_power))) {
+        phy_bigrat_destroy(&magnitude_power);
+    }
+    if (phy_bigint_is_initialized(phy_bigrat_numerator(&magnitude))) {
+        phy_bigrat_destroy(&magnitude);
+    }
+    while (initialized_count != 0u) {
+        phy_real_ball_destroy(balls[--initialized_count]);
+    }
+    return status;
+}
+
+static phy_status log_core(const phy_real_ball *argument, uint32_t rounds,
+                           phy_real_ball *out)
+{
+    const uint32_t precision_bits = rounds < 16u ? 16u : rounds;
+    phy_exact_context *context = context_of(out);
+    phy_bigrat lower;
+    phy_bigrat q;
+    phy_bigrat threshold;
+    memset(&lower, 0, sizeof lower);
+    memset(&q, 0, sizeof q);
+    memset(&threshold, 0, sizeof threshold);
+    phy_bigrat *rationals[] = {&lower, &q, &threshold};
+    size_t rational_count = 0u;
+    phy_status status = PHY_OK;
+    while (status == PHY_OK &&
+           rational_count < sizeof rationals / sizeof rationals[0]) {
+        status = phy_bigrat_init(context, rationals[rational_count]);
+        if (status == PHY_OK) {
+            rational_count++;
+        }
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_lower(argument, &lower);
+    }
+    if (status == PHY_OK && phy_bigrat_sign(&lower) <= 0) {
+        status = PHY_ERR_DOMAIN;
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_set_i64(&threshold, 1, 4);
+    }
+
+    phy_real_ball reduced;
+    phy_real_ball one;
+    phy_real_ball numerator;
+    phy_real_ball denominator;
+    phy_real_ball y;
+    phy_real_ball y_squared;
+    phy_real_ball term;
+    phy_real_ball sum;
+    phy_real_ball scaled;
+    phy_real_ball scalar;
+    phy_real_ball temporary;
+    phy_real_ball next;
+    phy_real_ball *balls[] = {
+        &reduced, &one, &numerator, &denominator, &y, &y_squared,
+        &term, &sum, &scaled, &scalar, &temporary, &next};
+    memset(&reduced, 0, sizeof reduced);
+    memset(&one, 0, sizeof one);
+    memset(&numerator, 0, sizeof numerator);
+    memset(&denominator, 0, sizeof denominator);
+    memset(&y, 0, sizeof y);
+    memset(&y_squared, 0, sizeof y_squared);
+    memset(&term, 0, sizeof term);
+    memset(&sum, 0, sizeof sum);
+    memset(&scaled, 0, sizeof scaled);
+    memset(&scalar, 0, sizeof scalar);
+    memset(&temporary, 0, sizeof temporary);
+    memset(&next, 0, sizeof next);
+    size_t initialized_count = 0u;
+    while (status == PHY_OK &&
+           initialized_count < sizeof balls / sizeof balls[0]) {
+        status = init_like(out, balls[initialized_count]);
+        if (status == PHY_OK) {
+            initialized_count++;
+        }
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_copy(argument, &reduced);
+    }
+    if (status == PHY_OK) {
+        status = ball_round_dyadic(
+            &reduced, precision_bits, &reduced);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_set_i64(&one, 1, 1);
+    }
+
+    uint32_t reductions = 0u;
+    int order = 0;
+    while (status == PHY_OK) {
+        status = phy_real_ball_subtract(&reduced, &one, &numerator);
+        if (status == PHY_OK) {
+            status = phy_real_ball_add(&reduced, &one, &denominator);
+        }
+        if (status == PHY_OK) {
+            status = phy_real_ball_divide(&numerator, &denominator, &y);
+        }
+        if (status == PHY_OK) {
+            status = ball_round_dyadic(&y, precision_bits, &y);
+        }
+        if (status == PHY_OK) {
+            status = ball_magnitude_upper(&y, &q);
+        }
+        if (status == PHY_OK) {
+            status = phy_bigrat_compare(&q, &threshold, &order);
+        }
+        if (status != PHY_OK || order <= 0) {
+            break;
+        }
+        if (reductions == PHY_REAL_BALL_MAX_REDUCTIONS) {
+            status = PHY_ERR_TERM_LIMIT;
+            break;
+        }
+        const uint32_t sqrt_rounds = precision_bits;
+        status = phy_real_ball_sqrt(
+            &reduced, sqrt_rounds, &temporary);
+        if (status == PHY_OK) {
+            status = ball_round_dyadic(
+                &temporary, precision_bits, &reduced);
+        }
+        reductions++;
+    }
+
+    const uint32_t terms = logarithm_series_terms(rounds);
+    if (status == PHY_OK) {
+        status = phy_real_ball_multiply(&y, &y, &y_squared);
+    }
+    if (status == PHY_OK) {
+        status = ball_round_dyadic(
+            &y_squared, precision_bits, &y_squared);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_copy(&y, &term);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_copy(&y, &sum);
+    }
+    for (uint32_t index = 1u; status == PHY_OK && index < terms;
+         ++index) {
+        status = phy_real_ball_multiply(
+            &term, &y_squared, &temporary);
+        if (status == PHY_OK) {
+            status = ball_round_dyadic(
+                &temporary, precision_bits, &term);
+        }
+        if (status == PHY_OK) {
+            status = phy_real_ball_set_i64(
+                &scalar, 1, (int64_t)(2u * index + 1u));
+        }
+        if (status == PHY_OK) {
+            status = phy_real_ball_multiply(&term, &scalar, &scaled);
+        }
+        if (status == PHY_OK) {
+            status = ball_round_dyadic(
+                &scaled, precision_bits, &scaled);
+        }
+        if (status == PHY_OK) {
+            status = phy_real_ball_add(&sum, &scaled, &next);
+        }
+        if (status == PHY_OK) {
+            status = ball_round_dyadic(
+                &next, precision_bits, &sum);
+        }
+    }
+    if (status == PHY_OK) {
+        status = ball_scale_i64(&sum, 2, 1, &sum);
+    }
+    if (status == PHY_OK) {
+        status = ball_round_dyadic(&sum, precision_bits, &sum);
+    }
+
+    phy_bigrat q_power;
+    phy_bigrat q_squared;
+    phy_bigrat one_rat;
+    phy_bigrat tail_denominator;
+    phy_bigrat degree;
+    phy_bigrat error;
+    phy_bigrat two;
+    memset(&q_power, 0, sizeof q_power);
+    memset(&q_squared, 0, sizeof q_squared);
+    memset(&one_rat, 0, sizeof one_rat);
+    memset(&tail_denominator, 0, sizeof tail_denominator);
+    memset(&degree, 0, sizeof degree);
+    memset(&error, 0, sizeof error);
+    memset(&two, 0, sizeof two);
+    phy_bigrat *tail_values[] = {
+        &q_power, &q_squared, &one_rat, &tail_denominator,
+        &degree, &error, &two};
+    size_t tail_count = 0u;
+    while (status == PHY_OK &&
+           tail_count < sizeof tail_values / sizeof tail_values[0]) {
+        status = phy_bigrat_init(context, tail_values[tail_count]);
+        if (status == PHY_OK) {
+            tail_count++;
+        }
+    }
+    const uint32_t tail_degree = 2u * terms + 1u;
+    if (status == PHY_OK) {
+        /* The loop above proves |y| <= 1/4.  Use the fixed dyadic
+           majorant in the geometric tail so its exponent cannot inherit
+           the full input denominator. */
+        status = phy_bigrat_copy(&threshold, &q);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_pow_i32(&q, (int32_t)tail_degree, &q_power);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_multiply(&q, &q, &q_squared);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_set_i64(&one_rat, 1, 1);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_subtract(
+            &one_rat, &q_squared, &tail_denominator);
+    }
+    if (status == PHY_OK && phy_bigrat_sign(&tail_denominator) <= 0) {
+        status = PHY_ERR_TERM_LIMIT;
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_set_i64(
+            &degree, (int64_t)tail_degree, 1);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_multiply(
+            &tail_denominator, &degree, &tail_denominator);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_divide(
+            &q_power, &tail_denominator, &error);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_set_i64(&two, 2, 1);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_multiply(&error, &two, &error);
+    }
+    if (status == PHY_OK) {
+        status = ball_add_symmetric_error(&sum, &error, &sum);
+    }
+    if (status == PHY_OK) {
+        status = ball_round_dyadic(&sum, precision_bits, &sum);
+    }
+    if (status == PHY_OK) {
+        const int64_t scale = INT64_C(1) << reductions;
+        status = ball_scale_i64(&sum, scale, 1, &sum);
+    }
+    if (status == PHY_OK) {
+        status = ball_round_dyadic(&sum, precision_bits, &sum);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_copy(&sum, out);
+    }
+    while (tail_count != 0u) {
+        phy_bigrat_destroy(tail_values[--tail_count]);
+    }
+    while (initialized_count != 0u) {
+        phy_real_ball_destroy(balls[--initialized_count]);
+    }
+    while (rational_count != 0u) {
+        phy_bigrat_destroy(rationals[--rational_count]);
+    }
+    return status;
+}
+
+static phy_status elementary_output_init(const phy_real_ball *argument,
+                                         uint32_t rounds,
+                                         phy_real_ball *out_value,
+                                         phy_real_ball *temporary)
+{
+    if (!initialized(argument) || !initialized(out_value)) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    if (rounds > PHY_REAL_BALL_MAX_SERIES_ROUNDS) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    memset(temporary, 0, sizeof *temporary);
+    return init_like(out_value, temporary);
+}
+
+phy_status phy_real_ball_exp(const phy_real_ball *argument,
+                             uint32_t rounds,
+                             phy_real_ball *out_value)
+{
+    phy_real_ball temporary;
+    phy_status status = elementary_output_init(
+        argument, rounds, out_value, &temporary);
+    if (status == PHY_OK) {
+        status = exp_core(argument, rounds, &temporary);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_copy(&temporary, out_value);
+    }
+    phy_real_ball_destroy(&temporary);
+    return status;
+}
+
+phy_status phy_real_ball_log(const phy_real_ball *argument,
+                             uint32_t rounds,
+                             phy_real_ball *out_value)
+{
+    phy_real_ball temporary;
+    phy_status status = elementary_output_init(
+        argument, rounds, out_value, &temporary);
+    if (status == PHY_OK) {
+        status = log_core(argument, rounds, &temporary);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_copy(&temporary, out_value);
+    }
+    phy_real_ball_destroy(&temporary);
+    return status;
+}
+
+phy_status phy_real_ball_sin(const phy_real_ball *argument,
+                             uint32_t rounds,
+                             phy_real_ball *out_value)
+{
+    phy_real_ball temporary;
+    phy_real_ball cosine;
+    phy_status status = elementary_output_init(
+        argument, rounds, out_value, &temporary);
+    memset(&cosine, 0, sizeof cosine);
+    if (status == PHY_OK) {
+        status = init_like(out_value, &cosine);
+    }
+    if (status == PHY_OK) {
+        status = trig_core(argument, rounds, &temporary, &cosine);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_copy(&temporary, out_value);
+    }
+    phy_real_ball_destroy(&cosine);
+    phy_real_ball_destroy(&temporary);
+    return status;
+}
+
+phy_status phy_real_ball_cos(const phy_real_ball *argument,
+                             uint32_t rounds,
+                             phy_real_ball *out_value)
+{
+    phy_real_ball temporary;
+    phy_real_ball sine;
+    phy_status status = elementary_output_init(
+        argument, rounds, out_value, &temporary);
+    memset(&sine, 0, sizeof sine);
+    if (status == PHY_OK) {
+        status = init_like(out_value, &sine);
+    }
+    if (status == PHY_OK) {
+        status = trig_core(argument, rounds, &sine, &temporary);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_copy(&temporary, out_value);
+    }
+    phy_real_ball_destroy(&sine);
+    phy_real_ball_destroy(&temporary);
+    return status;
+}
+
+phy_status phy_real_ball_tan(const phy_real_ball *argument,
+                             uint32_t rounds,
+                             phy_real_ball *out_value)
+{
+    phy_real_ball sine;
+    phy_real_ball cosine;
+    phy_real_ball temporary;
+    phy_status status = elementary_output_init(
+        argument, rounds, out_value, &temporary);
+    memset(&sine, 0, sizeof sine);
+    memset(&cosine, 0, sizeof cosine);
+    if (status == PHY_OK) {
+        status = init_like(out_value, &sine);
+    }
+    if (status == PHY_OK) {
+        status = init_like(out_value, &cosine);
+    }
+    if (status == PHY_OK) {
+        status = trig_core(argument, rounds, &sine, &cosine);
+    }
+    bool contains_zero = true;
+    if (status == PHY_OK) {
+        status = phy_real_ball_contains_zero_checked(
+            &cosine, &contains_zero);
+    }
+    if (status == PHY_OK && contains_zero) {
+        status = PHY_ERR_DOMAIN;
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_divide(&sine, &cosine, &temporary);
+    }
+    if (status == PHY_OK) {
+        const uint32_t precision_bits = rounds < 16u ? 16u : rounds;
+        status = ball_round_dyadic(
+            &temporary, precision_bits, &temporary);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_copy(&temporary, out_value);
+    }
+    phy_real_ball_destroy(&cosine);
+    phy_real_ball_destroy(&sine);
+    phy_real_ball_destroy(&temporary);
+    return status;
+}

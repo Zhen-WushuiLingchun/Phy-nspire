@@ -190,7 +190,7 @@ semantics implicitly.
 | `Resultant[f,g,x]` | exact bounded Sylvester resultant over the shared rational polynomial domain |
 | `Discriminant[f,x]` | exact derivative/resultant discriminant with the conventional leading-coefficient/sign normalization |
 | `GroebnerBasis[{f,...},{x,...}]` | bounded exact lexicographic Buchberger basis, published only after generator-membership and S-pair verification |
-| `N[expr]`, `N[expr,digits]` | certified real rational ball for the supported exact arithmetic/constants/square-root subset; up to 36 requested decimal digits |
+| `N[expr]`, `N[expr,digits]` | certified real rational ball for exact arithmetic, constants, square roots and real `Exp`/`Log`/`Sin`/`Cos`/`Tan`; up to 36 requested decimal digits |
 | `NSolve[equation,x]` | all certified real roots of a bounded univariate rational polynomial as `Around[midpoint,radius]` rules, with denominator exclusion |
 
 Every command except assignment, a bare expression, and the two simplifies is
@@ -217,7 +217,8 @@ scheduling is future work; the explicitly implemented
 - binding a name a live chart uses as a coordinate is `PHY_ERR_ASSUMPTION`, in
   both directions — see [`EVALUATOR.md`](EVALUATOR.md);
 - no complex arbitrary-precision numeric approximation layer; `N` currently
-  certifies a real arithmetic/constants/square-root subset and `NSolve`
+  certifies real arithmetic/constants/square roots and real elementary
+  `Exp`/`Log`/`Sin`/`Cos`/`Tan`; `NSolve`
   certifies real roots of univariate rational polynomials only;
 - `Solve` publishes exact rational/constant affine roots, real and complex
   quadratic radicals, and certified roots of higher-degree all-real factors.

@@ -57,6 +57,11 @@ int main(void)
     sink((unsigned)phy_real_ball_divide(&a, &b, &result));
     sink((unsigned)phy_real_ball_pow_i32(&a, 2, &result));
     sink((unsigned)phy_real_ball_sqrt(&b, 8u, &result));
+    sink((unsigned)phy_real_ball_exp(&a, 8u, &result));
+    sink((unsigned)phy_real_ball_log(&b, 8u, &result));
+    sink((unsigned)phy_real_ball_sin(&a, 8u, &result));
+    sink((unsigned)phy_real_ball_cos(&a, 8u, &result));
+    sink((unsigned)phy_real_ball_tan(&a, 8u, &result));
 
     phy_bigrat_destroy(&exact_value);
     phy_bigrat_destroy(&upper);

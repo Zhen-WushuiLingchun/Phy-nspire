@@ -176,6 +176,39 @@ static phy_status eval_ball_node(phy_cas *cas, phy_exact_context *exact,
         phy_real_ball_destroy(&base);
         return status;
     }
+    if (kind == PHY_IR_FUNCTION &&
+        phy_ir_child_count(cas->ir, expression) == 1u) {
+        const phy_ir_symbol head = phy_ir_head(cas->ir, expression);
+        if (head == cas->functions[PHY_CAS_FN_EXP] ||
+            head == cas->functions[PHY_CAS_FN_LOG] ||
+            head == cas->functions[PHY_CAS_FN_SIN] ||
+            head == cas->functions[PHY_CAS_FN_COS] ||
+            head == cas->functions[PHY_CAS_FN_TAN]) {
+            phy_real_ball argument;
+            memset(&argument, 0, sizeof argument);
+            status = phy_real_ball_init(exact, &argument);
+            if (status == PHY_OK) {
+                status = eval_ball_node(
+                    cas, exact, phy_ir_child(cas->ir, expression, 0u),
+                    assigned_variable, assigned_value, rounds, &argument);
+            }
+            if (status == PHY_OK) {
+                if (head == cas->functions[PHY_CAS_FN_EXP]) {
+                    status = phy_real_ball_exp(&argument, rounds, out);
+                } else if (head == cas->functions[PHY_CAS_FN_LOG]) {
+                    status = phy_real_ball_log(&argument, rounds, out);
+                } else if (head == cas->functions[PHY_CAS_FN_SIN]) {
+                    status = phy_real_ball_sin(&argument, rounds, out);
+                } else if (head == cas->functions[PHY_CAS_FN_COS]) {
+                    status = phy_real_ball_cos(&argument, rounds, out);
+                } else {
+                    status = phy_real_ball_tan(&argument, rounds, out);
+                }
+            }
+            phy_real_ball_destroy(&argument);
+            return status;
+        }
+    }
     return PHY_ERR_UNSUPPORTED;
 }
 
@@ -212,6 +245,12 @@ phy_status phy_cas_n(phy_cas *cas, phy_ir_ref expression,
     if (decimal_digits > BALL_MAX_DECIMAL_DIGITS) {
         return PHY_ERR_TERM_LIMIT;
     }
+    phy_ir_ref simplified = PHY_IR_NULL;
+    phy_status status = phy_cas_full_simplify(
+        cas, expression, &simplified);
+    if (status != PHY_OK) {
+        return status;
+    }
     phy_cas_begin(cas);
     phy_exact_context *exact = phy_cas_exact_operation_context(cas);
     if (exact == NULL) {
@@ -219,10 +258,10 @@ phy_status phy_cas_n(phy_cas *cas, phy_ir_ref expression,
     }
     phy_real_ball value;
     memset(&value, 0, sizeof value);
-    phy_status status = phy_real_ball_init(exact, &value);
+    status = phy_real_ball_init(exact, &value);
     if (status == PHY_OK) {
         status = eval_ball_node(
-            cas, exact, expression, PHY_IR_NULL, NULL,
+            cas, exact, simplified, PHY_IR_NULL, NULL,
             decimal_digits * 4u + 8u, &value);
     }
     if (status == PHY_OK) {

@@ -154,9 +154,9 @@ order-dependent.
 - `tests/oracle/test_qo_golden.c`: the independent generalized Gell-Mann
   matrix oracle, including C-1 through C-7 and `N=2...6` Casimir checks;
 - `make color-link-check`: 23/23 public APIs retained by the Ndless linker,
-  4,924 bytes of colour-layer text, a 52,764-byte isolated probe, and no float
+  4,924 bytes of colour-layer text, an 83,996-byte isolated probe, and no float
   formatter, libm call, or ARM soft-float helper;
-- the product build is 1,246,500 bytes, 19.8% of the 6 MiB ceiling.
+- the product build is 1,252,366 bytes, 19.9% of the 6 MiB ceiling.
 
 The numeric oracle is host-only and independent of the native implementation:
 it certifies the conventions from explicit matrices, while the calculator
