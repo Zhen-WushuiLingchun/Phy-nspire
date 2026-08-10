@@ -101,6 +101,51 @@ static void exact_value(const phy_ir_context *ctx, const phy_ir_node *node,
     *out_denominator = (rat != NULL) ? rat->denominator : 1;
 }
 
+static int compare_decimal_magnitude(const char *left, size_t left_length,
+                                     const char *right,
+                                     size_t right_length)
+{
+    if (left_length != right_length) {
+        return left_length < right_length ? -1 : 1;
+    }
+    const int ordered = memcmp(left, right, left_length);
+    return (ordered > 0) - (ordered < 0);
+}
+
+static int compare_big_exact(const phy_ir_context *ctx, phy_ir_ref left,
+                             phy_ir_ref right)
+{
+    phy_ir_exact_view a;
+    phy_ir_exact_view b;
+    if (!phy_ir_exact_decimal_view(ctx, left, &a) ||
+        !phy_ir_exact_decimal_view(ctx, right, &b)) {
+        return 0;
+    }
+    const bool negative_a =
+        a.numerator_length != 0u && a.numerator[0] == '-';
+    const bool negative_b =
+        b.numerator_length != 0u && b.numerator[0] == '-';
+    if (negative_a != negative_b) {
+        return negative_a ? -1 : 1;
+    }
+    const char *magnitude_a = a.numerator + (negative_a ? 1u : 0u);
+    const char *magnitude_b = b.numerator + (negative_b ? 1u : 0u);
+    const size_t magnitude_a_length =
+        a.numerator_length - (negative_a ? 1u : 0u);
+    const size_t magnitude_b_length =
+        b.numerator_length - (negative_b ? 1u : 0u);
+    int ordered = compare_decimal_magnitude(
+        magnitude_a, magnitude_a_length, magnitude_b,
+        magnitude_b_length);
+    if (ordered != 0) {
+        return negative_a ? -ordered : ordered;
+    }
+    ordered = compare_decimal_magnitude(
+        a.denominator, a.denominator_length, b.denominator,
+        b.denominator_length);
+    return negative_a ? ordered : -ordered;
+}
+
 static int compare_names(const phy_ir_context *ctx, phy_ir_symbol a,
                          phy_ir_symbol b)
 {
@@ -149,6 +194,36 @@ int phy_ir_compare(const phy_ir_context *ctx, phy_ir_ref a, phy_ir_ref b)
     switch ((phy_ir_kind)na->kind) {
     case PHY_IR_INTEGER:
     case PHY_IR_RATIONAL: {
+        /*
+         * Promoted exact atoms form a separate structural sub-order after the
+         * inline fast path. This keeps comparison allocation-free and fully
+         * transitive on the calculator. Arithmetic comparison of promoted
+         * rationals belongs to the exact/CAS layer, not the IR's sort hook.
+         */
+        const bool big_a = na->aux == PHY_IR_EXACT_BIG;
+        const bool big_b = nb->aux == PHY_IR_EXACT_BIG;
+        if (big_a != big_b) {
+            phy_ir_exact_view view_a;
+            phy_ir_exact_view view_b;
+            if (!phy_ir_exact_decimal_view(ctx, a, &view_a) ||
+                !phy_ir_exact_decimal_view(ctx, b, &view_b)) {
+                return big_a ? 1 : -1;
+            }
+            const bool negative_a =
+                view_a.numerator[0] == '-';
+            const bool negative_b =
+                view_b.numerator[0] == '-';
+            if (negative_a != negative_b) {
+                return negative_a ? -1 : 1;
+            }
+            if (negative_a) {
+                return big_a ? -1 : 1;
+            }
+            return big_a ? 1 : -1;
+        }
+        if (big_a) {
+            return compare_big_exact(ctx, a, b);
+        }
         /* One rank, two kinds: an integer and a reduced rational share the
            exact-number rank and are compared by value. Reduction guarantees no
            rational equals an integer, so this never needs a kind tie-break. */

@@ -14,13 +14,9 @@
 
 #include "phy/eval.h"
 
-/*
- * Two is the widest a physics object gets here: an algebra-valued form borrows
- * an algebra and a manifold, and nothing borrows three things. Charts have
- * none, and the transitive closure is what the sweep walks.
- */
-#define EVAL_MAX_DEPENDENCIES 2u
 #define EVAL_NO_SLOT ((uint16_t)0xffffu)
+#define EVAL_DEPENDENCY_WORDS \
+    ((PHY_EVAL_MAX_OBJECTS + 63u) / 64u)
 
 /*
  * Reserved operator heads, interned once at environment creation so that
@@ -28,7 +24,54 @@
  * order matches kEvalHeadNames in env.c.
  */
 typedef enum {
-    EVAL_HEAD_MANIFOLD = 0,
+    EVAL_HEAD_INDEX_SPACE = 0,
+    EVAL_HEAD_TENSOR_HEAD,
+    EVAL_HEAD_TENSOR_CANONICALIZE,
+    EVAL_HEAD_YOUNG_PROJECT,
+    EVAL_HEAD_YOUNG_DECLARE,
+    EVAL_HEAD_YOUNG_REDUCE,
+    EVAL_HEAD_GARNIR_RELATION,
+    EVAL_HEAD_YOUNG_DIMENSION,
+    EVAL_HEAD_COMPONENT_BASIS,
+    EVAL_HEAD_TENSOR_COMPONENTS,
+    EVAL_HEAD_COMPONENT_LIFT,
+    EVAL_HEAD_COMPONENT_VALUE,
+
+    EVAL_HEAD_GR_COMPONENTS,
+    EVAL_HEAD_GR_SPACE,
+    EVAL_HEAD_GR_BASIS,
+    EVAL_HEAD_GR_HEAD,
+    EVAL_HEAD_GR_TENSOR,
+
+    EVAL_HEAD_QFT_SYSTEM,
+    EVAL_HEAD_QFT_SPACE,
+    EVAL_HEAD_QFT_BASIS,
+    EVAL_HEAD_QFT_HEAD,
+    EVAL_HEAD_QFT_TENSOR,
+
+    EVAL_HEAD_VECTOR,
+    EVAL_HEAD_MATRIX,
+    EVAL_HEAD_TRANSPOSE,
+    EVAL_HEAD_DOT,
+    EVAL_HEAD_DETERMINANT,
+    EVAL_HEAD_INVERSE,
+    EVAL_HEAD_ROW_REDUCE,
+    EVAL_HEAD_MATRIX_RANK,
+    EVAL_HEAD_LINEAR_SOLVE,
+
+    EVAL_HEAD_COORDINATE_MAP,
+    EVAL_HEAD_BASIS_TRANSITION,
+    EVAL_HEAD_JACOBIAN,
+    EVAL_HEAD_PULLBACK_SCALAR,
+    EVAL_HEAD_PULLBACK_COVECTOR,
+    EVAL_HEAD_PUSHFORWARD_VECTOR,
+    EVAL_HEAD_TRANSITION_PULLBACK,
+    EVAL_HEAD_ATLAS,
+    EVAL_HEAD_ATLAS_ADD_TRANSITION,
+    EVAL_HEAD_ATLAS_VERIFY,
+    EVAL_HEAD_ATLAS_PULLBACK,
+
+    EVAL_HEAD_MANIFOLD,
     EVAL_HEAD_DIFFERENTIAL_FORM,
     EVAL_HEAD_METRIC,
     EVAL_HEAD_VECTOR_FIELD,
@@ -96,6 +139,7 @@ typedef enum {
     EVAL_HEAD_COMPONENT,
     EVAL_HEAD_DEGREE,
     EVAL_HEAD_DIMENSION,
+    EVAL_HEAD_DIMENSIONS,
     EVAL_HEAD_RANK,
     EVAL_HEAD_ZERO_Q,
     EVAL_HEAD_EQUIVALENT_Q,
@@ -107,7 +151,13 @@ typedef enum {
 typedef struct {
     phy_value value;   /* const view; identity and consumption */
     void *owned;       /* mutable owning pointer, NULL when borrowed */
-    uint16_t dependency[EVAL_MAX_DEPENDENCIES];
+    /*
+     * A dynamic-rank component realization can borrow one distinct basis per
+     * slot. Two fixed dependency fields were therefore a correctness bug, not
+     * merely a small limit. A bit set here names an earlier object-table slot;
+     * 96 objects cost only 16 bytes per entry and retain arbitrary fan-in.
+     */
+    uint64_t dependency[EVAL_DEPENDENCY_WORDS];
     bool marked;
 } eval_object;
 
@@ -119,6 +169,7 @@ typedef struct {
 struct phy_env {
     phy_cas *cas;
     phy_ir_context *ir;
+    phy_abstract_context *abstract;
 
     phy_ir_symbol head[EVAL_HEAD_COUNT];
     phy_ir_symbol list_head; /* the `{...}` constructor the parser emits */
@@ -153,6 +204,15 @@ const void *eval_value_pointer(const phy_value *value);
  */
 phy_status eval_register(phy_env *env, phy_value value, void *owned,
                          const phy_value *first, const phy_value *second);
+
+/*
+ * The general registration path. Dependencies may repeat; each distinct live
+ * object is retained once. On failure `owned` is destroyed exactly as in
+ * eval_register.
+ */
+phy_status eval_register_many(phy_env *env, phy_value value, void *owned,
+                              const phy_value *dependencies,
+                              size_t dependency_count);
 
 /* Destroy every object not reachable from a binding or from `keep`. */
 void eval_sweep(phy_env *env, const phy_value *keep);

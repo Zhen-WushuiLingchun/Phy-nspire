@@ -22,7 +22,8 @@
 # Nothing here touches dist/. The probe is built into its own directory and
 # is never linked into the product.
 #
-# Usage: tools/link-check.sh [ir|cas|geom|ym|color|eval]   (default ir)
+# Usage: tools/link-check.sh [ir|exact|ball|cas|algebraic|geom|ym|color|qftbridge|eval]
+#        (default ir)
 #        after eval "$(tools/bootstrap-ndless.sh --env-only)"
 
 set -euo pipefail
@@ -50,7 +51,23 @@ COMMON_SOURCES=(
 # the entry-point check below is derived from that header: omitting the
 # translation unit that defines it fails the link rather than going unnoticed.
 CAS_SOURCES=(
+    src/exact/context.c
+    src/exact/integer.c
+    src/exact/rational.c
+    src/exact/gaussian.c
+    src/exact/algebraic.c
+    src/exact/ball.c
     src/cas/num.c
+    src/cas/big_num.c
+    src/cas/complex.c
+    src/cas/finite_poly.c
+    src/cas/series.c
+    src/cas/limit.c
+    src/cas/solve.c
+    src/cas/linear_solve.c
+    src/cas/sparse_poly.c
+    src/cas/ball_eval.c
+    src/cas/special.c
     src/cas/engine.c
     src/cas/simplify.c
     src/cas/diff.c
@@ -66,13 +83,32 @@ PHYSICS_SOURCES=(
     src/tensor/symmetry.c
     src/tensor/tensor.c
     src/tensor/ops.c
+    src/linear/matrix.c
+    src/linear/elimination.c
+    src/abstract/index.c
+    src/abstract/head.c
+    src/abstract/monomial.c
+    src/abstract/canonical.c
+    src/abstract/dgs.c
+    src/abstract/young.c
+    src/abstract/garnir.c
+    src/component/basis.c
+    src/component/component.c
+    src/component/bridge.c
+    src/component/map.c
+    src/component/atlas.c
+    src/permutation/perm.c
+    src/permutation/bsgs.c
+    src/permutation/orbit.c
     src/gr/gr.c
+    src/gr/bridge.c
     src/lie/lie.c
     src/qft/scalar.c
     src/qft/lorentz.c
     src/qft/dirac.c
     src/qft/mandelstam.c
     src/qft/color.c
+    src/qft/bridge.c
     src/geom/manifold.c
     src/geom/form.c
     src/geom/exterior.c
@@ -98,6 +134,34 @@ ir)
     MIN_ENTRY_POINTS=30
     SOURCES=("${COMMON_SOURCES[@]}")
     ;;
+exact)
+    LABEL="exact number"
+    PROBE="tests/device/exact_link_probe.c"
+    HEADER="include/phy/exact.h"
+    OBJECT_GLOB="src_exact_*.o"
+    SYMBOL_RE='phy_(exact|bigint|bigrat|gaussian)_'
+    EXCLUDE='^$'
+    MIN_ENTRY_POINTS=40
+    SOURCES=("${COMMON_SOURCES[@]}"
+             src/exact/context.c
+             src/exact/integer.c
+             src/exact/rational.c
+             src/exact/gaussian.c)
+    ;;
+ball)
+    LABEL="real ball"
+    PROBE="tests/device/ball_link_probe.c"
+    HEADER="include/phy/ball.h"
+    OBJECT_GLOB="src_exact_ball.o"
+    SYMBOL_RE='phy_real_ball_'
+    EXCLUDE='^$'
+    MIN_ENTRY_POINTS=15
+    SOURCES=("${COMMON_SOURCES[@]}"
+             src/exact/context.c
+             src/exact/integer.c
+             src/exact/rational.c
+             src/exact/ball.c)
+    ;;
 cas)
     LABEL="CAS"
     PROBE="tests/device/cas_link_probe.c"
@@ -106,6 +170,22 @@ cas)
     EXCLUDE='^$'
     MIN_ENTRY_POINTS=20
     SOURCES=("${COMMON_SOURCES[@]}" "${CAS_SOURCES[@]}")
+    ;;
+algebraic)
+    LABEL="real algebraic"
+    PROBE="tests/device/algebraic_link_probe.c"
+    HEADER="include/phy/algebraic.h"
+    OBJECT_GLOB="src_exact_algebraic.o"
+    SYMBOL_RE='phy_(algebraic|real_algebraic)_'
+    EXCLUDE='^$'
+    MIN_ENTRY_POINTS=15
+    SOURCES=("${COMMON_SOURCES[@]}"
+             src/exact/context.c
+             src/exact/integer.c
+             src/exact/rational.c
+             src/exact/gaussian.c
+             src/exact/algebraic.c
+             src/cas/finite_poly.c)
     ;;
 geom)
     LABEL="geometry"
@@ -156,6 +236,35 @@ color)
              src/lie/lie.c
              src/qft/color.c)
     ;;
+qftbridge)
+    LABEL="QFT abstract/component bridge"
+    PROBE="tests/device/qft_bridge_link_probe.c"
+    HEADER="include/phy/qft_bridge.h"
+    OBJECT_GLOB="src_qft_bridge.o"
+    SYMBOL_RE='phy_qft_'
+    EXCLUDE='^$'
+    MIN_ENTRY_POINTS=12
+    SOURCES=("${COMMON_SOURCES[@]}" "${CAS_SOURCES[@]}"
+             src/tensor/chart.c
+             src/tensor/symmetry.c
+             src/tensor/tensor.c
+             src/tensor/ops.c
+             src/abstract/index.c
+             src/abstract/head.c
+             src/abstract/monomial.c
+             src/abstract/canonical.c
+             src/abstract/young.c
+             src/abstract/garnir.c
+             src/component/basis.c
+             src/component/component.c
+             src/component/bridge.c
+             src/permutation/perm.c
+             src/permutation/bsgs.c
+             src/permutation/orbit.c
+             src/lie/lie.c
+             src/qft/color.c
+             src/qft/bridge.c)
+    ;;
 eval)
     LABEL="evaluator"
     PROBE="tests/device/eval_link_probe.c"
@@ -171,7 +280,7 @@ eval)
              src/eval/display.c)
     ;;
 *)
-    echo "usage: tools/link-check.sh [ir|cas|geom|ym|color|eval]" >&2
+    echo "usage: tools/link-check.sh [ir|exact|ball|cas|algebraic|geom|ym|color|qftbridge|eval]" >&2
     exit 2
     ;;
 esac
@@ -209,7 +318,7 @@ SIZE="$(find_binutil arm-none-eabi-size)"
 # them, not because collection was disabled.
 GCCFLAGS=(-Wall -Wextra -Wshadow -Wpointer-arith -std=c11 -marm -Os -DNDEBUG
           -ffunction-sections -fdata-sections -Iinclude -Isrc/ir -Isrc/cas
-          -Isrc/tensor -Isrc/geom)
+          -Isrc/tensor -Isrc/abstract -Isrc/permutation -Isrc/geom)
 LDFLAGS=(-Wl,--gc-sections -Wl,--no-warn-rwx-segments)
 
 PROBE_NAME="$(basename "$PROBE" .c)"
@@ -277,15 +386,36 @@ mapfile -t missing_definitions < <(
              <(printf '%s\n' "${defined[@]}")
 )
 
-mapfile -t retained < <(
-    "$NM" --defined-only "$ELF" | awk '$2 == "T" { print $3 }' | sort -u
-)
+read_retained_symbols() {
+    "$NM" --defined-only "$ELF" |
+        awk '$2 == "T" { print $3 }' |
+        sort -u
+}
 
-missing=()
-for symbol in "${declared[@]}"; do
-    if ! printf '%s\n' "${retained[@]}" | grep -qx "$symbol"; then
-        missing+=("$symbol")
+find_missing_symbols() {
+    missing=()
+    for symbol in "${declared[@]}"; do
+        if ! printf '%s\n' "${retained[@]}" | grep -qx "$symbol"; then
+            missing+=("$symbol")
+        fi
+    done
+}
+
+mapfile -t retained < <(read_retained_symbols)
+find_missing_symbols
+
+# drvfs can expose the just-linked ELF before every final directory update is
+# visible to a second WSL process. Use a short bounded sequence of identical
+# nm reads. A genuinely absent reference still fails after all five reads; a
+# transport race cannot turn a present public entry point into a false failure.
+for retry in 1 2 3 4 5; do
+    if [ "${#missing[@]}" -eq 0 ]; then
+        break
     fi
+    sync "$ELF" 2>/dev/null || sync
+    sleep 0.1
+    mapfile -t retained < <(read_retained_symbols)
+    find_missing_symbols
 done
 
 if [ "${#declared[@]}" -lt "$MIN_ENTRY_POINTS" ]; then
@@ -321,8 +451,12 @@ printf '  ok    %d/%d public entry points retained\n' \
 # form operation that reached libm would defeat the point of it.
 BANNED_PATTERN='(^|[[:space:]_])(_dtoa|_strtod|_printf_float|_scanf_float|_vfprintf|__sf_fake)'
 STRICT_FLOAT=0
-if [ "$LAYER" = "cas" ] || [ "$LAYER" = "geom" ] ||
+if [ "$LAYER" = "exact" ] || [ "$LAYER" = "ball" ] ||
+   [ "$LAYER" = "cas" ] ||
+   [ "$LAYER" = "algebraic" ] ||
+   [ "$LAYER" = "geom" ] ||
    [ "$LAYER" = "ym" ] || [ "$LAYER" = "color" ] ||
+   [ "$LAYER" = "qftbridge" ] ||
    [ "$LAYER" = "eval" ]; then
     STRICT_FLOAT=1
     BANNED_PATTERN+='|[[:space:]]_?(sin|cos|tan|exp|log|pow|sqrt|floor|ceil|fmod)$|__aeabi_[df]'

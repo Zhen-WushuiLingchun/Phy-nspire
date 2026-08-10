@@ -8,10 +8,112 @@ The substrate the Phase 3 curvature pipeline computes on. It is defined by
 This document covers the design decisions. The header is the API reference and
 is not repeated here.
 
+## Two component backends during migration
+
+The original `include/phy/tensor.h` backend remains the dense, dimension/rank
+four implementation used by the current GR evaluator. A separate exact stack
+now removes those limits without destabilizing that path:
+
+- `include/phy/abstract_tensor.h` defines runtime-rank `IndexSpace`,
+  `TensorHead`, abstract indices, Einstein census, signed slot generators,
+  bounded signed slot-orbit canonicalization with deterministic dummy
+  normalization, normalized Young projectors, declared Young modules and
+  exact Garnir/multi-term reduction;
+- `include/phy/component_tensor.h` binds an abstract index space to an
+  explicit runtime-dimension basis and stores only assigned canonical
+  components in a bounded sparse table;
+- `include/phy/map.h` owns validated coordinate maps, exact Jacobians,
+  two-way transitions, arbitrary-degree exterior-form pullbacks, and vector
+  pushforwards along maps, plus a bounded cocycle-checked atlas and general
+  mixed-valence tensor change of coordinates.
+
+An abstract rank does not allocate components. A concrete rank-nine tensor can
+therefore carry one assigned component without allocating `dimension^9`
+handles. Configured rank, BSGS, candidate, sparse-entry and memory ceilings are
+resource limits; they are no longer mathematical rank-four semantics. The
+legacy dense backend is deleted only after evaluator and GR parity tests have
+migrated.
+
+## Explicit component bridge
+
+`src/component/bridge.c` now implements the first downward-conversion slice.
+A `phy_component_binding` borrows exactly one basis for each `IndexSpace` and
+one sparse realization for each `TensorHead`. Rebinding the same object is
+idempotent; a conflicting binding is a typed error and leaves the environment
+unchanged.
+
+`phy_component_value_monomial` fixes free coordinates in first-occurrence
+census order and enumerates only dummy pairs. Every factor is read through the
+sparse component API and combined by the exact CAS. One upper plus one lower
+occurrence is required by the abstract census, so the bridge never inserts a
+metric, silently raises or lowers a slot, or allocates `dimension^rank`.
+Configured free-index, dummy-index, term, step and aggregate-memory ceilings
+fail with no returned partial value.
+
+The expression bridge is now reader-facing. The evaluator owns
+`ComponentBasis` and `TensorComponents` handles and exposes
+`ComponentValue[expression,{realizations...},{free coordinates...}]`.
+Monomials, normalized Young projections/reductions, sums, exact scalar multiples and
+distributive products pass through one canonical collection layer. A
+zero-term expression retains its typed free-index signature. Independent-
+component iteration into a new tensor and GR/QFT migration remain separate
+acceptance gates.
+
+The upward migration boundary is also explicit:
+`ComponentLift[legacy,head,{bases...}]` imports a legacy dense chart tensor
+into a sparse realization. Rank, dimensions, IR context, slot spaces,
+coordinates and valence are checked, then every dense source component is
+proved consistent with the abstract head's signed slot group. If the head has
+a Young declaration, the same import also proves `P_T(T)=T` at every component.
+This makes
+existing GR results usable by `ComponentValue` without claiming that the GR
+algorithms themselves have already been rewritten over abstract expressions.
+Expression-native GR construction and the QFT local-index migration remain
+separate acceptance gates.
+
 ## Notebook construction surface
 
-The reader-facing evaluator can construct every supported dense component
-shape:
+The reader-facing evaluator now has two deliberately distinct surfaces.
+Coordinate-free declarations and monoterm canonicalization use:
+
+```text
+V = IndexSpace[4, SymmetricMetric]
+A = TensorHead[{V,V}, Antisymmetric]
+R = TensorHead[{V,V,V}, Commuting,
+               {Symmetry[{2,1,3},-1]}]
+
+TensorCanonicalize[A[Down[b],Down[a]]]
+TensorCanonicalize[A[Down[a],Down[b]] *
+                   S[Up[a],Up[b]]]
+YoungProject[R[Down[a],Down[b],Down[c]], {{1,2},{3}}]
+
+R4 = TensorHead[{V,V,V,V}, Commuting,
+                {Symmetry[{2,1,3,4},-1],
+                 Symmetry[{1,2,4,3},-1],
+                 Symmetry[{3,4,1,2},1]}]
+YoungDeclare[R4,{{1,3},{2,4}},RowLast]
+B = R4[Down[a],Down[b],Down[c],Down[d]]
+  + R4[Down[a],Down[c],Down[d],Down[b]]
+  + R4[Down[a],Down[d],Down[b],Down[c]]
+YoungReduce[B]
+YoungDimension[{{1,3},{2,4}},4]
+
+xy = ComponentBasis[V,{x,y}]
+Ac = TensorComponents[A,{xy,xy},{Down,Down},{{{0,1},a}}]
+ComponentValue[A[Down[i],Down[j]],{Ac},{0,1}]
+Rc = ComponentLift[Riemann[c],R,{xy,xy,xy,xy}]
+```
+
+The first result is `-A[Down[a],Down[b]]`; the second vanishes when `S` is
+symmetric. A tensor head may mix index spaces, and an explicit
+`Down[i,Space]`/`Up[i,Space]` is checked against the declared slot. Omitted
+space labels are inferred from the head, so no Lorentz label is added to an
+ordinary manifold index. `Rank[head]` reports its slot count; `Rank[monomial]`
+reports its number of free indices. The reader surface is bounded at 64 slots
+and factors, matching the default device-oriented abstract limits rather than
+the old rank-four semantics.
+
+The component surface constructs every supported legacy dense shape:
 
 ```text
 scalar = ComponentTensor[M, {}, s]
@@ -33,15 +135,72 @@ native tensor API.
 
 | Landed | Deliberately deferred |
 | --- | --- |
-| charts, coordinate symbols, rank, valence, head metadata | dimensions above 4 or ranks above 4 |
-| dense `n^r` storage, encode/decode, signed slot symmetries | abstract dummy-index canonicalization |
-| exact contraction, inverse metric, raise/lower, component derivatives | first-Bianchi orbit canonicalization |
+| legacy charts, coordinate symbols, rank, valence, head metadata; proved GR consumer bridge | expression-native GR producer algorithms |
+| dense `n^r` storage plus runtime-rank sparse component binding | dense/sparse policy facade for legacy callers |
+| abstract free/dummy census, signed BSGS slot-orbit search, deterministic dummy normalization; bounded exhaustive \(DgS\) verifier | optimized Butler–Portugal double-coset traversal at device-sized group orders |
+| `IndexSpace`, `TensorHead`, indexed products and `TensorCanonicalize` in notebook cells | abstract metric contraction/raise/lower commands |
+| normalized Young projection, checked declarations, explicit Garnir relations, expression-wide reduction and exact hook-content dimensions | optimized large-tableau straightening/projector traversal beyond bounded enumeration |
+| reader-facing sparse bases/components, `ComponentLift`, expression-wide `ComponentValue`, exact dynamic vectors/matrices | independent-component iteration |
+| verified atlas cocycles, maps, vector/covector operations and mixed-valence tensor pullback in notebook cells | automatic transition-path composition beyond registered direct edges |
+| exact contraction, inverse metric, raise/lower, component derivatives; automatic abstract first-Bianchi reduction | implicit metric insertion remains forbidden by design |
 | canonical lookup, fill validation, allocation-failure unwind | optional xPerm integration |
 
 The scalar-dependent entries use the native exact CAS and its three-valued zero
-decision; they are not numerical fallbacks. The deferred abstract-index work is
-different from dense component arithmetic and is left absent rather than
-represented by a misleading no-op head.
+decision; they are not numerical fallbacks. xPerm remains a host-side reference
+rather than a linked dependency. The production monoterm implementation is
+bounded, allocation-accounted and specialized to Phy-nspire's typed Einstein
+model. A second implementation now enumerates every element of \(DgS\) under
+much smaller ceilings and must return the byte-for-byte same canonical
+monomial. The checked external fixture
+`tools/tensor_can_oracle.py` executes the worked zero example from SymPy 1.14
+`tensor_can.canonicalize`; the C test constructs the same indexed product and
+requires both native searches to return zero. This is an explicit consistency
+gate, not a claim that the pruned production traversal is a complete port of
+xPerm's optimized Butler–Portugal implementation.
+
+### The bounded \(DgS\) consistency gate
+
+For one indexed monomial, the verifier constructs:
+
+- \(S\), the signed slot group generated by head symmetries and exchanges of
+  identical commuting factors;
+- \(D\), the dummy-renaming group, independently in every `IndexSpace`, with
+  pair flips only where a metric identifies the two orientations;
+- every one of the \(|D||S|\) candidates, ordered by free names followed by
+  `d0^, d0_, d1^, d1_, ...`.
+
+Two routes to the same arrangement with opposite sign return exact zero.
+Independent ceilings bound degree, both group orders, candidate products and
+bytes; crossing one is a typed refusal. This deliberately exhaustive path is
+for tests and small audit cases. Notebook evaluation continues to use the
+pruned production canonicalizer.
+
+### Young declarations and the multi-term gate
+
+Signed BSGS canonicalization and Young reduction stay separate. A head
+declaration first expands the selected `a_T b_T/h` or `b_T a_T/h` group
+algebra and proves `P_T g = sign(g) P_T` for every existing signed generator.
+It never inserts a cyclic relation into the slot group. The reducer instead
+projects all declared factors of each term simultaneously, canonicalizes every
+image, and collects exact coefficients. Because the normalized Young
+symmetrizer is idempotent, projection is an exact equality gate modulo its
+kernel.
+
+`GarnirRelation` exposes readable antisymmetrized relation sets, while the
+reducer uses the projector normal form. Tests cover shapes `(2,2)` and `(2,1)`,
+both projector orders, hook-length and hook-content counts, projector
+idempotence, allocation-failure unwind, and the Riemann cyclic sum. In four
+dimensions the legacy Riemann slot group still has 21 orbits; the declared
+`(2,2)` module has the correct 20 components. `ComponentLift` proves the
+projector equation component by component before accepting a dense source.
+The GR bridge uses this for covariant/contravariant Riemann and Weyl tensors,
+so their first-Bianchi reduction is backed by the actual lifted components.
+
+The exact combinatorics are deliberately bounded: tableau factorials fit in
+64 bits (at most 20 slots), standard-tableau enumeration stops above 4096
+outputs, and projector/reducer term, step, result and temporary-memory ceilings
+fail transactionally. This is a general bounded Young/Garnir layer, not a
+claim of workstation-scale Cadabra straightening performance.
 
 ## The scalar boundary, and why it falls on negation
 
@@ -207,7 +366,7 @@ needed:
 | status | when |
 | --- | --- |
 | `PHY_ERR_INVALID_ARGUMENT` | null pointer, index `>=` dimension, slot `>=` rank, repeated slot, malformed permutation, sign other than `±1` |
-| `PHY_ERR_UNSUPPORTED` | dimension or rank beyond the compiled ceilings — `n = 5` is not wrong, it is not implemented |
+| `PHY_ERR_UNSUPPORTED` | legacy dense dimension/rank beyond its compiled ceilings; the dynamic sparse API instead reports configured resource ceilings |
 | `PHY_ERR_TYPE` | a slot's variance rejects the operation |
 | `PHY_ERR_ASSUMPTION` | declared symmetries cannot all hold, or an assignment contradicts one |
 | `PHY_ERR_OUT_OF_MEMORY` | `phy_alloc` failed |
@@ -236,9 +395,10 @@ allocation-failure sweep.
 
 The scalar-dependent slice now covers metric inversion, raise/lower
 involution, contraction against known traces, signed-component extraction, and
-component partial derivatives. The first Bianchi identity and abstract-index
-canonicalization remain separate work because they need algebra over index
-orbits rather than only dense component arithmetic.
+component partial derivatives. Abstract signed canonicalization, declared
+Young modules and automatic first-Bianchi reduction live in the separate
+runtime-rank layer above; the legacy dense independent-component counter
+intentionally remains a signed-slot-group counter.
 
 Test 6, dimension independence, is honoured throughout: every structural test
 that can run at more than one dimension does. A corpus that is almost entirely
@@ -275,6 +435,12 @@ The expected symbol set is **derived from the header**, not listed in the
 script, so adding a public function without extending the probe fails the
 check instead of quietly going unlinked. All 45 public entry points are
 retained; no `_dtoa`, `_strtod`, or `_printf_float` reaches the image.
+
+`make component-bridge-link-check` performs the corresponding check for
+`include/phy/component_tensor.h`. It retains all 33 dynamic-basis,
+sparse-component and bridge entry points under ARM `--gc-sections`, rejects
+floating-point formatter/parser imports, and packages an isolated 85,764-byte
+probe. The probe is not linked into the product.
 
 The target is not a dependency of `all` and the probe is not in the Makefile's
 `SOURCES`. It builds into `build/arm-tensor-linkcheck/` and never touches

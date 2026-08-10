@@ -259,6 +259,16 @@ phy_ir_symmetry phy_ir_slot_symmetry(const phy_ir_context *ctx,
 phy_ir_ref phy_ir_integer(phy_ir_context *ctx, int64_t value);
 
 /*
+ * Arbitrary-precision exact atoms. The input is a signed base-10 integer with
+ * no whitespace. Canonical values that fit int64 keep the inline fast path;
+ * wider values use the same PHY_IR_INTEGER/PHY_IR_RATIONAL kinds and preserve
+ * the existing serialized spellings.
+ */
+phy_ir_ref phy_ir_integer_text_n(phy_ir_context *ctx, const char *decimal,
+                                 size_t length);
+phy_ir_ref phy_ir_integer_text(phy_ir_context *ctx, const char *decimal);
+
+/*
  * Exact rational. Normalizes: the sign moves to the numerator, the fraction
  * is reduced, and a unit denominator yields a PHY_IR_INTEGER instead. A zero
  * denominator is PHY_ERR_DOMAIN. Normalization is canonical form, not
@@ -266,6 +276,13 @@ phy_ir_ref phy_ir_integer(phy_ir_context *ctx, int64_t value);
  */
 phy_ir_ref phy_ir_rational(phy_ir_context *ctx, int64_t numerator,
                            int64_t denominator);
+phy_ir_ref phy_ir_rational_text_n(phy_ir_context *ctx,
+                                  const char *numerator,
+                                  size_t numerator_length,
+                                  const char *denominator,
+                                  size_t denominator_length);
+phy_ir_ref phy_ir_rational_text(phy_ir_context *ctx, const char *numerator,
+                                const char *denominator);
 
 /* Inexact fallback. NaN and infinities are PHY_ERR_DOMAIN. */
 phy_ir_ref phy_ir_real(phy_ir_context *ctx, double value);
@@ -340,6 +357,22 @@ bool phy_ir_integer_value(const phy_ir_context *ctx, phy_ir_ref ref,
                           int64_t *out_value);
 bool phy_ir_rational_value(const phy_ir_context *ctx, phy_ir_ref ref,
                            int64_t *out_numerator, int64_t *out_denominator);
+
+/*
+ * Allocation-free decimal view of any exact atom, small or promoted. The
+ * pointers remain valid until the context is mutated; for inline values they
+ * point into `storage` owned by the caller's view.
+ */
+typedef struct {
+    const char *numerator;
+    size_t numerator_length;
+    const char *denominator;
+    size_t denominator_length;
+    char storage[64];
+} phy_ir_exact_view;
+
+bool phy_ir_exact_decimal_view(const phy_ir_context *ctx, phy_ir_ref ref,
+                               phy_ir_exact_view *out_view);
 bool phy_ir_real_value(const phy_ir_context *ctx, phy_ir_ref ref,
                        double *out_value);
 bool phy_ir_index_variance(const phy_ir_context *ctx, phy_ir_ref ref,

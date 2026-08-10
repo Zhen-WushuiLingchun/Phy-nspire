@@ -44,14 +44,59 @@ static const tour_cell kTour[] = {
     {TOUR_INPUT, "Numerator[(x+y)/(x*y)]", NULL},
     {TOUR_INPUT, "Denominator[(x+y)/(x*y)]", NULL},
     {TOUR_INPUT, "D[Sin[x]^2+Tan[x]+Exp[x]+Log[x],x]", NULL},
-    {TOUR_INPUT, "Integrate[3*x^2+Cos[x]+Exp[x],x]", NULL},
+    {TOUR_INPUT, "Integrate[x^2*Sin[x],x]", NULL},
     {TOUR_INPUT, "Sin[Pi/6]+Cos[Pi/3]+Tan[Pi/4]", NULL},
     {TOUR_INPUT, "Sqrt[72]", NULL},
     {TOUR_INPUT, "D[ArcTan[x]+Sinh[x]+Erf[x],x]", NULL},
     {TOUR_INPUT, "Integrate[1/(1+x^2)+Exp[-x^2],x]", NULL},
-    {TOUR_INPUT, "Cancel[(x^2-1)/(x^2-2*x+1)]", NULL},
+    {TOUR_INPUT,
+     "Cancel[(x^31+x^30*y+x*y^30+y^31)"
+     "/(x^31+2*x^30*y+x*y^30+2*y^31)]",
+     NULL},
     {TOUR_INPUT, "Factor[x^4-1]", NULL},
+    {TOUR_INPUT, "Apart[1/(x^2-1)]", NULL},
+    {TOUR_MARKDOWN, "Exact complex arithmetic",
+     "$$I^2=-1,\\quad \\overline{3+4I}=3-4I,\\quad |3+4I|=5$$"
+     " The real and imaginary parts use the same bounded arbitrary-precision "
+     "exact domain as rational arithmetic."},
+    {TOUR_INPUT, "(1+2*I)*(3-4*I)", NULL},
+    {TOUR_INPUT, "Re[3+4*I]+Im[3+4*I]", NULL},
+    {TOUR_INPUT, "Conjugate[3+4*I]", NULL},
+    {TOUR_INPUT, "Abs[3+4*I]", NULL},
+    {TOUR_MARKDOWN, "Exact series",
+     "$$e^x\\sin x=x+x^2+\\frac{x^3}{3}"
+     "-\\frac{x^5}{30}+O(x^6)$$"},
+    {TOUR_INPUT, "Series[Exp[x]*Sin[x],{x,0,7}]", NULL},
+    {TOUR_INPUT, "Series[1/(x^2*(1+x)),{x,0,4}]", NULL},
+    {TOUR_INPUT,
+     "Normal[Series[(1+x)^(1/2),{x,0,5}]]", NULL},
+    {TOUR_MARKDOWN, "Exact limits",
+     "$$\\lim_{x\\to0}\\frac{\\sin x}{x}=1,\\quad "
+     "\\lim_{x\\to\\infty}\\frac{3x^4+1}{2x^4-x}=\\frac{3}{2}$$"},
+    {TOUR_INPUT, "Limit[(x^2-1)/(x-1),{x,1}]", NULL},
+    {TOUR_INPUT, "Limit[Sin[x]/x,{x,0}]", NULL},
+    {TOUR_INPUT, "Limit[(1-Cos[x])/x^2,{x,0}]", NULL},
+    {TOUR_INPUT, "Limit[1/x,{x,0,FromAbove}]", NULL},
+    {TOUR_INPUT, "Limit[1/x,{x,0,FromBelow}]", NULL},
+    {TOUR_INPUT,
+     "Limit[(3*x^4+1)/(2*x^4-x),{x,Infinity}]", NULL},
+    {TOUR_MARKDOWN, "Exact polynomial equations",
+     "$$3x-2=0\\quad x=\\frac{2}{3},\\qquad "
+     "x^2-2=0\\quad x=\\pm\\sqrt{2}$$"
+     " Higher-degree factors proved all-real stay exact as ordered "
+     "$\\operatorname{Root}(\\{a_0,\\ldots,a_n\\},k)$ certificates."},
+    {TOUR_INPUT, "Solve[3*x-2==0,x]", NULL},
+    {TOUR_INPUT, "Solve[x^2-2==0,x]", NULL},
+    {TOUR_INPUT, "Solve[x^2+2*x+5==0,x]", NULL},
+    {TOUR_INPUT, "Solve[x^3-3*x+1==0,x]", NULL},
+    {TOUR_INPUT,
+     "Solve[{x+y+z==6,2x-y+z==3,x+2y-z==2},{x,y,z}]",
+     NULL},
     {TOUR_INPUT, "Gamma[6]+LogGamma[2]+Erfc[0]", NULL},
+    {TOUR_INPUT, "Factorial[50]", NULL},
+    {TOUR_INPUT, "Pochhammer[x,5]", NULL},
+    {TOUR_INPUT, "Binomial[100,50]", NULL},
+    {TOUR_INPUT, "D[Factorial[x],x]", NULL},
     {TOUR_INPUT, "EquivalentQ[Sin[x]^2+Cos[x]^2,1]", NULL},
 
     {TOUR_MARKDOWN, "Manifolds and component tensors",
@@ -76,6 +121,92 @@ static const tour_cell kTour[] = {
      "U=Manifold[{c0},Euclidean,Unoriented]", NULL},
     {TOUR_INPUT, "Tensor[H,Down[i],Up[j]]", NULL},
 
+    {TOUR_MARKDOWN, "Abstract-index tensors",
+     "$$A_{ab}=-A_{ba},\\qquad "
+     "A_{ab}S^{ab}=0$$"
+     " Index spaces and tensor heads are coordinate-free. Their rank and "
+     "dimension are runtime metadata, while signed slot symmetries, dummy "
+     "renaming, metric flips, and identical-factor exchange share one exact "
+     "canonicalizer."},
+    {TOUR_INPUT, "Va=IndexSpace[4,SymmetricMetric]", NULL},
+    {TOUR_INPUT,
+     "Aa=TensorHead[{Va,Va},Antisymmetric]", NULL},
+    {TOUR_INPUT, "Sa=TensorHead[{Va,Va},Symmetric]", NULL},
+    {TOUR_INPUT, "Ta=TensorHead[{Va,Va},Commuting]", NULL},
+    {TOUR_INPUT,
+     "YoungProject[Ta[Down[i],Down[j]],{{1,2}}]", NULL},
+    {TOUR_INPUT,
+     "TensorCanonicalize[Aa[Down[j],Down[i]]]", NULL},
+    {TOUR_INPUT,
+     "TensorCanonicalize["
+     "Aa[Down[i],Down[j]]*Sa[Up[i],Up[j]]]",
+     NULL},
+    {TOUR_INPUT,
+     "R5=TensorHead[{Va,Va,Va,Va,Va},Commuting,"
+     "{Symmetry[{2,1,3,4,5},-1]}]",
+     NULL},
+    {TOUR_INPUT,
+     "TensorCanonicalize["
+     "R5[Down[j],Down[i],Down[k],Down[l],Down[m]]]",
+     NULL},
+    {TOUR_INPUT, "Rank[R5]", NULL},
+    {TOUR_INPUT,
+     "RY=TensorHead[{Va,Va,Va,Va},Commuting,"
+     "{Symmetry[{2,1,3,4},-1],Symmetry[{1,2,4,3},-1],"
+     "Symmetry[{3,4,1,2},1]}]",
+     NULL},
+    {TOUR_INPUT,
+     "YoungDeclare[RY,{{1,3},{2,4}},RowLast]", NULL},
+    {TOUR_INPUT, "YoungDimension[{{1,3},{2,4}},4]", NULL},
+    {TOUR_INPUT,
+     "YoungReduce["
+     "RY[Down[a1],Down[b1],Down[c1],Down[d1]]"
+     "+RY[Down[a1],Down[c1],Down[d1],Down[b1]]"
+     "+RY[Down[a1],Down[d1],Down[b1],Down[c1]]]",
+     NULL},
+
+    {TOUR_MARKDOWN, "Exact dynamic linear algebra",
+     "$$A=\\begin{pmatrix}1&2\\\\3&4\\end{pmatrix},\\quad "
+     "\\det A=-2,\\quad A^{-1}\\in\\mathbb{Q}^{2\\times2}$$"
+     " Vector and matrix dimensions are runtime values. Elimination, inverse, "
+     "rank, products, and linear solves stay in the exact scalar domain."},
+    {TOUR_INPUT, "Dot[Vector[{1,2,3}],Vector[{4,5,6}]]", NULL},
+    {TOUR_INPUT, "lm=Matrix[{{1,2},{3,4}}]", NULL},
+    {TOUR_INPUT, "Determinant[lm]", NULL},
+    {TOUR_INPUT, "Inverse[lm]", NULL},
+    {TOUR_INPUT, "LinearSolve[Matrix[{{2,1},{1,-1}}],Vector[{5,1}]]",
+     NULL},
+
+    {TOUR_MARKDOWN, "Abstract tensors, components, maps and atlases",
+     "$$A_{ij}\\longmapsto A_{01}=a,\\qquad "
+     "(u,v)=(x+y,x-y)$$"
+     " ComponentValue is the explicit bridge: an abstract tensor never "
+     "allocates a dense component cube until bases and free coordinates are "
+     "provided. Verified chart transitions share the same exact Jacobian."},
+    {TOUR_INPUT, "Vb=IndexSpace[2,SymmetricMetric]", NULL},
+    {TOUR_INPUT, "Hb=TensorHead[{Vb,Vb},Antisymmetric]", NULL},
+    {TOUR_INPUT, "bxy=ComponentBasis[Vb,{xb,yb}]", NULL},
+    {TOUR_INPUT, "buv=ComponentBasis[Vb,{ub,vb}]", NULL},
+    {TOUR_INPUT,
+     "Hbc=TensorComponents[Hb,{bxy,bxy},{Down,Down},{{{0,1},h}}]",
+     NULL},
+    {TOUR_INPUT,
+     "ComponentValue[Hb[Down[ia],Down[ja]],{Hbc},{0,1}]",
+     NULL},
+    {TOUR_INPUT,
+     "btr=BasisTransition[bxy,buv,{xb+yb,xb-yb},"
+     "{(ub+vb)/2,(ub-vb)/2}]",
+     NULL},
+    {TOUR_INPUT, "Jacobian[btr]", NULL},
+    {TOUR_INPUT, "bat=Atlas[{bxy,buv}]", NULL},
+    {TOUR_INPUT,
+     "bat=AtlasAddTransition[bat,bxy,buv,{xb+yb,xb-yb},"
+     "{(ub+vb)/2,(ub-vb)/2}]",
+     NULL},
+    {TOUR_INPUT, "AtlasVerify[bat]", NULL},
+    {TOUR_INPUT, "ClearAll[]", NULL},
+    {TOUR_INPUT, "M=Manifold[{theta,phi},Riemannian]", NULL},
+
     {TOUR_MARKDOWN, "Exterior calculus",
      "$$d^2=0,\\quad \\mathcal{L}_v=d\\iota_v+\\iota_vd$$"},
     {TOUR_INPUT, "a=DifferentialForm[M,1,{0,Sin[theta]}]", NULL},
@@ -87,7 +218,6 @@ static const tour_cell kTour[] = {
     {TOUR_INPUT, "Volume[M]", NULL},
     {TOUR_INPUT, "Degree[a]", NULL},
     {TOUR_INPUT, "Dimension[M]", NULL},
-    {TOUR_INPUT, "Rank[T]", NULL},
 
     {TOUR_MARKDOWN, "Metric geometry and GR",
      "$$\\Gamma^{\\rho}{}_{\\mu\\nu},\\quad R_{\\mu\\nu},\\quad "
@@ -95,10 +225,24 @@ static const tour_cell kTour[] = {
     {TOUR_INPUT, "g=Metric[M,{{1,0},{0,Sin[theta]^2}}]", NULL},
     {TOUR_INPUT, "HodgeStar[a,g]", NULL},
     {TOUR_INPUT, "c=Curvature[g]", NULL},
+    {TOUR_INPUT, "Vgr=IndexSpace[2,SymmetricMetric]", NULL},
+    {TOUR_INPUT, "egr=ComponentBasis[Vgr,2]", NULL},
+    {TOUR_INPUT,
+     "Rgr=TensorHead[{Vgr,Vgr,Vgr,Vgr},Commuting,"
+     "{Symmetry[{2,1,3,4},-1],Symmetry[{1,2,4,3},-1],"
+     "Symmetry[{3,4,1,2},1]}]",
+     NULL},
     {TOUR_INPUT, "InverseMetric[c]", NULL},
     {TOUR_INPUT, "Christoffel[c]", NULL},
     {TOUR_INPUT, "RiemannMixed[c]", NULL},
-    {TOUR_INPUT, "Riemann[c]", NULL},
+    {TOUR_INPUT,
+     "Rgrc=ComponentLift[Riemann[c],Rgr,{egr,egr,egr,egr}]",
+     NULL},
+    {TOUR_INPUT,
+     "ComponentValue["
+     "Rgr[Down[i],Down[j],Down[k],Down[l]],"
+     "{Rgrc},{0,1,0,1}]",
+     NULL},
     {TOUR_INPUT, "Ricci[c]", NULL},
     {TOUR_INPUT, "RicciScalar[c]", NULL},
     {TOUR_INPUT, "Einstein[c]", NULL},
@@ -106,6 +250,21 @@ static const tour_cell kTour[] = {
     {TOUR_INPUT, "ZeroQ[Weyl[c]]", NULL},
     {TOUR_INPUT, "WeylSquared[c]", NULL},
     {TOUR_INPUT, "GeodesicAcceleration[c,v]", NULL},
+    {TOUR_INPUT,
+     "gr=GRComponents[c,{Weyl,RiemannUpper}]", NULL},
+    {TOUR_INPUT, "Rh=GRHead[gr,Riemann]", NULL},
+    {TOUR_INPUT, "Rhc=GRTensor[gr,Riemann]", NULL},
+    {TOUR_INPUT,
+     "YoungReduce["
+     "Rh[Down[ga],Down[gb],Down[gc],Down[gd]]"
+     "+Rh[Down[ga],Down[gc],Down[gd],Down[gb]]"
+     "+Rh[Down[ga],Down[gd],Down[gb],Down[gc]]]",
+     NULL},
+    {TOUR_INPUT,
+     "ComponentValue["
+     "Rh[Down[ga],Down[gb],Down[gc],Down[gd]],"
+     "{Rhc},{0,1,0,1}]",
+     NULL},
 
     {TOUR_MARKDOWN, "Lie algebra and Yang-Mills",
      "$$F=dA+\\frac{g}{2}[A,A],\\quad D_AF=0$$"},
@@ -131,7 +290,36 @@ static const tour_cell kTour[] = {
 
     {TOUR_MARKDOWN, "Scalar QFT, Dirac and colour",
      "$$\\mathcal{L}=\\frac{1}{2}(\\partial\\phi)^2"
-     "-\\frac{1}{2}m^2\\phi^2-\\frac{\\lambda}{4!}\\phi^4$$"},
+     "-\\frac{1}{2}m^2\\phi^2-\\frac{\\lambda}{4!}\\phi^4$$"
+     " Lorentz, spinor, adjoint-colour and fundamental-colour indices are "
+     "different typed spaces. The shared component picture binds exact "
+     "Minkowski and built-in SU(3) invariant tensors to the same abstract "
+     "heads used by tensor canonicalization."},
+    {TOUR_INPUT, "qft=QFTSystem[3]", NULL},
+    {TOUR_INPUT, "Lq=QFTSpace[qft,Lorentz]", NULL},
+    {TOUR_INPUT, "Cq=QFTSpace[qft,ColorAdjoint]", NULL},
+    {TOUR_INPUT, "Dimension[Cq]", NULL},
+    {TOUR_INPUT, "etaD=QFTHead[qft,MinkowskiMetric]", NULL},
+    {TOUR_INPUT, "etaDc=QFTTensor[qft,MinkowskiMetric]", NULL},
+    {TOUR_INPUT, "etaU=QFTHead[qft,MinkowskiInverse]", NULL},
+    {TOUR_INPUT, "etaUc=QFTTensor[qft,MinkowskiInverse]", NULL},
+    {TOUR_INPUT,
+     "ComponentValue["
+     "etaD[Down[qm],Down[qn]]*etaU[Up[qn],Up[qr]],"
+     "{etaDc,etaUc},{1,1}]",
+     NULL},
+    {TOUR_INPUT, "fQ=QFTHead[qft,SUNF]", NULL},
+    {TOUR_INPUT, "fQc=QFTTensor[qft,SUNF]", NULL},
+    {TOUR_INPUT,
+     "ComponentValue[fQ[Up[qa],Up[qb],Up[qc]],"
+     "{fQc},{0,1,2}]",
+     NULL},
+    {TOUR_INPUT, "FQ=QFTHead[qft,FieldStrength]", NULL},
+    {TOUR_INPUT,
+     "TensorCanonicalize["
+     "FQ[Up[qa],Down[qm],Down[qn]]"
+     "+FQ[Up[qa],Down[qn],Down[qm]]]",
+     NULL},
     {TOUR_INPUT, "Phi4Lagrangian[phi,m,lambda,4]", NULL},
     {TOUR_INPUT, "Phi4EOM[phi,m,lambda,4]", NULL},
     {TOUR_INPUT, "Phi4Diagrams[phi,m,lambda,4,s,t,u]", NULL},
@@ -161,6 +349,7 @@ static const tour_cell kTour[] = {
     {TOUR_INPUT, "SUNExpandCasimirs[C_F+C_A,Nc]", NULL},
     {TOUR_INPUT, "SUNFundamentalCasimir[Nc]", NULL},
     {TOUR_INPUT, "SUNAdjointCasimir[ca,cb,Nc]", NULL},
+    {TOUR_INPUT, "ClearAll[]", NULL},
 
     {TOUR_MARKDOWN, "Deep symbolic stress: Schwarzschild",
      "$$R=0,\\qquad R_{abcd}R^{abcd}=\\frac{12r_s^2}{r^6}$$"},
@@ -188,7 +377,7 @@ static const tour_cell kTour[] = {
     {TOUR_MARKDOWN, "Exact decisions and resource bounds",
      "$$L=I-V+1,\\quad \\omega=DL-2I,\\quad "
      "w=\\frac{\\lambda^V}{S}$$"},
-    {TOUR_INPUT, "ZeroQ[CovariantDerivative[Ricci[c],c]]", NULL},
+    {TOUR_INPUT, "ZeroQ[CovariantDerivative[Ricci[cs],cs]]", NULL},
     {TOUR_INPUT, "MemoryStatus[]", NULL},
 };
 
@@ -412,8 +601,8 @@ int main(int argc, char **argv)
 
     /*
      * The distributable document intentionally contains source cells only.
-     * Persisting all 102 cached input IR trees and all 102 output trees makes
-     * opening the 213-card validation document rebuild the entire physics
+     * Persisting every cached input IR tree and output tree makes opening the
+     * expanded validation document rebuild the entire physics
      * session at once. The cached artifact round-trips on the host, but the
      * byte-identical file was reported as corrupt by a CX II at open time. The
      * eager IR/heap reconstruction is the platform-specific part of that path.

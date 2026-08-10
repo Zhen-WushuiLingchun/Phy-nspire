@@ -21,14 +21,16 @@ TI-Nspire CX II development. It vendors the small C transport layer from
   `--service-settle-ms` quiet interval (250 ms by default), preventing a new
   service from racing firmware cleanup through `usbipd`.
 
-The packet payload is also configurable. Uploads default to 1280 bytes. On the
-project's `usbipd`/WSL CX II path, two 1024-byte attempts at the current
-1,095,275-byte application reached a LibUSB failure at about 55 seconds; after
-reattaching the device, a 1280-byte upload plus full SHA-256 readback and atomic
-promotion completed in 18.4 seconds. Reads retain the calculator's native
-1440-byte framing: requesting a smaller read truncates each inbound CSP frame
-because upstream libnspire has no remainder buffer. Direct Linux USB can still
-opt into 1440-byte uploads with `--cx2-packet-size 1440`.
+The packet payload is also configurable. Uploads and reads now default to the
+calculator's native 1440-byte framing. The physical CX II fast path uses a
+250 ms ACK timeout with eight bounded retransmissions; this avoids turning an
+occasional lost ACK into a 1.5-second stall. On 2026-07-29 it uploaded the
+1,210,234-byte application in 14.8 seconds. The usbipd handle then expired
+before SHA-256 readback, but the destination was still untouched; after
+reattaching, `deploy --reuse-temporary` read back the complete file, matched
+SHA-256, promoted it atomically, and removed the rollback copy in 27 seconds.
+Requesting a smaller read packet still truncates inbound CSP frames because
+upstream libnspire has no remainder buffer.
 
 The complete 2026-07-27 project sync reused and SHA-256-verified the
 1,105,773-byte application, uploaded and SHA-256-verified the 13,588-byte tour
@@ -36,6 +38,13 @@ notebook, atomically promoted both, removed the old examples probe, and
 performed the final directory checks in 36.6 seconds. The verified hashes were
 `7eb36249ca1fadf32c3614d57fbb9c441a10745dc9bd7503889bf46017069791`
 and `718a0a40fcd68c57113b88f3a3fe24bbb6463d9f936f1481709a0ca17498e90a`.
+
+The 2026-07-30 sync uploaded and SHA-256-read-back the 1,221,725-byte
+application and 12,200-byte source-only CAS tour in one 49.8-second session,
+atomically promoted both, removed both `.previous` copies, and confirmed the
+project `examples/` directory empty. The verified hashes were
+`2fe57c30612daba926ebefd59f0367bae2f111faa97b8190fee6600d4ce781cc`
+and `7afc7af56676fd6fe487225ac0c59b5e0507d861f4d7a26530c99c840eb06a9d`.
 
 Local inputs are read-only memory maps rather than file-sized heap buffers.
 There is no project-specific size threshold: every file length representable by
@@ -78,6 +87,11 @@ verification, resume without retransmitting it:
 ```sh
 phy-nlinkctl deploy ../../dist/phy-nspire.tns --reuse-temporary
 ```
+
+`sync` detects a sibling `.upload.tns` automatically, verifies it first, and
+reuses it when valid. Thus the recovery for an expired usbipd session is:
+detach/attach bus 4-1, then rerun the identical `sync` command. No destination
+is replaced until the temporary has passed the selected verification.
 
 Direct diagnostic operations are also available:
 

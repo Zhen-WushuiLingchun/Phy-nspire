@@ -27,10 +27,9 @@ typedef struct {
     /*
      * Markdown: heading.
      * Input: reader-facing source.
-     * Output: the descriptor line of a typed physics object, empty for an
-     *         ordinary scalar result. It is what the cell shows when the value
-     *         has no expansion in the typed IR -- a manifold, a group, a
-     *         curvature bundle -- and it persists with the document.
+     * Output: a legacy descriptor or diagnostic fallback. New successful
+     *         physics objects keep a typed constructor/signature in
+     *         `expression`, so this is normally empty.
      */
     char primary[NOTEBOOK_TEXT_CAPACITY];
     /*

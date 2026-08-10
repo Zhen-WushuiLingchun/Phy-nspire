@@ -18,6 +18,7 @@ using nmarkdown::MathNodeFlagHasSubscript;
 using nmarkdown::MathNodeFlagHasSuperscript;
 using nmarkdown::MathNodeId;
 using nmarkdown::MathNodeKind;
+using nmarkdown::MathAccent;
 using nmarkdown::MathTree;
 using nmarkdown::MathVariant;
 using nmarkdown::kInvalidMathNode;
@@ -30,31 +31,14 @@ constexpr int kPrecedenceProduct = 40;
 constexpr int kPrecedencePower = 60;
 constexpr int kPrecedenceAtom = 100;
 
-std::string format_integer(std::int64_t value)
+std::string display_decimal(std::string_view value)
 {
-    const bool negative = value < 0;
-    std::uint64_t magnitude = static_cast<std::uint64_t>(value);
-    if (negative) {
-        magnitude = 0U - magnitude;
+    if (!value.empty() && value.front() == '-') {
+        std::string result(u8"−");
+        result.append(value.data() + 1U, value.size() - 1U);
+        return result;
     }
-
-    char reversed[21];
-    std::size_t count = 0;
-    do {
-        reversed[count++] =
-            static_cast<char>('0' + static_cast<char>(magnitude % 10U));
-        magnitude /= 10U;
-    } while (magnitude != 0U);
-
-    std::string result;
-    result.reserve(count + (negative ? 1U : 0U));
-    if (negative) {
-        result += u8"−";
-    }
-    while (count != 0U) {
-        result.push_back(reversed[--count]);
-    }
-    return result;
+    return std::string(value);
 }
 
 std::string_view display_symbol(std::string_view name)
@@ -66,7 +50,8 @@ std::string_view display_symbol(std::string_view name)
     static constexpr Mapping kMappings[] = {
         {"Alpha", u8"Α"},   {"Beta", u8"Β"},    {"Chi", u8"Χ"},
         {"Delta", u8"Δ"},   {"Epsilon", u8"Ε"}, {"Eta", u8"Η"},
-        {"Gamma", u8"Γ"},   {"Iota", u8"Ι"},    {"Kappa", u8"Κ"},
+        {"Gamma", u8"Γ"},   {"Infinity", u8"∞"}, {"Iota", u8"Ι"},
+        {"Kappa", u8"Κ"},
         {"Lambda", u8"Λ"},  {"Mu", u8"Μ"},      {"Nu", u8"Ν"},
         {"Omega", u8"Ω"},   {"Omicron", u8"Ο"}, {"Phi", u8"Φ"},
         {"Pi", u8"π"},      {"Psi", u8"Ψ"},     {"Rho", u8"Ρ"},
@@ -115,6 +100,24 @@ std::string_view display_function(std::string_view name)
     }
     if (name == "loggamma") {
         return "LogGamma";
+    }
+    if (name == "factorial") {
+        return "Factorial";
+    }
+    if (name == "pochhammer") {
+        return "Pochhammer";
+    }
+    if (name == "binomial") {
+        return "Binomial";
+    }
+    if (name == "digamma") {
+        return "Digamma";
+    }
+    if (name == "bernoulli") {
+        return "BernoulliB";
+    }
+    if (name == "harmonic") {
+        return "HarmonicNumber";
     }
     return name;
 }
@@ -246,6 +249,14 @@ private:
         return add(node, {child});
     }
 
+    MathNodeId accented(MathNodeId child, MathAccent accent)
+    {
+        MathNode node;
+        node.kind = MathNodeKind::Accent;
+        node.aux = static_cast<std::uint16_t>(accent);
+        return add(node, {child});
+    }
+
     MathNodeId scripts(MathNodeId base, MathNodeId lower, MathNodeId upper)
     {
         if (lower == kInvalidMathNode && upper == kInvalidMathNode) {
@@ -266,6 +277,47 @@ private:
             children.push_back(upper);
         }
         return add(node, children);
+    }
+
+    /*
+     * Render exact reciprocal powers as roots without changing the typed IR.
+     * General p/q powers deliberately remain scripts: rewriting those would
+     * imply branch assumptions that belong in the CAS, not the display layer.
+     */
+    bool reciprocal_power(phy_ir_ref exponent, bool& negative,
+                          std::string& degree) const
+    {
+        if (phy_ir_kind_of(context_, exponent) != PHY_IR_RATIONAL) {
+            return false;
+        }
+        phy_ir_exact_view exact{};
+        if (!phy_ir_exact_decimal_view(context_, exponent, &exact)) {
+            return false;
+        }
+        const std::string_view numerator(
+            exact.numerator, exact.numerator_length);
+        /*
+         * exact.denominator may point into `exact.storage`, so a string_view
+         * would dangle as soon as this helper returns. Own the few bytes; ASan
+         * correctly exposes the otherwise layout-dependent square-root bug.
+         */
+        degree.assign(exact.denominator, exact.denominator_length);
+        negative = numerator == "-1";
+        return (numerator == "1" || negative) && degree != "1";
+    }
+
+    MathNodeId radical(phy_ir_ref radicand, std::string_view degree,
+                       unsigned depth)
+    {
+        MathNode node;
+        node.kind = MathNodeKind::Radical;
+        node.atom_class = AtomClass::Inner;
+        const MathNodeId body = build(radicand, depth + 1U, 0);
+        if (degree == "2") {
+            return add(node, {body});
+        }
+        return add(node,
+                   {body, text(MathNodeKind::Symbol, degree)});
     }
 
     int precedence(phy_ir_ref expression) const
@@ -308,6 +360,15 @@ private:
             return kInvalidMathNode;
         }
         const std::string_view name(raw);
+        if (name == "I") {
+            /*
+             * The reader syntax follows Mathematica and reserves capital I,
+             * but mathematical typography writes the imaginary unit as an
+             * upright lower-case i.
+             */
+            return styled(
+                text(MathNodeKind::Symbol, "i"), MathVariant::Roman);
+        }
         const std::string_view displayed = display_symbol(name);
         if (displayed == name && !roman && name.size() > 1U &&
             name[0] == 'd') {
@@ -411,6 +472,169 @@ private:
         return base;
     }
 
+    MathNodeId series_data(phy_ir_ref expression, unsigned depth)
+    {
+        if (phy_ir_child_count(context_, expression) != 5U ||
+            phy_ir_kind_of(
+                context_, phy_ir_child(context_, expression, 0U)) !=
+                PHY_IR_SYMBOL ||
+            (phy_ir_kind_of(
+                 context_, phy_ir_child(context_, expression, 1U)) !=
+                 PHY_IR_INTEGER &&
+             phy_ir_kind_of(
+                 context_, phy_ir_child(context_, expression, 1U)) !=
+                 PHY_IR_RATIONAL) ||
+            phy_ir_kind_of(
+                context_, phy_ir_child(context_, expression, 2U)) !=
+                PHY_IR_INTEGER ||
+            phy_ir_kind_of(
+                context_, phy_ir_child(context_, expression, 3U)) !=
+                PHY_IR_INTEGER ||
+            phy_ir_kind_of(
+                context_, phy_ir_child(context_, expression, 4U)) !=
+                PHY_IR_FUNCTION) {
+            fail("SeriesData metadata is malformed");
+            return kInvalidMathNode;
+        }
+
+        const phy_ir_ref variable_ref =
+            phy_ir_child(context_, expression, 0U);
+        const phy_ir_ref center_ref =
+            phy_ir_child(context_, expression, 1U);
+        const phy_ir_ref valuation_ref =
+            phy_ir_child(context_, expression, 2U);
+        const phy_ir_ref order_ref =
+            phy_ir_child(context_, expression, 3U);
+        const phy_ir_ref coefficients_ref =
+            phy_ir_child(context_, expression, 4U);
+        const char *coefficient_head = phy_ir_symbol_name(
+            context_, phy_ir_head(context_, coefficients_ref));
+        int64_t valuation = 0;
+        int64_t order = 0;
+        const std::size_t coefficient_count =
+            phy_ir_child_count(context_, coefficients_ref);
+        if (coefficient_head == nullptr ||
+            std::string_view(coefficient_head) != "List" ||
+            !phy_ir_integer_value(
+                context_, valuation_ref, &valuation) ||
+            !phy_ir_integer_value(context_, order_ref, &order) ||
+            valuation > order || valuation < -32 || order > 64 ||
+            coefficient_count !=
+                static_cast<std::size_t>(order - valuation)) {
+            fail("SeriesData coefficient metadata is inconsistent");
+            return kInvalidMathNode;
+        }
+
+        MathNodeId shift = build(variable_ref, depth + 1U, 0);
+        phy_ir_exact_view center{};
+        const bool center_is_zero =
+            phy_ir_exact_decimal_view(context_, center_ref, &center) &&
+            std::string_view(center.numerator,
+                             center.numerator_length) == "0";
+        if (!center_is_zero) {
+            std::vector<MathNodeId> shifted{shift};
+            if (negative_lead(center_ref)) {
+                shifted.push_back(text(
+                    MathNodeKind::Symbol, "+", AtomClass::Binary));
+                MathNodeId magnitude = number_magnitude(center_ref);
+                if (magnitude == kInvalidMathNode) {
+                    magnitude = text(MathNodeKind::Symbol, "1");
+                }
+                shifted.push_back(magnitude);
+            } else {
+                shifted.push_back(text(
+                    MathNodeKind::Symbol, u8"−", AtomClass::Binary));
+                shifted.push_back(build(center_ref, depth + 1U, 0));
+            }
+            shift = delimited(row(shifted));
+        }
+
+        std::vector<MathNodeId> polynomial;
+        polynomial.reserve(coefficient_count * 3U + 1U);
+        for (std::size_t index = 0U; index < coefficient_count;
+             ++index) {
+            const phy_ir_ref coefficient =
+                phy_ir_child(context_, coefficients_ref, index);
+            phy_ir_exact_view exact{};
+            if (!phy_ir_exact_decimal_view(
+                    context_, coefficient, &exact)) {
+                fail("SeriesData contains a non-exact coefficient");
+                return kInvalidMathNode;
+            }
+            const std::string_view numerator(
+                exact.numerator, exact.numerator_length);
+            if (numerator == "0") {
+                continue;
+            }
+            const int64_t exponent =
+                valuation + static_cast<int64_t>(index);
+            const bool negative = negative_lead(coefficient);
+            if (!polynomial.empty()) {
+                polynomial.push_back(text(
+                    MathNodeKind::Symbol,
+                    negative ? u8"−" : "+", AtomClass::Binary));
+            } else if (negative) {
+                polynomial.push_back(
+                    text(MathNodeKind::Symbol, u8"−"));
+            }
+
+            MathNodeId coefficient_node = kInvalidMathNode;
+            if (negative) {
+                coefficient_node = number_magnitude(coefficient);
+            } else if (
+                numerator != "1" ||
+                std::string_view(
+                    exact.denominator,
+                    exact.denominator_length) != "1") {
+                coefficient_node =
+                    build(coefficient, depth + 1U, 0);
+            }
+
+            MathNodeId power = kInvalidMathNode;
+            if (exponent != 0) {
+                power = shift;
+                if (exponent != 1) {
+                    power = scripts(
+                        shift, kInvalidMathNode,
+                        text(
+                            MathNodeKind::Symbol,
+                            display_decimal(
+                                std::to_string(exponent))));
+                }
+            }
+            if (coefficient_node != kInvalidMathNode &&
+                power != kInvalidMathNode) {
+                polynomial.push_back(
+                    row({coefficient_node, power}));
+            } else if (coefficient_node != kInvalidMathNode) {
+                polynomial.push_back(coefficient_node);
+            } else if (power != kInvalidMathNode) {
+                polynomial.push_back(power);
+            } else {
+                polynomial.push_back(
+                    text(MathNodeKind::Symbol, "1"));
+            }
+        }
+        if (polynomial.empty()) {
+            polynomial.push_back(text(MathNodeKind::Symbol, "0"));
+        }
+
+        const MathNodeId powered = scripts(
+            shift, kInvalidMathNode,
+            build(order_ref, depth + 1U, 0));
+        const MathNodeId order_term = row({
+            styled(text(MathNodeKind::Symbol, "O"), MathVariant::Roman),
+            delimited(powered),
+        });
+
+        std::vector<MathNodeId> result{
+            row(polynomial),
+            text(MathNodeKind::Symbol, "+", AtomClass::Binary),
+            order_term,
+        };
+        return row(result);
+    }
+
     /*
      * True when a sum term wears a minus sign a reader would move onto the
      * separator: a negative number, or a product led by one. INT64_MIN is
@@ -419,16 +643,12 @@ private:
     bool negative_lead(phy_ir_ref expression) const
     {
         const phy_ir_kind kind = phy_ir_kind_of(context_, expression);
-        std::int64_t numerator = 0;
-        std::int64_t denominator = 1;
-        if (kind == PHY_IR_INTEGER) {
-            return phy_ir_integer_value(context_, expression, &numerator) &&
-                   numerator < 0 && numerator != INT64_MIN;
-        }
-        if (kind == PHY_IR_RATIONAL) {
-            return phy_ir_rational_value(context_, expression, &numerator,
-                                         &denominator) &&
-                   numerator < 0 && numerator != INT64_MIN;
+        if (kind == PHY_IR_INTEGER || kind == PHY_IR_RATIONAL) {
+            phy_ir_exact_view exact{};
+            return phy_ir_exact_decimal_view(
+                       context_, expression, &exact) &&
+                   exact.numerator_length != 0U &&
+                   exact.numerator[0] == '-';
         }
         if (kind == PHY_IR_MUL &&
             phy_ir_child_count(context_, expression) > 1U) {
@@ -448,24 +668,25 @@ private:
      */
     MathNodeId number_magnitude(phy_ir_ref expression)
     {
-        std::int64_t value = 0;
-        if (phy_ir_integer_value(context_, expression, &value)) {
-            return value == -1 ? kInvalidMathNode
-                               : text(MathNodeKind::Symbol,
-                                      format_integer(-value));
-        }
-        std::int64_t numerator = 0;
-        std::int64_t denominator = 1;
-        if (phy_ir_rational_value(context_, expression, &numerator,
-                                  &denominator)) {
+        phy_ir_exact_view exact{};
+        if (phy_ir_exact_decimal_view(context_, expression, &exact) &&
+            exact.numerator_length > 1U && exact.numerator[0] == '-') {
+            const std::string_view numerator(
+                exact.numerator + 1U, exact.numerator_length - 1U);
+            const std::string_view denominator(
+                exact.denominator, exact.denominator_length);
+            if (numerator == "1" && denominator == "1") {
+                return kInvalidMathNode;
+            }
+            if (denominator == "1") {
+                return text(MathNodeKind::Symbol, numerator);
+            }
             MathNode fraction;
             fraction.kind = MathNodeKind::Fraction;
             fraction.atom_class = AtomClass::Inner;
             return add(fraction,
-                       {text(MathNodeKind::Symbol,
-                             format_integer(-numerator)),
-                        text(MathNodeKind::Symbol,
-                             format_integer(denominator))});
+                       {text(MathNodeKind::Symbol, numerator),
+                        text(MathNodeKind::Symbol, denominator)});
         }
         fail("stripped a sign from a term without a numeric lead");
         return kInvalidMathNode;
@@ -505,12 +726,17 @@ private:
                 leading_magnitude = true;
             }
         } else {
-            std::int64_t value = 0;
-            if (count > 1U &&
-                phy_ir_integer_value(
+            phy_ir_exact_view exact{};
+            const bool minus_one =
+                count > 1U &&
+                phy_ir_exact_decimal_view(
                     context_, phy_ir_child(context_, expression, 0U),
-                    &value) &&
-                value == -1) {
+                    &exact) &&
+                std::string_view(exact.numerator,
+                                 exact.numerator_length) == "-1" &&
+                std::string_view(exact.denominator,
+                                 exact.denominator_length) == "1";
+            if (minus_one) {
                 items.push_back(text(MathNodeKind::Symbol, u8"−"));
                 start = 1U;
             }
@@ -555,18 +781,21 @@ private:
         const phy_ir_kind kind = phy_ir_kind_of(context_, expression);
         switch (kind) {
         case PHY_IR_INTEGER: {
-            std::int64_t value = 0;
-            if (!phy_ir_integer_value(context_, expression, &value)) {
+            phy_ir_exact_view exact{};
+            if (!phy_ir_exact_decimal_view(
+                    context_, expression, &exact)) {
                 fail("integer payload is invalid");
                 return kInvalidMathNode;
             }
-            return text(MathNodeKind::Symbol, format_integer(value));
+            return text(
+                MathNodeKind::Symbol,
+                display_decimal(std::string_view(
+                    exact.numerator, exact.numerator_length)));
         }
         case PHY_IR_RATIONAL: {
-            std::int64_t numerator = 0;
-            std::int64_t denominator = 0;
-            if (!phy_ir_rational_value(context_, expression, &numerator,
-                                       &denominator)) {
+            phy_ir_exact_view exact{};
+            if (!phy_ir_exact_decimal_view(
+                    context_, expression, &exact)) {
                 fail("rational payload is invalid");
                 return kInvalidMathNode;
             }
@@ -575,8 +804,13 @@ private:
             fraction.atom_class = AtomClass::Inner;
             return add(
                 fraction,
-                {text(MathNodeKind::Symbol, format_integer(numerator)),
-                 text(MathNodeKind::Symbol, format_integer(denominator))});
+                {text(MathNodeKind::Symbol,
+                      display_decimal(std::string_view(
+                          exact.numerator, exact.numerator_length))),
+                 text(MathNodeKind::Symbol,
+                      std::string_view(
+                          exact.denominator,
+                          exact.denominator_length))});
         }
         case PHY_IR_REAL:
             return styled(text(MathNodeKind::Text, "real"), MathVariant::Roman);
@@ -631,6 +865,20 @@ private:
                 phy_ir_child(context_, expression, 0U);
             const phy_ir_ref exponent_ref =
                 phy_ir_child(context_, expression, 1U);
+            bool negative_root = false;
+            std::string degree;
+            if (reciprocal_power(exponent_ref, negative_root, degree)) {
+                const MathNodeId root = radical(base_ref, degree, depth);
+                if (!negative_root) {
+                    return root;
+                }
+                MathNode fraction;
+                fraction.kind = MathNodeKind::Fraction;
+                fraction.atom_class = AtomClass::Inner;
+                return add(
+                    fraction,
+                    {text(MathNodeKind::Symbol, "1"), root});
+            }
             MathNodeId base = child_with_precedence(
                 base_ref, depth, kPrecedencePower, true);
             MathNodeId exponent = build(exponent_ref, depth + 1U, 0);
@@ -649,10 +897,91 @@ private:
             return row(items);
         }
         case PHY_IR_FUNCTION: {
-            MathNodeId head = function_head(expression);
-            std::vector<std::size_t> positions;
+            const char *raw_head = phy_ir_symbol_name(
+                context_, phy_ir_head(context_, expression));
+            const std::string_view head_name =
+                raw_head == nullptr ? std::string_view()
+                                    : std::string_view(raw_head);
             const std::size_t count =
                 phy_ir_child_count(context_, expression);
+            if (head_name == "List") {
+                std::vector<MathNodeId> items;
+                items.reserve(count == 0U ? 1U : count * 2U - 1U);
+                for (std::size_t index = 0U; index < count; ++index) {
+                    if (index != 0U) {
+                        items.push_back(text(
+                            MathNodeKind::Symbol, ",",
+                            AtomClass::Punctuation));
+                    }
+                    items.push_back(build(
+                        phy_ir_child(context_, expression, index),
+                        depth + 1U, 0));
+                }
+                return delimited(row(items), "{", "}");
+            }
+            if (head_name == "Rule" && count == 2U) {
+                return row({
+                    build(
+                        phy_ir_child(context_, expression, 0U),
+                        depth + 1U, 0),
+                    text(
+                        MathNodeKind::Symbol, u8"→",
+                        AtomClass::Relation),
+                    build(
+                        phy_ir_child(context_, expression, 1U),
+                        depth + 1U, 0),
+                });
+            }
+            if (head_name == "Around" && count == 2U) {
+                return row({
+                    build(
+                        phy_ir_child(context_, expression, 0U),
+                        depth + 1U, 0),
+                    text(
+                        MathNodeKind::Symbol, u8"±",
+                        AtomClass::Binary),
+                    build(
+                        phy_ir_child(context_, expression, 1U),
+                        depth + 1U, 0),
+                });
+            }
+            if (head_name == "Abs" && count == 1U) {
+                return delimited(
+                    build(
+                        phy_ir_child(context_, expression, 0U),
+                        depth + 1U, 0),
+                    "|", "|");
+            }
+            if (head_name == "Conjugate" && count == 1U) {
+                return accented(
+                    build(
+                        phy_ir_child(context_, expression, 0U),
+                        depth + 1U, 0),
+                    MathAccent::Overline);
+            }
+            if (head_name == "factorial" && count == 1U) {
+                return row({
+                    child_with_precedence(
+                        phy_ir_child(context_, expression, 0U), depth,
+                        kPrecedencePower, true),
+                    text(MathNodeKind::Symbol, "!"),
+                });
+            }
+            if (head_name == "pochhammer" && count == 2U) {
+                const MathNodeId base = delimited(
+                    build(
+                        phy_ir_child(context_, expression, 0U),
+                        depth + 1U, 0),
+                    "(", ")");
+                return scripts(
+                    base,
+                    build(
+                        phy_ir_child(context_, expression, 1U),
+                        depth + 1U, 0),
+                    kInvalidMathNode);
+            }
+            MathNodeId head = function_head(expression);
+            std::vector<std::size_t> positions;
             positions.reserve(count);
             for (std::size_t index = 0; index < count; ++index) {
                 positions.push_back(index);
@@ -661,8 +990,15 @@ private:
         }
         case PHY_IR_TENSOR:
             return indexed_head(expression, depth, false, false);
-        case PHY_IR_OPERATOR:
+        case PHY_IR_OPERATOR: {
+            const char *head = phy_ir_symbol_name(
+                context_, phy_ir_head(context_, expression));
+            if (head != nullptr &&
+                std::string_view(head) == "SeriesData") {
+                return series_data(expression, depth);
+            }
             return indexed_head(expression, depth, true, true);
+        }
         case PHY_IR_DERIVATIVE: {
             std::vector<MathNodeId> items;
             items.push_back(styled(text(MathNodeKind::Symbol, "D"),

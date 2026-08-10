@@ -102,12 +102,11 @@ static phy_notebook *make_sample(void)
     phy_notebook_end_edit(notebook);
     PHY_CHECK(phy_notebook_is_dirty(notebook));
 
-    size_t unsupported = 0u;
+    size_t apart = 0u;
     PHY_CHECK_EQ_INT(
-        phy_notebook_add_input(notebook, "Apart[1/(x^2-1)]", &unsupported),
+        phy_notebook_add_input(notebook, "Apart[1/(x^2-1)]", &apart),
         PHY_OK);
-    PHY_CHECK_EQ_INT(phy_notebook_evaluate(notebook, unsupported),
-                     PHY_ERR_UNSUPPORTED);
+    PHY_CHECK_EQ_INT(phy_notebook_evaluate(notebook, apart), PHY_OK);
     return notebook;
 }
 
@@ -165,6 +164,49 @@ static void test_round_trip_preserves_cells_and_cached_ir(void)
             PHY_CHECK_EQ_INT(after.expression, PHY_IR_NULL);
         }
     }
+
+    phy_notebook_destroy(loaded);
+    phy_notebook_destroy(source);
+    phy_platform_shutdown();
+}
+
+static void test_clear_output_round_trip(void)
+{
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    phy_notebook *source = phy_notebook_create();
+    PHY_CHECK(source != NULL);
+
+    size_t input = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_notebook_add_input(source, "x=1", &input), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_notebook_evaluate(source, input), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_notebook_add_input(source, "ClearAll[]", &input), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_notebook_evaluate(source, input), PHY_OK);
+
+    phy_notebook_cell_view clear_output;
+    PHY_CHECK(phy_notebook_cell(source, input + 1u, &clear_output));
+    PHY_CHECK_EQ_INT(clear_output.kind, PHY_NOTEBOOK_CELL_OUTPUT);
+    PHY_CHECK_EQ_INT(
+        phy_ir_kind_of(
+            phy_notebook_ir(source), clear_output.expression),
+        PHY_IR_SYMBOL);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(
+            phy_notebook_ir(source),
+            phy_ir_head(
+                phy_notebook_ir(source), clear_output.expression)),
+        "Null");
+    PHY_CHECK_EQ_STR(clear_output.primary, "");
+
+    const size_t bytes = serialize_sample(source);
+    phy_notebook *loaded = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_notebook_deserialize(g_document, bytes, &loaded), PHY_OK);
+    PHY_CHECK(loaded != NULL);
+    PHY_CHECK_EQ_INT(phy_notebook_cell_count(loaded), 4u);
+    PHY_CHECK_EQ_STR(expression_text(loaded, input + 1u), "Null");
+    PHY_CHECK_EQ_INT(phy_notebook_evaluate_all(loaded), PHY_OK);
 
     phy_notebook_destroy(loaded);
     phy_notebook_destroy(source);
@@ -325,6 +367,7 @@ static void test_empty_document_round_trip(void)
 int main(void)
 {
     PHY_TEST_CASE(test_round_trip_preserves_cells_and_cached_ir);
+    PHY_TEST_CASE(test_clear_output_round_trip);
     PHY_TEST_CASE(test_header_crc_bounds_and_trailing_bytes);
     PHY_TEST_CASE(test_structural_validation_after_valid_crc);
     PHY_TEST_CASE(test_unparseable_input_source_degrades_to_stale);

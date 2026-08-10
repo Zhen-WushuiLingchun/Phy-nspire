@@ -54,14 +54,25 @@ four, which is what "stateful" buys.
 | Kind | Produced by | Displays as |
 | --- | --- | --- |
 | `Scalar` | arithmetic, components, decisions | its own typed IR |
-| `Manifold` | `Manifold[...]` | descriptor line |
+| `Manifold` | `Manifold[...]` | structured constructor |
 | `Tensor` | `ComponentTensor`, `Metric`, `VectorField`, curvature parts | components: `List` of rows at rank <= 2; at rank 3 and 4 the `List` of nonvanishing components as `Gamma(theta,phi,phi) = ...` equations, up to 64 of them, named by the chart's coordinates |
 | `Form` | `DifferentialForm`, `Wedge`, `ExteriorD`, `HodgeStar`, `Volume`, `InteriorProduct`, `YangMillsLagrangian`, `ColorComponent` | coordinate-coframe expansion |
-| `LieGroup` | `LieGroup[...]` | descriptor line |
-| `LieAlgebra` | `LieAlgebra[G]` | descriptor line |
+| `LieGroup` | `LieGroup[...]` | structured constructor |
+| `LieAlgebra` | `LieAlgebra[G]` | structured constructor |
 | `LieElement` | `Generator`, `LieElement`, `LieBracket` | `sum_a c_a T_a` |
 | `LieForm` | `LieForm`, `GaugeConnection`, `FieldStrength`, `CovariantD`, `GaugeVariation`, `Bianchi` | `sum_a T_a . (coframe expansion)` |
-| `Curvature` | `Curvature[g]` | descriptor line |
+| `Curvature` | `Curvature[g]` | structured constructor |
+| `IndexSpace` | `IndexSpace[...]` | structured constructor |
+| `TensorHead` | `TensorHead[...]` | typed abstract-index signature |
+| `AbstractTensor` | indexed tensor-head products | typed-IR indexed tensor expression |
+| `AbstractExpression` | `YoungProject[...]`, `GarnirRelation[...]`, `YoungReduce[...]` | collected typed-IR indexed tensor sum |
+| `ComponentBasis` | `ComponentBasis[...]` | structured constructor with coordinates/basis |
+| `TensorComponents` | sparse realization of a `TensorHead` | typed component-index signature |
+| `Vector` | `Vector[{...}]`, matrix-vector operations | exact `List` |
+| `Matrix` | `Matrix[{{...},...}]`, exact linear operations | exact nested `List` |
+| `CoordinateMap` | `CoordinateMap[...]` | structured constructor |
+| `BasisTransition` | `BasisTransition[...]` | structured constructor |
+| `Atlas` | `Atlas[...]` | structured constructor |
 
 A form's expansion is real mathematics rather than a label: the coframe symbol
 of a coordinate is its name with a `d` in front, so a chart on `(r, theta)`
@@ -81,6 +92,195 @@ really is commutative.
 Assignment is `name = value`, distinguished from the equation `name == value` by
 one character of lookahead. `Set[name, value]` is the FullForm spelling.
 `Clear[name]` unbinds one name; `ClearAll[]` clears the environment.
+
+### Exact discrete functions
+
+| Spelling | Exact behavior |
+| --- | --- |
+| `Factorial[n]` | arbitrary-precision integer result for `0 <= n <= 512` |
+| `Pochhammer[a,n]`, `RisingFactorial[a,n]` | exact rational or bounded symbolic finite product for integer `n` |
+| `Binomial[a,n]` | exact generalized binomial coefficient or bounded symbolic finite product for integer `n` |
+| `BernoulliB[n]`, `Bernoulli[n]` | exact Bernoulli number for integer `0 <= n <= 64`, with `B_1=-1/2` |
+| `HarmonicNumber[n]`, `Harmonic[n]` | exact harmonic number for integer `0 <= n <= 4096` |
+| `Digamma[x]` | exact positive integer and half-integer values plus bounded symbolic integer-shift recurrence |
+| `Gamma[x]` | exact positive integers, positive half-integers and bounded symbolic integer shifts |
+
+Exact products admit at most 512 factors and symbolic expansions at most 64.
+Outside those ceilings the evaluator returns `PHY_ERR_TERM_LIMIT`; proved
+poles return `PHY_ERR_DOMAIN`, and unknown noninteger orders remain explicit.
+Bernoulli, harmonic and recurrence-specific ceilings are independent so a
+compact input cannot force an unbounded exact expansion.
+
+### Abstract tensors
+
+| Spelling | Backend |
+| --- | --- |
+| `IndexSpace[dimension, metric?]` | `phy_index_space_create` in the notebook's lazily owned abstract context |
+| `TensorHead[{spaces...}, property?, {generators...}?]` | `phy_tensor_head_create` plus signed generators |
+| `A[Down[i],Up[j],...]` | typed `phy_tensor_monomial` factor using the spaces declared by `A` |
+| products of indexed heads and scalar coefficients | exact monomial coefficient/factor merge and Einstein census |
+| `TensorCanonicalize[monomial]` | bounded signed BSGS double-coset canonicalizer |
+| `YoungProject[expression, factor?, {{slots...},...}, order?]` | normalized Young row/column projector and exact term collection |
+| `YoungDeclare[head,{{slots...},...},order?]` | attach a checked Young module without changing the signed slot group |
+| `YoungReduce[expression]` | project every factor carrying a declared Young module and collect exactly |
+| `GarnirRelation[monomial,factor,relation]` | construct one readable antisymmetrized Garnir relation |
+| `YoungDimension[{{slots...},...},dimension]` | exact hook-content dimension of the Schur module |
+
+`metric` is `NoMetric`, `SymmetricMetric`, or `AntisymmetricMetric`.
+`dimension` may be a positive concrete integer, a symbol, or a formal exact
+scalar expression assembled from symbols, integers/rationals and `+`, `*`,
+`^`. The last form records relations such as `N^2-1`; it is not a proof that
+the expression is positive and integral. A concrete component basis remains
+responsible for supplying a positive runtime dimension.
+`property` is `Commuting`, `NonCommuting`, or the rank-two shortcut
+`Symmetric`/`Antisymmetric`. General signed slot laws use one-based image
+notation, for example
+`Symmetry[{2,1,3},-1]`. Index names are scoped by their `IndexSpace`, and a
+direct application rejects an explicit `Down[i,W]` when that slot belongs to
+`V`. The evaluator owns and clears the entire abstract context with the
+notebook environment; returned monomials own their copied factor/index arrays,
+so canonical results do not dangle when an intermediate is swept.
+
+Factor, relation and tableau slot positions are one-based at the reader
+surface; the factor argument defaults to one. `order` is `RowLast` (the
+default) or `ColumnLast`. `YoungProject` returns a real multi-term abstract
+expression, not an inert operator: every generated monomial passes through the
+monoterm canonicalizer, equal structures are collected with exact
+coefficients, and the resulting sum uses the same MathTree renderer.
+`YoungDeclare` first proves every existing signed generator is manifest on the
+projector image. `YoungReduce` then supplies an equality gate modulo the
+projector kernel; for a `(2,2)` Riemann head the cyclic first-Bianchi sum
+reduces to a zero expression while retaining its four typed free indices.
+Exact factorial arithmetic bounds this surface to tableaux of at most 20
+slots; generated terms, result terms, steps and temporary bytes have separate
+device-oriented ceilings.
+
+### Exact vectors and matrices
+
+| Spelling | Backend/result |
+| --- | --- |
+| `Vector[{...}]` | runtime-length exact `phy_vector` |
+| `Matrix[{{...},...}]` | rectangular runtime-shape exact `phy_matrix` |
+| `Dot[v,w]` | exact vector dot product |
+| `Dot[A,B]`, `Dot[A,v]` | exact matrix product |
+| `Transpose[A]` | exact transpose |
+| `Determinant[A]`, `Inverse[A]` | exact determinant and inverse |
+| `RowReduce[A]`, `MatrixRank[A]` | exact RREF and algebraic rank |
+| `LinearSolve[A,b]` | exact square nonsingular solve with vector or matrix right side |
+
+Vectors and matrices have runtime shapes and share the scalar CAS for every
+entry. `Rank[v]`/`Rank[A]` report structural ranks 1/2;
+`MatrixRank[A]` reports algebraic rank. `Component`, `Dimensions`, `ZeroQ`,
+`EquivalentQ`, homogeneous addition and exact scalar multiplication all use
+the same objects. Matrix multiplication is explicit `Dot`, so ordinary
+commutative scalar multiplication never silently changes meaning.
+
+### Abstract/component bridge and coordinate changes
+
+```text
+V  = IndexSpace[2, SymmetricMetric]
+A  = TensorHead[{V,V}, Antisymmetric]
+xy = ComponentBasis[V,{x,y}]
+Ac = TensorComponents[A,{xy,xy},{Down,Down},{{{0,1},a}}]
+
+Component[Ac,1,0]
+ComponentValue[A[Down[i],Down[j]],{Ac},{0,1}]
+
+c  = Curvature[g]
+Rc = ComponentLift[Riemann[c],R,{xy,xy,xy,xy}]
+```
+
+`TensorComponents` stores only supplied canonical entries and applies the
+head's signed slot symmetries on set/get. Runtime rank is bounded by configured
+resources, not the legacy rank-four API. `ComponentValue` accepts a monomial
+or a collected abstract expression, an explicit list of realizations, and
+free-index coordinates in the expression's typed census order. It remaps each
+term by `(IndexSpace,name,variance)`, enumerates only dummy indices, and shares
+term/step/memory ceilings across the full sum. Abstract addition, exact scalar
+multiplication and distributive multiplication canonicalize and collect before
+publication; a zero expression retains its free-index signature.
+
+| Spelling | Native action |
+| --- | --- |
+| `ComponentBasis[V,{x,y}]`, `ComponentBasis[V,n]` | bind an index space to a concrete coordinate basis or unnamed basis |
+| `TensorComponents[head,{bases...},{Up/Down...},{{indices,value},...}]` | construct a sparse exact realization |
+| `ComponentLift[legacy,head,{bases...}]` | prove and import a legacy chart tensor, including `P_T(T)=T` when the head declares a Young module |
+| `ComponentValue[expression,{realizations...},{free coordinates...}]` | explicit expression-wide abstract-to-component evaluation |
+| `CoordinateMap[source,target,{target-in-source...}]` | exact coordinate map and Jacobian |
+| `BasisTransition[source,target,{forward...},{inverse...}]` | two maps proved inverse in both directions |
+| `Jacobian[F]` | exact dynamic matrix |
+| `PullbackScalar`, `PullbackCovector`, `PushForwardVector` | exact substitution/Jacobian action |
+| `TransitionPullback[tr,Tc]` | verified mixed-valence sparse tensor change of basis |
+| `Atlas[{charts...}]`, `AtlasAddTransition[...]`, `AtlasVerify[...]` | bounded chart registry with exact cocycle checks |
+| `AtlasPullback[atlas,source,target,Tc]` | registered-edge tensor pullback |
+
+No command changes basis implicitly. A component realization must match the
+transition's target basis in every slot, and an atlas pullback requires a
+registered verified edge. The dense transformation side is capped at 4096
+components; the result returns to sparse canonical storage.
+
+`ComponentLift` is the migration boundary for the existing GR/component
+backends. It requires an explicit abstract head and an explicit basis for every
+slot, copies no object merely by name, and verifies every dense source entry
+against the head's signed slot group before publishing. A stronger symmetry
+that the source does not satisfy is `PHY_ERR_ASSUMPTION`, with no partial
+realization retained. If the head has a Young declaration, every dense
+component is also checked against its normalized projector; this is what keeps
+multi-term identities from becoming unverified metadata.
+
+`GRComponents[curvature,{Weyl,RiemannUpper}]` performs that lift for the full
+GR result. `GRSpace`, `GRBasis`, `GRHead[view,quantity]` and
+`GRTensor[view,quantity]` return its borrowed abstract/component views.
+Christoffel, Riemann and Ricci are still produced by the proven dense GR
+algorithm. What has migrated is the consumer side: contractions and
+multi-term identities can use the shared abstract evaluator, and the Riemann,
+RiemannUpper and Weyl heads carry `(2,2)` declarations only after component
+import proves them.
+
+### QFT abstract/component system
+
+```text
+qft  = QFTSystem[3]
+L    = QFTSpace[qft,Lorentz]
+C    = QFTSpace[qft,ColorAdjoint]
+eta  = QFTHead[qft,MinkowskiMetric]
+etac = QFTTensor[qft,MinkowskiMetric]
+f    = QFTHead[qft,SUNF]
+fc   = QFTTensor[qft,SUNF]
+```
+
+| Spelling | Result |
+| --- | --- |
+| `QFTSystem[]`, `QFTSystem[N]` | structured shared view showing SU(N), typed spaces, heads, and exact tables; omitted `N` is the symbol `N` |
+| `QFTSpace[qft,Lorentz\|Spinor\|ColorAdjoint\|ColorFundamental]` | a typed `IndexSpace` |
+| `QFTBasis[qft,space]` | its concrete basis when available |
+| `QFTHead[qft,quantity]` | the shared abstract `TensorHead` |
+| `QFTTensor[qft,quantity]` | an exact sparse realization when available |
+
+The quantity selectors are `MinkowskiMetric`, `MinkowskiInverse`, `Momentum`,
+`DiracGamma`, `SUNDelta`, `SUNF`, `SUND`, `SUNT`, `GaugePotential`, and
+`FieldStrength`. Their slot spaces and monoterm symmetries are part of the
+heads: `SUNF` is totally antisymmetric, `SUND` totally symmetric, and
+`FieldStrength` antisymmetric in its two Lorentz slots. Gamma matrices and
+fundamental generators are noncommuting heads.
+
+The component boundary is intentionally narrower than the abstract one.
+Minkowski `diag(1,-1,-1,-1)` and its inverse are always bound. A concrete
+colour basis within the configured resource ceilings adds `SUNDelta`; the
+built-in SU(2)/SU(3) `SUNF` table is materialized only by its first
+`QFTTensor` request. That lazy path constructs and validates the Lie algebra
+once, rather than once per independent component. `SUND`, `SUNT`, gamma
+matrices and general SU(N) numerical generators are not fabricated:
+`QFTTensor` returns `PHY_ERR_NOT_INITIALIZED` for them. With symbolic `N`,
+`Dimension[QFTSpace[qft,ColorAdjoint]]` is exactly `N^2-1`, while colour
+component bases remain absent.
+
+This adapter does not replace the specialized Dirac trace, Mandelstam or
+colour-trace reducers. It gives their index vocabulary a single typed identity
+and lets the general canonicalizer/component evaluator check contractions and
+slot identities. As with `GRComponents`, one view owns its bases and
+realizations while the notebook's bulk abstract context owns its spaces and
+heads.
 
 ### Differential geometry
 
@@ -102,14 +302,16 @@ one character of lookahead. `Set[name, value]` is the FullForm spelling.
 `Lorentzian`/`Minkowski` — mostly-plus, per
 [`references/GENERAL_RELATIVITY.md`](references/GENERAL_RELATIVITY.md) — or an
 explicit list of `+1`/`-1`. `orientation` is `Positive` (the default),
-`Negative`, or `Unoriented`/`None`. A manifold carries exactly one chart:
-`geom.h` registers charts but does not relate them, so a second one buys nothing
-until a validated `phy_map` exists.
+`Negative`, or `Unoriented`/`None`. A legacy `Manifold` still carries one
+legacy `phy_chart`. Multi-chart work uses the separate
+`ComponentBasis`/`CoordinateMap`/`BasisTransition`/`Atlas` surface above,
+whose transitions and cocycles are validated before use.
 
 `ComponentTensor` has one variance marker per slot and one nested `List` level
 per slot. A rank-0 tensor takes a scalar component. The native bound is
 dimension 1 through 4, rank 0 through 4, hence at most 256 dense components;
-this is intentionally not an unbounded abstract-index tensor language.
+this remains the bounded dense component backend. Coordinate-free runtime rank
+belongs to the abstract surface above.
 
 ### Lie algebra
 
@@ -220,12 +422,14 @@ bounded to the textbook SU(2)/SU(3) tables; abstract `SUNF` works for symbolic
 
 ### Queries
 
-`Component[obj, indices...]`, `Degree[form]`, `Rank[tensor]`, `Dimension[obj]`,
-`ZeroQ[obj]`, `EquivalentQ[a, b]`, `MemoryStatus[]`.
+`Component[obj, indices...]`, `Degree[form]`, `Rank[obj]`, `Dimension[obj]`,
+`Dimensions[obj]`, `ZeroQ[obj]`, `EquivalentQ[a, b]`, `MemoryStatus[]`.
 
 `Component` of a Lie form takes the colour index first, then the form indices;
-a degree-0 form takes none. `Dimension` reports the underlying space where there
-is one, and the algebra or representation dimension otherwise.
+a degree-0 form takes none. `Dimension` reports the underlying space where
+there is one, and the algebra or representation dimension otherwise.
+`Dimensions` reports every concrete extent of vectors, matrices, legacy
+tensors, sparse component tensors and bases.
 
 The two decisions return the symbols `True`, `False` and `Unknown`, following
 `phy_cas_is_zero`: an undecided question stays visibly undecided instead of
@@ -237,8 +441,9 @@ collect; normal command evaluation already performs the object sweep.
 
 ### Structural algebra
 
-`alpha + beta` and `s * alpha` work on forms, algebra-valued forms and Lie
-elements, so `(g/2)*LieBracket[A, A]` reads as the formula it is. Subtraction
+`alpha + beta` and `s * alpha` work on forms, algebra-valued forms, Lie
+elements, vectors and matrices, so `(g/2)*LieBracket[A, A]` reads as the
+formula it is. Subtraction
 and division need no cases — the parser already writes `a - b` as `a + (-1)*b`
 and `a/2` as `a * 2^-1`. Sums are homogeneous, and a product admits at most one
 object factor, because the product of two forms is the wedge and has its own
@@ -260,9 +465,10 @@ manifolds, manifolds before charts, everything before the IR context.
 Evaluating a cell creates intermediates — `HodgeStar[Wedge[a, b]]` builds a
 wedge nobody names. After each command the environment sweeps: everything
 reachable from a binding or from the command's own result survives, the rest are
-destroyed newest-first. Reachability follows recorded dependencies, so binding a
-form keeps its manifold alive even when the manifold's own name was overwritten
-in the same cell. Survivors are then compacted with their order preserved, which
+destroyed newest-first. Reachability follows a bounded dependency bitmap, so a
+form keeps its manifold alive and a dynamic-rank tensor retains every distinct
+slot basis even after their own names are cleared. Survivors are then compacted
+with their order preserved, which
 is what keeps "created later" and "destroyed first" the same statement.
 
 The sweep runs on the failure path too. A command that failed half-way through a
@@ -324,7 +530,7 @@ its configured arenas.
 
 ## Verification
 
-`tests/test_eval.c`, 1,642 checks. The physics cases deliberately reproduce,
+`tests/test_eval.c`, 3,011 checks. The physics cases deliberately reproduce,
 through reader-facing source, results the backend suites already certify
 directly:
 
@@ -355,21 +561,33 @@ If the evaluator merely preserved operator heads, none of them would hold.
 The remaining cases cover state flow between cells, `Clear`/`ClearAll`, the
 capture rules, every typed-error path, the sweep's object accounting under
 rebinding and failure, the binding ceiling, and the notebook integration
-including save/reopen with descriptors.
+including save/reopen with structured physics objects.
 
 `tests/test_palette.c` additionally parses every CAS palette snippet, because a
 palette that inserts something the evaluator rejects is worse than no palette.
+The evaluator and supported source-command registries are public read-only
+enumerations used by the test: every one of the 109 evaluator heads and 18
+supported source commands must be named by at least one CAS insertion snippet.
+This makes adding a backend operation without adding a discoverable notebook
+entry a test failure.
 
 The ARM link check is `make eval-link-check` and
-`tests/device/eval_link_probe.c`: 15 declared entry points, the whole physics
+`tests/device/eval_link_probe.c`: 17 declared entry points, the whole physics
 stack behind one dispatcher, and the same no-float/no-libm/no-soft-float
-standard the CAS and geometry layers are held to. It now links 34 portable
-sources, retains 15/15 public evaluator entry points, contains no forbidden
-float/libm/soft-float dependency, and packages as a 156,328-byte isolated
+standard the CAS and geometry layers are held to. It now links 69 portable
+sources, retains 17/17 public evaluator entry points, contains no forbidden
+float/libm/soft-float dependency, and packages as a 375,600-byte isolated
 probe. That probe size includes its dependencies and is not an incremental
 product-size measurement.
 
 One consequence of this phase that the earlier link-check reports called out as
 future work has now happened: the application genuinely calls the geometry,
 Lie, Yang--Mills, and QFT layers, so `--gc-sections` no longer drops them.
-`dist/phy-nspire.tns` is currently 1,124,477 bytes.
+The preserved `dist-foundation/phy-nspire.tns` baseline is 1,173,026 bytes.
+The current `dist/phy-nspire.tns`, with the abstract tensor evaluator reachable,
+is 1,246,500 bytes (19.8% of the 6 MiB ceiling); the final ELF retains
+`phy_index_space_create`, `phy_tensor_head_create_with_symmetries`,
+`phy_tensor_monomial_create`, `phy_tensor_monomial_canonicalize`,
+`phy_tensor_monomial_young_project`, and
+`phy_tensor_expression_term_count`, together with the GR and QFT bridge entry
+points.

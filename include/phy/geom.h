@@ -46,24 +46,18 @@
  * The wedge product, the exterior derivative and the interior product need no
  * metric at all and carry no such restriction.
  *
- * NOT HERE: PULLBACK
+ * PULLBACK BOUNDARY
  *
- * phy_manifold registers more than one chart, but it does not relate them.
- * There are no transition maps, and there is therefore no pullback: F*(dy^a)
- * is sum_j (d phi^a / d x^j) dx^j, which needs a phi that is a *validated*
- * map object rather than a bag of expressions. Two requirements make that a
- * real design rather than a call to phy_cas_substitute:
+ * This fixed-size form API still requires operands to name the same legacy
+ * phy_chart. The dynamic basis layer in include/phy/map.h now supplies the
+ * previously missing validated map object: disjoint source/target coordinate
+ * ownership, exact Jacobians, verified two-way chart transitions, scalar
+ * pullback and covector pullback. A direct phy_form pullback is intentionally
+ * deferred until forms migrate to the dynamic basis representation.
  *
- *   - the source and target coordinate symbols must be provably disjoint, or
- *     substituting the target coordinates captures the source ones and
- *     silently returns a wrong answer;
- *   - the map's components must be validated against the source chart before
- *     any derivative is taken, so that a malformed map is a typed error and
- *     not an unevaluated PHY_IR_DERIVATIVE hiding in a result.
- *
- * Until a phy_map abstraction supplies both, every operation below requires
- * its operands to name the same chart, and mixing charts is PHY_ERR_TYPE
- * rather than an implicit and unjustified identification. See docs/GEOMETRY.md.
+ * Mixing legacy phy_form charts without an explicit dynamic conversion
+ * remains PHY_ERR_TYPE rather than an implicit identification. See
+ * docs/GEOMETRY.md.
  *
  * ERRORS
  *

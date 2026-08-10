@@ -326,6 +326,30 @@ static phy_status outer_derivative(phy_cas *cas, phy_ir_symbol head,
         }
         goto done;
     }
+    if (function == PHY_CAS_FN_FACTORIAL) {
+        /* Factorial(u) = Gamma(u+1) on its meromorphic continuation, hence
+           d/du Factorial(u) = Factorial(u) Digamma(u+1). */
+        phy_ir_ref shifted = PHY_IR_NULL;
+        const phy_ir_ref terms[2] = {argument, cas->one};
+        status = phy_cas_add_node(cas, terms, 2u, &shifted);
+        phy_ir_ref digamma = PHY_IR_NULL;
+        if (status == PHY_OK) {
+            status = unary_call(
+                cas, phy_ir_intern(cas->ir, "digamma"), shifted,
+                &digamma);
+        }
+        phy_ir_ref factorial = PHY_IR_NULL;
+        if (status == PHY_OK) {
+            status = unary_call(
+                cas, cas->functions[PHY_CAS_FN_FACTORIAL], argument,
+                &factorial);
+        }
+        if (status == PHY_OK) {
+            const phy_ir_ref factors[2] = {factorial, digamma};
+            status = phy_cas_mul_node(cas, factors, 2u, out_ref);
+        }
+        goto done;
+    }
     status = PHY_ERR_UNSUPPORTED;
 
 done:

@@ -8,6 +8,7 @@
 #ifndef PHY_SOURCE_H
 #define PHY_SOURCE_H
 
+#include <stdbool.h>
 #include <stddef.h>
 
 #include "phy/ir.h"
@@ -29,10 +30,20 @@ typedef enum {
     PHY_SOURCE_TOGETHER,
     PHY_SOURCE_CANCEL,
     PHY_SOURCE_FACTOR,
+    PHY_SOURCE_APART,
     PHY_SOURCE_NUMERATOR,
     PHY_SOURCE_DENOMINATOR,
     PHY_SOURCE_DIFFERENTIATE,
     PHY_SOURCE_INTEGRATE,
+    PHY_SOURCE_SERIES,
+    PHY_SOURCE_NORMAL,
+    PHY_SOURCE_LIMIT,
+    PHY_SOURCE_SOLVE,
+    PHY_SOURCE_RESULTANT,
+    PHY_SOURCE_DISCRIMINANT,
+    PHY_SOURCE_GROEBNER_BASIS,
+    PHY_SOURCE_NUMERIC,
+    PHY_SOURCE_NUMERIC_SOLVE,
 
     /*
      * The two operations that read and write the notebook environment rather
@@ -45,17 +56,36 @@ typedef enum {
 
 #define PHY_SOURCE_MAX_VARIABLES 8u
 
+typedef enum {
+    PHY_SOURCE_LIMIT_TWO_SIDED = 0,
+    PHY_SOURCE_LIMIT_FROM_ABOVE,
+    PHY_SOURCE_LIMIT_FROM_BELOW
+} phy_source_limit_direction;
+
 typedef struct {
     phy_source_operation operation;
     phy_ir_ref expression;
     phy_ir_ref variables[PHY_SOURCE_MAX_VARIABLES];
-    size_t variable_count; /* only for DIFFERENTIATE / INTEGRATE */
+    /*
+     * DIFFERENTIATE / INTEGRATE, one expansion symbol for SERIES/LIMIT, or
+     * the bounded list of unknowns of SOLVE.
+     */
+    size_t variable_count;
     /*
      * The name an ASSIGN binds or a CLEAR unbinds. PHY_IR_NO_SYMBOL for every
      * other operation, and for `ClearAll[]`, which clears the whole
      * environment. `expression` is PHY_IR_NULL for CLEAR and only for CLEAR.
      */
     phy_ir_symbol target;
+    /*
+     * Typed Series specification. For SERIES, variables[0] is the expansion
+     * symbol, parameter is the exact center, and series_order is the highest
+     * retained power. Other operations leave these fields zero/null.
+     */
+    phy_ir_ref parameter;
+    unsigned series_order;
+    bool normal_series; /* Normal[Series[...]] combined reader action */
+    phy_source_limit_direction limit_direction;
 } phy_source_command;
 
 /*
@@ -72,6 +102,14 @@ typedef struct {
 phy_status phy_source_parse(phy_ir_context *ir, const char *source,
                             phy_source_command *out_command,
                             size_t *out_error_offset);
+
+/*
+ * Implemented top-level source commands, excluding the reserved commands that
+ * deliberately return PHY_ERR_UNSUPPORTED.  This is also the MENU coverage
+ * contract.
+ */
+size_t phy_source_supported_command_count(void);
+const char *phy_source_supported_command_name(size_t index);
 
 #ifdef __cplusplus
 }

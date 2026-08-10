@@ -69,15 +69,6 @@ static void emit_u64(writer *w, uint64_t value)
     }
 }
 
-static void emit_i64(writer *w, int64_t value)
-{
-    if (value < 0) {
-        emit_char(w, '-');
-    }
-    /* Unsigned negation, so INT64_MIN needs no special case. */
-    emit_u64(w, (value < 0) ? (~(uint64_t)value + 1u) : (uint64_t)value);
-}
-
 static void emit_hex64(writer *w, uint64_t value)
 {
     static const char kDigits[] = "0123456789abcdef";
@@ -142,20 +133,30 @@ static void write_expr(writer *w, const phy_ir_context *ctx, phy_ir_ref ref)
     const phy_ir_kind kind = (phy_ir_kind)node->kind;
 
     switch (kind) {
-    case PHY_IR_INTEGER:
-        emit_i64(w, node->u.integer);
+    case PHY_IR_INTEGER: {
+        phy_ir_exact_view exact;
+        if (!phy_ir_exact_decimal_view(ctx, ref, &exact)) {
+            emit_char(w, '0');
+            return;
+        }
+        emit(w, exact.numerator, exact.numerator_length);
         return;
+    }
 
     case PHY_IR_SYMBOL:
         emit_name(w, ctx, node->head);
         return;
 
     case PHY_IR_RATIONAL: {
-        const phy_ir_rat *rat = phy_ir_rat_at(ctx, node->u.rational_index);
+        phy_ir_exact_view exact;
         emit_cstr(w, "(rat ");
-        emit_i64(w, (rat != NULL) ? rat->numerator : 0);
+        if (!phy_ir_exact_decimal_view(ctx, ref, &exact)) {
+            emit_cstr(w, "0 1)");
+            return;
+        }
+        emit(w, exact.numerator, exact.numerator_length);
         emit_char(w, ' ');
-        emit_i64(w, (rat != NULL) ? rat->denominator : 1);
+        emit(w, exact.denominator, exact.denominator_length);
         emit_char(w, ')');
         return;
     }
@@ -450,6 +451,24 @@ static phy_ir_symbol read_symbol(reader *r)
     return sym;
 }
 
+static bool read_bare_span(reader *r, const char **out_text,
+                           size_t *out_length)
+{
+    skip_space(r);
+    const size_t start = r->at;
+    while (r->at < r->length &&
+           !is_terminator((unsigned char)r->text[r->at])) {
+        r->at++;
+    }
+    if (r->at == start) {
+        fail(r, PHY_ERR_PARSE);
+        return false;
+    }
+    *out_text = r->text + start;
+    *out_length = r->at - start;
+    return true;
+}
+
 static bool token_to_i64(const char *token, size_t length, int64_t *out_value)
 {
     if (length == 0u) {
@@ -487,6 +506,23 @@ static bool token_to_i64(const char *token, size_t length, int64_t *out_value)
             (value == (uint64_t)INT64_MAX + 1u) ? INT64_MIN : -(int64_t)value;
     } else {
         *out_value = (int64_t)value;
+    }
+    return true;
+}
+
+static bool token_is_decimal_integer(const char *token, size_t length)
+{
+    if (length == 0u) {
+        return false;
+    }
+    size_t at = token[0] == '-' || token[0] == '+' ? 1u : 0u;
+    if (at == length) {
+        return false;
+    }
+    for (; at < length; ++at) {
+        if (token[at] < '0' || token[at] > '9') {
+            return false;
+        }
     }
     return true;
 }
@@ -674,12 +710,24 @@ static phy_ir_ref parse_list(reader *r)
     phy_ir_ref result = PHY_IR_NULL;
     switch (kind) {
     case PHY_IR_RATIONAL: {
-        const int64_t numerator = read_i64(r);
-        const int64_t denominator = read_i64(r);
-        if (r->error != PHY_OK) {
+        const char *numerator = NULL;
+        const char *denominator = NULL;
+        size_t numerator_length = 0u;
+        size_t denominator_length = 0u;
+        if (!read_bare_span(r, &numerator, &numerator_length) ||
+            !read_bare_span(
+                r, &denominator, &denominator_length)) {
             return PHY_IR_NULL;
         }
-        result = phy_ir_rational(r->ctx, numerator, denominator);
+        if (!token_is_decimal_integer(numerator, numerator_length) ||
+            !token_is_decimal_integer(
+                denominator, denominator_length)) {
+            fail(r, PHY_ERR_PARSE);
+            return PHY_IR_NULL;
+        }
+        result = phy_ir_rational_text_n(
+            r->ctx, numerator, numerator_length, denominator,
+            denominator_length);
         break;
     }
 
@@ -789,14 +837,17 @@ static phy_ir_ref parse_expr(reader *r)
     /* A bare token is either an integer or a symbol. */
     const char first = r->text[r->at];
     if (first == '-' || (first >= '0' && first <= '9')) {
-        char token[32];
-        const size_t length = read_token(r, token, sizeof token);
-        int64_t value = 0;
-        if (length == 0u || !token_to_i64(token, length, &value)) {
+        const char *token = NULL;
+        size_t length = 0u;
+        if (!read_bare_span(r, &token, &length)) {
+            return PHY_IR_NULL;
+        }
+        if (!token_is_decimal_integer(token, length)) {
             fail(r, PHY_ERR_PARSE);
             return PHY_IR_NULL;
         }
-        const phy_ir_ref ref = phy_ir_integer(r->ctx, value);
+        const phy_ir_ref ref =
+            phy_ir_integer_text_n(r->ctx, token, length);
         if (ref == PHY_IR_NULL) {
             fail(r, phy_ir_last_error(r->ctx));
         }

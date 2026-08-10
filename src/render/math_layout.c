@@ -42,6 +42,24 @@ static const char *function_display_name(const char *name)
     if (strcmp(name, "loggamma") == 0) {
         return "LogGamma";
     }
+    if (strcmp(name, "factorial") == 0) {
+        return "Factorial";
+    }
+    if (strcmp(name, "pochhammer") == 0) {
+        return "Pochhammer";
+    }
+    if (strcmp(name, "binomial") == 0) {
+        return "Binomial";
+    }
+    if (strcmp(name, "digamma") == 0) {
+        return "Digamma";
+    }
+    if (strcmp(name, "bernoulli") == 0) {
+        return "BernoulliB";
+    }
+    if (strcmp(name, "harmonic") == 0) {
+        return "HarmonicNumber";
+    }
     return name;
 }
 

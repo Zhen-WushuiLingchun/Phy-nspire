@@ -6,7 +6,8 @@
  *
  * The layer is deliberately split the way src/ir is:
  *
- *   num.c       exact int64 rational arithmetic, no IR, no allocation;
+ *   num.c       checked int64 rational fast path, no IR, no allocation;
+ *   big_num.c   bounded arbitrary-precision promotion for exact IR atoms;
  *   engine.c    context, budget, memo cache, scratch arena, small predicates;
  *   simplify.c  the rewrite rules and the simplifying constructors;
  *   diff.c      differentiation and the dependence test it needs;
@@ -22,6 +23,7 @@
 #define PHY_CAS_INTERNAL_H
 
 #include "phy/cas.h"
+#include "phy/exact.h"
 
 /* ------------------------------------------------------- exact rationals */
 
@@ -29,11 +31,9 @@
  * An exact rational in flight. Reduced, denominator strictly positive, so
  * `den == 1` is an integer and the pair is unique for a value.
  *
- * The IR stores numbers as nodes; this is the arithmetic form, used between
- * reading operands and building the result. Every operation on it reports
- * overflow rather than wrapping, because the alternative to an int64 ceiling is
- * a bignum, and docs/IR.md is explicit that bignums are a later addition with a
- * known shape.
+ * The IR stores numbers as nodes; this is the allocation-free fast arithmetic
+ * form used while every operand and result fits. Overflow here is a request to
+ * use big_num.c's bounded promotion bridge, not permission to wrap.
  */
 typedef struct {
     int64_t num;
@@ -47,6 +47,38 @@ bool phy_cas_rat_pow(phy_cas_rat base, int64_t exponent, phy_cas_rat *out);
 
 /* Sign of a - value, where `value` is an integer. */
 int phy_cas_rat_cmp_int(phy_cas_rat a, int64_t value);
+
+/*
+ * Promotion bridge for exact IR atoms. These preserve the small int64 fast
+ * path but evaluate wider operands through the bounded exact-number context.
+ */
+phy_status phy_cas_exact_add_refs(phy_cas *cas, phy_ir_ref left,
+                                  phy_ir_ref right, phy_ir_ref *out_ref);
+phy_status phy_cas_exact_sub_refs(phy_cas *cas, phy_ir_ref left,
+                                  phy_ir_ref right, phy_ir_ref *out_ref);
+phy_status phy_cas_exact_mul_refs(phy_cas *cas, phy_ir_ref left,
+                                  phy_ir_ref right, phy_ir_ref *out_ref);
+phy_status phy_cas_exact_div_refs(phy_cas *cas, phy_ir_ref left,
+                                  phy_ir_ref right, phy_ir_ref *out_ref);
+phy_status phy_cas_exact_pow_ref(phy_cas *cas, phy_ir_ref base,
+                                 int64_t exponent, phy_ir_ref *out_ref);
+phy_status phy_cas_exact_mod_u32_ref(phy_cas *cas, phy_ir_ref integer,
+                                     uint32_t modulus,
+                                     uint32_t *out_remainder);
+int phy_cas_exact_sign_ref(const phy_cas *cas, phy_ir_ref ref);
+
+/*
+ * Shared by the Gaussian-rational bridge.  These are CAS-internal helpers,
+ * not a second public exact-number API: the operation context inherits the
+ * active CAS resource and cancellation ceilings, load accepts only an exact
+ * IR atom, and publish returns one canonical exact IR atom.
+ */
+phy_exact_context *phy_cas_exact_operation_context(phy_cas *cas);
+phy_status phy_cas_exact_load_ref(phy_cas *cas, phy_exact_context *exact,
+                                  phy_ir_ref ref, phy_bigrat *out_value);
+phy_status phy_cas_exact_publish_bigrat(phy_cas *cas,
+                                        const phy_bigrat *value,
+                                        phy_ir_ref *out_ref);
 
 /* ------------------------------------------------------------ memo cache */
 
@@ -111,8 +143,49 @@ typedef enum {
     PHY_CAS_FN_LOGGAMMA,
     PHY_CAS_FN_ERF,
     PHY_CAS_FN_ERFC,
+    PHY_CAS_FN_FACTORIAL,
+    PHY_CAS_FN_POCHHAMMER,
+    PHY_CAS_FN_BINOMIAL,
+    PHY_CAS_FN_BERNOULLI,
+    PHY_CAS_FN_HARMONIC,
+    PHY_CAS_FN_DIGAMMA,
     PHY_CAS_FN_COUNT
 } phy_cas_function;
+
+typedef enum {
+    PHY_CAS_PARITY_NONE = 0,
+    PHY_CAS_PARITY_EVEN,
+    PHY_CAS_PARITY_ODD
+} phy_cas_function_parity;
+
+typedef enum {
+    PHY_CAS_ZERO_VALUE_EXPLICIT = 0,
+    PHY_CAS_ZERO_VALUE_ZERO,
+    PHY_CAS_ZERO_VALUE_ONE,
+    PHY_CAS_ZERO_VALUE_DOMAIN
+} phy_cas_zero_value;
+
+enum {
+    PHY_CAS_SINGULAR_NONE = 0u,
+    PHY_CAS_SINGULAR_AT_UNIT_ENDPOINTS = 1u << 0,
+    PHY_CAS_SINGULAR_AT_NONPOSITIVE_INTEGERS = 1u << 1
+};
+
+/*
+ * Algebraic properties shared by simplification, zero proofs and tests.
+ *
+ * Keeping these facts next to the canonical function name prevents a new
+ * elementary function from being added to several unrelated hand-written
+ * branches with inconsistent parity or domain semantics.
+ */
+typedef struct {
+    const char *name;
+    phy_cas_function_parity parity;
+    phy_cas_zero_value zero_value;
+    uint8_t singularities;
+    bool nonzero_where_defined;
+    uint8_t arity;
+} phy_cas_function_descriptor;
 
 struct phy_cas {
     phy_ir_context *ir;
@@ -131,6 +204,10 @@ struct phy_cas {
     /* Heads of the functions this layer knows, interned at creation. */
     phy_ir_symbol functions[PHY_CAS_FN_COUNT];
     phy_ir_symbol fn_integrate;
+    phy_ir_symbol fn_re;
+    phy_ir_symbol fn_im;
+    phy_ir_symbol fn_conjugate;
+    phy_ir_symbol fn_abs;
 
     phy_ir_ref zero;
     phy_ir_ref one;
@@ -152,6 +229,7 @@ struct phy_cas {
  * expression size.
  */
 phy_status phy_cas_step(phy_cas *cas);
+phy_status phy_cas_charge(phy_cas *cas, uint32_t amount);
 
 /* Resets the per-operation step count. Called by public entry points only. */
 void phy_cas_begin(phy_cas *cas);
@@ -218,6 +296,8 @@ phy_ir_symbol phy_cas_known_function(const phy_cas *cas, phy_ir_ref ref);
 bool phy_cas_is_known_head(const phy_cas *cas, phy_ir_symbol head);
 phy_cas_function phy_cas_function_id(const phy_cas *cas, phy_ir_symbol head);
 phy_cas_function phy_cas_function_of(const phy_cas *cas, phy_ir_ref ref);
+const phy_cas_function_descriptor *
+phy_cas_function_descriptor_for(phy_cas_function function);
 
 /* True for kinds this scalar layer treats as opaque: tensors, operators,
    noncommutative products, wedges, unevaluated derivatives, indices. */
@@ -259,9 +339,27 @@ phy_status phy_cas_mul_node(phy_cas *cas, const phy_ir_ref *factors,
                             size_t count, phy_ir_ref *out_ref);
 phy_status phy_cas_pow_node(phy_cas *cas, phy_ir_ref base, phy_ir_ref exponent,
                             phy_ir_ref *out_ref);
+phy_status phy_cas_substitute_node(phy_cas *cas, phy_ir_ref expr,
+                                   const phy_cas_rule *rules, size_t count,
+                                   phy_ir_ref *out_ref);
 
 /* -1 * value, simplified. The IR has no negation and no subtraction. */
 phy_status phy_cas_neg_node(phy_cas *cas, phy_ir_ref value, phy_ir_ref *out_ref);
+
+/*
+ * Exact Q(i) folding.  The list bridge is called only after its operands have
+ * been simplified; it reports `matched=false` unless every operand is an exact
+ * Gaussian rational and at least one contains I.
+ */
+phy_status phy_cas_gaussian_fold_at(phy_cas *cas, size_t offset, size_t count,
+                                    bool sum, phy_ir_ref *out_ref,
+                                    bool *out_matched);
+phy_status phy_cas_gaussian_pow_node(phy_cas *cas, phy_ir_ref base,
+                                     int64_t exponent, phy_ir_ref *out_ref,
+                                     bool *out_matched);
+phy_status phy_cas_gaussian_function(phy_cas *cas, phy_ir_symbol head,
+                                     phy_ir_ref argument, phy_ir_ref *out_ref,
+                                     bool *out_matched);
 
 /*
  * Rebuild `kind` from `count` already-simplified operands in the arena,
@@ -271,6 +369,18 @@ phy_status phy_cas_neg_node(phy_cas *cas, phy_ir_ref value, phy_ir_ref *out_ref)
 phy_status phy_cas_rebuild_at(phy_cas *cas, phy_ir_kind kind,
                               phy_ir_symbol head, size_t offset, size_t count,
                               phy_ir_ref *out_ref);
+
+/*
+ * Exact bounded discrete special functions.  `out_matched` is false when the
+ * arguments are outside the implemented exact/symbolic class, in which case
+ * the caller preserves the function application unchanged.  A true value
+ * means the operation owns the result status, including domain and resource
+ * failures.
+ */
+phy_status phy_cas_discrete_function(
+    phy_cas *cas, phy_cas_function function,
+    const phy_ir_ref *arguments, size_t count,
+    phy_ir_ref *out_ref, bool *out_matched);
 
 /* --------------------------------------------------------------- diff.c */
 
@@ -301,6 +411,8 @@ phy_status phy_cas_rational_node(phy_cas *cas, phy_ir_ref expr,
 phy_status phy_cas_rational_reduced_node(phy_cas *cas, phy_ir_ref expr,
                                          phy_ir_ref *out_numerator,
                                          phy_ir_ref *out_denominator);
+phy_status phy_cas_decide_zero_node(phy_cas *cas, phy_ir_ref expr,
+                                    phy_cas_decision *out_decision);
 
 /* --------------------------------------------------------------- reduce.c */
 
@@ -321,6 +433,28 @@ phy_status phy_cas_cancel_known_factors(phy_cas *cas, phy_ir_ref numerator,
                                         phy_ir_ref denominator,
                                         phy_ir_ref *out_num,
                                         phy_ir_ref *out_den);
+
+/*
+ * Candidate roots of one exact polynomial. The implementation lives beside
+ * the Q[x] factorizer so Solve cannot drift into a second polynomial kernel.
+ * Roots are distinct and sorted structurally. The helper does not reset the
+ * public operation budget.
+ */
+#define PHY_CAS_POLYNOMIAL_MAX_ROOTS 48u
+
+typedef struct {
+    size_t count;
+    phy_ir_ref values[PHY_CAS_POLYNOMIAL_MAX_ROOTS];
+    bool certified_algebraic[PHY_CAS_POLYNOMIAL_MAX_ROOTS];
+} phy_cas_root_set;
+
+phy_status phy_cas_polynomial_roots_node(phy_cas *cas,
+                                         phy_ir_ref polynomial,
+                                         phy_ir_ref variable,
+                                         phy_cas_root_set *out_roots);
+phy_status phy_cas_polynomials_coprime_node(
+    phy_cas *cas, phy_ir_ref left, phy_ir_ref right,
+    phy_ir_ref variable, bool *out_coprime);
 
 /*
  * Largest |k| for which sin(k*u) and cos(k*u) are expanded into polynomials in

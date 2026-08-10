@@ -24,6 +24,69 @@
 #define PHY_CAS_CANCEL_MASK 255u /* poll the cancel hook every 256 steps */
 #define PHY_CAS_CACHE_INITIAL 128u
 
+/*
+ * One authoritative property row per canonical elementary head.
+ *
+ * `zero_value` describes the exact argument zero only; functions with another
+ * special value (acos(0), acosh(1), Gamma(1/2), ...) keep that constructive
+ * rule in simplify.c. `singularities` contains only points this bounded exact
+ * layer can prove from the argument's current representation.
+ */
+static const phy_cas_function_descriptor
+    k_function_descriptors[PHY_CAS_FN_COUNT] = {
+        {NULL, PHY_CAS_PARITY_NONE, PHY_CAS_ZERO_VALUE_EXPLICIT,
+         PHY_CAS_SINGULAR_NONE, false, 0u},
+        {"sin", PHY_CAS_PARITY_ODD, PHY_CAS_ZERO_VALUE_ZERO,
+         PHY_CAS_SINGULAR_NONE, false, 1u},
+        {"cos", PHY_CAS_PARITY_EVEN, PHY_CAS_ZERO_VALUE_ONE,
+         PHY_CAS_SINGULAR_NONE, false, 1u},
+        {"tan", PHY_CAS_PARITY_ODD, PHY_CAS_ZERO_VALUE_ZERO,
+         PHY_CAS_SINGULAR_NONE, false, 1u},
+        {"exp", PHY_CAS_PARITY_NONE, PHY_CAS_ZERO_VALUE_ONE,
+         PHY_CAS_SINGULAR_NONE, true, 1u},
+        {"log", PHY_CAS_PARITY_NONE, PHY_CAS_ZERO_VALUE_DOMAIN,
+         PHY_CAS_SINGULAR_NONE, false, 1u},
+        {"asin", PHY_CAS_PARITY_ODD, PHY_CAS_ZERO_VALUE_ZERO,
+         PHY_CAS_SINGULAR_NONE, false, 1u},
+        {"acos", PHY_CAS_PARITY_NONE, PHY_CAS_ZERO_VALUE_EXPLICIT,
+         PHY_CAS_SINGULAR_NONE, false, 1u},
+        {"atan", PHY_CAS_PARITY_ODD, PHY_CAS_ZERO_VALUE_ZERO,
+         PHY_CAS_SINGULAR_NONE, false, 1u},
+        {"sinh", PHY_CAS_PARITY_ODD, PHY_CAS_ZERO_VALUE_ZERO,
+         PHY_CAS_SINGULAR_NONE, false, 1u},
+        {"cosh", PHY_CAS_PARITY_EVEN, PHY_CAS_ZERO_VALUE_ONE,
+         PHY_CAS_SINGULAR_NONE, false, 1u},
+        {"tanh", PHY_CAS_PARITY_ODD, PHY_CAS_ZERO_VALUE_ZERO,
+         PHY_CAS_SINGULAR_NONE, false, 1u},
+        {"asinh", PHY_CAS_PARITY_ODD, PHY_CAS_ZERO_VALUE_ZERO,
+         PHY_CAS_SINGULAR_NONE, false, 1u},
+        {"acosh", PHY_CAS_PARITY_NONE, PHY_CAS_ZERO_VALUE_EXPLICIT,
+         PHY_CAS_SINGULAR_NONE, false, 1u},
+        {"atanh", PHY_CAS_PARITY_ODD, PHY_CAS_ZERO_VALUE_ZERO,
+         PHY_CAS_SINGULAR_AT_UNIT_ENDPOINTS, false, 1u},
+        {"gammafn", PHY_CAS_PARITY_NONE, PHY_CAS_ZERO_VALUE_DOMAIN,
+         PHY_CAS_SINGULAR_AT_NONPOSITIVE_INTEGERS, true, 1u},
+        {"loggamma", PHY_CAS_PARITY_NONE, PHY_CAS_ZERO_VALUE_DOMAIN,
+         PHY_CAS_SINGULAR_AT_NONPOSITIVE_INTEGERS, false, 1u},
+        {"erf", PHY_CAS_PARITY_ODD, PHY_CAS_ZERO_VALUE_ZERO,
+         PHY_CAS_SINGULAR_NONE, false, 1u},
+        {"erfc", PHY_CAS_PARITY_NONE, PHY_CAS_ZERO_VALUE_ONE,
+         PHY_CAS_SINGULAR_NONE, false, 1u},
+        {"factorial", PHY_CAS_PARITY_NONE, PHY_CAS_ZERO_VALUE_ONE,
+         PHY_CAS_SINGULAR_NONE, true, 1u},
+        {"pochhammer", PHY_CAS_PARITY_NONE,
+         PHY_CAS_ZERO_VALUE_EXPLICIT, PHY_CAS_SINGULAR_NONE, false, 2u},
+        {"binomial", PHY_CAS_PARITY_NONE,
+         PHY_CAS_ZERO_VALUE_EXPLICIT, PHY_CAS_SINGULAR_NONE, false, 2u},
+        {"bernoulli", PHY_CAS_PARITY_NONE,
+         PHY_CAS_ZERO_VALUE_ONE, PHY_CAS_SINGULAR_NONE, false, 1u},
+        {"harmonic", PHY_CAS_PARITY_NONE,
+         PHY_CAS_ZERO_VALUE_ZERO, PHY_CAS_SINGULAR_NONE, false, 1u},
+        {"digamma", PHY_CAS_PARITY_NONE,
+         PHY_CAS_ZERO_VALUE_DOMAIN,
+         PHY_CAS_SINGULAR_AT_NONPOSITIVE_INTEGERS, false, 1u},
+    };
+
 /* --------------------------------------------------------------- byte budget */
 
 static bool charge(phy_cas *cas, size_t extra)
@@ -147,16 +210,15 @@ phy_cas *phy_cas_create(phy_ir_context *ir, const phy_cas_limits *limits)
      * comparison; building 0, 1 and -1 here keeps the rules from re-deriving
      * them on every fold.
      */
-    static const char *const kFunctionNames[PHY_CAS_FN_COUNT] = {
-        NULL,   "sin",  "cos",  "tan",   "exp",
-        "log",  "asin", "acos", "atan",  "sinh",
-        "cosh", "tanh", "asinh", "acosh", "atanh",
-        "gammafn", "loggamma", "erf", "erfc",
-    };
     for (size_t index = 1u; index < PHY_CAS_FN_COUNT; ++index) {
-        cas->functions[index] = phy_ir_intern(ir, kFunctionNames[index]);
+        cas->functions[index] =
+            phy_ir_intern(ir, k_function_descriptors[index].name);
     }
     cas->fn_integrate = phy_ir_intern(ir, "Integrate");
+    cas->fn_re = phy_ir_intern(ir, "Re");
+    cas->fn_im = phy_ir_intern(ir, "Im");
+    cas->fn_conjugate = phy_ir_intern(ir, "Conjugate");
+    cas->fn_abs = phy_ir_intern(ir, "Abs");
     cas->zero = phy_ir_integer(ir, 0);
     cas->one = phy_ir_integer(ir, 1);
     cas->minus_one = phy_ir_integer(ir, -1);
@@ -194,6 +256,10 @@ phy_cas *phy_cas_create(phy_ir_context *ir, const phy_cas_limits *limits)
     }
     if (!functions_ok || !constants_ok ||
         cas->fn_integrate == PHY_IR_NO_SYMBOL ||
+        cas->fn_re == PHY_IR_NO_SYMBOL ||
+        cas->fn_im == PHY_IR_NO_SYMBOL ||
+        cas->fn_conjugate == PHY_IR_NO_SYMBOL ||
+        cas->fn_abs == PHY_IR_NO_SYMBOL ||
         cas->zero == PHY_IR_NULL || cas->one == PHY_IR_NULL ||
         cas->minus_one == PHY_IR_NULL) {
         phy_cas_destroy(cas);
@@ -250,17 +316,24 @@ void phy_cas_begin(phy_cas *cas)
 
 phy_status phy_cas_step(phy_cas *cas)
 {
-    if (cas->steps >= cas->limits.max_steps) {
+    return phy_cas_charge(cas, 1u);
+}
+
+phy_status phy_cas_charge(phy_cas *cas, uint32_t amount)
+{
+    if (amount > cas->limits.max_steps - cas->steps) {
         return PHY_ERR_TIMEOUT;
     }
-    cas->steps++;
-    cas->total_steps++;
+    const uint32_t previous = cas->steps;
+    cas->steps += amount;
+    cas->total_steps += amount;
     /*
      * Polling every step would make an interactive cancel cost a call per node.
      * Every 256 is far below anything a user perceives and far above the cost of
      * asking.
      */
-    if (cas->cancelled != NULL && (cas->steps & PHY_CAS_CANCEL_MASK) == 0u &&
+    if (cas->cancelled != NULL &&
+        (previous >> 8u) != (cas->steps >> 8u) &&
         cas->cancelled(cas->cancel_user)) {
         return PHY_ERR_INTERRUPTED;
     }
@@ -620,6 +693,15 @@ phy_cas_function phy_cas_function_of(const phy_cas *cas, phy_ir_ref ref)
     return phy_cas_function_id(cas, phy_ir_head(cas->ir, ref));
 }
 
+const phy_cas_function_descriptor *
+phy_cas_function_descriptor_for(phy_cas_function function)
+{
+    if (function <= PHY_CAS_FN_INVALID || function >= PHY_CAS_FN_COUNT) {
+        return NULL;
+    }
+    return &k_function_descriptors[function];
+}
+
 phy_ir_symbol phy_cas_known_function(const phy_cas *cas, phy_ir_ref ref)
 {
     if (phy_ir_kind_of(cas->ir, ref) != PHY_IR_FUNCTION ||
@@ -638,6 +720,9 @@ bool phy_cas_known_nonzero(const phy_cas *cas, phy_ir_ref ref)
     phy_cas_rat value;
     if (phy_cas_exact_value(cas, ref, &value)) {
         return value.num != 0;
+    }
+    if (phy_cas_is_exact(cas, ref)) {
+        return phy_cas_exact_sign_ref(cas, ref) != 0;
     }
 
     switch (phy_ir_kind_of(ir, ref)) {
@@ -667,8 +752,12 @@ bool phy_cas_known_nonzero(const phy_cas *cas, phy_ir_ref ref)
         return phy_cas_known_nonzero(cas, phy_ir_child(ir, ref, 0u));
 
     case PHY_IR_FUNCTION:
-        /* exp never vanishes. The other known functions do. */
-        return phy_cas_function_of(cas, ref) == PHY_CAS_FN_EXP;
+    {
+        const phy_cas_function_descriptor *descriptor =
+            phy_cas_function_descriptor_for(
+                phy_cas_function_of(cas, ref));
+        return descriptor != NULL && descriptor->nonzero_where_defined;
+    }
 
     default:
         /* Sums included: deciding a sum is the zero decision, and answering it

@@ -12,11 +12,16 @@
 #   size-report    installed size against the 5-6 MB budget
 #   symbol-report  largest symbols in the ELF
 #   ir-link-check  prove the expression IR links on device
-#   tensor-link-check  prove the component tensor core links on device
+#   exact-link-check prove every bigint/bigrat entry point links on device
+#   ball-link-check prove certified real-ball arithmetic links on device
+#   tensor-link-check  prove the legacy component tensor core links on device
+#   component-bridge-link-check prove the dynamic component bridge links
 #   cas-link-check prove the scalar CAS links on device
+#   algebraic-link-check prove certified real algebraic arithmetic links
 #   geom-link-check    prove manifolds and differential forms link on device
 #   ym-link-check      prove Yang-Mills and all dependencies link on device
 #   color-link-check   prove exact SU(N) colour algebra links on device
+#   qft-bridge-link-check prove QFT abstract/component bridge links on device
 #   eval-link-check    prove the stateful evaluator and its whole backend
 #                      stack link on device
 #   cas-smoke      build an observable on-device symbolic CAS acceptance test
@@ -51,12 +56,14 @@ NMARKDOWN_CPPFLAGS := -I$(NMARKDOWN_ROOT)/include \
 
 GCCFLAGS := -Wall -Wextra -Wshadow -Wpointer-arith -std=c11 -marm \
             -ffunction-sections -fdata-sections -Iinclude -Isrc/gfx -Isrc/ir \
-            -Isrc/tensor -Isrc/cas -Isrc/geom -Isrc/eval -Isrc/notebook \
-            -Isrc/render -Isrc/storage \
+            -Isrc/tensor -Isrc/linear -Isrc/abstract -Isrc/component -Isrc/permutation \
+            -Isrc/cas -Isrc/geom -Isrc/eval -Isrc/notebook -Isrc/render \
+            -Isrc/storage \
             $(NMARKDOWN_CPPFLAGS)
 CXXFLAGS := -Wall -Wextra -Wpedantic -std=c++17 -marm \
             -ffunction-sections -fdata-sections -fexceptions -fno-rtti \
-            -Iinclude -Isrc/gfx -Isrc/ir -Isrc/tensor -Isrc/cas -Isrc/geom \
+            -Iinclude -Isrc/gfx -Isrc/ir -Isrc/tensor -Isrc/linear \
+            -Isrc/abstract -Isrc/component -Isrc/permutation -Isrc/cas -Isrc/geom \
             -Isrc/eval -Isrc/notebook -Isrc/render -Isrc/storage \
             $(NMARKDOWN_CPPFLAGS)
 # The Ndless ldscript intentionally produces a single RWX load segment, which
@@ -101,15 +108,50 @@ SOURCES := \
     src/tensor/symmetry.c \
     src/tensor/tensor.c \
     src/tensor/ops.c \
+    src/linear/matrix.c \
+    src/linear/elimination.c \
+    src/abstract/index.c \
+    src/abstract/head.c \
+    src/abstract/monomial.c \
+    src/abstract/canonical.c \
+    src/abstract/dgs.c \
+    src/abstract/young.c \
+    src/abstract/garnir.c \
+    src/component/basis.c \
+    src/component/component.c \
+    src/component/bridge.c \
+    src/component/map.c \
+    src/component/atlas.c \
+    src/permutation/perm.c \
+    src/permutation/bsgs.c \
+    src/permutation/orbit.c \
     src/gr/gr.c \
+    src/gr/bridge.c \
     src/lie/lie.c \
     src/qft/scalar.c \
     src/qft/lorentz.c \
     src/qft/dirac.c \
     src/qft/mandelstam.c \
     src/qft/color.c \
+    src/qft/bridge.c \
+    src/exact/context.c \
+    src/exact/integer.c \
+    src/exact/rational.c \
+    src/exact/ball.c \
+    src/exact/gaussian.c \
+    src/exact/algebraic.c \
     src/cas/num.c \
+    src/cas/big_num.c \
+    src/cas/complex.c \
+    src/cas/finite_poly.c \
+    src/cas/series.c \
+    src/cas/limit.c \
+    src/cas/solve.c \
+    src/cas/linear_solve.c \
+    src/cas/sparse_poly.c \
+    src/cas/ball_eval.c \
     src/cas/engine.c \
+    src/cas/special.c \
     src/cas/simplify.c \
     src/cas/diff.c \
     src/cas/integrate.c \
@@ -175,12 +217,21 @@ TNS := $(DISTDIR)/$(EXE).tns
 
 CAS_SMOKE_SOURCES := \
     src/core/status.c \
+    src/input/modifier.c \
+    src/input/pointer.c \
     src/gfx/gfx.c \
+    src/exact/context.c \
+    src/exact/integer.c \
+    src/exact/rational.c \
+    src/exact/gaussian.c \
     src/ir/ir.c \
     src/ir/order.c \
     src/ir/text.c \
     src/cas/num.c \
+    src/cas/big_num.c \
+    src/cas/complex.c \
     src/cas/engine.c \
+    src/cas/special.c \
     src/cas/simplify.c \
     src/cas/diff.c \
     src/cas/integrate.c \
@@ -199,11 +250,18 @@ QFT_BENCH_SOURCES := \
     src/input/modifier.c \
     src/input/pointer.c \
     src/gfx/gfx.c \
+    src/exact/context.c \
+    src/exact/integer.c \
+    src/exact/rational.c \
+    src/exact/gaussian.c \
     src/ir/ir.c \
     src/ir/order.c \
     src/ir/text.c \
     src/cas/num.c \
+    src/cas/big_num.c \
+    src/cas/complex.c \
     src/cas/engine.c \
+    src/cas/special.c \
     src/cas/simplify.c \
     src/cas/diff.c \
     src/cas/integrate.c \
@@ -219,9 +277,11 @@ QFT_BENCH_OBJECTS := \
 QFT_BENCH_ELF := $(DISTDIR)/$(QFT_BENCH_EXE).elf
 QFT_BENCH_TNS := $(DISTDIR)/$(QFT_BENCH_EXE).tns
 
-.PHONY: all clean size-report symbol-report ir-link-check tensor-link-check \
-        cas-link-check geom-link-check ym-link-check color-link-check \
-        eval-link-check \
+.PHONY: all clean size-report symbol-report ir-link-check exact-link-check \
+        ball-link-check \
+        tensor-link-check component-bridge-link-check \
+        cas-link-check algebraic-link-check geom-link-check ym-link-check \
+        qft-bridge-link-check eval-link-check \
         cas-smoke qft-bench check-sdk
 
 all: $(TNS)
@@ -281,8 +341,17 @@ symbol-report: $(ELF)
 ir-link-check: check-sdk
 	@tools/link-check.sh ir
 
+exact-link-check: check-sdk
+	@tools/link-check.sh exact
+
+ball-link-check: check-sdk
+	@tools/link-check.sh ball
+
 cas-link-check: check-sdk
 	@tools/link-check.sh cas
+
+algebraic-link-check: check-sdk
+	@tools/link-check.sh algebraic
 
 geom-link-check: check-sdk
 	@tools/link-check.sh geom
@@ -293,11 +362,17 @@ ym-link-check: check-sdk
 color-link-check: check-sdk
 	@tools/link-check.sh color
 
+qft-bridge-link-check: check-sdk
+	@tools/link-check.sh qftbridge
+
 eval-link-check: check-sdk
 	@tools/link-check.sh eval
 
 tensor-link-check: check-sdk
 	@tools/tensor-link-check.sh
+
+component-bridge-link-check: $(C_OBJECTS)
+	@tools/component-bridge-link-check.sh
 
 $(CAS_SMOKE_BUILDDIR)/%.o: %.c | check-sdk
 	@mkdir -p $(dir $@)

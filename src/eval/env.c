@@ -16,6 +16,27 @@
 #include "eval_internal.h"
 
 static const char *const kEvalHeadNames[EVAL_HEAD_COUNT] = {
+    "IndexSpace",   "TensorHead",       "TensorCanonicalize",
+    "YoungProject", "YoungDeclare",     "YoungReduce",
+    "GarnirRelation", "YoungDimension",
+    "ComponentBasis",   "TensorComponents",
+    "ComponentLift", "ComponentValue",
+
+    "GRComponents", "GRSpace",          "GRBasis",
+    "GRHead",       "GRTensor",
+
+    "QFTSystem",    "QFTSpace",         "QFTBasis",
+    "QFTHead",      "QFTTensor",
+
+    "Vector",       "Matrix",           "Transpose",   "Dot",
+    "Determinant",  "Inverse",          "RowReduce",   "MatrixRank",
+    "LinearSolve",
+
+    "CoordinateMap", "BasisTransition",  "Jacobian",
+    "PullbackScalar", "PullbackCovector", "PushForwardVector",
+    "TransitionPullback", "Atlas",       "AtlasAddTransition",
+    "AtlasVerify",  "AtlasPullback",
+
     "Manifold",     "DifferentialForm", "Metric",      "VectorField",
     "ComponentTensor",
     "ExteriorD",    "InteriorProduct",  "LieDerivative",
@@ -43,9 +64,20 @@ static const char *const kEvalHeadNames[EVAL_HEAD_COUNT] = {
     "SUNFComponent", "SUNExpandCasimirs", "SUNFundamentalCasimir",
     "SUNAdjointCasimir",
 
-    "Component",    "Degree",           "Dimension",   "Rank",
+    "Component",    "Degree",           "Dimension",   "Dimensions",
+    "Rank",
     "ZeroQ",        "EquivalentQ",      "MemoryStatus",
 };
+
+size_t phy_eval_head_count(void)
+{
+    return (size_t)EVAL_HEAD_COUNT;
+}
+
+const char *phy_eval_head_name(size_t index)
+{
+    return index < (size_t)EVAL_HEAD_COUNT ? kEvalHeadNames[index] : NULL;
+}
 
 const char *phy_value_kind_name(phy_value_kind kind)
 {
@@ -72,6 +104,32 @@ const char *phy_value_kind_name(phy_value_kind kind)
         return "LieForm";
     case PHY_VALUE_CURVATURE:
         return "Curvature";
+    case PHY_VALUE_INDEX_SPACE:
+        return "IndexSpace";
+    case PHY_VALUE_TENSOR_HEAD:
+        return "TensorHead";
+    case PHY_VALUE_ABSTRACT_TENSOR:
+        return "AbstractTensor";
+    case PHY_VALUE_ABSTRACT_EXPRESSION:
+        return "AbstractExpression";
+    case PHY_VALUE_COMPONENT_BASIS:
+        return "ComponentBasis";
+    case PHY_VALUE_COMPONENT_TENSOR:
+        return "TensorComponents";
+    case PHY_VALUE_VECTOR:
+        return "Vector";
+    case PHY_VALUE_MATRIX:
+        return "Matrix";
+    case PHY_VALUE_COORDINATE_MAP:
+        return "CoordinateMap";
+    case PHY_VALUE_BASIS_TRANSITION:
+        return "BasisTransition";
+    case PHY_VALUE_ATLAS:
+        return "Atlas";
+    case PHY_VALUE_GR_COMPONENTS:
+        return "GRComponents";
+    case PHY_VALUE_QFT_COMPONENTS:
+        return "QFTSystem";
     default:
         break;
     }
@@ -102,6 +160,32 @@ const void *eval_value_pointer(const phy_value *value)
         return value->as.lie_form;
     case PHY_VALUE_CURVATURE:
         return value->as.curvature;
+    case PHY_VALUE_INDEX_SPACE:
+        return value->as.index_space;
+    case PHY_VALUE_TENSOR_HEAD:
+        return value->as.tensor_head;
+    case PHY_VALUE_ABSTRACT_TENSOR:
+        return value->as.abstract_tensor;
+    case PHY_VALUE_ABSTRACT_EXPRESSION:
+        return value->as.abstract_expression;
+    case PHY_VALUE_COMPONENT_BASIS:
+        return value->as.component_basis;
+    case PHY_VALUE_COMPONENT_TENSOR:
+        return value->as.component_tensor;
+    case PHY_VALUE_VECTOR:
+        return value->as.vector;
+    case PHY_VALUE_MATRIX:
+        return value->as.matrix;
+    case PHY_VALUE_COORDINATE_MAP:
+        return value->as.coordinate_map;
+    case PHY_VALUE_BASIS_TRANSITION:
+        return value->as.basis_transition;
+    case PHY_VALUE_GR_COMPONENTS:
+        return value->as.gr_components;
+    case PHY_VALUE_QFT_COMPONENTS:
+        return value->as.qft_components;
+    case PHY_VALUE_ATLAS:
+        return value->as.atlas;
     default:
         break;
     }
@@ -137,6 +221,45 @@ static void destroy_owned(phy_value_kind kind, void *owned)
         break;
     case PHY_VALUE_CURVATURE:
         phy_gr_result_destroy((phy_gr_result *)owned);
+        break;
+    case PHY_VALUE_ABSTRACT_TENSOR:
+        phy_tensor_monomial_destroy(
+            (phy_tensor_monomial *)owned);
+        break;
+    case PHY_VALUE_ABSTRACT_EXPRESSION:
+        phy_tensor_expression_destroy(
+            (phy_tensor_expression *)owned);
+        break;
+    case PHY_VALUE_COMPONENT_BASIS:
+        phy_component_basis_destroy(
+            (phy_component_basis *)owned);
+        break;
+    case PHY_VALUE_COMPONENT_TENSOR:
+        phy_component_tensor_destroy(
+            (phy_component_tensor *)owned);
+        break;
+    case PHY_VALUE_VECTOR:
+    case PHY_VALUE_MATRIX:
+        phy_matrix_destroy((phy_matrix *)owned);
+        break;
+    case PHY_VALUE_COORDINATE_MAP:
+        phy_coordinate_map_destroy(
+            (phy_coordinate_map *)owned);
+        break;
+    case PHY_VALUE_BASIS_TRANSITION:
+        phy_basis_transition_destroy(
+            (phy_basis_transition *)owned);
+        break;
+    case PHY_VALUE_ATLAS:
+        phy_atlas_destroy((phy_atlas *)owned);
+        break;
+    case PHY_VALUE_GR_COMPONENTS:
+        phy_gr_component_view_destroy(
+            (phy_gr_component_view *)owned);
+        break;
+    case PHY_VALUE_QFT_COMPONENTS:
+        phy_qft_component_view_destroy(
+            (phy_qft_component_view *)owned);
         break;
     default:
         /* Scalars and borrowed algebras never own anything. */
@@ -201,6 +324,8 @@ void phy_env_reset(phy_env *env)
     }
     env->object_count = 0u;
     env->pending_name = PHY_IR_NO_SYMBOL;
+    phy_abstract_context_destroy(env->abstract);
+    env->abstract = NULL;
 }
 
 void phy_env_destroy(phy_env *env)
@@ -227,8 +352,9 @@ size_t phy_env_object_count(const phy_env *env)
     return env != NULL ? env->object_count : 0u;
 }
 
-phy_status eval_register(phy_env *env, phy_value value, void *owned,
-                         const phy_value *first, const phy_value *second)
+phy_status eval_register_many(phy_env *env, phy_value value, void *owned,
+                              const phy_value *dependencies,
+                              size_t dependency_count)
 {
     if (env == NULL || eval_value_pointer(&value) == NULL) {
         destroy_owned(value.kind, owned);
@@ -239,28 +365,46 @@ phy_status eval_register(phy_env *env, phy_value value, void *owned,
         return PHY_ERR_TERM_LIMIT;
     }
 
-    uint16_t dependency[EVAL_MAX_DEPENDENCIES] = {EVAL_NO_SLOT, EVAL_NO_SLOT};
-    const phy_value *sources[EVAL_MAX_DEPENDENCIES] = {first, second};
-    for (size_t i = 0u; i < (size_t)EVAL_MAX_DEPENDENCIES; ++i) {
-        if (sources[i] == NULL || sources[i]->kind == PHY_VALUE_NONE) {
+    if (dependency_count != 0u && dependencies == NULL) {
+        destroy_owned(value.kind, owned);
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    uint64_t dependency[EVAL_DEPENDENCY_WORDS];
+    memset(dependency, 0, sizeof dependency);
+    for (size_t i = 0u; i < dependency_count; ++i) {
+        if (dependencies[i].kind == PHY_VALUE_NONE ||
+            dependencies[i].kind == PHY_VALUE_SCALAR) {
             continue;
         }
-        const size_t slot = slot_of(env, sources[i]);
+        const size_t slot = slot_of(env, &dependencies[i]);
         if (slot == (size_t)EVAL_NO_SLOT) {
             destroy_owned(value.kind, owned);
             return PHY_ERR_CORRUPT_DOCUMENT;
         }
-        dependency[i] = (uint16_t)slot;
+        dependency[slot / 64u] |= UINT64_C(1) << (slot % 64u);
     }
 
     eval_object *entry = &env->objects[env->object_count];
     memset(entry, 0, sizeof *entry);
     entry->value = value;
     entry->owned = owned;
-    entry->dependency[0] = dependency[0];
-    entry->dependency[1] = dependency[1];
+    memcpy(entry->dependency, dependency, sizeof dependency);
     env->object_count++;
     return PHY_OK;
+}
+
+phy_status eval_register(phy_env *env, phy_value value, void *owned,
+                         const phy_value *first, const phy_value *second)
+{
+    phy_value dependencies[2];
+    size_t count = 0u;
+    if (first != NULL) {
+        dependencies[count++] = *first;
+    }
+    if (second != NULL) {
+        dependencies[count++] = *second;
+    }
+    return eval_register_many(env, value, owned, dependencies, count);
 }
 
 /*
@@ -296,9 +440,9 @@ void eval_sweep(phy_env *env, const phy_value *keep)
         if (!env->objects[i].marked) {
             continue;
         }
-        for (size_t d = 0u; d < (size_t)EVAL_MAX_DEPENDENCIES; ++d) {
-            const uint16_t slot = env->objects[i].dependency[d];
-            if (slot != EVAL_NO_SLOT) {
+        for (size_t slot = 0u; slot < i; ++slot) {
+            if ((env->objects[i].dependency[slot / 64u] &
+                 (UINT64_C(1) << (slot % 64u))) != 0u) {
                 env->objects[slot].marked = true;
             }
         }
@@ -310,6 +454,7 @@ void eval_sweep(phy_env *env, const phy_value *keep)
         }
     }
 
+    const size_t previous_count = env->object_count;
     uint16_t remap[PHY_EVAL_MAX_OBJECTS];
     size_t surviving = 0u;
     for (size_t i = 0u; i < env->object_count; ++i) {
@@ -323,11 +468,20 @@ void eval_sweep(phy_env *env, const phy_value *keep)
     }
     env->object_count = surviving;
     for (size_t i = 0u; i < env->object_count; ++i) {
-        for (size_t d = 0u; d < (size_t)EVAL_MAX_DEPENDENCIES; ++d) {
-            const uint16_t slot = env->objects[i].dependency[d];
-            env->objects[i].dependency[d] =
-                slot == EVAL_NO_SLOT ? EVAL_NO_SLOT : remap[slot];
+        uint64_t mapped[EVAL_DEPENDENCY_WORDS];
+        memset(mapped, 0, sizeof mapped);
+        for (size_t old = 0u; old < previous_count; ++old) {
+            if ((env->objects[i].dependency[old / 64u] &
+                 (UINT64_C(1) << (old % 64u))) == 0u) {
+                continue;
+            }
+            const uint16_t replacement = remap[old];
+            if (replacement != EVAL_NO_SLOT) {
+                mapped[replacement / 64u] |=
+                    UINT64_C(1) << (replacement % 64u);
+            }
         }
+        memcpy(env->objects[i].dependency, mapped, sizeof mapped);
     }
 }
 
@@ -337,12 +491,23 @@ bool eval_is_chart_coordinate(const phy_env *env, phy_ir_symbol name)
         return false;
     }
     for (size_t i = 0u; i < env->object_count; ++i) {
-        if (env->objects[i].value.kind != PHY_VALUE_CHART) {
-            continue;
-        }
-        if (phy_chart_axis_of(env->objects[i].value.as.chart, name) !=
-            PHY_CHART_NO_AXIS) {
-            return true;
+        const phy_value *value = &env->objects[i].value;
+        if (value->kind == PHY_VALUE_CHART) {
+            if (phy_chart_axis_of(value->as.chart, name) !=
+                PHY_CHART_NO_AXIS) {
+                return true;
+            }
+        } else if (value->kind == PHY_VALUE_COMPONENT_BASIS) {
+            const phy_component_basis *basis =
+                value->as.component_basis;
+            const size_t dimension =
+                phy_component_basis_dimension(basis);
+            for (size_t axis = 0u; axis < dimension; ++axis) {
+                if (phy_component_basis_coordinate_symbol(
+                        basis, axis) == name) {
+                    return true;
+                }
+            }
         }
     }
     return false;
@@ -468,9 +633,9 @@ phy_status phy_env_validate(const phy_env *env)
                 return PHY_ERR_CORRUPT_DOCUMENT;
             }
         }
-        for (size_t d = 0u; d < (size_t)EVAL_MAX_DEPENDENCIES; ++d) {
-            const uint16_t slot = entry->dependency[d];
-            if (slot != EVAL_NO_SLOT && (size_t)slot >= i) {
+        for (size_t slot = i; slot < PHY_EVAL_MAX_OBJECTS; ++slot) {
+            if ((entry->dependency[slot / 64u] &
+                 (UINT64_C(1) << (slot % 64u))) != 0u) {
                 return PHY_ERR_CORRUPT_DOCUMENT;
             }
         }

@@ -187,9 +187,49 @@ static void test_scalar_elementary_foundation(void)
     expect_scalar(&f, "Tan[Pi/4]", "1");
     expect_scalar(&f, "Sqrt[8]", "(* 2 (^ 2 (rat 1 2)))");
     expect_scalar(&f, "Log[E]", "1");
+    expect_scalar(&f, "Cosh[-x]", "(fn cosh x)");
     expect_scalar(&f, "Gamma[6]", "120");
     expect_scalar(&f, "Gamma[1/2]", "(^ Pi (rat 1 2))");
     expect_scalar(&f, "Erf[0] + Erfc[0]", "1");
+    expect_scalar(
+        &f, "Factorial[50]",
+        "30414093201713378043612608166064768844377641568960512000000000000");
+    expect_scalar(&f, "Pochhammer[3/2,4]", "(rat 945 16)");
+    expect_scalar(&f, "RisingFactorial[x,4]",
+                  "(* x (+ 1 x) (+ 2 x) (+ 3 x))");
+    expect_scalar(&f, "Binomial[100,50]",
+                  "100891344545564193334812497256");
+    expect_scalar(&f, "Binomial[x,3]",
+                  "(* (rat 1 6) x (+ -1 x) (+ -2 x))");
+    expect_scalar(
+        &f, "D[Factorial[x],x]",
+        "(* (fn digamma (+ 1 x)) (fn factorial x))");
+    expect_status(&f, "Factorial[-1]", PHY_ERR_DOMAIN);
+    expect_status(&f, "Factorial[513]", PHY_ERR_TERM_LIMIT);
+    expect_scalar(
+        &f, "9223372036854775807 + 9223372036854775807",
+        "18446744073709551614");
+    expect_scalar(
+        &f, "2^200",
+        "1606938044258990275541962092341162602522202993782792835301376");
+    expect_scalar(
+        &f, "Rational[18446744073709551616,3] * 3",
+        "18446744073709551616");
+    expect_scalar(&f, "I^2026", "-1");
+    expect_scalar(&f, "I^18446744073709551616", "1");
+    expect_scalar(
+        &f, "(1+2I)(3-4I)", "(+ 11 (* 2 I))");
+    expect_scalar(
+        &f, "1/(1+I)", "(+ (rat 1 2) (* (rat -1 2) I))");
+    expect_scalar(&f, "Re[3+4I]", "3");
+    expect_scalar(&f, "Im[3+4I]", "4");
+    expect_scalar(
+        &f, "Conjugate[3+4I]", "(+ 3 (* -4 I))");
+    expect_scalar(&f, "Abs[3+4I]", "5");
+    expect_scalar(
+        &f,
+        "Re[340282366920938463463374607431768211456+I]",
+        "340282366920938463463374607431768211456");
 
     expect_scalar(&f, "D[ArcTan[x],x]", "(^ (+ 1 (^ x 2)) -1)");
     expect_scalar(
@@ -201,24 +241,256 @@ static void test_scalar_elementary_foundation(void)
     expect_scalar(&f, "Integrate[Sinh[2x],x]",
                   "(* (rat 1 2) (fn cosh (* 2 x)))");
     expect_scalar(
+        &f, "Integrate[Sin[a*x],x]",
+        "(fn Integrate (fn sin (* a x)) x)");
+    expect_scalar(
+        &f, "Integrate[x Sin[a*x],x]",
+        "(fn Integrate (* x (fn sin (* a x))) x)");
+    expect_scalar(
+        &f, "Integrate[x Sin[x^2],x]",
+        "(fn Integrate (* x (fn sin (^ x 2))) x)");
+    expect_scalar(
+        &f, "Integrate[Sin[Exp[a] x],x]",
+        "(* -1 (^ (fn exp a) -1) (fn cos (* x (fn exp a))))");
+    expect_decision(&f, "ZeroQ[Gamma[x]]", "False");
+    expect_scalar(
         &f, "Integrate[Exp[-x^2],x]",
         "(* (rat 1 2) (^ Pi (rat 1 2)) (fn erf x))");
     expect_scalar(
+        &f, "Integrate[x Exp[x],x]",
+        "(+ (* -1 (fn exp x)) (* x (fn exp x)))");
+    expect_scalar(
+        &f, "Integrate[x^2 Sin[x],x]",
+        "(+ (* -2 (+ (* -1 (fn cos x)) (* -1 x (fn sin x)))) "
+        "(* -1 (^ x 2) (fn cos x)))");
+    expect_scalar(
         &f, "Cancel[(x^2-1)/(x^2-2x+1)]",
         "(* (+ 1 x) (^ (+ -1 x) -1))");
+    expect_scalar(
+        &f,
+        "Cancel[(x^31+x^30*y+x*y^30+y^31)"
+        "/(x^31+2*x^30*y+x*y^30+2*y^31)]",
+        "(* (+ x y) (^ (+ x (* 2 y)) -1))");
     expect_scalar(
         &f, "Factor[x^4-1]",
         "(* (+ -1 x) (+ 1 x) (+ 1 (^ x 2)))");
     expect_scalar(
         &f, "Factor[x^4+2x^2+1]",
         "(^ (+ 1 (^ x 2)) 2)");
+    expect_scalar(
+        &f, "Apart[1/(x^2-1)]",
+        "(+ (* (rat -1 2) (^ (+ 1 x) -1)) "
+        "   (* (rat 1 2) (^ (+ -1 x) -1)))");
+    expect_scalar(
+        &f, "Apart[1/(x^2(x+1))]",
+        "(+ (* -1 (^ x -1)) (^ x -2) (^ (+ 1 x) -1))");
 
     expect_status(&f, "Tan[Pi/2]", PHY_ERR_DOMAIN);
+    expect_status(&f, "Log[0]", PHY_ERR_DOMAIN);
+    expect_status(&f, "Exp[Log[0]]", PHY_ERR_DOMAIN);
+    expect_status(&f, "ArcTanh[1]", PHY_ERR_DOMAIN);
+    expect_status(&f, "ArcTanh[-1]", PHY_ERR_DOMAIN);
+    expect_status(
+        &f, "Gamma[-18446744073709551616]", PHY_ERR_DOMAIN);
+    expect_status(
+        &f, "LogGamma[-18446744073709551616]", PHY_ERR_DOMAIN);
     expect_status(&f, "D[x,Pi]", PHY_ERR_TYPE);
     expect_status(&f, "Integrate[x,E]", PHY_ERR_TYPE);
-    expect_status(
-        &f, "Factor[(x^2+1)(x^2+4)]", PHY_ERR_UNSUPPORTED);
+    expect_scalar(
+        &f, "Factor[(x^2+1)(x^2+4)]",
+        "(* (+ 1 (^ x 2)) (+ 4 (^ x 2)))");
 
+    fixture_close(&f);
+}
+
+static void test_series_reader_and_evaluator(void)
+{
+    fixture f = fixture_open();
+    const phy_value series = run(
+        &f, "Series[Exp[x] Sin[x],{x,0,7}]");
+    PHY_CHECK_EQ_INT(series.kind, PHY_VALUE_SCALAR);
+    PHY_CHECK_EQ_INT(
+        phy_ir_kind_of(f.ir, series.as.scalar), PHY_IR_OPERATOR);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(
+            f.ir, phy_ir_head(f.ir, series.as.scalar)),
+        "SeriesData");
+
+    phy_ir_ref normal = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_series_normal(f.cas, series.as.scalar, &normal), PHY_OK);
+    phy_ir_ref expected = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_ir_read(
+            f.ir,
+            "(+ x (^ x 2) (* (rat 1 3) (^ x 3)) "
+            "(* (rat -1 30) (^ x 5)) "
+            "(* (rat -1 90) (^ x 6)) "
+            "(* (rat -1 630) (^ x 7)))",
+            &expected, NULL),
+        PHY_OK);
+    phy_cas_decision decision = PHY_CAS_UNKNOWN;
+    PHY_CHECK_EQ_INT(
+        phy_cas_equivalent(
+            f.cas, normal, expected, &decision), PHY_OK);
+    PHY_CHECK_EQ_INT(decision, PHY_CAS_ZERO);
+
+    expect_scalar(&f, "Normal[x+1]", "(+ 1 x)");
+    expect_scalar(
+        &f, "Normal[Series[1/(1-x),{x,0,4}]]",
+        "(+ 1 x (^ x 2) (^ x 3) (^ x 4))");
+    expect_status(
+        &f, "Series[Exp[x],{x,1,4}]", PHY_ERR_UNSUPPORTED);
+    expect_status(
+        &f, "Series[x,{x,0,64}]", PHY_ERR_TERM_LIMIT);
+    fixture_close(&f);
+}
+
+static void test_limit_reader_and_evaluator(void)
+{
+    fixture f = fixture_open();
+    expect_scalar(&f, "Limit[(x^2-1)/(x-1),{x,1}]", "2");
+    expect_scalar(&f, "Limit[Sin[x]/x,{x,0}]", "1");
+    expect_scalar(
+        &f, "Limit[(1-Cos[x])/x^2,{x,0}]", "(rat 1 2)");
+    expect_scalar(
+        &f, "Limit[1/x,{x,0,FromAbove}]", "Infinity");
+    expect_scalar(
+        &f, "Limit[1/x,{x,0,Direction->\"FromBelow\"}]",
+        "(* -1 Infinity)");
+    expect_status(&f, "Limit[1/x,{x,0}]", PHY_ERR_DOMAIN);
+    expect_scalar(
+        &f, "Limit[(3x^4+1)/(2x^4-x),{x,Infinity}]",
+        "(rat 3 2)");
+    expect_scalar(
+        &f, "Limit[x,{x,-Infinity}]", "(* -1 Infinity)");
+    expect_status(
+        &f, "Limit[Sin[1/x],{x,0}]", PHY_ERR_UNSUPPORTED);
+
+    expect_scalar(&f, "a = 3", "3");
+    expect_status(&f, "Limit[x,{a,0}]", PHY_ERR_TYPE);
+    expect_status(&f, "Infinity = 3", PHY_ERR_TYPE);
+    fixture_close(&f);
+}
+
+static void test_solve_reader_and_evaluator(void)
+{
+    fixture f = fixture_open();
+    phy_value value = run(&f, "Solve[3x-2==0,x]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_SCALAR);
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List (fn List (fn Rule x (rat 2 3))))");
+
+    value = run(&f, "Solve[x^2-2==0,x]");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List "
+        "(fn List (fn Rule x (* -1 (^ 2 (rat 1 2))))) "
+        "(fn List (fn Rule x (^ 2 (rat 1 2)))))");
+    value = run(&f, "Solve[(x^2-1)/(x-1)==0,x]");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List (fn List (fn Rule x -1)))");
+    value = run(&f, "Solve[1==0,x]");
+    PHY_CHECK_EQ_STR(expansion(&f, value), "(fn List)");
+
+    value = run(&f, "Solve[x^2+1==0,x]");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List "
+        "(fn List (fn Rule x I)) "
+        "(fn List (fn Rule x (* -1 I))))");
+    value = run(&f, "Solve[x^2+2x+5==0,x]");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List "
+        "(fn List (fn Rule x (+ -1 (* -2 I)))) "
+        "(fn List (fn Rule x (+ -1 (* 2 I)))))");
+    expect_status(
+        &f, "Solve[x^5-x-1==0,x]", PHY_ERR_UNSUPPORTED);
+    value = run(&f, "Solve[x^3-3x+1==0,x]");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 1))) "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 2))) "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 3))))");
+    expect_status(
+        &f, "Solve[(x^5-x-1)(x^2+1)==0,x]",
+        PHY_ERR_UNSUPPORTED);
+    expect_status(&f, "Solve[x==x,x]", PHY_ERR_UNSUPPORTED);
+    expect_status(&f, "Solve[x,x]", PHY_ERR_TYPE);
+
+    value = run(&f, "Solve[{x+y==3,x-y==1},{x,y}]");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List (fn List (fn Rule x 2) (fn Rule y 1)))");
+    value = run(&f, "Solve[{x+y==3},{x,y}]");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List (fn List (fn Rule x (+ 3 (* -1 y)))))");
+    value = run(&f, "Solve[{x+y==1,x+y==2},{x,y}]");
+    PHY_CHECK_EQ_STR(expansion(&f, value), "(fn List)");
+    value = run(
+        &f,
+        "Solve[{x+y+z==6,2x-y+z==3,x+2y-z==2},{x,y,z}]");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List (fn List "
+        "(fn Rule x 1) "
+        "(fn Rule y 2) "
+        "(fn Rule z 3)))");
+    value = run(
+        &f,
+        "Solve[{1267650600228229401496703205376x+y"
+        "==1267650600228229401496703205377,x-y==0},{x,y}]");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List (fn List (fn Rule x 1) (fn Rule y 1)))");
+    value = run(&f, "Solve[{I*x+y==1,x-y==0},{x,y}]");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List (fn List "
+        "(fn Rule x (+ (rat 1 2) (* (rat -1 2) I))) "
+        "(fn Rule y (+ (rat 1 2) (* (rat -1 2) I)))))");
+    value = run(&f, "Solve[{x*y==1,x+y==2},{x,y}]");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List (fn List (fn Rule x 1) (fn Rule y 1)))");
+    value = run(&f, "Solve[{x*y==1,y^2==1},{x,y}]");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List "
+        "(fn List (fn Rule x -1) (fn Rule y -1)) "
+        "(fn List (fn Rule x 1) (fn Rule y 1)))");
+
+    expect_scalar(&f, "x = 4", "4");
+    expect_status(&f, "Solve[x==4,x]", PHY_ERR_TYPE);
+    fixture_close(&f);
+}
+
+static void test_polynomial_ideal_reader_and_evaluator(void)
+{
+    fixture f = fixture_open();
+    expect_scalar(&f, "Resultant[x^2+1,x+1,x]", "2");
+    expect_scalar(&f, "Resultant[x^2-1,x-1,x]", "0");
+    expect_scalar(&f, "Discriminant[x^3-2x+4,x]", "-400");
+    expect_scalar(
+        &f, "GroebnerBasis[{x*y-1,y^2-1},{x,y}]",
+        "(fn List (+ -1 (* x y)) (+ -1 (^ y 2)) (+ x (* -1 y)))");
+    expect_status(
+        &f, "GroebnerBasis[{Sin[x]},{x}]", PHY_ERR_UNSUPPORTED);
+    expect_scalar(&f, "N[1/3,12]", "(fn Around (rat 1 3) 0)");
+    phy_value value = run(&f, "NSolve[x^5-x-1==0,x]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_SCALAR);
+    const phy_ir_ref solutions = value.as.scalar;
+    PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, solutions), 1u);
+    const phy_ir_ref branch = phy_ir_child(f.ir, solutions, 0u);
+    const phy_ir_ref rule = phy_ir_child(f.ir, branch, 0u);
+    const phy_ir_ref around = phy_ir_child(f.ir, rule, 1u);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, around)), "Around");
     fixture_close(&f);
 }
 
@@ -247,6 +519,9 @@ static void test_binding_rejects_reserved_and_captured_names(void)
 
     /* Reserved spellings are not bindable; rejected by the parser. */
     expect_status(&f, "Sin = 2", PHY_ERR_TYPE);
+    expect_status(&f, "Re = 2", PHY_ERR_TYPE);
+    expect_status(&f, "Conjugate = 2", PHY_ERR_TYPE);
+    expect_status(&f, "Abs = 2", PHY_ERR_TYPE);
     expect_status(&f, "Manifold = 2", PHY_ERR_TYPE);
     expect_status(&f, "Simplify = 2", PHY_ERR_TYPE);
     expect_status(&f, "Clear[Sin]", PHY_ERR_TYPE);
@@ -691,6 +966,115 @@ static void test_curvature_pipeline(void)
     expect_decision(&f, "ZeroQ[Einstein[c]]", "True");
     expect_scalar(&f, "Component[InverseMetric[c], 0, 0]", "(^ a -2)");
     expect_scalar(&f, "Rank[Riemann[c]]", "4");
+
+    /*
+     * GR still computes through the proven dense pipeline, but its result now
+     * crosses an explicit, checked bridge into the shared abstract/component
+     * system. The abstract head supplies the Riemann slot group; ComponentLift
+     * proves all dense entries agree before publishing the sparse object.
+     */
+    (void)run(&f, "V = IndexSpace[2,SymmetricMetric]");
+    (void)run(&f, "e = ComponentBasis[V,2]");
+    (void)run(
+        &f,
+        "Rabs = TensorHead[{V,V,V,V},Commuting,{"
+        "Symmetry[{2,1,3,4},-1],"
+        "Symmetry[{1,2,4,3},-1],"
+        "Symmetry[{3,4,1,2},1]}]");
+    phy_value lifted = run(
+        &f,
+        "Rc = ComponentLift[Riemann[c],Rabs,{e,e,e,e}]");
+    PHY_CHECK_EQ_INT(lifted.kind, PHY_VALUE_COMPONENT_TENSOR);
+    expect_scalar(
+        &f, "Component[Rc,0,1,0,1]",
+        "(* (^ a 2) (^ (fn sin theta) 2))");
+    expect_scalar(
+        &f,
+        "ComponentValue["
+        "Rabs[Down[i],Down[j],Down[k],Down[l]],"
+        "{Rc},{0,1,0,1}]",
+        "(* (^ a 2) (^ (fn sin theta) 2))");
+    expect_status(
+        &f, "ComponentLift[Christoffel[c],Rabs,{e,e,e,e}]",
+        PHY_ERR_TYPE);
+
+    /*
+     * The same crossing without transcribing a slot group by hand.
+     * GRComponents lifts the whole curvature suite at once, declaring the
+     * textbook symmetry of each quantity and proving it against every dense
+     * component. Its heads are ordinary abstract heads, so they compose with
+     * the ones the reader declared above.
+     */
+    phy_value view = run(&f, "gr = GRComponents[c,{Weyl,RiemannUpper}]");
+    PHY_CHECK_EQ_INT(view.kind, PHY_VALUE_GR_COMPONENTS);
+    PHY_CHECK_EQ_STR(describe(&f, view), "GRComponents gr dim 2 lifted 9");
+    PHY_CHECK_EQ_INT(run(&f, "GRSpace[gr]").kind, PHY_VALUE_INDEX_SPACE);
+    PHY_CHECK_EQ_INT(run(&f, "GRBasis[gr]").kind,
+                     PHY_VALUE_COMPONENT_BASIS);
+    PHY_CHECK_EQ_INT(run(&f, "Ric = GRHead[gr,Ricci]").kind,
+                     PHY_VALUE_TENSOR_HEAD);
+    PHY_CHECK_EQ_INT(run(&f, "Rc2 = GRTensor[gr,Ricci]").kind,
+                     PHY_VALUE_COMPONENT_TENSOR);
+    (void)run(&f, "Rm = GRHead[gr,RiemannMixed]");
+    (void)run(&f, "Rmc = GRTensor[gr,RiemannMixed]");
+    (void)run(&f, "Rh = GRHead[gr,Riemann]");
+    (void)run(&f, "Rhc = GRTensor[gr,Riemann]");
+    expect_scalar(&f, "Rank[Ric]", "2");
+    expect_scalar(&f, "Dimensions[Rc2]", "(fn List 2 2)");
+
+    /*
+     * The covariant Riemann head carries a proved (2,2) Young declaration.
+     * Its cyclic sum both evaluates to zero through the lifted components and
+     * reduces structurally to a zero expression with four free indices.
+     */
+    phy_value bianchi = run(
+        &f,
+        "BR = Rh[Down[a],Down[b],Down[c],Down[d]]"
+        "+Rh[Down[a],Down[c],Down[d],Down[b]]"
+        "+Rh[Down[a],Down[d],Down[b],Down[c]]");
+    PHY_CHECK_EQ_INT(bianchi.kind, PHY_VALUE_ABSTRACT_EXPRESSION);
+    expect_scalar(
+        &f, "ComponentValue[BR,{Rhc},{0,1,0,1}]", "0");
+    bianchi = run(&f, "YoungReduce[BR]");
+    PHY_CHECK_EQ_INT(bianchi.kind, PHY_VALUE_ABSTRACT_EXPRESSION);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_term_count(
+            bianchi.as.abstract_expression),
+        0);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_free_count(
+            bianchi.as.abstract_expression),
+        4);
+
+    /* R^a_bad == Ricci_bd, contracted through the bridge. */
+    expect_scalar(
+        &f,
+        "ComponentValue[Rm[Up[a],Down[b],Down[a],Down[d]],{Rmc},{1,1}]",
+        "(^ (fn sin theta) 2)");
+    expect_decision(
+        &f,
+        "EquivalentQ["
+        "ComponentValue[Rm[Up[a],Down[b],Down[a],Down[d]],{Rmc},{1,1}],"
+        "ComponentValue[Ric[Down[b],Down[d]],{Rc2},{1,1}]]",
+        "True");
+
+    /* g^bd R_bd == the pipeline's scalar curvature. */
+    (void)run(&f, "Gi = GRHead[gr,InverseMetric]");
+    (void)run(&f, "Gic = GRTensor[gr,InverseMetric]");
+    expect_decision(
+        &f,
+        "EquivalentQ["
+        "ComponentValue[Gi[Up[b],Up[d]]*Ric[Down[b],Down[d]],"
+        "{Gic,Rc2},{}], RicciScalar[c]]",
+        "True");
+
+    /* Absent because it was not asked for, and typed accordingly. */
+    (void)run(&f, "bare = GRComponents[c]");
+    expect_status(&f, "GRTensor[bare,Weyl]", PHY_ERR_NOT_INITIALIZED);
+    expect_status(&f, "GRHead[gr,NotAQuantity]", PHY_ERR_PARSE);
+    expect_status(&f, "GRComponents[c,{Nope}]", PHY_ERR_PARSE);
+    expect_status(&f, "GRSpace[c]", PHY_ERR_TYPE);
+
     expect_scalar(&f, "Kretschmann[c]", "(* 4 (^ a -4))");
     expect_decision(&f, "ZeroQ[Weyl[c]]", "True");
     expect_scalar(&f, "WeylSquared[c]", "0");
@@ -851,6 +1235,157 @@ static void test_qft_heads_reach_native_backends(void)
     fixture_close(&f);
 }
 
+static void test_qft_shared_abstract_component_frontend(void)
+{
+    fixture f = fixture_open();
+
+    phy_value system = run(&f, "qft = QFTSystem[3]");
+    PHY_CHECK_EQ_INT(system.kind, PHY_VALUE_QFT_COMPONENTS);
+    PHY_CHECK_EQ_STR(
+        describe(&f, system),
+        "QFTSystem SU(3) spaces 4 bases 4 tensors 3");
+    phy_ir_ref system_expression = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_eval_value_expression(f.env, system, &system_expression),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_ir_kind_of(f.ir, system_expression), PHY_IR_FUNCTION);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(
+            f.ir, phy_ir_head(f.ir, system_expression)),
+        "QFTSystem");
+    PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, system_expression), 4u);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(
+            f.ir,
+            phy_ir_head(f.ir, phy_ir_child(f.ir, system_expression, 1u))),
+        "IndexSpaces");
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(
+            f.ir,
+            phy_ir_head(f.ir, phy_ir_child(f.ir, system_expression, 2u))),
+        "TensorHeads");
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(
+            f.ir,
+            phy_ir_head(f.ir, phy_ir_child(f.ir, system_expression, 3u))),
+        "ExactComponents");
+
+    PHY_CHECK_EQ_INT(
+        run(&f, "L = QFTSpace[qft,Lorentz]").kind,
+        PHY_VALUE_INDEX_SPACE);
+    PHY_CHECK_EQ_INT(
+        run(&f, "C = QFTSpace[qft,ColorAdjoint]").kind,
+        PHY_VALUE_INDEX_SPACE);
+    expect_scalar(&f, "Dimension[L]", "4");
+    expect_scalar(&f, "Dimension[C]", "8");
+    PHY_CHECK_EQ_INT(
+        run(&f, "Lb = QFTBasis[qft,Lorentz]").kind,
+        PHY_VALUE_COMPONENT_BASIS);
+
+    (void)run(&f, "etaD = QFTHead[qft,MinkowskiMetric]");
+    (void)run(&f, "etaDc = QFTTensor[qft,MinkowskiMetric]");
+    (void)run(&f, "etaU = QFTHead[qft,MinkowskiInverse]");
+    (void)run(&f, "etaUc = QFTTensor[qft,MinkowskiInverse]");
+    expect_scalar(
+        &f,
+        "ComponentValue[etaD[Down[mu],Down[nu]],{etaDc},{0,0}]",
+        "1");
+    expect_scalar(
+        &f,
+        "ComponentValue[etaD[Down[mu],Down[nu]],{etaDc},{1,1}]",
+        "-1");
+    expect_scalar(
+        &f,
+        "ComponentValue["
+        "etaD[Down[mu],Down[nu]]*etaU[Up[nu],Up[rho]],"
+        "{etaDc,etaUc},{1,1}]",
+        "1");
+    expect_scalar(
+        &f,
+        "ComponentValue["
+        "etaD[Down[mu],Down[nu]]*etaU[Up[nu],Up[rho]],"
+        "{etaDc,etaUc},{1,0}]",
+        "0");
+
+    (void)run(&f, "fh = QFTHead[qft,SUNF]");
+    (void)run(&f, "fc = QFTTensor[qft,SUNF]");
+    expect_scalar(
+        &f,
+        "ComponentValue[fh[Up[a],Up[b],Up[c]],{fc},{0,1,2}]",
+        "1");
+    expect_scalar(
+        &f,
+        "ComponentValue[fh[Up[b],Up[a],Up[c]],{fc},{1,0,2}]",
+        "-1");
+    expect_decision(
+        &f,
+        "EquivalentQ["
+        "ComponentValue[fh[Up[a],Up[b],Up[c]],{fc},{0,1,2}],"
+        "SUNFComponent[3,1,2,3]]",
+        "True");
+
+    (void)run(&f, "FS = QFTHead[qft,FieldStrength]");
+    phy_value antisymmetry = run(
+        &f,
+        "TensorCanonicalize["
+        "FS[Up[a],Down[mu],Down[nu]]"
+        "+FS[Up[a],Down[nu],Down[mu]]]");
+    PHY_CHECK_EQ_INT(
+        antisymmetry.kind, PHY_VALUE_ABSTRACT_EXPRESSION);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_term_count(
+            antisymmetry.as.abstract_expression),
+        0);
+
+    (void)run(&f, "ga = QFTHead[qft,DiracGamma]");
+    expect_status(
+        &f,
+        "ga[Up[a,ColorAdjoint],Down[i,Spinor],Up[j,Spinor]]",
+        PHY_ERR_TYPE);
+    PHY_CHECK_EQ_INT(
+        run(
+            &f,
+            "ga[Up[mu,Lorentz],Down[i,Spinor],Up[j,Spinor]]")
+            .kind,
+        PHY_VALUE_ABSTRACT_TENSOR);
+
+    expect_status(
+        &f, "QFTTensor[qft,DiracGamma]", PHY_ERR_NOT_INITIALIZED);
+    expect_status(
+        &f, "QFTHead[qft,NotAQFTTensor]", PHY_ERR_PARSE);
+    expect_status(&f, "QFTSpace[qft,UnknownSpace]", PHY_ERR_PARSE);
+    expect_status(&f, "QFTSpace[3,Lorentz]", PHY_ERR_TYPE);
+
+    phy_env_reset(f.env);
+    PHY_CHECK_EQ_INT(phy_env_object_count(f.env), 0);
+    fixture_close(&f);
+}
+
+static void test_qft_symbolic_n_frontend(void)
+{
+    fixture f = fixture_open();
+    phy_value system = run(&f, "qft = QFTSystem[]");
+    PHY_CHECK_EQ_INT(system.kind, PHY_VALUE_QFT_COMPONENTS);
+    PHY_CHECK_EQ_STR(
+        describe(&f, system),
+        "QFTSystem SU(N) spaces 4 bases 2 tensors 2");
+    (void)run(&f, "C = QFTSpace[qft,ColorAdjoint]");
+    expect_decision(
+        &f, "EquivalentQ[Dimension[C],N^2-1]", "True");
+    expect_status(
+        &f, "QFTBasis[qft,ColorAdjoint]", PHY_ERR_NOT_INITIALIZED);
+    expect_status(
+        &f, "QFTTensor[qft,SUNDelta]", PHY_ERR_NOT_INITIALIZED);
+    PHY_CHECK_EQ_INT(
+        run(&f, "QFTTensor[qft,MinkowskiMetric]").kind,
+        PHY_VALUE_COMPONENT_TENSOR);
+
+    /* A second fixed-name declaration would be a distinct Lorentz identity. */
+    expect_status(&f, "QFTSystem[3]", PHY_ERR_ALREADY_INITIALIZED);
+    fixture_close(&f);
+}
+
 static void test_sun_colour_heads_reach_native_backend(void)
 {
     fixture f = fixture_open();
@@ -1007,6 +1542,8 @@ static void test_every_evaluated_head_rejects_empty_arguments(void)
         "SUNCommutator", "SUNDeltaContract",    "SUNCF",
         "SUNCA",        "SUNFComponent",         "SUNExpandCasimirs",
         "SUNFundamentalCasimir",                "SUNAdjointCasimir",
+        "QFTSpace",     "QFTBasis",             "QFTHead",
+        "QFTTensor",
         "Component",
         "Degree",       "Dimension",           "Rank",
         "ZeroQ",        "EquivalentQ",
@@ -1083,6 +1620,34 @@ static void test_environment_bounds(void)
 
 /* ------------------------------------------------ notebook integration */
 
+static void test_notebook_clear_all_renders_successfully(void)
+{
+    phy_notebook *notebook = phy_notebook_create();
+    PHY_CHECK(notebook != NULL);
+    PHY_CHECK_EQ_INT(
+        phy_notebook_add_input(notebook, "a = 1", NULL), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_notebook_add_input(notebook, "ClearAll[]", NULL), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_notebook_evaluate_all(notebook), PHY_OK);
+
+    phy_notebook_cell_view view;
+    PHY_CHECK(phy_notebook_cell(notebook, 3u, &view));
+    PHY_CHECK_EQ_INT(view.kind, PHY_NOTEBOOK_CELL_OUTPUT);
+    PHY_CHECK_EQ_INT(view.status, PHY_OK);
+    PHY_CHECK_EQ_STR(view.primary, "");
+    PHY_CHECK_EQ_INT(
+        phy_ir_kind_of(phy_notebook_ir(notebook), view.expression),
+        PHY_IR_SYMBOL);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(
+            phy_notebook_ir(notebook),
+            phy_ir_head(phy_notebook_ir(notebook), view.expression)),
+        "Null");
+    PHY_CHECK_EQ_INT(
+        phy_env_binding_count(phy_notebook_environment(notebook)), 0u);
+    phy_notebook_destroy(notebook);
+}
+
 static void test_notebook_shares_state_between_cells(void)
 {
     phy_notebook *notebook = phy_notebook_create();
@@ -1111,12 +1676,20 @@ static void test_notebook_shares_state_between_cells(void)
     PHY_CHECK_EQ_INT(phy_notebook_evaluate_all(notebook), PHY_OK);
 
     phy_notebook_cell_view view;
-    /* The manifold output has a descriptor and no expression. */
+    /* Handles retain their typed constructor instead of an English sentence. */
     PHY_CHECK(phy_notebook_cell(notebook, manifold_cell + 1u, &view));
     PHY_CHECK_EQ_INT(view.kind, PHY_NOTEBOOK_CELL_OUTPUT);
-    PHY_CHECK_EQ_INT(view.expression, PHY_IR_NULL);
-    PHY_CHECK_EQ_STR(view.primary,
-                     "Manifold M dim 2 Riemannian +oriented (x,y)");
+    PHY_CHECK_EQ_INT(
+        phy_ir_kind_of(phy_notebook_ir(notebook), view.expression),
+        PHY_IR_EQUATION);
+    PHY_CHECK_EQ_STR(view.primary, "");
+    const phy_ir_ref manifold_constructor =
+        phy_ir_child(phy_notebook_ir(notebook), view.expression, 1u);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(
+            phy_notebook_ir(notebook),
+            phy_ir_head(phy_notebook_ir(notebook), manifold_constructor)),
+        "Manifold");
 
     /* The form output has the coframe expansion and no descriptor. */
     PHY_CHECK(phy_notebook_cell(notebook, form_cell + 2u, &view));
@@ -1146,7 +1719,7 @@ static void test_notebook_shares_state_between_cells(void)
     phy_notebook_destroy(notebook);
 }
 
-static void test_notebook_round_trip_keeps_descriptors(void)
+static void test_notebook_round_trip_keeps_structured_handles(void)
 {
     phy_notebook *notebook = phy_notebook_create();
     PHY_CHECK(notebook != NULL);
@@ -1167,7 +1740,17 @@ static void test_notebook_round_trip_keeps_descriptors(void)
     PHY_CHECK(phy_notebook_cell(loaded, 1u, &view));
     PHY_CHECK_EQ_INT(view.kind, PHY_NOTEBOOK_CELL_OUTPUT);
     PHY_CHECK_EQ_INT(view.status, PHY_OK);
-    PHY_CHECK_EQ_STR(view.primary, "LieGroup SU(3) rep 3 compact");
+    PHY_CHECK_EQ_STR(view.primary, "");
+    PHY_CHECK_EQ_INT(
+        phy_ir_kind_of(phy_notebook_ir(loaded), view.expression),
+        PHY_IR_EQUATION);
+    const phy_ir_ref group_constructor =
+        phy_ir_child(phy_notebook_ir(loaded), view.expression, 1u);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(
+            phy_notebook_ir(loaded),
+            phy_ir_head(phy_notebook_ir(loaded), group_constructor)),
+        "LieGroup");
 
     /*
      * The document restores cells, never objects: a loaded notebook has an
@@ -1184,6 +1767,673 @@ static void test_notebook_round_trip_keeps_descriptors(void)
     phy_notebook_destroy(notebook);
 }
 
+static void test_notebook_round_trip_keeps_series_data(void)
+{
+    phy_notebook *notebook = phy_notebook_create();
+    PHY_CHECK(notebook != NULL);
+    PHY_CHECK_EQ_INT(
+        phy_notebook_add_input(
+            notebook, "Series[1/(1-x),{x,0,5}]", NULL),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(phy_notebook_evaluate_all(notebook), PHY_OK);
+
+    phy_notebook_cell_view view;
+    PHY_CHECK(phy_notebook_cell(notebook, 1u, &view));
+    PHY_CHECK_EQ_INT(
+        phy_ir_kind_of(phy_notebook_ir(notebook), view.expression),
+        PHY_IR_OPERATOR);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(
+            phy_notebook_ir(notebook),
+            phy_ir_head(phy_notebook_ir(notebook), view.expression)),
+        "SeriesData");
+
+    uint8_t buffer[PHY_NOTEBOOK_DOCUMENT_MAX_BYTES];
+    size_t size = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_notebook_serialize(
+            notebook, buffer, sizeof buffer, &size),
+        PHY_OK);
+    phy_notebook *loaded = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_notebook_deserialize(buffer, size, &loaded), PHY_OK);
+    PHY_CHECK(loaded != NULL);
+    PHY_CHECK(phy_notebook_cell(loaded, 1u, &view));
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(
+            phy_notebook_ir(loaded),
+            phy_ir_head(phy_notebook_ir(loaded), view.expression)),
+        "SeriesData");
+    phy_ir_ref normal = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_series_normal(
+            phy_env_cas(phy_notebook_environment(loaded)),
+            view.expression, &normal),
+        PHY_OK);
+    PHY_CHECK(normal != PHY_IR_NULL);
+
+    phy_notebook_destroy(loaded);
+    phy_notebook_destroy(notebook);
+}
+
+static void test_abstract_tensor_frontend_and_canonicalization(void)
+{
+    fixture f = fixture_open();
+
+    phy_value value = run(&f, "V = IndexSpace[4, SymmetricMetric]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_INDEX_SPACE);
+    PHY_CHECK_EQ_STR(
+        describe(&f, value),
+        "IndexSpace V dim 4 symmetric-metric");
+    expect_scalar(&f, "Dimension[V]", "4");
+
+    value = run(
+        &f,
+        "T5 = TensorHead[{V,V,V,V,V}, Commuting]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_TENSOR_HEAD);
+    PHY_CHECK_EQ_STR(
+        describe(&f, value),
+        "TensorHead T5 rank 5 commuting sym 0");
+    phy_ir_ref signature = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_eval_value_expression(f.env, value, &signature), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_ir_kind_of(f.ir, signature), PHY_IR_TENSOR);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, signature)), "T5");
+    PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, signature), 5u);
+    for (size_t slot = 0u; slot < 5u; ++slot) {
+        phy_ir_variance variance = PHY_IR_INDEX_UPPER;
+        const phy_ir_ref index = phy_ir_child(f.ir, signature, slot);
+        PHY_CHECK(phy_ir_index_variance(f.ir, index, &variance));
+        PHY_CHECK_EQ_INT(variance, PHY_IR_INDEX_LOWER);
+        PHY_CHECK_EQ_STR(
+            phy_ir_symbol_name(
+                f.ir, phy_ir_index_space(f.ir, index)),
+            "V");
+    }
+    expect_scalar(&f, "Rank[T5]", "5");
+
+    (void)run(&f, "A = TensorHead[{V,V}, Antisymmetric]");
+    (void)run(&f, "S = TensorHead[{V,V}, Symmetric]");
+    value = run(
+        &f,
+        "m = TensorCanonicalize[A[Down[b],Down[a]]]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_ABSTRACT_TENSOR);
+    const phy_tensor_monomial *monomial = value.as.abstract_tensor;
+    int64_t coefficient = 0;
+    PHY_CHECK(phy_ir_integer_value(
+        f.ir, phy_tensor_monomial_coefficient(monomial),
+        &coefficient));
+    PHY_CHECK_EQ_INT(coefficient, -1);
+    const phy_abstract_tensor_head *head = NULL;
+    const phy_abstract_index *indices = NULL;
+    size_t index_count = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_tensor_monomial_factor(
+            monomial, 0u, &head, &indices, &index_count),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(index_count, 2);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, indices[0].name), "a");
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, indices[1].name), "b");
+    PHY_CHECK(strstr(expansion(&f, value), "tensor A") != NULL);
+
+    /* Symmetric contracted against antisymmetric vanishes exactly. */
+    value = run(
+        &f,
+        "TensorCanonicalize["
+        "A[Down[a],Down[b]]*S[Up[a],Up[b]]]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_ABSTRACT_TENSOR);
+    PHY_CHECK(phy_ir_integer_value(
+        f.ir,
+        phy_tensor_monomial_coefficient(value.as.abstract_tensor),
+        &coefficient));
+    PHY_CHECK_EQ_INT(coefficient, 0);
+    expect_scalar(
+        &f,
+        "Rank[TensorCanonicalize["
+        "A[Down[a],Down[b]]*S[Up[a],Up[b]]]]",
+        "0");
+
+    /* General signed generators are 1-based at the reader surface. */
+    value = run(
+        &f,
+        "R = TensorHead[{V,V,V,V,V}, Commuting, "
+        "{Symmetry[{2,1,3,4,5},-1]}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_TENSOR_HEAD);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_symmetry_count(
+            value.as.tensor_head),
+        1);
+    value = run(
+        &f,
+        "TensorCanonicalize["
+        "R[Down[b],Down[a],Down[c],Down[d],Down[e]]]");
+    PHY_CHECK(phy_ir_integer_value(
+        f.ir,
+        phy_tensor_monomial_coefficient(value.as.abstract_tensor),
+        &coefficient));
+    PHY_CHECK_EQ_INT(coefficient, -1);
+
+    /* Slot spaces are typed, not a decorative Lorentz label. */
+    (void)run(&f, "W = IndexSpace[3, NoMetric]");
+    (void)run(&f, "H = TensorHead[{V,W}, Commuting]");
+    value = run(&f, "H[Down[a,V],Up[b,W]]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_ABSTRACT_TENSOR);
+    expect_status(
+        &f, "H[Down[a,W],Up[b,W]]", PHY_ERR_TYPE);
+
+    (void)run(&f, "N = IndexSpace[n, NoMetric]");
+    expect_scalar(&f, "Dimension[N]", "n");
+    /* Call syntax remains the certified numeric command even when N is a
+       valid bound index-space name in the same notebook. */
+    expect_scalar(&f, "N[1/3,8]", "(fn Around (rat 1 3) 0)");
+
+    /* Reset destroys the bulk-owned abstract context and permits clean reuse. */
+    phy_env_reset(f.env);
+    PHY_CHECK_EQ_INT(phy_env_binding_count(f.env), 0);
+    PHY_CHECK_EQ_INT(phy_env_object_count(f.env), 0);
+    value = run(&f, "V = IndexSpace[2, NoMetric]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_INDEX_SPACE);
+    expect_scalar(&f, "Dimension[V]", "2");
+    fixture_close(&f);
+}
+
+static void test_young_project_frontend(void)
+{
+    fixture f = fixture_open();
+    (void)run(&f, "V = IndexSpace[4, SymmetricMetric]");
+    (void)run(&f, "T = TensorHead[{V,V}, Commuting]");
+
+    phy_value value = run(
+        &f,
+        "Y = YoungProject[T[Down[a],Down[b]],{{1,2}}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_ABSTRACT_EXPRESSION);
+    PHY_CHECK_EQ_STR(
+        phy_value_kind_name(value.kind), "AbstractExpression");
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_term_count(
+            value.as.abstract_expression),
+        2);
+    expect_scalar(&f, "Rank[Y]", "2");
+    value = run(&f, "TensorCanonicalize[Y]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_ABSTRACT_EXPRESSION);
+    const char *rendered = expansion(&f, value);
+    PHY_CHECK(strstr(rendered, "tensor T") != NULL);
+    for (size_t term = 0u; term < 2u; ++term) {
+        int64_t numerator = 0;
+        int64_t denominator = 0;
+        PHY_CHECK(phy_ir_rational_value(
+            f.ir,
+            phy_tensor_monomial_coefficient(
+                phy_tensor_expression_term(
+                    value.as.abstract_expression, term)),
+            &numerator, &denominator));
+        PHY_CHECK_EQ_INT(numerator, 1);
+        PHY_CHECK_EQ_INT(denominator, 2);
+    }
+
+    value = run(
+        &f,
+        "YoungProject[T[Down[a],Down[b]],{{1},{2}}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_ABSTRACT_EXPRESSION);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_term_count(
+            value.as.abstract_expression),
+        2);
+    rendered = expansion(&f, value);
+    PHY_CHECK(strstr(rendered, "tensor T") != NULL);
+    int signs = 0;
+    for (size_t term = 0u; term < 2u; ++term) {
+        int64_t numerator = 0;
+        int64_t denominator = 0;
+        PHY_CHECK(phy_ir_rational_value(
+            f.ir,
+            phy_tensor_monomial_coefficient(
+                phy_tensor_expression_term(
+                    value.as.abstract_expression, term)),
+            &numerator, &denominator));
+        PHY_CHECK_EQ_INT(denominator, 2);
+        signs += (int)numerator;
+    }
+    PHY_CHECK_EQ_INT(signs, 0);
+
+    /*
+     * Factor selection is one-based at the notebook surface and the tableau
+     * contains one-based local slots in explicit row-major order.
+     */
+    value = run(
+        &f,
+        "YoungProject["
+        "T[Down[a],Down[b]]*T[Down[c],Down[d]],2,"
+        "{{2,1}}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_ABSTRACT_EXPRESSION);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_term_count(
+            value.as.abstract_expression),
+        2);
+
+    expect_status(
+        &f,
+        "YoungProject[T[Down[a],Down[b]],{{1,1}}]",
+        PHY_ERR_TYPE);
+    expect_status(
+        &f,
+        "YoungProject[T[Down[a],Down[b]],3,{{1,2}}]",
+        PHY_ERR_DOMAIN);
+
+    phy_env_reset(f.env);
+    PHY_CHECK_EQ_INT(phy_env_object_count(f.env), 0);
+    fixture_close(&f);
+}
+
+static void test_young_garnir_frontend(void)
+{
+    fixture f = fixture_open();
+    (void)run(&f, "V = IndexSpace[4, SymmetricMetric]");
+    phy_value value = run(
+        &f,
+        "R = TensorHead[{V,V,V,V},Commuting,{"
+        "Symmetry[{2,1,3,4},-1],"
+        "Symmetry[{1,2,4,3},-1],"
+        "Symmetry[{3,4,1,2},1]}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_TENSOR_HEAD);
+    PHY_CHECK(!phy_tensor_head_has_young_symmetry(value.as.tensor_head));
+
+    value = run(
+        &f, "YoungDeclare[R,{{1,3},{2,4}},RowLast]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_TENSOR_HEAD);
+    PHY_CHECK(phy_tensor_head_has_young_symmetry(value.as.tensor_head));
+    phy_young_tableau declared = {0};
+    phy_young_tableau_info info = {0};
+    PHY_CHECK_EQ_INT(
+        phy_tensor_head_young_symmetry(
+            value.as.tensor_head, &declared, &info),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(info.hook_product, 12);
+    PHY_CHECK_EQ_INT(declared.order, PHY_YOUNG_ROW_SYMMETRY_LAST);
+    expect_scalar(&f, "YoungDimension[{{1,3},{2,4}},4]", "20");
+    expect_scalar(
+        &f,
+        "YoungDimension[{{1,2,3,4,5,6,7,8,9,10,11,12}},196]",
+        "9336812873630705295");
+
+    value = run(
+        &f,
+        "B = R[Down[a],Down[b],Down[c],Down[d]]"
+        "+R[Down[a],Down[c],Down[d],Down[b]]"
+        "+R[Down[a],Down[d],Down[b],Down[c]]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_ABSTRACT_EXPRESSION);
+    value = run(&f, "YoungReduce[B]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_ABSTRACT_EXPRESSION);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_term_count(
+            value.as.abstract_expression),
+        0);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_free_count(
+            value.as.abstract_expression),
+        4);
+
+    value = run(
+        &f,
+        "G = GarnirRelation["
+        "R[Down[a],Down[b],Down[c],Down[d]],1,1]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_ABSTRACT_EXPRESSION);
+    PHY_CHECK(
+        phy_tensor_expression_term_count(
+            value.as.abstract_expression) > 0u);
+    value = run(&f, "YoungReduce[G]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_ABSTRACT_EXPRESSION);
+    PHY_CHECK_EQ_INT(
+        phy_tensor_expression_term_count(
+            value.as.abstract_expression),
+        0);
+
+    expect_status(
+        &f, "YoungDeclare[R,{{1,3},{2,4}},RowLast]",
+        PHY_ERR_ALREADY_INITIALIZED);
+    expect_status(
+        &f, "YoungDimension[{{1,1},{2,4}},4]", PHY_ERR_TYPE);
+    value = run(&f, "S = TensorHead[{V,V},Symmetric]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_TENSOR_HEAD);
+    expect_status(
+        &f, "YoungDeclare[S,{{1},{2}},ColumnLast]",
+        PHY_ERR_TYPE);
+    PHY_CHECK(!phy_tensor_head_has_young_symmetry(value.as.tensor_head));
+
+    phy_env_reset(f.env);
+    PHY_CHECK_EQ_INT(phy_env_object_count(f.env), 0);
+    fixture_close(&f);
+}
+
+static void test_dynamic_component_frontend_and_bridge(void)
+{
+    fixture f = fixture_open();
+
+    (void)run(&f, "V = IndexSpace[2, SymmetricMetric]");
+    (void)run(&f, "A = TensorHead[{V,V}, Antisymmetric]");
+    phy_value value = run(&f, "e = ComponentBasis[V,{x,y}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_COMPONENT_BASIS);
+    PHY_CHECK_EQ_STR(
+        describe(&f, value),
+        "ComponentBasis e of V dim 2 coordinates");
+    expect_scalar(&f, "Dimension[e]", "2");
+    value = run(&f, "Dimensions[e]");
+    PHY_CHECK_EQ_STR(expansion(&f, value), "(fn List 2)");
+    expect_status(&f, "x = 1", PHY_ERR_ASSUMPTION);
+
+    value = run(
+        &f,
+        "Ac = TensorComponents["
+        "A,{e,e},{Down,Down},{{{0,1},a}}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_COMPONENT_TENSOR);
+    PHY_CHECK_EQ_STR(
+        describe(&f, value),
+        "TensorComponents A rank 2 sparse 1");
+    phy_ir_ref component_signature = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_eval_value_expression(
+            f.env, value, &component_signature),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_ir_kind_of(f.ir, component_signature), PHY_IR_TENSOR);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(
+            f.ir, phy_ir_head(f.ir, component_signature)),
+        "A");
+    PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, component_signature), 2u);
+    for (size_t slot = 0u; slot < 2u; ++slot) {
+        phy_ir_variance variance = PHY_IR_INDEX_UPPER;
+        PHY_CHECK(phy_ir_index_variance(
+            f.ir, phy_ir_child(f.ir, component_signature, slot),
+            &variance));
+        PHY_CHECK_EQ_INT(variance, PHY_IR_INDEX_LOWER);
+    }
+    expect_scalar(&f, "Rank[Ac]", "2");
+    value = run(&f, "Dimensions[Ac]");
+    PHY_CHECK_EQ_STR(expansion(&f, value), "(fn List 2 2)");
+    expect_scalar(&f, "Component[Ac,0,1]", "a");
+    expect_scalar(&f, "Component[Ac,1,0]", "(* -1 a)");
+    expect_scalar(&f, "Component[Ac,0,0]", "0");
+    expect_scalar(
+        &f,
+        "ComponentValue[A[Down[i],Down[j]],{Ac},{0,1}]",
+        "a");
+
+    /*
+     * ComponentValue enumerates only dummy indices. This contraction is
+     * 2*5 + 3*7, with no dense rank-four temporary.
+     */
+    (void)run(&f, "T = TensorHead[{V,V}, Commuting]");
+    (void)run(&f, "S = TensorHead[{V,V}, Commuting]");
+    (void)run(
+        &f,
+        "Tc = TensorComponents["
+        "T,{e,e},{Down,Down},{{{0,0},2},{{1,1},3}}]");
+    (void)run(
+        &f,
+        "Sc = TensorComponents["
+        "S,{e,e},{Up,Up},{{{0,0},5},{{1,1},7}}]");
+    expect_scalar(
+        &f,
+        "ComponentValue["
+        "T[Down[i],Down[j]]*S[Up[j],Up[i]],{Tc,Sc},{}]",
+        "31");
+    expect_scalar(
+        &f,
+        "ComponentValue["
+        "(T[Down[i],Down[j]]+T[Down[i],Down[j]])*"
+        "S[Up[j],Up[i]],{Tc,Sc},{}]",
+        "62");
+    expect_scalar(
+        &f,
+        "ComponentValue["
+        "YoungProject[A[Down[i],Down[j]],{{1,2}}],{Ac},{0,1}]",
+        "0");
+    expect_scalar(
+        &f,
+        "ComponentValue["
+        "A[Down[i],Down[j]]+A[Down[i],Down[j]],{Ac},{0,1}]",
+        "(* 2 a)");
+    expect_scalar(
+        &f,
+        "ComponentValue["
+        "2*YoungProject[A[Down[i],Down[j]],{{1},{2}}],"
+        "{Ac},{0,1}]",
+        "(* 2 a)");
+
+    /* Rank is a runtime resource limit, not the legacy rank-four ceiling. */
+    (void)run(&f, "W = IndexSpace[1, NoMetric]");
+    (void)run(
+        &f,
+        "H = TensorHead[{W,W,W,W,W}, Commuting]");
+    (void)run(&f, "b = ComponentBasis[W,1]");
+    value = run(
+        &f,
+        "Hc = TensorComponents["
+        "H,{b,b,b,b,b},{Down,Down,Down,Down,Down},"
+        "{{{0,0,0,0,0},q}}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_COMPONENT_TENSOR);
+    expect_scalar(&f, "Rank[Hc]", "5");
+    expect_scalar(&f, "Component[Hc,0,0,0,0,0]", "q");
+
+    /*
+     * A component realization retains its head and every distinct basis even
+     * if their source names are cleared. This exercises the dependency bitmap
+     * after compaction, not only its no-op registration path.
+     */
+    (void)run(&f, "X = IndexSpace[1,NoMetric]");
+    (void)run(&f, "Y = IndexSpace[1,NoMetric]");
+    (void)run(&f, "Z = IndexSpace[1,NoMetric]");
+    (void)run(&f, "ex = ComponentBasis[X,1]");
+    (void)run(&f, "ey = ComponentBasis[Y,1]");
+    (void)run(&f, "ez = ComponentBasis[Z,1]");
+    (void)run(&f, "M = TensorHead[{X,Y,Z},Commuting]");
+    (void)run(
+        &f,
+        "Mc = TensorComponents["
+        "M,{ex,ey,ez},{Down,Down,Down},{{{0,0,0},r}}]");
+    (void)run(&f, "Clear[ex]");
+    (void)run(&f, "Clear[ey]");
+    (void)run(&f, "Clear[ez]");
+    (void)run(&f, "Clear[M]");
+    (void)run(&f, "Clear[X]");
+    (void)run(&f, "Clear[Y]");
+    (void)run(&f, "Clear[Z]");
+    expect_scalar(&f, "Component[Mc,0,0,0]", "r");
+    PHY_CHECK_EQ_INT(phy_env_validate(f.env), PHY_OK);
+
+    const size_t before = phy_env_object_count(f.env);
+    expect_status(
+        &f,
+        "bad = TensorComponents["
+        "A,{e,e},{Down,Down},{{{0,2},1}}]",
+        PHY_ERR_DOMAIN);
+    PHY_CHECK_EQ_INT(phy_env_object_count(f.env), before);
+
+    phy_env_reset(f.env);
+    PHY_CHECK_EQ_INT(phy_env_object_count(f.env), 0);
+    fixture_close(&f);
+}
+
+static void test_dynamic_exact_linear_algebra_frontend(void)
+{
+    fixture f = fixture_open();
+
+    phy_value value = run(&f, "v = Vector[{1,2,3}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_VECTOR);
+    PHY_CHECK_EQ_STR(describe(&f, value), "Vector length 3");
+    PHY_CHECK_EQ_STR(expansion(&f, value), "(fn List 1 2 3)");
+    expect_scalar(&f, "Rank[v]", "1");
+    expect_scalar(&f, "Dimension[v]", "3");
+    value = run(&f, "Dimensions[v]");
+    PHY_CHECK_EQ_STR(expansion(&f, value), "(fn List 3)");
+    expect_scalar(&f, "Component[v,1]", "2");
+    expect_status(&f, "Component[v,3]", PHY_ERR_DOMAIN);
+    (void)run(&f, "w = Vector[{4,5,6}]");
+    expect_scalar(&f, "Dot[v,w]", "32");
+
+    value = run(&f, "A = Matrix[{{1,2},{3,4}}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_MATRIX);
+    PHY_CHECK_EQ_STR(describe(&f, value), "Matrix 2x2");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List (fn List 1 2) (fn List 3 4))");
+    expect_scalar(&f, "Rank[A]", "2");
+    expect_scalar(&f, "MatrixRank[A]", "2");
+    expect_scalar(&f, "Determinant[A]", "-2");
+    value = run(&f, "Dimensions[A]");
+    PHY_CHECK_EQ_STR(expansion(&f, value), "(fn List 2 2)");
+    expect_scalar(&f, "Component[A,1,0]", "3");
+
+    value = run(&f, "At = Transpose[A]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_MATRIX);
+    expect_scalar(&f, "Component[At,0,1]", "3");
+    value = run(&f, "Ai = Inverse[A]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_MATRIX);
+    expect_scalar(&f, "Component[Ai,0,0]", "-2");
+    expect_scalar(&f, "Component[Ai,1,0]", "(rat 3 2)");
+    value = run(&f, "Ar = RowReduce[A]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_MATRIX);
+    expect_scalar(&f, "Component[Ar,0,0]", "1");
+    expect_scalar(&f, "Component[Ar,0,1]", "0");
+
+    value = run(&f, "p = Vector[{7,11}]");
+    value = run(&f, "Ap = Dot[A,p]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_VECTOR);
+    expect_scalar(&f, "Component[Ap,0]", "29");
+    expect_scalar(&f, "Component[Ap,1]", "65");
+    value = run(&f, "AA = Dot[A,A]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_MATRIX);
+    expect_scalar(&f, "Component[AA,0,0]", "7");
+    expect_scalar(&f, "Component[AA,1,1]", "22");
+
+    value = run(&f, "C = 2*A + A");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_MATRIX);
+    expect_scalar(&f, "Component[C,1,0]", "9");
+    expect_decision(&f, "EquivalentQ[C,3*A]", "True");
+    expect_decision(
+        &f, "ZeroQ[C + (-3)*A]", "True");
+
+    (void)run(&f, "L = Matrix[{{2,1},{1,-1}}]");
+    (void)run(&f, "rhs = Vector[{5,1}]");
+    value = run(&f, "sol = LinearSolve[L,rhs]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_VECTOR);
+    expect_scalar(&f, "Component[sol,0]", "2");
+    expect_scalar(&f, "Component[sol,1]", "1");
+
+    const size_t before = phy_env_object_count(f.env);
+    expect_status(
+        &f, "bad = Matrix[{{1},{2,3}}]", PHY_ERR_TYPE);
+    PHY_CHECK_EQ_INT(phy_env_object_count(f.env), before);
+    expect_status(&f, "Vector[{}]", PHY_ERR_PARSE);
+    expect_status(&f, "Dot[v,A]", PHY_ERR_TYPE);
+    expect_status(
+        &f, "Inverse[Matrix[{{1,2},{2,4}}]]",
+        PHY_ERR_DOMAIN);
+
+    phy_env_reset(f.env);
+    PHY_CHECK_EQ_INT(phy_env_object_count(f.env), 0);
+    fixture_close(&f);
+}
+
+static void test_coordinate_map_transition_and_atlas_frontend(void)
+{
+    fixture f = fixture_open();
+
+    (void)run(&f, "V = IndexSpace[2,NoMetric]");
+    (void)run(&f, "xy = ComponentBasis[V,{x,y}]");
+    (void)run(&f, "uv = ComponentBasis[V,{u,v}]");
+    phy_value value = run(
+        &f, "F = CoordinateMap[xy,uv,{x+y,x-y}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_COORDINATE_MAP);
+    PHY_CHECK_EQ_STR(describe(&f, value), "CoordinateMap xy -> uv");
+    expect_scalar(&f, "Component[F,0]", "(+ x y)");
+    expect_scalar(&f, "Component[F,1]", "(+ x (* -1 y))");
+
+    value = run(&f, "J = Jacobian[F]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_MATRIX);
+    expect_scalar(&f, "Component[J,0,0]", "1");
+    expect_scalar(&f, "Component[J,0,1]", "1");
+    expect_scalar(&f, "Component[J,1,0]", "1");
+    expect_scalar(&f, "Component[J,1,1]", "-1");
+    expect_scalar(
+        &f, "PullbackScalar[F,u^2+v]",
+        "(+ (^ (+ x y) 2) x (* -1 y))");
+
+    (void)run(&f, "alpha = Vector[{0,u}]");
+    value = run(&f, "Falpha = PullbackCovector[F,alpha]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_VECTOR);
+    expect_scalar(&f, "Component[Falpha,0]", "(+ x y)");
+    expect_scalar(&f, "Component[Falpha,1]", "(* -1 (+ x y))");
+    (void)run(&f, "vx = Vector[{x,y}]");
+    value = run(&f, "Fvx = PushForwardVector[F,vx]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_VECTOR);
+    expect_scalar(&f, "Component[Fvx,0]", "(+ x y)");
+    expect_scalar(&f, "Component[Fvx,1]", "(+ x (* -1 y))");
+
+    value = run(
+        &f,
+        "tr = BasisTransition["
+        "xy,uv,{x+y,x-y},{(u+v)/2,(u-v)/2}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_BASIS_TRANSITION);
+    PHY_CHECK_EQ_STR(
+        describe(&f, value),
+        "BasisTransition xy <-> uv verified");
+    value = run(&f, "Jtr = Jacobian[tr]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_MATRIX);
+    expect_scalar(&f, "Component[Jtr,1,1]", "-1");
+    expect_scalar(
+        &f, "PullbackScalar[tr,u+v]", "(* 2 x)");
+
+    (void)run(&f, "G = TensorHead[{V,V},Symmetric]");
+    (void)run(
+        &f,
+        "Guv = TensorComponents["
+        "G,{uv,uv},{Down,Down},"
+        "{{{0,0},1},{{1,1},1}}]");
+    value = run(&f, "Gxy = TransitionPullback[tr,Guv]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_COMPONENT_TENSOR);
+    expect_scalar(&f, "Component[Gxy,0,0]", "2");
+    expect_scalar(&f, "Component[Gxy,0,1]", "0");
+    expect_scalar(&f, "Component[Gxy,1,1]", "2");
+
+    value = run(&f, "AT = Atlas[{xy,uv}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_ATLAS);
+    PHY_CHECK_EQ_STR(
+        describe(&f, value), "Atlas charts 2 transitions 0");
+    value = run(
+        &f,
+        "AT = AtlasAddTransition["
+        "AT,xy,uv,{x+y,x-y},{(u+v)/2,(u-v)/2}]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_ATLAS);
+    PHY_CHECK_EQ_STR(
+        describe(&f, value), "Atlas charts 2 transitions 1");
+    expect_scalar(&f, "AtlasVerify[AT]", "0");
+    value = run(&f, "Gxy2 = AtlasPullback[AT,xy,uv,Guv]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_COMPONENT_TENSOR);
+    expect_scalar(&f, "Component[Gxy2,0,0]", "2");
+    expect_scalar(&f, "Component[Gxy2,1,1]", "2");
+
+    const size_t before = phy_env_object_count(f.env);
+    expect_status(
+        &f,
+        "badtr = BasisTransition["
+        "xy,uv,{x+y,x-y},{(u+v)/2,(u+v)/2}]",
+        PHY_ERR_ASSUMPTION);
+    PHY_CHECK_EQ_INT(phy_env_object_count(f.env), before);
+    expect_status(
+        &f, "CoordinateMap[xy,uv,{u,v}]", PHY_ERR_TYPE);
+    expect_status(
+        &f, "PullbackCovector[F,Vector[{1}]]", PHY_ERR_TYPE);
+
+    phy_env_reset(f.env);
+    PHY_CHECK_EQ_INT(phy_env_object_count(f.env), 0);
+    fixture_close(&f);
+}
+
 int main(void)
 {
     if (phy_platform_init() != PHY_OK) {
@@ -1192,6 +2442,10 @@ int main(void)
     }
     PHY_TEST_CASE(test_scalar_state_flows_between_cells);
     PHY_TEST_CASE(test_scalar_elementary_foundation);
+    PHY_TEST_CASE(test_series_reader_and_evaluator);
+    PHY_TEST_CASE(test_limit_reader_and_evaluator);
+    PHY_TEST_CASE(test_solve_reader_and_evaluator);
+    PHY_TEST_CASE(test_polynomial_ideal_reader_and_evaluator);
     PHY_TEST_CASE(test_clear_and_reset);
     PHY_TEST_CASE(test_binding_rejects_reserved_and_captured_names);
     PHY_TEST_CASE(test_manifolds_and_forms);
@@ -1204,13 +2458,23 @@ int main(void)
     PHY_TEST_CASE(test_nonabelian_gauge_field);
     PHY_TEST_CASE(test_curvature_pipeline);
     PHY_TEST_CASE(test_qft_heads_reach_native_backends);
+    PHY_TEST_CASE(test_qft_shared_abstract_component_frontend);
+    PHY_TEST_CASE(test_qft_symbolic_n_frontend);
     PHY_TEST_CASE(test_sun_colour_heads_reach_native_backend);
     PHY_TEST_CASE(test_reserved_heads_never_silently_pass_through);
     PHY_TEST_CASE(test_every_evaluated_head_rejects_empty_arguments);
     PHY_TEST_CASE(test_objects_are_swept_and_never_leaked);
     PHY_TEST_CASE(test_environment_bounds);
+    PHY_TEST_CASE(test_notebook_clear_all_renders_successfully);
     PHY_TEST_CASE(test_notebook_shares_state_between_cells);
-    PHY_TEST_CASE(test_notebook_round_trip_keeps_descriptors);
+    PHY_TEST_CASE(test_notebook_round_trip_keeps_structured_handles);
+    PHY_TEST_CASE(test_notebook_round_trip_keeps_series_data);
+    PHY_TEST_CASE(test_abstract_tensor_frontend_and_canonicalization);
+    PHY_TEST_CASE(test_young_project_frontend);
+    PHY_TEST_CASE(test_young_garnir_frontend);
+    PHY_TEST_CASE(test_dynamic_component_frontend_and_bridge);
+    PHY_TEST_CASE(test_dynamic_exact_linear_algebra_frontend);
+    PHY_TEST_CASE(test_coordinate_map_transition_and_atlas_frontend);
     const int result = PHY_TEST_REPORT("test_eval");
     phy_platform_shutdown();
     return result;

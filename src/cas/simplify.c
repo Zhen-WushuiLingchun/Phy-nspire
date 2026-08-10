@@ -29,18 +29,53 @@
 
 /* --------------------------------------------------------------- utilities */
 
+static phy_status add_exact_nodes(phy_cas *cas, phy_ir_ref left,
+                                  phy_ir_ref right, phy_ir_ref *out_ref)
+{
+    phy_cas_rat a;
+    phy_cas_rat b;
+    phy_cas_rat sum;
+    if (phy_cas_exact_value(cas, left, &a) &&
+        phy_cas_exact_value(cas, right, &b)) {
+        if (!phy_cas_rat_add(a, b, &sum)) {
+            return phy_cas_exact_add_refs(
+                cas, left, right, out_ref);
+        }
+        return phy_cas_number_node(cas, sum, out_ref);
+    }
+    return phy_cas_exact_add_refs(cas, left, right, out_ref);
+}
+
+static phy_status multiply_exact_nodes(phy_cas *cas, phy_ir_ref left,
+                                       phy_ir_ref right,
+                                       phy_ir_ref *out_ref)
+{
+    phy_cas_rat a;
+    phy_cas_rat b;
+    phy_cas_rat product;
+    if (phy_cas_exact_value(cas, left, &a) &&
+        phy_cas_exact_value(cas, right, &b)) {
+        if (!phy_cas_rat_mul(a, b, &product)) {
+            return phy_cas_exact_mul_refs(
+                cas, left, right, out_ref);
+        }
+        return phy_cas_number_node(cas, product, out_ref);
+    }
+    return phy_cas_exact_mul_refs(cas, left, right, out_ref);
+}
+
 /* True when `ref` is an exact number that is negative. */
 static bool negative_lead(const phy_cas *cas, phy_ir_ref ref)
 {
-    phy_cas_rat value;
-    if (phy_cas_exact_value(cas, ref, &value)) {
-        return value.num < 0;
+    if (phy_cas_is_exact(cas, ref)) {
+        return phy_cas_exact_sign_ref(cas, ref) < 0;
     }
     /* A simplified product carries its coefficient first, so this is the whole
        of "syntactically negative" for a normalized expression. */
     if (phy_ir_kind_of(cas->ir, ref) == PHY_IR_MUL &&
-        phy_cas_exact_value(cas, phy_ir_child(cas->ir, ref, 0u), &value)) {
-        return value.num < 0;
+        phy_cas_is_exact(cas, phy_ir_child(cas->ir, ref, 0u))) {
+        return phy_cas_exact_sign_ref(
+                   cas, phy_ir_child(cas->ir, ref, 0u)) < 0;
     }
     return false;
 }
@@ -314,7 +349,7 @@ static phy_status pythagorean_partner(phy_cas *cas, phy_ir_ref key,
  * terminates because every collapse removes one term.
  */
 static phy_status collapse_pythagorean(phy_cas *cas, size_t pairs,
-                                       size_t count, phy_cas_rat *total)
+                                       size_t count, phy_ir_ref *total)
 {
     bool changed = true;
     while (changed) {
@@ -342,19 +377,22 @@ static phy_status collapse_pythagorean(phy_cas *cas, size_t pairs,
                     if (j == i || slot[2u * j] != partner) {
                         continue;
                     }
-                    phy_cas_rat mine, theirs;
-                    if (!phy_cas_exact_value(cas, slot[2u * i + 1u],
-                                             &mine) ||
-                        !phy_cas_exact_value(cas, slot[2u * j + 1u],
-                                             &theirs) ||
-                        mine.num != theirs.num || mine.den != theirs.den) {
+                    const phy_ir_ref mine = slot[2u * i + 1u];
+                    const phy_ir_ref theirs = slot[2u * j + 1u];
+                    if (!phy_cas_is_exact(cas, mine) ||
+                        !phy_cas_is_exact(cas, theirs) ||
+                        mine != theirs) {
                         break;
                     }
                     slot[2u * j] = PHY_IR_NULL;
                     if (base == PHY_IR_NULL) {
-                        if (!phy_cas_rat_add(*total, mine, total)) {
-                            return PHY_ERR_OVERFLOW;
+                        phy_ir_ref sum = PHY_IR_NULL;
+                        status = add_exact_nodes(
+                            cas, *total, mine, &sum);
+                        if (status != PHY_OK) {
+                            return status;
                         }
+                        *total = sum;
                         slot[2u * i] = PHY_IR_NULL;
                     } else {
                         /* The freed key may already be in the sum; fold the
@@ -368,16 +406,11 @@ static phy_status collapse_pythagorean(phy_cas *cas, size_t pairs,
                             }
                         }
                         if (existing < count) {
-                            phy_cas_rat other, sum;
-                            if (!phy_cas_exact_value(
-                                    cas, slot[2u * existing + 1u],
-                                    &other) ||
-                                !phy_cas_rat_add(mine, other, &sum)) {
-                                return PHY_ERR_OVERFLOW;
-                            }
-                            phy_ir_ref coefficient;
-                            status =
-                                phy_cas_number_node(cas, sum, &coefficient);
+                            const phy_ir_ref other =
+                                slot[2u * existing + 1u];
+                            phy_ir_ref coefficient = PHY_IR_NULL;
+                            status = add_exact_nodes(
+                                cas, mine, other, &coefficient);
                             if (status != PHY_OK) {
                                 return status;
                             }
@@ -413,17 +446,18 @@ static phy_status collect_sum(phy_cas *cas, size_t terms, size_t count,
 
     /* Exact terms accumulate here rather than in the pair array: there is one
        numeric term in the result and it has no key to merge on. */
-    phy_cas_rat total = {0, 1};
+    phy_ir_ref total = cas->zero;
     size_t used = 0u;
 
     for (size_t i = 0u; i < count; i++) {
         const phy_ir_ref term = phy_cas_scratch_at(cas, terms)[i];
-        phy_cas_rat value;
-        if (phy_cas_exact_value(cas, term, &value)) {
-            if (!phy_cas_rat_add(total, value, &total)) {
-                status = PHY_ERR_OVERFLOW;
+        if (phy_cas_is_exact(cas, term)) {
+            phy_ir_ref sum = PHY_IR_NULL;
+            status = add_exact_nodes(cas, total, term, &sum);
+            if (status != PHY_OK) {
                 goto done;
             }
+            total = sum;
             continue;
         }
 
@@ -445,15 +479,11 @@ static phy_status collect_sum(phy_cas *cas, size_t terms, size_t count,
     for (size_t i = 0u; i < used; i++) {
         phy_ir_ref *slot = phy_cas_scratch_at(cas, pairs);
         if (merged > 0u && slot[2u * (merged - 1u)] == slot[2u * i]) {
-            phy_cas_rat left, right, sum;
-            if (!phy_cas_exact_value(cas, slot[2u * (merged - 1u) + 1u], &left) ||
-                !phy_cas_exact_value(cas, slot[2u * i + 1u], &right) ||
-                !phy_cas_rat_add(left, right, &sum)) {
-                status = PHY_ERR_OVERFLOW;
-                goto done;
-            }
-            phy_ir_ref coeff;
-            status = phy_cas_number_node(cas, sum, &coeff);
+            const phy_ir_ref left =
+                slot[2u * (merged - 1u) + 1u];
+            const phy_ir_ref right = slot[2u * i + 1u];
+            phy_ir_ref coeff = PHY_IR_NULL;
+            status = add_exact_nodes(cas, left, right, &coeff);
             if (status != PHY_OK) {
                 goto done;
             }
@@ -501,13 +531,8 @@ static phy_status collect_sum(phy_cas *cas, size_t terms, size_t count,
         phy_cas_scratch_at(cas, built)[terms_out++] = term;
     }
 
-    if (total.num != 0) {
-        phy_ir_ref number;
-        status = phy_cas_number_node(cas, total, &number);
-        if (status != PHY_OK) {
-            goto done;
-        }
-        phy_cas_scratch_at(cas, built)[terms_out++] = number;
+    if (total != cas->zero) {
+        phy_cas_scratch_at(cas, built)[terms_out++] = total;
     }
 
     if (terms_out == 0u) {
@@ -536,13 +561,9 @@ done:
 static phy_status add_exponents(phy_cas *cas, phy_ir_ref left, phy_ir_ref right,
                                 phy_ir_ref *out_ref)
 {
-    phy_cas_rat a, b, sum;
-    if (phy_cas_exact_value(cas, left, &a) &&
-        phy_cas_exact_value(cas, right, &b)) {
-        if (!phy_cas_rat_add(a, b, &sum)) {
-            return PHY_ERR_OVERFLOW;
-        }
-        return phy_cas_number_node(cas, sum, out_ref);
+    if (phy_cas_is_exact(cas, left) &&
+        phy_cas_is_exact(cas, right)) {
+        return add_exact_nodes(cas, left, right, out_ref);
     }
     const phy_ir_ref terms[2] = {left, right};
     return phy_cas_add_node(cas, terms, 2u, out_ref);
@@ -600,7 +621,7 @@ static phy_status negate_sum(phy_cas *cas, phy_ir_ref sum, phy_ir_ref *out_ref)
  * (-1)^(1/2) * A^(1/2).
  */
 static phy_status merge_negated_bases(phy_cas *cas, size_t pairs, size_t count,
-                                      phy_cas_rat *coefficient)
+                                      phy_ir_ref *coefficient)
 {
     phy_ir_context *ir = cas->ir;
 
@@ -626,10 +647,21 @@ static phy_status merge_negated_bases(phy_cas *cas, size_t pairs, size_t count,
             }
             phy_cas_rat sign;
             const phy_cas_rat minus_one = {-1, 1};
-            if (!phy_cas_rat_pow(minus_one, exponent.num, &sign) ||
-                !phy_cas_rat_mul(*coefficient, sign, coefficient)) {
+            if (!phy_cas_rat_pow(minus_one, exponent.num, &sign)) {
                 return PHY_ERR_OVERFLOW;
             }
+            phy_ir_ref sign_ref = PHY_IR_NULL;
+            status = phy_cas_number_node(cas, sign, &sign_ref);
+            if (status != PHY_OK) {
+                return status;
+            }
+            phy_ir_ref product = PHY_IR_NULL;
+            status = multiply_exact_nodes(
+                cas, *coefficient, sign_ref, &product);
+            if (status != PHY_OK) {
+                return status;
+            }
+            *coefficient = product;
             phy_ir_ref combined;
             status = add_exponents(cas, slot[2u * i + 1u],
                                    slot[2u * j + 1u], &combined);
@@ -672,16 +704,19 @@ static phy_status collect_product_pass(phy_cas *cas, size_t factors, size_t coun
         return status;
     }
 
-    phy_cas_rat coefficient = {1, 1};
+    phy_ir_ref coefficient = cas->one;
     size_t used = 0u;
 
     for (size_t i = 0u; i < count; i++) {
         const phy_ir_ref factor = phy_cas_scratch_at(cas, factors)[i];
-        phy_cas_rat value;
-        if (phy_cas_exact_value(cas, factor, &value)) {
-            if (!phy_cas_rat_mul(coefficient, value, &coefficient)) {
-                return PHY_ERR_OVERFLOW;
+        if (phy_cas_is_exact(cas, factor)) {
+            phy_ir_ref product = PHY_IR_NULL;
+            status = multiply_exact_nodes(
+                cas, coefficient, factor, &product);
+            if (status != PHY_OK) {
+                return status;
             }
+            coefficient = product;
             continue;
         }
 
@@ -742,13 +777,16 @@ static phy_status collect_product_pass(phy_cas *cas, size_t factors, size_t coun
             return status;
         }
 
-        phy_cas_rat value;
-        if (phy_cas_exact_value(cas, power, &value)) {
+        if (phy_cas_is_exact(cas, power)) {
             /* A folded power joins the coefficient; 2^a * 2^b becomes 8 rather
                than a numeric factor the next pass would have to collect. */
-            if (!phy_cas_rat_mul(coefficient, value, &coefficient)) {
-                return PHY_ERR_OVERFLOW;
+            phy_ir_ref product = PHY_IR_NULL;
+            status = multiply_exact_nodes(
+                cas, coefficient, power, &product);
+            if (status != PHY_OK) {
+                return status;
             }
+            coefficient = product;
             continue;
         }
         if (phy_ir_kind_of(ir, power) == PHY_IR_MUL) {
@@ -757,19 +795,14 @@ static phy_status collect_product_pass(phy_cas *cas, size_t factors, size_t coun
         phy_cas_scratch_at(cas, built)[factors_out++] = power;
     }
 
-    if (coefficient.num == 0) {
+    if (coefficient == cas->zero) {
         /* Zero annihilates. */
         *out_ref = cas->zero;
         return PHY_OK;
     }
 
-    if (phy_cas_rat_cmp_int(coefficient, 1) != 0) {
-        phy_ir_ref number;
-        status = phy_cas_number_node(cas, coefficient, &number);
-        if (status != PHY_OK) {
-            return status;
-        }
-        phy_cas_scratch_at(cas, built)[factors_out++] = number;
+    if (coefficient != cas->one) {
+        phy_cas_scratch_at(cas, built)[factors_out++] = coefficient;
     }
 
     *out_offset = built;
@@ -893,6 +926,52 @@ phy_status phy_cas_pow_node(phy_cas *cas, phy_ir_ref base, phy_ir_ref exponent,
     const bool integral =
         phy_ir_integer_value(ir, exponent, &integer_exponent);
 
+    /*
+     * I has period four for every integer exponent, including a promoted
+     * integer too large for int64/int32.  Reduce the exact atom directly
+     * instead of refusing an exponent whose magnitude is irrelevant.
+     */
+    if (base == cas->constant_i &&
+        phy_ir_kind_of(ir, exponent) == PHY_IR_INTEGER) {
+        uint32_t residue = 0u;
+        phy_status status = phy_cas_exact_mod_u32_ref(
+            cas, exponent, 4u, &residue);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (residue == 0u) {
+            *out_ref = cas->one;
+            return PHY_OK;
+        }
+        if (residue == 1u) {
+            *out_ref = cas->constant_i;
+            return PHY_OK;
+        }
+        if (residue == 2u) {
+            *out_ref = cas->minus_one;
+            return PHY_OK;
+        }
+        const phy_ir_ref factors[2] = {
+            cas->minus_one, cas->constant_i};
+        const phy_ir_ref result = phy_ir_mul(ir, factors, 2u);
+        if (result == PHY_IR_NULL) {
+            return phy_cas_ir_failure(cas);
+        }
+        *out_ref = result;
+        return PHY_OK;
+    }
+
+    if (integral) {
+        bool gaussian_matched = false;
+        const phy_status gaussian_status =
+            phy_cas_gaussian_pow_node(
+                cas, base, integer_exponent, out_ref,
+                &gaussian_matched);
+        if (gaussian_status != PHY_OK || gaussian_matched) {
+            return gaussian_status;
+        }
+    }
+
     if (integral && integer_exponent == 0) {
         /* 0^0 has no value to choose; anything else to the zero is 1 wherever it
            is defined, which is the generic-domain convention this layer uses. */
@@ -970,14 +1049,17 @@ phy_status phy_cas_pow_node(phy_cas *cas, phy_ir_ref base, phy_ir_ref exponent,
             if (phy_cas_rat_pow(exact_base, integer_exponent, &folded)) {
                 return phy_cas_number_node(cas, folded, out_ref);
             }
-            /*
-             * Too large for int64. Unlike a product of two numbers, an
-             * unevaluated exact power is still in normal form -- there is
-             * nothing to collect -- so this stays symbolic rather than failing
-             * a rewrite that has no other problem. The zero decision then treats
-             * it as an opaque generator, which is why 4^500 - 2^1000 answers
-             * UNKNOWN instead of ZERO.
-             */
+            const phy_status promoted = phy_cas_exact_pow_ref(
+                cas, base, integer_exponent, out_ref);
+            if (promoted != PHY_ERR_UNSUPPORTED) {
+                return promoted;
+            }
+        } else if (phy_cas_is_exact(cas, base)) {
+            const phy_status promoted = phy_cas_exact_pow_ref(
+                cas, base, integer_exponent, out_ref);
+            if (promoted != PHY_ERR_UNSUPPORTED) {
+                return promoted;
+            }
         } else if (phy_ir_kind_of(ir, base) == PHY_IR_POW) {
             /* (u^a)^k = u^(a*k) for integer k, on the principal branch. The
                restriction matters: (u^2)^(1/2) is not u. */
@@ -1193,13 +1275,67 @@ static phy_status exact_trig_value(phy_cas *cas, phy_cas_function function,
     return special_value(cas, code, out_ref);
 }
 
+static bool function_argument_is_singular(
+    phy_cas *cas, const phy_cas_function_descriptor *descriptor,
+    phy_ir_ref argument)
+{
+    if (descriptor == NULL) {
+        return false;
+    }
+
+    const bool zero_argument = phy_cas_is_integer(cas, argument, 0);
+    if (zero_argument &&
+        descriptor->zero_value == PHY_CAS_ZERO_VALUE_DOMAIN) {
+        return true;
+    }
+    if ((descriptor->singularities &
+         PHY_CAS_SINGULAR_AT_UNIT_ENDPOINTS) != 0u &&
+        (phy_cas_is_integer(cas, argument, 1) ||
+         phy_cas_is_integer(cas, argument, -1))) {
+        return true;
+    }
+    if ((descriptor->singularities &
+         PHY_CAS_SINGULAR_AT_NONPOSITIVE_INTEGERS) != 0u) {
+        return phy_ir_kind_of(cas->ir, argument) == PHY_IR_INTEGER &&
+               phy_cas_exact_sign_ref(cas, argument) <= 0;
+    }
+    return false;
+}
+
+static bool function_zero_value(
+    phy_cas *cas, const phy_cas_function_descriptor *descriptor,
+    phy_ir_ref argument, phy_ir_ref *out_ref)
+{
+    if (descriptor == NULL ||
+        !phy_cas_is_integer(cas, argument, 0)) {
+        return false;
+    }
+    if (descriptor->zero_value == PHY_CAS_ZERO_VALUE_ZERO) {
+        *out_ref = cas->zero;
+        return true;
+    }
+    if (descriptor->zero_value == PHY_CAS_ZERO_VALUE_ONE) {
+        *out_ref = cas->one;
+        return true;
+    }
+    return false;
+}
+
 static phy_status apply_function(phy_cas *cas, phy_ir_symbol head,
                                  phy_ir_ref argument, phy_ir_ref *out_ref)
 {
     phy_ir_context *ir = cas->ir;
-    const bool zero_argument = phy_cas_is_integer(cas, argument, 0);
+    bool gaussian_matched = false;
+    const phy_status gaussian_status =
+        phy_cas_gaussian_function(
+            cas, head, argument, out_ref, &gaussian_matched);
+    if (gaussian_status != PHY_OK || gaussian_matched) {
+        return gaussian_status;
+    }
 
     const phy_cas_function function = phy_cas_function_id(cas, head);
+    const phy_cas_function_descriptor *descriptor =
+        phy_cas_function_descriptor_for(function);
     if (function == PHY_CAS_FN_SIN || function == PHY_CAS_FN_COS ||
         function == PHY_CAS_FN_TAN) {
         bool matched = false;
@@ -1208,67 +1344,45 @@ static phy_status apply_function(phy_cas *cas, phy_ir_symbol head,
         if (status != PHY_OK || matched) {
             return status;
         }
-        if (zero_argument) {
-            *out_ref =
-                function == PHY_CAS_FN_COS ? cas->one : cas->zero;
-            return PHY_OK;
-        }
-        /*
-         * Parity: cos is even, sin and tan are odd. Folding the sign out of the
-         * argument is what lets sin(-u) + sin(u) collect to zero later, and it
-         * is cheap because a normalized product wears its sign on the front.
-         *
-         * It also puts the argument in the form the multiple-angle reduction in
-         * normal.c looks for, so cos(-2*u) reaches the same polynomial as
-         * cos(2*u) rather than becoming a second generator.
-         */
-        if (negative_lead(cas, argument)) {
-            phy_ir_ref positive;
-            status = phy_cas_neg_node(cas, argument, &positive);
-            if (status != PHY_OK) {
-                return status;
-            }
-            phy_ir_ref folded;
+    }
+
+    if (function_argument_is_singular(cas, descriptor, argument)) {
+        return PHY_ERR_DOMAIN;
+    }
+    if (function_zero_value(cas, descriptor, argument, out_ref)) {
+        return PHY_OK;
+    }
+
+    /*
+     * Fold parity from the descriptor instead of maintaining overlapping
+     * hand-written function lists. This covers trigonometric, hyperbolic,
+     * inverse and error functions; in particular cosh is even.
+     */
+    if (descriptor != NULL &&
+        descriptor->parity != PHY_CAS_PARITY_NONE &&
+        negative_lead(cas, argument)) {
+        phy_ir_ref positive = PHY_IR_NULL;
+        phy_ir_ref folded = PHY_IR_NULL;
+        phy_status status = phy_cas_neg_node(cas, argument, &positive);
+        if (status == PHY_OK) {
             status = apply_function(cas, head, positive, &folded);
-            if (status != PHY_OK) {
-                return status;
-            }
-            if (function == PHY_CAS_FN_COS) {
-                *out_ref = folded; /* even */
-                return PHY_OK;
-            }
-            return phy_cas_neg_node(cas, folded, out_ref); /* odd */
         }
-    } else if (function == PHY_CAS_FN_SINH ||
-               function == PHY_CAS_FN_COSH ||
-               function == PHY_CAS_FN_TANH ||
-               function == PHY_CAS_FN_ASIN ||
-               function == PHY_CAS_FN_ATAN ||
-               function == PHY_CAS_FN_ASINH ||
-               function == PHY_CAS_FN_ATANH) {
-        if (zero_argument) {
-            *out_ref =
-                function == PHY_CAS_FN_COSH ? cas->one : cas->zero;
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (descriptor->parity == PHY_CAS_PARITY_EVEN) {
+            *out_ref = folded;
             return PHY_OK;
         }
-        if (negative_lead(cas, argument)) {
-            phy_ir_ref positive = PHY_IR_NULL;
-            phy_ir_ref folded = PHY_IR_NULL;
-            phy_status status =
-                phy_cas_neg_node(cas, argument, &positive);
-            if (status == PHY_OK) {
-                status = apply_function(cas, head, positive, &folded);
-            }
-            return status == PHY_OK
-                       ? phy_cas_neg_node(cas, folded, out_ref)
-                       : status;
-        }
-    } else if (function == PHY_CAS_FN_ACOS) {
+        return phy_cas_neg_node(cas, folded, out_ref);
+    }
+
+    if (function == PHY_CAS_FN_ACOS) {
         if (phy_cas_is_integer(cas, argument, 1)) {
             *out_ref = cas->zero;
             return PHY_OK;
         }
-        if (zero_argument) {
+        if (phy_cas_is_integer(cas, argument, 0)) {
             phy_ir_ref half = PHY_IR_NULL;
             phy_status status = phy_cas_number_node(
                 cas, (phy_cas_rat){1, 2}, &half);
@@ -1284,10 +1398,6 @@ static phy_status apply_function(phy_cas *cas, phy_ir_symbol head,
             return PHY_OK;
         }
     } else if (function == PHY_CAS_FN_EXP) {
-        if (zero_argument) {
-            *out_ref = cas->one;
-            return PHY_OK;
-        }
         if (phy_cas_is_integer(cas, argument, 1)) {
             *out_ref = cas->constant_e;
             return PHY_OK;
@@ -1311,9 +1421,6 @@ static phy_status apply_function(phy_cas *cas, phy_ir_symbol head,
     } else if (function == PHY_CAS_FN_GAMMA) {
         phy_cas_rat value;
         if (phy_cas_exact_value(cas, argument, &value)) {
-            if (value.den == 1 && value.num <= 0) {
-                return PHY_ERR_DOMAIN;
-            }
             if (value.den == 1 && value.num <= 21) {
                 int64_t factorial = 1;
                 bool fits = true;
@@ -1340,36 +1447,18 @@ static phy_status apply_function(phy_cas *cas, phy_ir_symbol head,
             }
         }
     } else if (function == PHY_CAS_FN_LOGGAMMA) {
-        phy_cas_rat value;
-        if (phy_cas_exact_value(cas, argument, &value) &&
-            value.den == 1 && value.num <= 0) {
-            return PHY_ERR_DOMAIN;
-        }
         if (phy_cas_is_integer(cas, argument, 1) ||
             phy_cas_is_integer(cas, argument, 2)) {
             *out_ref = cas->zero;
             return PHY_OK;
         }
-    } else if (function == PHY_CAS_FN_ERF ||
-               function == PHY_CAS_FN_ERFC) {
-        if (zero_argument) {
-            *out_ref =
-                function == PHY_CAS_FN_ERFC ? cas->one : cas->zero;
-            return PHY_OK;
-        }
+    } else if (function == PHY_CAS_FN_ERFC) {
         if (negative_lead(cas, argument)) {
             phy_ir_ref positive = PHY_IR_NULL;
             phy_ir_ref folded = PHY_IR_NULL;
             phy_status status =
                 phy_cas_neg_node(cas, argument, &positive);
-            if (status == PHY_OK && function == PHY_CAS_FN_ERF) {
-                status = apply_function(cas, head, positive, &folded);
-                if (status == PHY_OK) {
-                    status = phy_cas_neg_node(cas, folded, out_ref);
-                }
-                return status;
-            }
-            if (status == PHY_OK && function == PHY_CAS_FN_ERFC) {
+            if (status == PHY_OK) {
                 status = apply_function(cas, head, positive, &folded);
                 if (status == PHY_OK) {
                     phy_ir_ref two = PHY_IR_NULL;
@@ -1386,8 +1475,8 @@ static phy_status apply_function(phy_cas *cas, phy_ir_symbol head,
                             phy_cas_add_node(cas, terms, 2u, out_ref);
                     }
                 }
-                return status;
             }
+            return status;
         }
     }
 
@@ -1419,13 +1508,31 @@ phy_status phy_cas_rebuild_at(phy_cas *cas, phy_ir_kind kind,
         return phy_cas_pow_node(cas, base, exponent, out_ref);
     }
     case PHY_IR_FUNCTION:
-        /* Arity is part of recognition: a one-argument sin goes through the
-           rules, and anything else keeps its head and is rebuilt below. */
-        if (count == 1u && phy_cas_is_known_head(cas, head)) {
+    {
+        const phy_cas_function function = phy_cas_function_id(cas, head);
+        const phy_cas_function_descriptor *descriptor =
+            phy_cas_function_descriptor_for(function);
+        if (descriptor != NULL && count == descriptor->arity) {
+            bool matched = false;
+            phy_status status = phy_cas_discrete_function(
+                cas, function, phy_cas_scratch_at(cas, offset), count,
+                out_ref, &matched);
+            if (status != PHY_OK || matched) {
+                return status;
+            }
+        }
+        /* Arity is part of recognition: a one-argument elementary function
+           goes through the old unary rules, and a mismatched application stays
+           structural instead of being mistaken for a successful evaluation. */
+        if (count == 1u &&
+            ((descriptor != NULL && descriptor->arity == 1u) ||
+             head == cas->fn_re || head == cas->fn_im ||
+             head == cas->fn_conjugate || head == cas->fn_abs)) {
             return apply_function(cas, head, phy_cas_scratch_at(cas, offset)[0],
                                   out_ref);
         }
         break;
+    }
     default:
         break;
     }
@@ -1544,7 +1651,7 @@ done:
 
 /* ------------------------------------------------------------ substitution */
 
-static phy_status substitute_node(phy_cas *cas, phy_ir_ref expr,
+static phy_status substitute_walk(phy_cas *cas, phy_ir_ref expr,
                                   const phy_cas_rule *rules, size_t count,
                                   phy_ir_ref *out_ref)
 {
@@ -1594,7 +1701,7 @@ static phy_status substitute_node(phy_cas *cas, phy_ir_ref expr,
     phy_ir_ref result = PHY_IR_NULL;
     for (size_t i = 0u; i < children; i++) {
         phy_ir_ref child;
-        status = substitute_node(cas, phy_ir_child(ir, expr, i), rules, count,
+        status = substitute_walk(cas, phy_ir_child(ir, expr, i), rules, count,
                                  &child);
         if (status != PHY_OK) {
             goto done;
@@ -1627,10 +1734,15 @@ phy_status phy_cas_add_at(phy_cas *cas, size_t offset, size_t count,
         *out_ref = cas->zero;
         return PHY_OK;
     }
+    bool gaussian_matched = false;
+    phy_status status = phy_cas_gaussian_fold_at(
+        cas, offset, count, true, out_ref, &gaussian_matched);
+    if (status != PHY_OK || gaussian_matched) {
+        return status;
+    }
     const size_t mark = phy_cas_scratch_mark(cas);
     size_t terms, total;
-    phy_status status =
-        flatten(cas, PHY_IR_ADD, offset, count, &terms, &total);
+    status = flatten(cas, PHY_IR_ADD, offset, count, &terms, &total);
     if (status == PHY_OK) {
         status = collect_sum(cas, terms, total, out_ref);
     }
@@ -1645,10 +1757,15 @@ phy_status phy_cas_mul_at(phy_cas *cas, size_t offset, size_t count,
         *out_ref = cas->one;
         return PHY_OK;
     }
+    bool gaussian_matched = false;
+    phy_status status = phy_cas_gaussian_fold_at(
+        cas, offset, count, false, out_ref, &gaussian_matched);
+    if (status != PHY_OK || gaussian_matched) {
+        return status;
+    }
     const size_t mark = phy_cas_scratch_mark(cas);
     size_t factors, total;
-    phy_status status =
-        flatten(cas, PHY_IR_MUL, offset, count, &factors, &total);
+    status = flatten(cas, PHY_IR_MUL, offset, count, &factors, &total);
     if (status == PHY_OK) {
         status = collect_product(cas, factors, total, out_ref);
     }
@@ -1851,9 +1968,16 @@ phy_status phy_cas_substitute(phy_cas *cas, phy_ir_ref expr,
                               phy_ir_ref *out_ref)
 {
     phy_status status = enter(cas, out_ref);
-    if (status != PHY_OK) {
-        return status;
-    }
+    return status == PHY_OK
+               ? phy_cas_substitute_node(cas, expr, rules, count, out_ref)
+               : status;
+}
+
+phy_status phy_cas_substitute_node(phy_cas *cas, phy_ir_ref expr,
+                                   const phy_cas_rule *rules, size_t count,
+                                   phy_ir_ref *out_ref)
+{
+    phy_status status = PHY_OK;
     if (rules == NULL && count != 0u) {
         return PHY_ERR_INVALID_ARGUMENT;
     }
@@ -1881,5 +2005,5 @@ phy_status phy_cas_substitute(phy_cas *cas, phy_ir_ref expr,
         phy_cas_cache_clear(cas);
         cas->subst_epoch = 1u;
     }
-    return substitute_node(cas, reduced, rules, count, out_ref);
+    return substitute_walk(cas, reduced, rules, count, out_ref);
 }

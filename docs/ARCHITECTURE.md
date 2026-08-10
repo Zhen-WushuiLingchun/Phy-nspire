@@ -196,8 +196,9 @@ incrementally.
 3. The evaluator resolves bindings, dispatches reserved heads onto the native
    physics layers, and would schedule eligible Giac calls.
 4. The result is a typed value: a scalar, or an object the environment owns. It
-   is normalized, bounded, and stored as a result cell together with either its
-   typed-IR expansion or its descriptor line.
+   is normalized, bounded, and stored as a result cell with a typed-IR
+   expansion, abstract-index signature, or structured constructor. English
+   descriptor lines remain only as a legacy-document/diagnostic fallback.
 5. The display tree converts the result to two-dimensional layout and optional
    LaTeX.
 6. The target save path writes source, declarations, and compact results

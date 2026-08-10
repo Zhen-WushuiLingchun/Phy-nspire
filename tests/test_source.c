@@ -48,6 +48,39 @@ static void test_operator_precedence_and_exact_numbers(void)
     phy_platform_shutdown();
 }
 
+static void test_promoted_exact_source(void)
+{
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    phy_ir_context *ir = phy_ir_context_create(NULL);
+    PHY_CHECK(ir != NULL);
+
+    phy_source_command command =
+        parse(ir, "184467440737095516160000000000000000001");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "184467440737095516160000000000000000001");
+
+    command = parse(ir, "-184467440737095516160000000000000000001");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "-184467440737095516160000000000000000001");
+
+    command = parse(ir, "1.000000000000000000001");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(rat 1000000000000000000001 1000000000000000000000)");
+
+    command = parse(
+        ir, "Rational[36893488147419103232, 6]");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(rat 18446744073709551616 3)");
+
+    PHY_CHECK_EQ_INT(phy_ir_validate(ir), PHY_OK);
+    phy_ir_context_destroy(ir);
+    phy_platform_shutdown();
+}
+
 static void test_commands_and_functions(void)
 {
     PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
@@ -59,6 +92,46 @@ static void test_commands_and_functions(void)
     PHY_CHECK_EQ_INT(command.variable_count, 1);
     PHY_CHECK_EQ_STR(render(ir, command.expression), "(^ (fn sin x) 2)");
     PHY_CHECK_EQ_STR(render(ir, command.variables[0]), "x");
+
+    command = parse(ir, "Solve[{x+y==3,x-y==1},{x,y}]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_SOLVE);
+    PHY_CHECK_EQ_INT(command.variable_count, 2);
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(fn List (= (+ x y) 3) (= (+ x (* -1 y)) 1))");
+    PHY_CHECK_EQ_STR(render(ir, command.variables[0]), "x");
+    PHY_CHECK_EQ_STR(render(ir, command.variables[1]), "y");
+
+    command = parse(ir, "Resultant[x^2+1,x+1,x]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_RESULTANT);
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(fn List (+ 1 (^ x 2)) (+ 1 x))");
+    PHY_CHECK_EQ_STR(render(ir, command.variables[0]), "x");
+
+    command = parse(ir, "Discriminant[x^3-2x+4,x]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_DISCRIMINANT);
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression), "(+ 4 (* -1 2 x) (^ x 3))");
+
+    command = parse(ir, "GroebnerBasis[{x*y-1,y^2-1},{x,y}]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_GROEBNER_BASIS);
+    PHY_CHECK_EQ_INT(command.variable_count, 2);
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(fn List (+ -1 (* x y)) (+ -1 (^ y 2)))");
+
+    command = parse(ir, "N[Pi,24]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_NUMERIC);
+    PHY_CHECK_EQ_INT(command.series_order, 24);
+    PHY_CHECK_EQ_STR(render(ir, command.expression), "Pi");
+
+    command = parse(ir, "NSolve[x^5-x-1==0,x]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_NUMERIC_SOLVE);
+    PHY_CHECK_EQ_INT(command.variable_count, 1);
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(= (+ -1 (* -1 x) (^ x 5)) 0)");
 
     command = parse(ir, "Expand[(x+1)^2]");
     PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_EXPAND);
@@ -73,12 +146,28 @@ static void test_commands_and_functions(void)
     PHY_CHECK_EQ_STR(render(ir, command.expression),
                      "(fn f x (fn log (fn exp y)))");
 
+    command = parse(ir, "Re[3+4I]");
+    PHY_CHECK_EQ_STR(render(ir, command.expression),
+                     "(fn Re (+ 3 (* 4 I)))");
+    command = parse(ir, "Im[(1+2I)/(3-I)]");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(fn Im (* (+ 1 (* 2 I)) (^ (+ 3 (* -1 I)) -1)))");
+    command = parse(ir, "Conjugate[z]");
+    PHY_CHECK_EQ_STR(render(ir, command.expression),
+                     "(fn Conjugate z)");
+    command = parse(ir, "Abs[3+4I]");
+    PHY_CHECK_EQ_STR(render(ir, command.expression),
+                     "(fn Abs (+ 3 (* 4 I)))");
+
     command = parse(ir, "Together[(x+1)/(x-1)]");
     PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_TOGETHER);
     command = parse(ir, "Cancel[(x^2-1)/(x^2-2x+1)]");
     PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_CANCEL);
     command = parse(ir, "Factor[x^4-1]");
     PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_FACTOR);
+    command = parse(ir, "Apart[1/(x^2-1)]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_APART);
     command = parse(ir, "Numerator[x/y]");
     PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_NUMERATOR);
     command = parse(ir, "Denominator[x/y]");
@@ -94,6 +183,50 @@ static void test_commands_and_functions(void)
     PHY_CHECK_EQ_INT(command.variable_count, 1);
     PHY_CHECK_EQ_STR(render(ir, command.expression), "(fn sin (* 2 x))");
 
+    command = parse(ir, "Series[(1+x)^5,{x,2,7}]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_SERIES);
+    PHY_CHECK_EQ_INT(command.variable_count, 1);
+    PHY_CHECK_EQ_STR(render(ir, command.expression), "(^ (+ 1 x) 5)");
+    PHY_CHECK_EQ_STR(render(ir, command.variables[0]), "x");
+    PHY_CHECK_EQ_STR(render(ir, command.parameter), "2");
+    PHY_CHECK_EQ_INT(command.series_order, 7);
+    command = parse(ir, "Normal[x]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_NORMAL);
+    PHY_CHECK_EQ_STR(render(ir, command.expression), "x");
+    command = parse(
+        ir, "Normal[Series[Exp[x],{x,0,5}]]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_NORMAL);
+    PHY_CHECK(command.normal_series);
+    PHY_CHECK_EQ_STR(render(ir, command.expression), "(fn exp x)");
+    PHY_CHECK_EQ_STR(render(ir, command.variables[0]), "x");
+    PHY_CHECK_EQ_INT(command.series_order, 5);
+
+    command = parse(ir, "Limit[Sin[x]/x,{x,0}]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_LIMIT);
+    PHY_CHECK_EQ_INT(command.variable_count, 1);
+    PHY_CHECK_EQ_STR(render(ir, command.expression),
+                     "(* (^ x -1) (fn sin x))");
+    PHY_CHECK_EQ_STR(render(ir, command.variables[0]), "x");
+    PHY_CHECK_EQ_STR(render(ir, command.parameter), "0");
+    PHY_CHECK_EQ_INT(
+        command.limit_direction, PHY_SOURCE_LIMIT_TWO_SIDED);
+    command = parse(
+        ir, "Limit[1/x,{x,0,Direction->\"FromAbove\"}]");
+    PHY_CHECK_EQ_INT(
+        command.limit_direction, PHY_SOURCE_LIMIT_FROM_ABOVE);
+    command = parse(ir, "Limit[1/x,{x,0,FromBelow}]");
+    PHY_CHECK_EQ_INT(
+        command.limit_direction, PHY_SOURCE_LIMIT_FROM_BELOW);
+    command = parse(ir, "Limit[x,{x,-Infinity}]");
+    PHY_CHECK_EQ_STR(render(ir, command.parameter), "(* -1 Infinity)");
+
+    command = parse(ir, "Solve[3x-2==0,x]");
+    PHY_CHECK_EQ_INT(command.operation, PHY_SOURCE_SOLVE);
+    PHY_CHECK_EQ_INT(command.variable_count, 1);
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression), "(= (+ -2 (* 3 x)) 0)");
+    PHY_CHECK_EQ_STR(render(ir, command.variables[0]), "x");
+
     command = parse(ir, "ArcTan[Sinh[x]] + ArcSinh[TanH[y]]");
     PHY_CHECK_EQ_STR(
         render(ir, command.expression),
@@ -106,6 +239,20 @@ static void test_commands_and_functions(void)
     PHY_CHECK_EQ_STR(
         render(ir, command.expression),
         "(+ (fn erf z) (fn erfc w) (fn gammafn x) (fn loggamma y))");
+    command = parse(
+        ir, "Factorial[n] + Pochhammer[a,3] + Binomial[n,k]");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(+ (fn binomial n k) (fn factorial n) (fn pochhammer a 3))");
+    command = parse(ir, "RisingFactorial[a,3]");
+    PHY_CHECK_EQ_STR(render(ir, command.expression),
+                     "(fn pochhammer a 3)");
+    command = parse(ir, "Digamma[x]");
+    PHY_CHECK_EQ_STR(render(ir, command.expression), "(fn digamma x)");
+    command = parse(ir, "BernoulliB[10] + HarmonicNumber[5]");
+    PHY_CHECK_EQ_STR(
+        render(ir, command.expression),
+        "(+ (fn bernoulli 10) (fn harmonic 5))");
 
     command = parse(ir, "2x + (x+1)(x-1) == {x, y}");
     PHY_CHECK_EQ_STR(
@@ -195,8 +342,34 @@ static void test_diagnostics_and_bounds(void)
         phy_source_parse(ir, "Sin[Factor[x]]", &command, &error),
         PHY_ERR_UNSUPPORTED);
     PHY_CHECK_EQ_INT(
-        phy_source_parse(ir, "Apart[1/(x^2-1)]", &command, &error),
-        PHY_ERR_UNSUPPORTED);
+        phy_source_parse(ir, "Limit[1/x]", &command, &error),
+        PHY_ERR_PARSE);
+    PHY_CHECK_EQ_INT(
+        phy_source_parse(ir, "Solve[x==0]", &command, &error),
+        PHY_ERR_PARSE);
+    PHY_CHECK_EQ_INT(
+        phy_source_parse(ir, "Solve[x==0,2]", &command, &error),
+        PHY_ERR_TYPE);
+    PHY_CHECK_EQ_INT(
+        phy_source_parse(
+            ir, "Limit[1/x,{x,0,Direction->Sideways}]",
+            &command, &error),
+        PHY_ERR_TYPE);
+    PHY_CHECK_EQ_INT(
+        phy_source_parse(ir, "Series[x,x]", &command, &error),
+        PHY_ERR_TYPE);
+    PHY_CHECK_EQ_INT(
+        phy_source_parse(ir, "Series[x,{x,0}]", &command, &error),
+        PHY_ERR_TYPE);
+    PHY_CHECK_EQ_INT(
+        phy_source_parse(ir, "Series[x,{x,y,4}]", &command, &error),
+        PHY_ERR_TYPE);
+    PHY_CHECK_EQ_INT(
+        phy_source_parse(ir, "Series[x,{x,0,-1}]", &command, &error),
+        PHY_ERR_TERM_LIMIT);
+    PHY_CHECK_EQ_INT(
+        phy_source_parse(ir, "Series[x,{x,0,64}]", &command, &error),
+        PHY_ERR_TERM_LIMIT);
     PHY_CHECK_EQ_INT(
         phy_source_parse(ir, "Commutator[A]", &command, &error),
         PHY_ERR_TYPE);
@@ -325,7 +498,7 @@ static void test_assignment_and_reserved_heads(void)
     PHY_CHECK_EQ_STR(phy_ir_symbol_name(ir, command.target), "gamma");
     PHY_CHECK_EQ_STR(render(ir, command.expression), "4");
 
-    command = parse(ir, "Pi + E + I + EulerGamma");
+    command = parse(ir, "Pi + E + I + EulerGamma + Infinity");
     const uint32_t constant_mask = (uint32_t)PHY_IR_ASSUME_CONSTANT;
     PHY_CHECK((phy_ir_assumptions(ir, phy_ir_intern(ir, "Pi")) &
                constant_mask) != 0u);
@@ -334,6 +507,8 @@ static void test_assignment_and_reserved_heads(void)
     PHY_CHECK((phy_ir_assumptions(ir, phy_ir_intern(ir, "I")) &
                constant_mask) != 0u);
     PHY_CHECK((phy_ir_assumptions(ir, phy_ir_intern(ir, "EulerGamma")) &
+               constant_mask) != 0u);
+    PHY_CHECK((phy_ir_assumptions(ir, phy_ir_intern(ir, "Infinity")) &
                constant_mask) != 0u);
     PHY_CHECK_EQ_INT(phy_source_parse(ir, "2 = x", &command, &error),
                      PHY_ERR_PARSE);
@@ -344,11 +519,51 @@ static void test_assignment_and_reserved_heads(void)
     phy_platform_shutdown();
 }
 
+static void test_foundation_capability_matrix_is_reserved(void)
+{
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    phy_ir_context *ir = phy_ir_context_create(NULL);
+    PHY_CHECK(ir != NULL);
+
+    typedef struct {
+        const char *id;
+        const char *area;
+        const char *source;
+        phy_status expected;
+        const char *semantic_class;
+    } foundation_case;
+#define PHY_FOUNDATION_CASE(id, area, source, expected, semantic_class) \
+    {#id, area, source, expected, semantic_class},
+    static const foundation_case cases[] = {
+#include "corpus/cas_foundation_cases.inc"
+    };
+#undef PHY_FOUNDATION_CASE
+
+    for (size_t index = 0u;
+         index < sizeof cases / sizeof cases[0]; ++index) {
+        phy_source_command command;
+        size_t error = 0u;
+        const phy_status status = phy_source_parse(
+            ir, cases[index].source, &command, &error);
+        if (status != cases[index].expected) {
+            fprintf(stderr, "  foundation case %s (%s/%s): %s\n",
+                    cases[index].id, cases[index].area,
+                    cases[index].semantic_class, cases[index].source);
+        }
+        PHY_CHECK_EQ_INT(status, cases[index].expected);
+    }
+
+    phy_ir_context_destroy(ir);
+    phy_platform_shutdown();
+}
+
 int main(void)
 {
     PHY_TEST_CASE(test_operator_precedence_and_exact_numbers);
+    PHY_TEST_CASE(test_promoted_exact_source);
     PHY_TEST_CASE(test_commands_and_functions);
     PHY_TEST_CASE(test_diagnostics_and_bounds);
     PHY_TEST_CASE(test_assignment_and_reserved_heads);
+    PHY_TEST_CASE(test_foundation_capability_matrix_is_reserved);
     return PHY_TEST_REPORT("test_source");
 }

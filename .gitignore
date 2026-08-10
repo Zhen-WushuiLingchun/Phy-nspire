@@ -27,3 +27,9 @@ Thumbs.db
 # Reviewer and sanitizer scratch trees alongside build/
 build-*/
 tools/nlinkctl/target/
+
+# Local agent worktrees are registered Git worktrees, not repository content.
+.claude/worktrees/
+
+# Host smoke tests can emit framebuffer snapshots at the repository root.
+/*.ppm

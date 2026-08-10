@@ -107,10 +107,16 @@
 #include <stdbool.h>
 #include <stddef.h>
 
+#include "phy/abstract_tensor.h"
 #include "phy/cas.h"
+#include "phy/component_tensor.h"
 #include "phy/geom.h"
 #include "phy/gr.h"
+#include "phy/gr_bridge.h"
+#include "phy/qft_bridge.h"
 #include "phy/ir.h"
+#include "phy/linear.h"
+#include "phy/map.h"
 #include "phy/lie.h"
 #include "phy/phy.h"
 #include "phy/source.h"
@@ -158,7 +164,20 @@ typedef enum {
     PHY_VALUE_LIE_ALGEBRA,
     PHY_VALUE_LIE_ELEMENT,
     PHY_VALUE_LIE_FORM,
-    PHY_VALUE_CURVATURE
+    PHY_VALUE_CURVATURE,
+    PHY_VALUE_INDEX_SPACE,
+    PHY_VALUE_TENSOR_HEAD,
+    PHY_VALUE_ABSTRACT_TENSOR,
+    PHY_VALUE_ABSTRACT_EXPRESSION,
+    PHY_VALUE_COMPONENT_BASIS,
+    PHY_VALUE_COMPONENT_TENSOR,
+    PHY_VALUE_VECTOR,
+    PHY_VALUE_MATRIX,
+    PHY_VALUE_COORDINATE_MAP,
+    PHY_VALUE_BASIS_TRANSITION,
+    PHY_VALUE_ATLAS,
+    PHY_VALUE_GR_COMPONENTS,
+    PHY_VALUE_QFT_COMPONENTS
 } phy_value_kind;
 
 /*
@@ -170,14 +189,16 @@ typedef enum {
  * pointer lives in the environment's object table, which is what destroys it;
  * a value is for reading and for identity.
  *
- * Charts, manifolds, and curvature bundles are the exceptions and stay
- * mutable. Not by preference:
+ * Charts, manifolds, curvature bundles, and QFT component views are the
+ * exceptions and stay mutable. Not by preference:
  * phy_tensor_create takes a mutable chart and phy_form_create a mutable
  * manifold, because creating an object *on* one of them registers with it. A
  * const view of a manifold cannot carry a form, so this layer would only be
  * casting the qualifier away at every construction site. A curvature bundle
  * lazily caches its explicitly requested Kretschmann tensor/invariant, so
  * pretending it is const would likewise force an unsafe cast in the evaluator.
+ * A QFT view similarly materializes an explicitly requested exact SU(2)/SU(3)
+ * structure-constant table on first use.
  */
 typedef struct {
     phy_value_kind kind;
@@ -192,11 +213,36 @@ typedef struct {
         const phy_lie_element *element;
         const phy_lie_form *lie_form;
         phy_gr_result *curvature;
+        const phy_index_space *index_space;
+        const phy_abstract_tensor_head *tensor_head;
+        const phy_tensor_monomial *abstract_tensor;
+        const phy_tensor_expression *abstract_expression;
+        const phy_component_basis *component_basis;
+        const phy_component_tensor *component_tensor;
+        const phy_vector *vector;
+        const phy_matrix *matrix;
+        const phy_coordinate_map *coordinate_map;
+        const phy_basis_transition *basis_transition;
+        phy_atlas *atlas;
+        const phy_gr_component_view *gr_components;
+        /*
+         * Mutable because exact component tables such as SU(3) f^{abc} are
+         * cached lazily when QFTTensor requests them.
+         */
+        phy_qft_component_view *qft_components;
     } as;
 } phy_value;
 
 /* Stable, allocation-free spelling of a kind. Never returns NULL. */
 const char *phy_value_kind_name(phy_value_kind kind);
+
+/*
+ * Complete reader-facing evaluator registry.  The command palette tests use
+ * this rather than maintaining a second hand-written list, so adding a native
+ * operation without a discoverable MENU entry fails the build.
+ */
+size_t phy_eval_head_count(void);
+const char *phy_eval_head_name(size_t index);
 
 /* ------------------------------------------------------------- environment */
 

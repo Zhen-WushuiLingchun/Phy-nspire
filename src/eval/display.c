@@ -5,9 +5,11 @@
  * the reader anything. So an object with a canonical expansion in the typed IR
  * gets that expansion -- a form becomes its coframe sum, an algebra-valued form
  * a noncommutative sum over the algebra basis -- and the existing typed-IR
- * renderer draws it with no new layout code. Objects with no such expansion get
- * a descriptor line instead, and are honest about being a handle.
+ * renderer draws it with no new layout code. Handles with no finite expansion
+ * use a structured constructor/signature; English text remains a diagnostic
+ * API and legacy-document fallback, not the normal CAS output.
  */
+#include <limits.h>
 #include <string.h>
 
 #include "eval_internal.h"
@@ -366,6 +368,294 @@ static phy_status tensor_expansion(phy_env *env, const phy_tensor *tensor,
     return *out_ref == PHY_IR_NULL ? phy_ir_last_error(env->ir) : PHY_OK;
 }
 
+static phy_status abstract_tensor_expansion(
+    phy_env *env, const phy_tensor_monomial *monomial,
+    phy_ir_ref *out_ref)
+{
+    const size_t count =
+        phy_tensor_monomial_factor_count(monomial);
+    if (count > DISPLAY_MAX_TERMS) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    if (count == 0u) {
+        *out_ref = phy_tensor_monomial_coefficient(monomial);
+        return PHY_OK;
+    }
+    phy_ir_ref factors[DISPLAY_MAX_TERMS];
+    for (size_t which = 0u; which < count; ++which) {
+        const phy_abstract_tensor_head *head = NULL;
+        const phy_abstract_index *indices = NULL;
+        size_t index_count = 0u;
+        phy_status status = phy_tensor_monomial_factor(
+            monomial, which, &head, &indices, &index_count);
+        if (status == PHY_OK) {
+            status = phy_tensor_head_apply(
+                head, indices, index_count, &factors[which]);
+        }
+        if (status != PHY_OK) {
+            return status;
+        }
+    }
+    phy_ir_ref tensor_product =
+        count == 1u ? factors[0]
+                    : phy_ir_mul(env->ir, factors, count);
+    if (tensor_product == PHY_IR_NULL) {
+        return phy_ir_last_error(env->ir);
+    }
+    const phy_ir_ref product[2] = {
+        phy_tensor_monomial_coefficient(monomial),
+        tensor_product};
+    return phy_cas_mul(env->cas, product, 2u, out_ref);
+}
+
+static phy_status abstract_expression_expansion(
+    phy_env *env, const phy_tensor_expression *expression,
+    phy_ir_ref *out_ref)
+{
+    const size_t count =
+        phy_tensor_expression_term_count(expression);
+    if (count > DISPLAY_MAX_TERMS) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    if (count == 0u) {
+        return phy_cas_number(env->cas, 0, 1, out_ref);
+    }
+    phy_ir_ref terms[DISPLAY_MAX_TERMS];
+    for (size_t which = 0u; which < count; ++which) {
+        const phy_status status = abstract_tensor_expansion(
+            env, phy_tensor_expression_term(expression, which),
+            &terms[which]);
+        if (status != PHY_OK) {
+            return status;
+        }
+    }
+    return phy_cas_add(env->cas, terms, count, out_ref);
+}
+
+static phy_status vector_expansion(
+    phy_env *env, const phy_vector *vector, phy_ir_ref *out_ref)
+{
+    const size_t length = phy_vector_length(vector);
+    if (length > DISPLAY_MAX_TERMS) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    phy_ir_ref entries[DISPLAY_MAX_TERMS];
+    for (size_t index = 0u; index < length; ++index) {
+        const phy_status status =
+            phy_vector_get(vector, index, &entries[index]);
+        if (status != PHY_OK) {
+            return status;
+        }
+    }
+    *out_ref =
+        phy_ir_function(env->ir, env->list_head, entries, length);
+    return *out_ref != PHY_IR_NULL
+               ? PHY_OK
+               : phy_ir_last_error(env->ir);
+}
+
+static phy_status matrix_expansion(
+    phy_env *env, const phy_matrix *matrix, phy_ir_ref *out_ref)
+{
+    const size_t rows = phy_matrix_rows(matrix);
+    const size_t columns = phy_matrix_columns(matrix);
+    if (rows > DISPLAY_MAX_TERMS ||
+        columns > DISPLAY_MAX_TERMS) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    phy_ir_ref row_refs[DISPLAY_MAX_TERMS];
+    phy_ir_ref entries[DISPLAY_MAX_TERMS];
+    for (size_t row = 0u; row < rows; ++row) {
+        for (size_t column = 0u; column < columns; ++column) {
+            const phy_status status = phy_matrix_get(
+                matrix, row, column, &entries[column]);
+            if (status != PHY_OK) {
+                return status;
+            }
+        }
+        row_refs[row] = phy_ir_function(
+            env->ir, env->list_head, entries, columns);
+        if (row_refs[row] == PHY_IR_NULL) {
+            return phy_ir_last_error(env->ir);
+        }
+    }
+    *out_ref =
+        phy_ir_function(env->ir, env->list_head, row_refs, rows);
+    return *out_ref != PHY_IR_NULL
+               ? PHY_OK
+               : phy_ir_last_error(env->ir);
+}
+
+static void placeholder_index_name(size_t slot, char name[12])
+{
+    static const char alphabet[] = "abcdefghijklmnpqrstuvwxyz";
+    if (slot < sizeof alphabet - 1u) {
+        name[0] = alphabet[slot];
+        name[1] = '\0';
+        return;
+    }
+    name[0] = 'i';
+    size_t value = slot + 1u;
+    char reverse[9];
+    size_t count = 0u;
+    do {
+        reverse[count++] = (char)('0' + value % 10u);
+        value /= 10u;
+    } while (value != 0u && count < sizeof reverse);
+    for (size_t index = 0u; index < count; ++index) {
+        name[index + 1u] = reverse[count - index - 1u];
+    }
+    name[count + 1u] = '\0';
+}
+
+/*
+ * A TensorHead owns no component table, so its honest mathematical display is
+ * a generic abstract-index application. The constructor remains visible in
+ * the input cell; the output now shows the object the declaration created.
+ */
+static phy_status tensor_head_signature(
+    phy_env *env, const phy_abstract_tensor_head *head,
+    phy_ir_ref *out_ref)
+{
+    const size_t rank = phy_tensor_head_slot_count(head);
+    if (rank > DISPLAY_MAX_TERMS) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    phy_ir_ref indices[DISPLAY_MAX_TERMS];
+    for (size_t slot = 0u; slot < rank; ++slot) {
+        char name[12];
+        placeholder_index_name(slot, name);
+        const phy_index_space *space =
+            phy_tensor_head_slot_space(head, slot);
+        indices[slot] = phy_ir_index_in_space(
+            env->ir, phy_ir_intern(env->ir, name), PHY_IR_INDEX_LOWER,
+            phy_index_space_symbol(space));
+        if (indices[slot] == PHY_IR_NULL) {
+            return phy_ir_last_error(env->ir);
+        }
+    }
+    *out_ref = phy_ir_tensor(
+        env->ir, phy_tensor_head_symbol(head),
+        rank == 0u ? NULL : indices, rank);
+    return *out_ref != PHY_IR_NULL
+               ? PHY_OK
+               : phy_ir_last_error(env->ir);
+}
+
+static phy_status component_tensor_signature(
+    phy_env *env, const phy_component_tensor *tensor,
+    phy_ir_ref *out_ref)
+{
+    const size_t rank = phy_component_tensor_rank(tensor);
+    if (rank > DISPLAY_MAX_TERMS) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    phy_ir_ref indices[DISPLAY_MAX_TERMS];
+    for (size_t slot = 0u; slot < rank; ++slot) {
+        char name[12];
+        placeholder_index_name(slot, name);
+        const phy_component_basis *basis =
+            phy_component_tensor_basis(tensor, slot);
+        indices[slot] = phy_ir_index_in_space(
+            env->ir, phy_ir_intern(env->ir, name),
+            phy_component_tensor_valence(tensor, slot),
+            phy_index_space_symbol(phy_component_basis_space(basis)));
+        if (indices[slot] == PHY_IR_NULL) {
+            return phy_ir_last_error(env->ir);
+        }
+    }
+    *out_ref = phy_ir_tensor(
+        env->ir,
+        phy_tensor_head_symbol(phy_component_tensor_head(tensor)),
+        rank == 0u ? NULL : indices, rank);
+    return *out_ref != PHY_IR_NULL
+               ? PHY_OK
+               : phy_ir_last_error(env->ir);
+}
+
+static phy_ir_ref display_function(phy_env *env, const char *name,
+                                   const phy_ir_ref *arguments,
+                                   size_t count)
+{
+    const phy_ir_symbol head = phy_ir_intern(env->ir, name);
+    return head != PHY_IR_NO_SYMBOL
+               ? phy_ir_function(env->ir, head, arguments, count)
+               : PHY_IR_NULL;
+}
+
+/*
+ * A QFT system is not a scalar and has no single component expansion. Its
+ * reader-facing value is nevertheless mathematical structure, not a sentence:
+ *
+ *   QFTSystem[SU[3], IndexSpaces[...], TensorHeads[...],
+ *             ExactComponents[...]]
+ *
+ * Tensor heads carry typed abstract indices; the final list names only
+ * component tables already materialized, so the display remains truthful
+ * after SUNF became lazy.
+ */
+static phy_status qft_system_expression(
+    phy_env *env, const phy_qft_component_view *view,
+    phy_ir_ref *out_ref)
+{
+    phy_ir_ref su_args[1] = {phy_qft_component_view_n(view)};
+    const phy_ir_ref su = display_function(env, "SU", su_args, 1u);
+
+    phy_ir_ref spaces[PHY_QFT_SPACE_COUNT];
+    for (unsigned which = 0u; which < (unsigned)PHY_QFT_SPACE_COUNT;
+         ++which) {
+        const phy_index_space *space = phy_qft_component_view_space(
+            view, (phy_qft_space)which);
+        const phy_ir_ref arguments[2] = {
+            phy_ir_symbol_ref(env->ir, phy_index_space_symbol(space)),
+            phy_index_space_dimension(space)};
+        spaces[which] =
+            display_function(env, "IndexSpace", arguments, 2u);
+    }
+    const phy_ir_ref space_set = display_function(
+        env, "IndexSpaces", spaces, PHY_QFT_SPACE_COUNT);
+
+    phy_ir_ref heads[PHY_QFT_QUANTITY_COUNT];
+    for (unsigned quantity = 0u;
+         quantity < (unsigned)PHY_QFT_QUANTITY_COUNT; ++quantity) {
+        phy_status status = tensor_head_signature(
+            env,
+            phy_qft_component_view_head(
+                view, (phy_qft_quantity)quantity),
+            &heads[quantity]);
+        if (status != PHY_OK) {
+            return status;
+        }
+    }
+    const phy_ir_ref head_set = display_function(
+        env, "TensorHeads", heads, PHY_QFT_QUANTITY_COUNT);
+
+    phy_ir_ref components[PHY_QFT_QUANTITY_COUNT];
+    size_t component_count = 0u;
+    for (unsigned quantity = 0u;
+         quantity < (unsigned)PHY_QFT_QUANTITY_COUNT; ++quantity) {
+        phy_component_tensor *tensor = phy_qft_component_view_tensor(
+            view, (phy_qft_quantity)quantity);
+        if (tensor == NULL) {
+            continue;
+        }
+        const phy_status status = component_tensor_signature(
+            env, tensor, &components[component_count]);
+        if (status != PHY_OK) {
+            return status;
+        }
+        ++component_count;
+    }
+    const phy_ir_ref component_set = display_function(
+        env, "ExactComponents", components, component_count);
+    const phy_ir_ref arguments[4] = {
+        su, space_set, head_set, component_set};
+    *out_ref = display_function(env, "QFTSystem", arguments, 4u);
+    return *out_ref != PHY_IR_NULL
+               ? PHY_OK
+               : phy_ir_last_error(env->ir);
+}
+
 phy_status phy_eval_value_expression(phy_env *env, phy_value value,
                                      phy_ir_ref *out_ref)
 {
@@ -374,6 +664,12 @@ phy_status phy_eval_value_expression(phy_env *env, phy_value value,
     }
     *out_ref = PHY_IR_NULL;
     switch (value.kind) {
+    case PHY_VALUE_NONE:
+        *out_ref = phy_ir_symbol_ref(
+            env->ir, phy_ir_intern(env->ir, "Null"));
+        return *out_ref != PHY_IR_NULL
+                   ? PHY_OK
+                   : phy_ir_last_error(env->ir);
     case PHY_VALUE_SCALAR:
         *out_ref = value.as.scalar;
         return PHY_OK;
@@ -385,6 +681,32 @@ phy_status phy_eval_value_expression(phy_env *env, phy_value value,
         return element_expansion(env, value.as.element, out_ref);
     case PHY_VALUE_TENSOR:
         return tensor_expansion(env, value.as.tensor, out_ref);
+    case PHY_VALUE_ABSTRACT_TENSOR:
+        return abstract_tensor_expansion(
+            env, value.as.abstract_tensor, out_ref);
+    case PHY_VALUE_ABSTRACT_EXPRESSION:
+        return abstract_expression_expansion(
+            env, value.as.abstract_expression, out_ref);
+    case PHY_VALUE_TENSOR_HEAD:
+        return tensor_head_signature(
+            env, value.as.tensor_head, out_ref);
+    case PHY_VALUE_COMPONENT_TENSOR:
+        return component_tensor_signature(
+            env, value.as.component_tensor, out_ref);
+    case PHY_VALUE_QFT_COMPONENTS:
+        return qft_system_expression(
+            env, value.as.qft_components, out_ref);
+    case PHY_VALUE_COMPONENT_BASIS:
+    case PHY_VALUE_COORDINATE_MAP:
+    case PHY_VALUE_BASIS_TRANSITION:
+    case PHY_VALUE_ATLAS:
+    case PHY_VALUE_GR_COMPONENTS:
+        /* These are handles; phy_eval_describe provides their display. */
+        return PHY_OK;
+    case PHY_VALUE_VECTOR:
+        return vector_expansion(env, value.as.vector, out_ref);
+    case PHY_VALUE_MATRIX:
+        return matrix_expansion(env, value.as.matrix, out_ref);
     default:
         break;
     }
@@ -492,6 +814,238 @@ phy_status phy_eval_describe(const phy_env *env, phy_value value, char *buffer,
         write_text(&writer, " (Christoffel/Riemann/Ricci/Einstein)");
         break;
     }
+    case PHY_VALUE_INDEX_SPACE: {
+        const phy_index_space *space = value.as.index_space;
+        write_text(&writer, " ");
+        write_text(&writer, phy_index_space_name(space));
+        write_text(&writer, " dim ");
+        size_t dimension = 0u;
+        if (phy_index_space_known_dimension(space, &dimension) &&
+            dimension <= (size_t)UINT_MAX) {
+            write_unsigned(&writer, (unsigned)dimension);
+        } else {
+            const phy_ir_ref dimension_ref =
+                phy_index_space_dimension(space);
+            const char *dimension_name =
+                phy_ir_kind_of(env->ir, dimension_ref) == PHY_IR_SYMBOL
+                    ? phy_ir_symbol_name(
+                          env->ir,
+                          phy_ir_head(env->ir, dimension_ref))
+                    : "?";
+            write_text(&writer, dimension_name);
+        }
+        const phy_metric_symmetry metric =
+            phy_index_space_metric(space);
+        write_text(
+            &writer,
+            metric == PHY_METRIC_SYMMETRIC
+                ? " symmetric-metric"
+                : metric == PHY_METRIC_ANTISYMMETRIC
+                      ? " antisymmetric-metric"
+                      : " no-metric");
+        break;
+    }
+    case PHY_VALUE_TENSOR_HEAD:
+        write_text(&writer, " ");
+        write_text(
+            &writer,
+            phy_tensor_head_name(value.as.tensor_head));
+        write_text(&writer, " rank ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_tensor_head_slot_count(
+                value.as.tensor_head));
+        write_text(
+            &writer,
+            phy_tensor_head_commutation(value.as.tensor_head) ==
+                    PHY_TENSOR_NONCOMMUTING
+                ? " noncommuting"
+                : " commuting");
+        write_text(&writer, " sym ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_tensor_head_symmetry_count(
+                value.as.tensor_head));
+        break;
+    case PHY_VALUE_ABSTRACT_TENSOR:
+        write_text(&writer, " factors ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_tensor_monomial_factor_count(
+                value.as.abstract_tensor));
+        write_text(&writer, " free ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_tensor_monomial_free_count(
+                value.as.abstract_tensor));
+        write_text(&writer, " dummy ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_tensor_monomial_dummy_count(
+                value.as.abstract_tensor));
+        break;
+    case PHY_VALUE_ABSTRACT_EXPRESSION:
+        write_text(&writer, " terms ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_tensor_expression_term_count(
+                value.as.abstract_expression));
+        break;
+    case PHY_VALUE_COMPONENT_BASIS: {
+        const phy_component_basis *basis =
+            value.as.component_basis;
+        write_text(&writer, " ");
+        write_text(&writer, phy_component_basis_name(basis));
+        write_text(&writer, " of ");
+        write_text(
+            &writer,
+            phy_index_space_name(
+                phy_component_basis_space(basis)));
+        write_text(&writer, " dim ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_component_basis_dimension(basis));
+        write_text(
+            &writer,
+            phy_component_basis_has_coordinates(basis)
+                ? " coordinates"
+                : " basis");
+        break;
+    }
+    case PHY_VALUE_COMPONENT_TENSOR:
+        write_text(&writer, " ");
+        write_text(
+            &writer,
+            phy_tensor_head_name(
+                phy_component_tensor_head(
+                    value.as.component_tensor)));
+        write_text(&writer, " rank ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_component_tensor_rank(
+                value.as.component_tensor));
+        write_text(&writer, " sparse ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_component_tensor_entry_count(
+                value.as.component_tensor));
+        break;
+    case PHY_VALUE_VECTOR:
+        write_text(&writer, " length ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_vector_length(value.as.vector));
+        break;
+    case PHY_VALUE_MATRIX:
+        write_text(&writer, " ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_matrix_rows(value.as.matrix));
+        write_text(&writer, "x");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_matrix_columns(value.as.matrix));
+        break;
+    case PHY_VALUE_COORDINATE_MAP:
+        write_text(&writer, " ");
+        write_text(
+            &writer,
+            phy_component_basis_name(
+                phy_coordinate_map_source(
+                    value.as.coordinate_map)));
+        write_text(&writer, " -> ");
+        write_text(
+            &writer,
+            phy_component_basis_name(
+                phy_coordinate_map_target(
+                    value.as.coordinate_map)));
+        break;
+    case PHY_VALUE_BASIS_TRANSITION: {
+        const phy_coordinate_map *forward =
+            phy_basis_transition_forward(
+                value.as.basis_transition);
+        write_text(&writer, " ");
+        write_text(
+            &writer,
+            phy_component_basis_name(
+                phy_coordinate_map_source(forward)));
+        write_text(&writer, " <-> ");
+        write_text(
+            &writer,
+            phy_component_basis_name(
+                phy_coordinate_map_target(forward)));
+        write_text(&writer, " verified");
+        break;
+    }
+    case PHY_VALUE_ATLAS:
+        write_text(&writer, " charts ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_atlas_chart_count(value.as.atlas));
+        write_text(&writer, " transitions ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_atlas_transition_count(value.as.atlas));
+        break;
+    case PHY_VALUE_GR_COMPONENTS: {
+        const phy_gr_component_view *view = value.as.gr_components;
+        size_t held = 0u;
+        for (unsigned quantity = 0u;
+             quantity < (unsigned)PHY_GR_QUANTITY_COUNT; ++quantity) {
+            if (phy_gr_component_view_holds(
+                    view, (phy_gr_quantity)quantity)) {
+                ++held;
+            }
+        }
+        write_text(&writer, " ");
+        write_text(
+            &writer,
+            phy_index_space_name(phy_gr_component_view_space(view)));
+        write_text(&writer, " dim ");
+        write_unsigned(
+            &writer,
+            (unsigned)phy_gr_component_view_dimension(view));
+        write_text(&writer, " lifted ");
+        write_unsigned(&writer, (unsigned)held);
+        break;
+    }
+    case PHY_VALUE_QFT_COMPONENTS: {
+        const phy_qft_component_view *view = value.as.qft_components;
+        size_t bases = 0u;
+        size_t tensors = 0u;
+        for (unsigned space = 0u; space < (unsigned)PHY_QFT_SPACE_COUNT;
+             ++space) {
+            if (phy_qft_component_view_has_basis(
+                    view, (phy_qft_space)space)) {
+                ++bases;
+            }
+        }
+        for (unsigned quantity = 0u;
+             quantity < (unsigned)PHY_QFT_QUANTITY_COUNT; ++quantity) {
+            if (phy_qft_component_view_holds(
+                    view, (phy_qft_quantity)quantity)) {
+                ++tensors;
+            }
+        }
+        write_text(&writer, " SU(");
+        const phy_ir_ref n = phy_qft_component_view_n(view);
+        int64_t integer = 0;
+        if (phy_ir_integer_value(env->ir, n, &integer) &&
+            integer >= 0 && (uint64_t)integer <= (uint64_t)UINT_MAX) {
+            write_unsigned(&writer, (unsigned)integer);
+        } else if (phy_ir_kind_of(env->ir, n) == PHY_IR_SYMBOL) {
+            write_text(
+                &writer,
+                phy_ir_symbol_name(env->ir, phy_ir_head(env->ir, n)));
+        } else {
+            write_text(&writer, "exact");
+        }
+        write_text(&writer, ") spaces 4 bases ");
+        write_unsigned(&writer, (unsigned)bases);
+        write_text(&writer, " tensors ");
+        write_unsigned(&writer, (unsigned)tensors);
+        break;
+    }
     default:
         break;
     }
@@ -522,6 +1076,8 @@ static phy_status apply_scalar_operation(phy_env *env,
         return phy_cas_reduce(env->cas, value, out_ref);
     case PHY_SOURCE_FACTOR:
         return phy_cas_factor(env->cas, value, out_ref);
+    case PHY_SOURCE_APART:
+        return phy_cas_apart(env->cas, value, out_ref);
     case PHY_SOURCE_TOGETHER:
     case PHY_SOURCE_NUMERATOR:
     case PHY_SOURCE_DENOMINATOR: {
@@ -566,10 +1122,166 @@ static phy_status apply_scalar_operation(phy_env *env,
         *out_ref = result;
         return PHY_OK;
     }
+    case PHY_SOURCE_SERIES:
+        if (command->variable_count != 1u ||
+            command->parameter == PHY_IR_NULL) {
+            return PHY_ERR_CORRUPT_DOCUMENT;
+        }
+        if (eval_lookup(
+                env, phy_ir_head(env->ir, command->variables[0]), NULL)) {
+            return PHY_ERR_TYPE;
+        }
+        return phy_cas_series(
+            env->cas, value, command->variables[0], command->parameter,
+            command->series_order, out_ref);
+    case PHY_SOURCE_NORMAL:
+        if (command->normal_series) {
+            if (eval_lookup(
+                    env, phy_ir_head(env->ir, command->variables[0]),
+                    NULL)) {
+                return PHY_ERR_TYPE;
+            }
+            phy_ir_ref data = PHY_IR_NULL;
+            phy_status status = phy_cas_series(
+                env->cas, value, command->variables[0],
+                command->parameter, command->series_order, &data);
+            return status == PHY_OK
+                       ? phy_cas_series_normal(env->cas, data, out_ref)
+                       : status;
+        }
+        return phy_cas_series_normal(env->cas, value, out_ref);
+    case PHY_SOURCE_LIMIT:
+        if (command->variable_count != 1u ||
+            command->parameter == PHY_IR_NULL) {
+            return PHY_ERR_CORRUPT_DOCUMENT;
+        }
+        if (eval_lookup(
+                env, phy_ir_head(env->ir, command->variables[0]), NULL)) {
+            return PHY_ERR_TYPE;
+        }
+        return phy_cas_limit(
+            env->cas, value, command->variables[0], command->parameter,
+            (phy_cas_limit_direction)command->limit_direction, out_ref);
+    case PHY_SOURCE_SOLVE:
+        if (command->variable_count == 0u) {
+            return PHY_ERR_CORRUPT_DOCUMENT;
+        }
+        for (size_t index = 0u;
+             index < command->variable_count; ++index) {
+            if (eval_lookup(
+                    env, phy_ir_head(env->ir, command->variables[index]),
+                    NULL)) {
+                return PHY_ERR_TYPE;
+            }
+        }
+        return phy_cas_solve_system(
+            env->cas, value, command->variables,
+            command->variable_count, out_ref);
+    case PHY_SOURCE_NUMERIC:
+        return phy_cas_n(
+            env->cas, value,
+            command->series_order == 0u ? 16u : command->series_order,
+            out_ref);
+    case PHY_SOURCE_NUMERIC_SOLVE:
+        if (command->variable_count != 1u) {
+            return PHY_ERR_UNSUPPORTED;
+        }
+        if (eval_lookup(
+                env, phy_ir_head(env->ir, command->variables[0]), NULL)) {
+            return PHY_ERR_TYPE;
+        }
+        return phy_cas_nsolve(
+            env->cas, value, command->variables[0], 16u, out_ref);
+    case PHY_SOURCE_RESULTANT:
+    case PHY_SOURCE_DISCRIMINANT:
+    case PHY_SOURCE_GROEBNER_BASIS:
+        if (command->variable_count == 0u) {
+            return PHY_ERR_CORRUPT_DOCUMENT;
+        }
+        for (size_t index = 0u;
+             index < command->variable_count; ++index) {
+            if (eval_lookup(
+                    env, phy_ir_head(env->ir, command->variables[index]),
+                    NULL)) {
+                return PHY_ERR_TYPE;
+            }
+        }
+        if (command->operation == PHY_SOURCE_DISCRIMINANT) {
+            if (command->variable_count != 1u) {
+                return PHY_ERR_CORRUPT_DOCUMENT;
+            }
+            return phy_cas_discriminant(
+                env->cas, value, command->variables[0], out_ref);
+        }
+        if (phy_ir_kind_of(env->ir, value) != PHY_IR_FUNCTION ||
+            phy_ir_head(env->ir, value) != env->list_head) {
+            return PHY_ERR_TYPE;
+        }
+        if (command->operation == PHY_SOURCE_RESULTANT) {
+            if (command->variable_count != 1u ||
+                phy_ir_child_count(env->ir, value) != 2u) {
+                return PHY_ERR_CORRUPT_DOCUMENT;
+            }
+            return phy_cas_resultant(
+                env->cas, phy_ir_child(env->ir, value, 0u),
+                phy_ir_child(env->ir, value, 1u),
+                command->variables[0], out_ref);
+        } else {
+            const size_t count = phy_ir_child_count(env->ir, value);
+            if (count == 0u || count > 16u) {
+                return PHY_ERR_TERM_LIMIT;
+            }
+            phy_ir_ref expressions[16];
+            for (size_t index = 0u; index < count; ++index) {
+                expressions[index] = phy_ir_child(env->ir, value, index);
+            }
+            return phy_cas_groebner_basis(
+                env->cas, expressions, count, command->variables,
+                command->variable_count, out_ref);
+        }
     default:
         break;
     }
     return PHY_ERR_UNSUPPORTED;
+}
+
+static bool operation_requires_equivalence_proof(
+    phy_source_operation operation)
+{
+    return operation == PHY_SOURCE_SIMPLIFY ||
+           operation == PHY_SOURCE_FULL_SIMPLIFY ||
+           operation == PHY_SOURCE_EXPAND ||
+           operation == PHY_SOURCE_TOGETHER ||
+           operation == PHY_SOURCE_CANCEL ||
+           operation == PHY_SOURCE_FACTOR ||
+           operation == PHY_SOURCE_APART;
+}
+
+static phy_status verify_scalar_operation(
+    phy_env *env, phy_source_operation operation,
+    phy_ir_ref input, phy_ir_ref result)
+{
+    /*
+     * Integrate performs its stronger D[candidate,var]==input certificate in
+     * the CAS entry point. D is a structural derivation rather than a
+     * rewrite candidate. Every value-preserving evaluator rewrite below is
+     * independently checked by the zero-decision path before it is exposed.
+     */
+    if (!operation_requires_equivalence_proof(operation)) {
+        return PHY_OK;
+    }
+    phy_cas_decision decision = PHY_CAS_UNKNOWN;
+    const phy_status status =
+        phy_cas_equivalent(env->cas, input, result, &decision);
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (decision == PHY_CAS_ZERO) {
+        return PHY_OK;
+    }
+    return decision == PHY_CAS_UNKNOWN
+               ? PHY_ERR_UNSUPPORTED
+               : PHY_ERR_CORRUPT_DOCUMENT;
 }
 
 phy_status phy_eval_command(phy_env *env, const phy_source_command *command,
@@ -606,14 +1318,15 @@ phy_status phy_eval_command(phy_env *env, const phy_source_command *command,
     env->pending_name = PHY_IR_NO_SYMBOL;
 
     /*
-     * FullSimplify of a typed object passes it through like Simplify does:
-     * the object's components are already in normal form, and refusing
+     * Simplify/FullSimplify of a typed object pass it through: the object's
+     * components are already in normal form, and refusing
      * FullSimplify[Ricci[c]] with a type error would punish the reader for
-     * asking politely.
+     * asking politely. Scalar values still traverse the common operation and
+     * verification path below.
      */
     if (status == PHY_OK && command->operation != PHY_SOURCE_ASSIGN &&
-        command->operation != PHY_SOURCE_SIMPLIFY &&
-        !(command->operation == PHY_SOURCE_FULL_SIMPLIFY &&
+        !((command->operation == PHY_SOURCE_SIMPLIFY ||
+           command->operation == PHY_SOURCE_FULL_SIMPLIFY) &&
           value.kind != PHY_VALUE_SCALAR)) {
         /*
          * Every remaining operation is scalar algebra. `Expand[M]` on a
@@ -625,6 +1338,10 @@ phy_status phy_eval_command(phy_env *env, const phy_source_command *command,
             phy_ir_ref result = PHY_IR_NULL;
             status = apply_scalar_operation(env, command, value.as.scalar,
                                             &result);
+            if (status == PHY_OK) {
+                status = verify_scalar_operation(
+                    env, command->operation, value.as.scalar, result);
+            }
             if (status == PHY_OK) {
                 value.kind = PHY_VALUE_SCALAR;
                 value.as.scalar = result;

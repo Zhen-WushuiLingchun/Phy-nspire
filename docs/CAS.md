@@ -10,9 +10,13 @@ is not repeated here.
 
 ## What the layer guarantees
 
-**Exact.** All arithmetic is `int64` integers and reduced `int64` rationals.
-Leaving that range is `PHY_ERR_OVERFLOW` — never a wrap, never a silent
-promotion to `double`. `PHY_IR_REAL` atoms are carried but never folded.
+**Exact.** Integer and reduced-rational atoms use an `int64` fast path and
+promote to the native bounded arbitrary-precision layer when necessary. They
+never wrap and never silently promote to `double`. `PHY_IR_REAL` atoms are
+carried but never folded. Polynomial coefficient containers use immutable exact
+IR refs, so their checked `int64` fast path promotes to the same integer and
+rational domain. The closed Gaussian-rational fragment `Q(i)` uses the same
+bounded exact context and publishes one canonical `a+b I` typed IR form.
 
 **Decidable.** `phy_cas_is_zero` *decides* zero on a documented class and
 answers `PHY_CAS_UNKNOWN` outside it. It never estimates.
@@ -26,11 +30,12 @@ rewritten once however many times the expression mentions it.
 
 ## Every entry point returns a status
 
-Failure is ordinary here — a budget runs out, exact arithmetic overflows, a
-denominator is zero — and a caller that must distinguish those cases should not
-have to consult a sticky flag to do it. So unlike the IR's builders, which
-return `PHY_IR_NULL` and record the reason, each function here returns a
-`phy_status` and writes its result through an out parameter.
+Failure is ordinary here — a budget runs out, a denominator is zero, or a
+bounded algorithm leaves its supported coefficient class — and a caller that
+must distinguish those cases should not have to consult a sticky flag to do
+it. So unlike the IR's builders, which return `PHY_IR_NULL` and record the
+reason, each function here returns a `phy_status` and writes its result through
+an out parameter.
 
 The two conventions meet at one place: when an IR builder fails inside this
 layer, `phy_cas_ir_failure` reads the IR's sticky error and returns it as this
@@ -52,6 +57,8 @@ sums, because that is usually what a reader wants to see. What it guarantees:
   factors sharing a base: `x * x^2` is `x^3`;
 - a power has neither exponent 0 nor 1, and folds when the base is exact and the
   exponent an integer;
+- a closed exact complex expression over `Q(i)` has one arbitrary-precision
+  `a+b I` normal form, with integral powers evaluated exactly;
 - a `PHY_IR_ERROR` operand anywhere propagates outward as the whole result.
 
 ### Collection is a sort, not a scan
@@ -123,17 +130,45 @@ condition.
 for a single base on one principal branch: both sides are
 `exp((a+b) log x)`.
 
-### Overflow: an error for products, symbolic for powers
+### Exact-number promotion
 
 Two numeric operands of a product or sum *must* fold — the normal form permits
-only one numeric operand — so overflow there is `PHY_ERR_OVERFLOW` and the whole
-rewrite fails. An unevaluated exact power, on the other hand, is still a normal
-form: nothing is left to collect. So `2^200` stays symbolic rather than failing
-an expression that has no other problem.
+only one numeric operand. If the checked `int64` fast path overflows, the
+operation is repeated in the bounded arbitrary-precision domain and published
+as a canonical exact atom. Integer powers use the same route, so `2^200`
+evaluates exactly and `4^500 - 2^1000` is proved zero. A limb, byte, step, or
+cancellation ceiling still fails transactionally with its typed status.
 
-The consequence for the decision procedure is stated rather than hidden: an
-unfolded power is an opaque generator, so `4^500 - 2^1000` answers `UNKNOWN`, not
-`ZERO`.
+This promotion covers atom normalization, sum/product collection, integer
+powers, source/evaluator flow, serialization, MathTree display, rational LCD
+construction, and the univariate polynomial view used by reduction and
+`Factor`. Polynomial coefficients are immutable exact IR refs: the checked
+`int64` path remains the common fast path, while promoted coefficients use the
+bounded bigint/rational bridge. Thus Euclidean division and GCD do not fail
+merely because a coefficient exceeds 64 bits.
+
+### Exact Gaussian rationals
+
+`phy_gaussian` is a transactional pair of arbitrary-precision rationals in one
+bounded exact context. Addition, subtraction, multiplication, division,
+reciprocal, conjugation, norm and signed integer powers are alias-safe. A limb,
+byte, step, cancellation or allocation failure leaves an existing output
+unchanged.
+
+The CAS recognizes the closed grammar formed from exact rational atoms, `I`,
+`Add`, `Mul`, and integral `Pow`. It evaluates that tree in `Q(i)` and publishes
+exactly `a+b I`; no decimal approximation or numeric sign sampling is used.
+Reader-facing `Re`, `Im`, `Conjugate`, and `Abs` use the same bridge.
+`Conjugate[z]` and `Abs[z]` stay explicit when `z` is outside the certified
+fragment. Their output is rendered by the shared nMarkdown MathTree backend as
+an overline and absolute-value bars rather than being reparsed as LaTeX.
+
+The rational-root enumerator inside `Factor` is only a fast path. It converts a
+primitive polynomial to bounded `int64` coefficients before enumerating
+divisors, with roots `0`, `-1`, and `1` tested directly in the exact
+coefficient domain. Inputs outside that small enumerator continue through the
+exact monic-integer transform and certified modular factorization below; a
+failed fast path is never treated as proof of irreducibility.
 
 ## The zero decision
 
@@ -164,45 +199,104 @@ denominator that reduces to exactly zero is `PHY_ERR_DOMAIN`, because such an
 expression is defined nowhere.
 
 After exact division by denominator factors, a bounded Euclidean algorithm
-computes a monic GCD in `Q[x]` through degree 48. This closes cases such as
+computes a monic GCD in `Q[x]` through degree 48 with arbitrary-precision exact
+coefficients. This closes cases such as
 `(x^2-1)/(x^2-2x+1) -> (x+1)/(x-1)` even though the hidden factor is not the
-whole denominator. It is deliberately univariate: a coefficient containing a
-second symbol does not get guessed to be a field element, and the pair stays
-explicit until the multivariate milestone in `CAS_FOUNDATION.md`.
+whole denominator.
+
+Expanded polynomials in two or more symbols use a distributed sparse kernel
+with explicit exponent vectors and deterministic lexicographic order. It
+implements exact multivariate arithmetic and division, recursive
+content/primitive-part extraction, and primitive pseudo-remainder GCD over
+exact rational coefficients. The calculator profile is bounded at 8
+variables, 192 terms, and degree 48 in each variable. A proposed divisor is
+published only after exact division and multiplication reconstruct both
+original polynomials. This covers sparse common factors whose mixed-radix
+Kronecker image is far beyond degree 48. The older image path remains only as
+an independently verified compatibility fallback, not as the semantic GCD.
 
 ### Complete-on-success `Factor`
 
 `phy_cas_factor` and reader-facing `Factor[...]` reuse the same degree-48
 `Q[x]` view. They first extract the exact leading coefficient, make the
-polynomial monic, and run Yun's characteristic-zero square-free
-decomposition. This proves repeated irreducible factors such as
+polynomial monic, and run Yun's characteristic-zero square-free decomposition.
+The load-bearing derivative GCD is reconstructed from monic modular GCDs by
+CRT; it is accepted only after exact division of both the integer transform and
+its derivative. This avoids the coefficient swell of a direct Euclidean walk
+on promoted rational coefficients and proves repeated irreducible factors such
+as
 
 ```
 x^4 + 2 x^2 + 1  ->  (x^2 + 1)^2.
 ```
 
-Each square-free layer is converted to a primitive integer polynomial and
-searched with the rational-root theorem. Integerized coefficient magnitudes
-are bounded at 1,000,000 and one root search is bounded at 4,096 candidates;
-exceeding either bound is a typed resource error, never a truncated search
-reported as root-free. Rational linear factors are extracted exactly. A
-remaining quadratic or cubic with no rational root is proved irreducible over
-`Q`, so examples such as
+Rational-root enumeration remains a fast path, including exact tests of
+`0`, `-1`, and `1` before its small-integer divisor search. A residual beyond
+that fast path is mapped exactly to a monic integer polynomial by
+`F(y)=D^n P(y/D)`, where `D` is a positive common denominator. The complete
+bounded path then:
 
-```
-x^4 - 1  ->  (x - 1) (x + 1) (x^2 + 1)
-```
+1. selects a square-free prime image;
+2. factors it deterministically with Berlekamp;
+3. obtains Bézout corrections with finite-field extended GCD;
+4. Hensel-lifts every candidate bipartition until the modulus exceeds twice a
+   Landau--Mignotte coefficient bound;
+5. centers the lifted coefficients, maps them back to `Q[x]`, and requires
+   exact division before accepting a factor.
 
-are complete factorizations. A square-free residual of degree four or more
-with no rational root is `PHY_ERR_UNSUPPORTED`: absence of rational roots does
-not prove such a polynomial irreducible or split it into higher-degree
-factors. Thus `Factor[(x^2+1)(x^2+4)]` deliberately refuses until the modular
-factorization milestone, rather than returning the expanded polynomial as a
-misleading success.
+If every modular bipartition is lifted past the bound and rejected by exact
+division, the residual is certified irreducible over `Q`; absence of rational
+roots alone is never used for a degree above three. The recombination lattice
+is bounded at 13 modular factors (4,096 bipartitions), the degree at 48, and
+the modular derivative-GCD CRT at 256 primes. Exceeding a degree, work, memory,
+or recombination ceiling is a typed resource error, never a partial
+factorization reported as complete. This covers non-monic rational inputs,
+repeated high-degree factors, and promoted coefficients such as `2^100`.
 
 The factor-record workspace is charged to `phy_cas_limits.max_bytes` and
 released on success and every failure path. The public result is not built
 until the complete bounded factorization has succeeded.
+
+### Exact univariate `Apart`
+
+`phy_cas_apart` and reader-facing `Apart[...]` operate on the same bounded
+univariate `Q[x]` class. The rational expression is reduced first and its
+unique non-constant symbol is selected. The numerator and denominator are
+expanded into exact polynomials, the denominator is made monic without
+changing the quotient, and polynomial division separates the improper part.
+
+The proper denominator is factored by the complete-on-success kernel above.
+For each irreducible factor `f_i` and exponent `k`, the unknown numerator has
+degree below `deg(f_i)`. Multiplying all proposed terms by the common
+denominator gives a square coefficient system with exactly `deg(D)` unknowns.
+Forward elimination and back substitution run entirely over exact rational IR
+atoms; every pivot and row operation therefore remains symbolic.
+
+Before constructing the display sum, the solution is substituted into the
+original, unmodified coefficient matrix and every row is proved equal. This is
+the partial-fraction analogue of Factor's exact product check. A singular
+system, resource ceiling, factorization failure, second variable, or
+algebraic-extension coefficient returns a typed error and publishes no partial
+result. The result supports improper fractions, repeated factors, irreducible
+quadratic and higher factors, rational leading coefficients, and promoted
+integer coefficients.
+
+### Exact bounded elimination and polynomial systems
+
+`phy_cas_resultant`, `phy_cas_discriminant`, and
+`phy_cas_groebner_basis` share the distributed sparse exact-rational
+polynomial representation. `Resultant[f,g,x]` evaluates the Sylvester
+determinant by exact rational Gaussian elimination. `Discriminant[f,x]` uses
+the derivative/resultant identity including its exact sign and leading-factor
+normalization. `GroebnerBasis[{f,...},{x,...}]` uses lexicographic Buchberger
+reduction with monic normalization.
+
+Publication is certificate-driven: every original generator must reduce to
+zero by the proposed basis and every retained S-pair must also reduce to zero.
+The device-oriented ceilings are eight variables, 192 terms per polynomial,
+degree 48, 16 basis elements, 120 S-pairs, and a 32-row Sylvester matrix.
+Crossing a ceiling returns a typed resource status rather than a truncated
+basis or determinant.
 
 `phy_cas_full_simplify` — the notebook's `FullSimplify` — is the one door from
 the display normal form into this machinery. It runs the plain simplifier,
@@ -211,6 +305,116 @@ shorter, so `sin(2x) - 2 sin(x) cos(x)` reaches `0` and `1/(1 - cos(u)^2)`
 reaches `sin(u)^-2`, while `1/tan(q)` keeps the reader's spelling. A rational
 pass that exhausts a resource budget falls back to the plain result; an
 identically zero denominator is still `PHY_ERR_DOMAIN`.
+
+### Exact bounded `Series`
+
+`phy_cas_series` and reader-facing `Series[expr,{x,a,n}]` share one explicit
+truncated Laurent representation:
+
+```text
+(variable, exact center, valuation, exclusive order, exact coefficients[])
+```
+
+The internal ring implements exact addition, subtraction, Cauchy product,
+reciprocal/division, integer powers, differentiation, Laurent integration, and
+zero-constant composition. Precision propagation uses valuations: multiplying
+`O(u^p)` by a series of valuation `v` yields `O(u^(p+v))`; no missing
+coefficient is treated as computed. The public result is
+`SeriesData[var,center,valuation,order,List[coefficients...]]`, so every
+coefficient and the order term are typed metadata rather than display text.
+`Normal` returns the reconstructed finite expression only after validating
+that metadata.
+
+Rational functions expand at any exact rational center where the bounded
+Laurent recurrence proves a nonzero leading denominator coefficient.
+Maclaurin coefficient recurrences and exact composition currently cover
+`Exp`, circular/hyperbolic sine, cosine and tangent, `ArcSin`, `ArcTan`,
+`Log[1+u]`, and rational binomial powers. A nonzero-center analytic expansion
+that would introduce an unavailable transcendental coefficient is explicitly
+unsupported; it is never estimated with floating point.
+
+### Exact bounded `Limit`
+
+`phy_cas_limit` and reader-facing `Limit[expr,{x,a}]` reuse the formal-series
+valuation and leading coefficient above. A structurally certified continuous
+polynomial/rational or real-entire expression is substituted exactly.
+Removable singularities and supported analytic compositions fall through to a
+Laurent expansion. Positive and negative pole signs are proved from the exact
+leading coefficient, valuation parity, and the requested `FromAbove` or
+`FromBelow` direction. A two-sided request succeeds only when those directed
+answers agree.
+
+For `Infinity` and `-Infinity`, the implementation substitutes `x=1/t` or
+`x=-1/t` and takes the exact `t -> 0` limit from above. This proves polynomial
+and rational degree behavior without a separate floating-point heuristic.
+`Direction->"FromAbove"`/`"FromBelow"` and the shorter bare direction symbols
+are accepted at finite points. Oscillatory forms such as `Sin[1/x]`, unknown
+branch behavior, or a coefficient outside the current exact rational series
+domain return `PHY_ERR_UNSUPPORTED`; unequal finite directions return
+`PHY_ERR_DOMAIN`.
+
+### Exact bounded `Solve`
+
+`phy_cas_solve` and reader-facing `Solve[equation,x]` reuse the exact Q[x]
+factorizer rather than maintaining a second polynomial representation.
+The equation is converted to one reduced rational numerator and denominator.
+Every numerator factor must be completely certified by the bounded factorizer.
+Linear roots remain exact constants, real quadratic roots remain exact radicals
+through the typed power node, non-real quadratic roots are exact principal
+radicals times `I`. An irreducible higher-degree factor is accepted only when
+Sturm isolation proves that all of its roots are real; those roots are
+represented as `Root[List[a0,...,an],k]`. The coefficient list is
+in increasing degree order. `k` is one-based in increasing order among the
+factor's roots, as proved by one exact Sturm chain and disjoint rational
+isolating intervals. A higher factor with any non-real root is rejected rather
+than publishing an incomplete real subset. Multiplicity stays in the factor
+workspace while the returned
+`List[List[Rule[x,root]],...]` contains distinct roots.
+
+Every candidate is substituted back into the numerator with the exact zero
+decision. A higher-degree `Root` candidate instead carries the exact
+factorization/Sturm certificate; the reduced numerator and denominator are
+proved coprime in Q[x], so its denominator exclusion is decided without
+numeric substitution. An undecidable factor aborts the whole operation; no
+verified prefix is returned as if it were a complete solution. Constant false
+equations return an empty list, while an identity returns
+`PHY_ERR_UNSUPPORTED` until the evaluator has a typed conditional solution-set
+representation. A certified affine fallback also solves a reduced `a*x+b`
+when `a` and `b` are proved scalar constants, including `Q(i)`; this is what
+preserves the denominator exclusion in
+`(x^2+1)/(x-I)==0`. General non-real roots of degree three and above still need
+the complex-algebraic extension.
+
+`phy_cas_solve_system` and
+`Solve[{equation,...},{variable,...}]` cover exact linear systems with up to
+eight equations and variables. Coefficients are extracted by exact symbolic
+differentiation; reconstruction proves that every equation is affine in the
+declared variables before elimination starts. Exact reduced row echelon form
+runs over the shared rational/Gaussian-rational scalar domain. Unique systems
+return constant rules, underdetermined systems return pivot variables in terms
+of the original free variables, and inconsistent systems return an empty
+solution list. Every published rule set is substituted into every original
+equation and exact-zero checked. An undecidable pivot, duplicate variable, or
+resource ceiling produces a typed error and no partial solution; a nonlinear
+rational-polynomial system may continue through the bounded path below.
+
+When a system is nonlinear but remains polynomial over `Q`, the same entry
+point falls through to the bounded lexicographic Gröbner kernel. A solution is
+published only when the basis is zero-dimensional and triangular, every
+univariate branch can be represented in the exact scalar domain, and exact
+substitution proves every original equation. Positive-dimensional ideals,
+non-triangular bases after the bounded run, or branches requiring an
+unsupported algebraic extension remain typed unsupported.
+
+`phy_cas_n` and reader-facing `N[expr,digits]` form the first certified numeric
+layer. It evaluates exact real arithmetic, `Pi`, `E`, `EulerGamma`, integer
+powers and square roots into an exact rational
+`Around[midpoint,radius]`; requested precision is capped at 36 decimal digits.
+`phy_cas_nsolve`/`NSolve[equation,x]` isolates every real root of a bounded
+univariate rational polynomial by exact Sturm arithmetic, refines the root to
+a rational ball, evaluates the reduced denominator over that ball, and
+publishes only when zero is excluded. It intentionally does not claim complex
+or multivariate numerical solving yet.
 
 ### Why trigonometry is reduced, and to what
 
@@ -292,13 +496,15 @@ An unevaluated derivative is a correct answer a later layer can refine. A wrong
 zero is a curvature tensor that vanishes for a spacetime that curves.
 
 The known table includes the elementary, inverse trigonometric, hyperbolic,
-inverse hyperbolic, and first special-function pack (`Gamma`, `LogGamma`,
-`Erf`, `Erfc`). `tan` differentiates to `1/cos(u)^2` rather than to
+inverse hyperbolic, and bounded special-function packs (`Gamma`, `LogGamma`,
+`Erf`, `Erfc`, and `Factorial`). `tan` differentiates to `1/cos(u)^2` rather than to
 `1 + tan(u)^2` so that the result lands on the same basis the zero decision
 reduces to; the other form would need the identity applied before anything
 could cancel against it. `Gamma'` is represented exactly as
-`Gamma(u) Digamma(u)`; Digamma remains an explicit special function outside
-this first table.
+`Gamma(u) Digamma(u)`; similarly `Factorial(u)'` is represented as
+`Factorial(u) Digamma(u+1)` through its meromorphic continuation. Digamma
+has exact positive integer and half-integer values plus a bounded integer-shift
+recurrence; outside that certified table it remains explicit.
 
 `d(u^v)` uses the power rule when the exponent is constant, which avoids
 introducing a logarithm of a base that may be negative, and the general
@@ -319,17 +525,52 @@ kernels
 exp(-u^2)          -> sqrt(Pi) erf(u) / 2
 ```
 
-with the constant derivative of `u` divided out. `Erf` and `Erfc` themselves
-have exact linear-inner antiderivatives. Every rule is tested by
-differentiating its result back to the input. Outside this class the result is
-the explicit typed head `Integrate[expr,var]`.
+with the constant derivative of `u` divided out **only when that derivative is
+proved nonzero**. An exact nonzero number is sufficient; a symbolic parameter
+must carry `NonZero`, `Positive`, or `Negative`. Thus
+`Integrate[Sin[a*x],x]` stays explicit for an unconstrained `a`, while the same
+input may use `-Cos[a*x]/a` after `a` receives a `NonZero`, `Positive`, or
+`Negative` assumption through the host C API and the CAS cache is cleared.
+The notebook language does not yet expose an `Assume` command, so it honestly
+keeps the input deferred there. Heads known never to vanish, such as `Exp[a]`,
+need no declaration. This preserves the original integrand's domain at `a = 0`.
 
-`Pi`, `E`, `I`, and `EulerGamma` are protected constants. The first elementary
-table includes exact trigonometric values at supported multiples of `Pi`,
-positive exact square-factor extraction (`Sqrt[72] -> 6 Sqrt[2]`),
-`Gamma[n]` while `(n-1)!` fits `int64`, `Gamma[1/2]`, and the zero values of
-`Erf`/`Erfc`. `I` does not yet satisfy `I^2=-1`: complex arithmetic remains a
-separate exact-number-domain milestone.
+`Erf` and `Erfc` themselves have exact linear-inner antiderivatives. Bounded
+repeated integration by parts also covers a polynomial of degree at most 12
+multiplied by a linear-inner `Exp`, `Sin`, `Cos`, `Sinh`, or `Cosh`. Before a
+non-deferred antiderivative is published, the CAS differentiates it, subtracts
+the original integrand, and requires an exact zero proof. Outside this class
+the result is the explicit typed head `Integrate[expr,var]`; a failed
+integration-by-parts subproblem also defers the original input instead of
+publishing nested `Integrate[Integrate[...]]` heads.
+
+The evaluator applies the same publication rule to reader-facing algebraic
+rewrites. Results from `Simplify`, `FullSimplify`, `Expand`, `Together`,
+`Cancel`, `Factor`, and `Apart` are checked with exact
+`phy_cas_equivalent` against their input before they reach a notebook output
+cell. `D` is the typed structural derivative implementation itself and is
+covered by the shared evaluator corpus; `Integrate` has the stronger
+independent differentiate-and-zero-check described above.
+
+`Pi`, `E`, `I`, `EulerGamma`, and directed-limit `Infinity` are protected
+constants. The elementary and discrete exact table includes trigonometric
+values at supported multiples of `Pi`,
+positive exact square-factor extraction (`Sqrt[72] -> 6 Sqrt[2]`), exact
+positive-integer and positive-half-integer `Gamma`, `BernoulliB[n]` through
+64, `HarmonicNumber[n]` through 4096, exact integer/half-integer `Digamma`, and
+the zero values of `Erf`/`Erfc`. `I^2=-1`, integral powers reduce exactly, and closed
+Gaussian-rational arithmetic plus `Re`, `Im`, `Conjugate`, and `Abs` uses the
+native arbitrary-precision domain described above.
+
+`Factorial[n]` is exact for `0 <= n <= 512`; `Pochhammer[a,n]` (also read as
+`RisingFactorial[a,n]`) and `Binomial[a,n]` evaluate exact rational arguments
+with at most 512 multiplicative factors. Symbolic integer-order products use a
+64-factor ceiling. Gamma, Digamma and Pochhammer also apply bounded exact
+integer-shift recurrences. Negative factorials and actual reciprocal-product poles are
+domain errors, while noninteger symbolic orders stay unevaluated. These heads
+never call floating-point or libm code. The MathTree display uses postfix `!`
+for factorial and scripted Pochhammer notation; the stored IR keeps stable
+canonical function names.
 
 ## Memory and budget
 
@@ -396,15 +637,22 @@ answers `UNKNOWN` rather than deciding anything about it.
 
 ## Not in this layer
 
-General integration, limits, series, and solving. Multivariate polynomial GCD,
-general high-degree polynomial factorization, and partial fractions. Matrices.
+General special-function integration, unrestricted asymptotic/branch limits,
+positive-dimensional/conditional polynomial systems, complex `NSolve`, and
+general nonlinear simultaneous solving.
+The exact bounded `Series`/`Normal` ring and the finite/directed/rational-
+infinity `Limit` subset live in `series.c` and `limit.c`; cases they cannot
+prove return a typed error rather than sampling. Multivariate factorization
+and multivariate/algebraic-extension partial fractions. The exact
+Gröbner/resultant/discriminant layer is deliberately bounded as documented
+above. Matrix-valued symbolic
+algebra beyond the exact linear-system solver.
 Dummy-index canonicalization,
 contraction, and anything
 that consumes declared slot symmetries — this layer simplifies the operands of
 `PHY_IR_NCMUL`, `PHY_IR_TENSOR`, `PHY_IR_OPERATOR`, `PHY_IR_WEDGE` and
 `PHY_IR_DERIVATIVE` in place and otherwise leaves them alone, never reordering
-them or reading their indices. Arbitrary-precision numbers. The Giac backend
-boundary.
+them or reading their indices. The Giac backend boundary.
 
 ## Testing
 
@@ -426,8 +674,10 @@ functions, assumptions, and each documented limit; the rational form and its
 identically-zero denominator; the trigonometric identities; **the four
 `sphere_2d` corpus entries above, with a negative control**; flat-space
 curvature vanishing; `INT64_MIN` exponent handling without signed overflow;
-Yun square-free layers, rational-root extraction, repeated and zero roots,
-factorization round trips, and the explicit unsupported high-degree boundary;
+Yun square-free layers, modular derivative GCD/CRT, deterministic Berlekamp,
+Hensel lifting, repeated and zero roots, exact high-degree factorization round
+trips, partial fractions with improper/repeated/irreducible denominators, and
+explicit unsupported boundaries;
 empty sum/product identities; error-value propagation through differentiation;
 the step budget, cancellation, and the term limit;
 memoization measured in steps; a byte ceiling too small for a cache; and an
@@ -443,14 +693,14 @@ counts are recorded in `CAS_ACCEPTANCE.md` after each clean build.
 
 Built with the pinned Ndless r2022 SDK and ARM GNU 14.3 toolchain using
 `-Os -marm`. The isolated link check compiles the complete scalar layer to
-49,199 bytes of ARM text; its dependency-complete probe packages to 68,056
+130,036 bytes of ARM text; its dependency-complete probe packages to 197,464
 bytes. These figures are deliberately measured by the link-check target rather
 than maintained as a hand-summed per-object table.
 
 The application now calls the CAS and the typed physics backends through
 editable notebook cells. The current product, including persistence,
-nMarkdown's math typesetter, and the reachable evaluator stack, is 1,124,477
-bytes (17.9% of the 6 MiB ceiling).
+nMarkdown's math typesetter, and the reachable evaluator stack, is 1,246,500
+bytes (19.8% of the 6 MiB ceiling).
 
 `make cas-link-check` closes the gap that leaves. It is the same guard as
 `make ir-link-check`, and `tools/link-check.sh` now serves both layers from one
@@ -467,8 +717,8 @@ dependency through its own gcd and its check passes, which is good evidence but
 not the check itself.
 
 `make cas-link-check` has been run with the real Ndless linker and packager:
-all **29/29** public entry points derived from `include/phy/cas.h` survive
-`--gc-sections`; the CAS+IR+platform probe packages to a **68,056-byte `.tns`**;
+all **40/40** public entry points derived from `include/phy/cas.h` survive
+`--gc-sections`; the CAS+IR+platform probe packages to a **197,464-byte `.tns`**;
 and no `_dtoa`, `_strtod`, `_printf_float`, libm, `stdio` formatting, or ARM
 soft-float helper reaches the image. Real IR atoms are ordered by their
 IEEE-754 bit keys rather than by executing a floating-point comparison. The

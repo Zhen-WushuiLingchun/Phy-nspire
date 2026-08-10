@@ -2,15 +2,14 @@
  * Phy-nspire — exact rational arithmetic for the scalar CAS.
  *
  * int64 numerator over int64 denominator, reduced, denominator positive. No
- * IR, no allocation, no floating point: this file is pure arithmetic and is the
- * only place in the layer where an overflow can be introduced, which is why it
- * is the only place that has to be careful about one.
+ * IR, no allocation, no floating point: this file is the scalar CAS fast path.
+ * Callers route overflow to big_num.c's bounded promotion domain.
  *
  * Every operation reports overflow instead of wrapping. That is not caution for
  * its own sake -- a wrapped coefficient would make the zero decision in
  * normal.c report ZERO for an expression that is not zero, turning a proof into
- * a wrong answer. Refusing is the only sound alternative to arbitrary precision,
- * and docs/IR.md already records where a bignum would slot in.
+ * a wrong answer. The caller either promotes or propagates a typed limitation
+ * from an algorithm whose coefficient storage has not migrated yet.
  *
  * The checks are written in terms of unsigned magnitudes rather than compiler
  * builtins, because the host build also runs under MSVC and signed overflow

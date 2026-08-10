@@ -1,10 +1,12 @@
 #include <string.h>
 
+#include "phy/cas.h"
 #include "phy/formula.h"
 #include "phy/platform.h"
 #include "phy_test.h"
 
 static uint16_t g_pixels[320u * 240u];
+static uint16_t g_reference_pixels[320u * 240u];
 
 static void test_formula_lifecycle_and_metrics(void)
 {
@@ -119,6 +121,82 @@ static void test_typed_ir_uses_the_shared_math_tree_pipeline(void)
     PHY_CHECK(metrics.ascent > 0);
     PHY_CHECK(metrics.descent > 0);
 
+    const phy_ir_ref promoted = phy_ir_rational_text(
+        ir, "184467440737095516160000000000000000001", "3");
+    PHY_CHECK(promoted != PHY_IR_NULL);
+    PHY_CHECK_EQ_INT(
+        phy_formula_measure_ir(
+            ir, promoted, PHY_FORMULA_STYLE_DISPLAY, 16, 1000, &metrics),
+        PHY_OK);
+    PHY_CHECK(metrics.valid);
+    PHY_CHECK(metrics.width > 100);
+    PHY_CHECK(metrics.descent > 0);
+
+    phy_cas *cas = phy_cas_create(ir, NULL);
+    PHY_CHECK(cas != NULL);
+    phy_ir_ref rational = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_ir_read(
+            ir, "(^ (+ 1 (* -1 x)) -1)", &rational, NULL),
+        PHY_OK);
+    phy_ir_ref series = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_series(
+            cas, rational, x, phy_ir_integer(ir, 0), 5u, &series),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_formula_measure_ir(
+            ir, series, PHY_FORMULA_STYLE_DISPLAY, 16, 1000, &metrics),
+        PHY_OK);
+    PHY_CHECK(metrics.valid);
+    PHY_CHECK(metrics.width > 100);
+    PHY_CHECK(metrics.ascent > 0);
+    PHY_CHECK(metrics.descent > 0);
+
+    phy_ir_ref equation = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_ir_read(ir, "(= (+ (^ x 2) -2) 0)", &equation, NULL),
+        PHY_OK);
+    phy_ir_ref solutions = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_solve(cas, equation, x, &solutions), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_formula_measure_ir(
+            ir, solutions, PHY_FORMULA_STYLE_DISPLAY, 16, 1000, &metrics),
+        PHY_OK);
+    PHY_CHECK(metrics.valid);
+    PHY_CHECK(metrics.width > 70);
+    PHY_CHECK(metrics.ascent > 0);
+    PHY_CHECK(metrics.descent > 0);
+
+    phy_ir_ref complex_expression = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_ir_read(
+            ir, "(fn Conjugate (+ 3 (* 4 I)))",
+            &complex_expression, NULL),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_formula_measure_ir(
+            ir, complex_expression, PHY_FORMULA_STYLE_DISPLAY,
+            16, 1000, &metrics),
+        PHY_OK);
+    PHY_CHECK(metrics.valid);
+    PHY_CHECK(metrics.width > 20);
+    PHY_CHECK(metrics.ascent > 0);
+    phy_ir_ref absolute_value = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_ir_read(
+            ir, "(fn Abs (+ 3 (* 4 I)))",
+            &absolute_value, NULL),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_formula_measure_ir(
+            ir, absolute_value, PHY_FORMULA_STYLE_DISPLAY,
+            16, 1000, &metrics),
+        PHY_OK);
+    PHY_CHECK(metrics.valid);
+    PHY_CHECK(metrics.width > 20);
+
     memset(g_pixels, 0, sizeof g_pixels);
     const phy_surface surface = {g_pixels, 320, 240};
     PHY_CHECK_EQ_INT(
@@ -146,6 +224,89 @@ static void test_typed_ir_uses_the_shared_math_tree_pipeline(void)
             NULL, expression, PHY_FORMULA_STYLE_TEXT, 15, 200, &metrics),
         PHY_ERR_INVALID_ARGUMENT);
 
+    phy_cas_destroy(cas);
+    phy_ir_context_destroy(ir);
+    phy_platform_shutdown();
+}
+
+static void test_cas_display_conventions_match_latex(void)
+{
+    static const struct {
+        const char *ir;
+        const char *latex;
+        bool pixel_exact;
+    } cases[] = {
+        {"(* 6 (^ 2 (rat 1 2)))", "6\\sqrt{2}", true},
+        /*
+         * The tree test checks the indexed and reciprocal radical structure.
+         * Their TeX parser paths add grouping rows, so their pixels need not
+         * be byte-identical to the direct typed-IR tree.
+         */
+        {"(^ x (rat 1 3))", "\\sqrt[3]{x}", false},
+        {"(^ x (rat -1 2))", "\\frac{1}{\\sqrt{x}}", false},
+        /*
+         * A non-unit numerator is not a display-only radical rewrite: its
+         * branch semantics remain visible as an exact fractional power.
+         */
+        {"(^ x (rat 3 2))", "x^{\\frac{3}{2}}", true},
+        {"I", "\\mathrm{i}", true},
+    };
+
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    phy_ir_context *ir = phy_ir_context_create(NULL);
+    PHY_CHECK(ir != NULL);
+    PHY_CHECK_EQ_INT(phy_formula_initialize(), PHY_OK);
+
+    const phy_surface actual = {g_pixels, 320, 240};
+    const phy_surface reference = {g_reference_pixels, 320, 240};
+    for (size_t index = 0u; index < sizeof cases / sizeof cases[0]; ++index) {
+        phy_ir_ref expression = PHY_IR_NULL;
+        PHY_CHECK_EQ_INT(
+            phy_ir_read(ir, cases[index].ir, &expression, NULL),
+            PHY_OK);
+
+        phy_formula_metrics actual_metrics;
+        phy_formula_metrics reference_metrics;
+        PHY_CHECK_EQ_INT(
+            phy_formula_measure_ir(
+                ir, expression, PHY_FORMULA_STYLE_DISPLAY, 18, 300,
+                &actual_metrics),
+            PHY_OK);
+        PHY_CHECK_EQ_INT(
+            phy_formula_measure_latex(
+                cases[index].latex, strlen(cases[index].latex),
+                PHY_FORMULA_STYLE_DISPLAY, 18, 300, &reference_metrics),
+            PHY_OK);
+        PHY_CHECK(actual_metrics.valid);
+        PHY_CHECK(reference_metrics.valid);
+
+        memset(g_pixels, 0, sizeof g_pixels);
+        memset(g_reference_pixels, 0, sizeof g_reference_pixels);
+        PHY_CHECK_EQ_INT(
+            phy_formula_draw_ir(
+                &actual, ir, expression, PHY_FORMULA_STYLE_DISPLAY, 18, 300,
+                10, 80, 0, PHY_COLOR_WHITE, PHY_COLOR_BLACK,
+                2, 2, 316, 120, &actual_metrics),
+            PHY_OK);
+        PHY_CHECK_EQ_INT(
+            phy_formula_draw_latex(
+                &reference, cases[index].latex, strlen(cases[index].latex),
+                PHY_FORMULA_STYLE_DISPLAY, 18, 300, 10, 80, 0,
+                PHY_COLOR_WHITE, PHY_COLOR_BLACK, 2, 2, 316, 120,
+                &reference_metrics),
+            PHY_OK);
+        if (cases[index].pixel_exact &&
+            memcmp(g_pixels, g_reference_pixels, sizeof g_pixels) != 0) {
+            fprintf(stderr, "  rendered pixels differ for %s vs %s\n",
+                    cases[index].ir, cases[index].latex);
+        }
+        if (cases[index].pixel_exact) {
+            PHY_CHECK(
+                memcmp(g_pixels, g_reference_pixels, sizeof g_pixels) == 0);
+        }
+    }
+
+    phy_formula_shutdown();
     phy_ir_context_destroy(ir);
     phy_platform_shutdown();
 }
@@ -156,5 +317,6 @@ int main(void)
     PHY_TEST_CASE(test_formula_draws_into_rgb565_surface);
     PHY_TEST_CASE(test_malformed_formula_recovers_locally);
     PHY_TEST_CASE(test_typed_ir_uses_the_shared_math_tree_pipeline);
+    PHY_TEST_CASE(test_cas_display_conventions_match_latex);
     return PHY_TEST_REPORT("test_formula");
 }

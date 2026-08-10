@@ -143,15 +143,50 @@ add_library(phy_core STATIC
     src/tensor/symmetry.c
     src/tensor/tensor.c
     src/tensor/ops.c
+    src/linear/matrix.c
+    src/linear/elimination.c
+    src/abstract/index.c
+    src/abstract/head.c
+    src/abstract/monomial.c
+    src/abstract/canonical.c
+    src/abstract/dgs.c
+    src/abstract/young.c
+    src/abstract/garnir.c
+    src/component/basis.c
+    src/component/component.c
+    src/component/bridge.c
+    src/component/map.c
+    src/component/atlas.c
+    src/permutation/perm.c
+    src/permutation/bsgs.c
+    src/permutation/orbit.c
     src/gr/gr.c
+    src/gr/bridge.c
     src/lie/lie.c
     src/qft/scalar.c
     src/qft/lorentz.c
     src/qft/dirac.c
     src/qft/mandelstam.c
     src/qft/color.c
+    src/qft/bridge.c
+    src/exact/context.c
+    src/exact/integer.c
+    src/exact/rational.c
+    src/exact/ball.c
+    src/exact/gaussian.c
+    src/exact/algebraic.c
     src/cas/num.c
+    src/cas/big_num.c
+    src/cas/complex.c
+    src/cas/finite_poly.c
+    src/cas/series.c
+    src/cas/limit.c
+    src/cas/solve.c
+    src/cas/linear_solve.c
+    src/cas/sparse_poly.c
+    src/cas/ball_eval.c
     src/cas/engine.c
+    src/cas/special.c
     src/cas/simplify.c
     src/cas/diff.c
     src/cas/integrate.c
@@ -164,7 +199,8 @@ add_library(phy_core STATIC
     src/qft/yang_mills.c
 )
 target_include_directories(phy_core PUBLIC include PRIVATE
-    src/gfx src/ir src/tensor src/cas src/geom src/eval)
+    src/gfx src/ir src/tensor src/linear src/abstract src/component src/permutation
+    src/cas src/geom src/eval)
 target_link_libraries(phy_core PRIVATE phy_warnings nmarkdown_math)
 if(MSVC)
     target_compile_options(phy_core PRIVATE $<$<COMPILE_LANGUAGE:CXX>:/EHsc>
@@ -219,7 +255,14 @@ if(BUILD_TESTING)
                   test_notebook test_ir test_tensor test_gr test_lie
                   test_qft_scalar test_yang_mills test_cas test_geom
                   test_geom_metric test_eval test_lorentz test_mandelstam
-                  test_color)
+                  test_color test_exact test_ball test_algebraic test_finite_poly
+                  test_linear test_abstract_tensor test_permutation
+                  test_young_garnir
+                  test_component_tensor test_component_bridge
+                  test_gr_bridge test_qft_bridge
+                  test_coordinate_map test_atlas)
+        # test_series is appended below because it also sees the internal
+        # bounded-series contract.
         add_executable(${suite} tests/${suite}.c)
         target_link_libraries(${suite} PRIVATE phy_core phy_platform_host phy_warnings)
         target_include_directories(${suite} PRIVATE tests)
@@ -240,6 +283,25 @@ if(BUILD_TESTING)
         endif()
         add_test(NAME ${suite} COMMAND ${suite})
     endforeach()
+    target_include_directories(test_finite_poly PRIVATE src/cas)
+
+    add_executable(test_ir_math_tree tests/test_ir_math_tree.cpp)
+    target_link_libraries(
+        test_ir_math_tree PRIVATE phy_core phy_platform_host phy_warnings)
+    target_include_directories(
+        test_ir_math_tree PRIVATE
+        tests src/render ${NMARKDOWN_ROOT}/include)
+    add_test(NAME test_ir_math_tree COMMAND test_ir_math_tree)
+
+    add_executable(test_series tests/test_series.c)
+    target_link_libraries(
+        test_series PRIVATE phy_core phy_platform_host phy_warnings)
+    target_include_directories(test_series PRIVATE tests src/cas)
+    if(MSVC)
+        target_compile_definitions(
+            test_series PRIVATE _CRT_SECURE_NO_WARNINGS)
+    endif()
+    add_test(NAME test_series COMMAND test_series)
 
     # The general-relativity corpus suite. It has its own reader for
     # research/corpus/gr_golden.json and for the SymPy subset the corpus is

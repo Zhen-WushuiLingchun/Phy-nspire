@@ -11,7 +11,7 @@ workspace only after the complete file validates.
 
 ## Cell model
 
-`include/phy/notebook.h` exposes a bounded model with 192 cell slots and
+`include/phy/notebook.h` exposes a bounded model with 400 cell slots and
 fixed source buffers. A source cell stores both reader-facing source and, after
 a successful parse, the backend-neutral serialized IR produced from that exact
 source. Evaluation inserts or updates a separate output/error cell, so a failed
@@ -22,7 +22,8 @@ Implemented cell kinds:
 - Markdown heading/body;
 - symbolic input;
 - typed-IR symbolic output;
-- typed physics-object output, shown as a descriptor line;
+- typed physics-object output, shown as a structured constructor or
+  abstract/component-index signature;
 - typed error output.
 
 ### Cells share state
@@ -34,11 +35,12 @@ consequences are visible in the shell:
 
 - running a cell marks every result *after* it stale, because a cell that binds
   a name changes what the cells below it mean;
-- an output whose value is a manifold, a Lie group, or a curvature bundle has no
-  expansion in the typed IR, so the card shows a descriptor line
-  (`Manifold M dim 2 Riemannian +oriented (x,y)`) instead. Objects that do have
-  an expansion — forms, algebra-valued forms, Lie elements, tensors up to rank
-  two — are drawn by the ordinary typed-IR renderer;
+- handles such as manifolds, groups, bases, atlases, and curvature bundles keep
+  their typed constructor in the output; tensor heads and component tensors
+  show abstract/component-index signatures. QFT systems additionally display
+  their SU(N), typed spaces, tensor heads, and currently exact component
+  tables. All of them use the same two-dimensional renderer as scalar CAS
+  output; old descriptor-only documents remain readable;
 - the document codec stores cells, never objects, so a reopened notebook starts
   with an empty environment. `FILE` > `Run all cells` replays it in order, which
   is `phy_notebook_evaluate_all`.
@@ -83,14 +85,17 @@ instead shrinks and then pans like a wide output card.
 
 Inside edit mode, `MENU` opens a context-sensitive insertion palette. Math
 cells expose only reader commands and functions already accepted by the
-current evaluator — `test_palette` parses every one of them — grouped as
-Algebra, Functions, Calculus/Syntax, Tensor/Indices, Differential Geometry, and
-Lie/QFT Objects.
+current evaluator. They are grouped as Algebra, Functions, Calculus/Syntax,
+Linear Algebra, Tensor/Indices, Differential Geometry, Lie/Yang-Mills, General
+Relativity, QFT/Colour, and Queries/State. `test_palette` checks that all 109
+registered evaluator heads and all 18 supported source commands occur in at
+least one insertion snippet, and parses every snippet.
 Markdown bodies expose nMarkdown-backed LaTeX templates for layout, calculus,
-Greek letters, accents/styles, and matrices. Left/right changes category,
-up/down selects, and Enter or a touch on a row inserts the template with the
-cursor in its first argument slot. Outside edit mode, `MENU` remains the file
-menu.
+Greek letters, accents/styles, and matrices. Left/right changes category and
+up/down selects through a seven-row viewport; `^` and `v` show that more rows
+exist. Enter or a touch on a visible row inserts the template with the cursor
+in its first argument slot. Keyboard selection and pointer hit testing share
+the same scroll window. Outside edit mode, `MENU` remains the file menu.
 
 The touchpad is relative. A new finger contact establishes a motion origin and
 does not teleport the cursor; movement continues from the last screen
@@ -138,42 +143,45 @@ braces. Both held modifiers and tap-then-key modifiers are accepted.
 ## Comprehensive CAS tour
 
 [`examples/phy-nspire-cas-tour.tns`](../examples/phy-nspire-cas-tour.tns) is a
-generated, executable notebook rather than a screenshot fixture. Its 111
-source cards contain nine Markdown/LaTeX explanations and 102 Math inputs
-covering the implemented scalar CAS and calculus, generic component tensors,
-manifolds, forms and Hodge operations, coordinate GR, Lie algebra and
-Yang--Mills, phi4 graph/renormalization operations,
-Dirac/Mandelstam/SU(N) colour, and `MemoryStatus[]`. Every implemented
-evaluator head is reached at least once.
+generated, executable notebook rather than a screenshot fixture. Its 196
+source cards contain sixteen Markdown/LaTeX explanations and 180 Math inputs
+covering the implemented scalar CAS and calculus, exact dynamic linear
+algebra, abstract/component bridging, verified chart transitions and atlases,
+generic component tensors, manifolds, forms and Hodge operations, coordinate
+GR, Lie algebra and Yang--Mills, phi4 graph/renormalization operations,
+Dirac/Mandelstam/SU(N) colour, the shared QFT abstract/component view, and
+`MemoryStatus[]`.
 
 `phy-make-cas-tour` first evaluates every input in a validation copy, serializes
 that fully evaluated notebook, deserializes it into a fresh empty environment,
 and replays all cells. It then writes a separately round-tripped source-only
 document. This keeps the CX II's `FILE > Open` path free of eager cached-tree
 reconstruction while preserving full generation-time CAS coverage. Running all
-102 Math cells top-to-bottom grows the document to 213 cards and leaves 43 of
-the 256 bounded slots free.
+180 Math cells top-to-bottom grows the document to 376 cards. The 400-card
+bound leaves 24 slots for small reader experiments; start a new notebook for
+extended work rather than appending a long calculation to the acceptance tour.
 
 ## Verification
 
-- `test_notebook`: 215 checks over exact results, editing, insertion, stale
+- `test_notebook`: exact checks over results, editing, insertion, stale
   results, source/IR agreement, bounds, memory return, selection, `RUN` hit
   testing, Markdown LaTeX integration, 2D metrics, and deterministic pixels;
-- `test_eval`: 1,642 checks over the stateful evaluator, including the notebook
-  integration — state flowing between cells, descriptor outputs, forward
-  staleness, and a save/reopen that restores descriptors but not objects;
-- `test_palette`: 828 checks over every category, entry, snippet, and cursor
-  bound, and over every CAS snippet actually parsing;
-- `test_formula`: 33 checks over lifecycle, metrics, matrices, RGB565 drawing,
+- `test_eval`: exact checks over the stateful evaluator, including the notebook
+  integration — state flowing between cells, structured object output, forward
+  staleness, `ClearAll[]`, and save/reopen without persisting live objects;
+- `test_palette`: 30,538 checks over every category, entry, snippet, cursor
+  bound, registry-completeness rule, and scrolling window, and over every CAS
+  snippet actually parsing;
+- `test_formula`: 103 checks over lifecycle, metrics, matrices, RGB565 drawing,
   and malformed-formula recovery;
-- `test_source`: 296 checks over the permanent reader-facing grammar, the
+- `test_source`: 458 checks over the permanent reader-facing grammar, the
   command registry, assignment, and reserved-head canonicalization;
 - `test_pointer`: 29 checks over relative contact/motion behavior;
 - `test_modifier`: 8 checks over tapped and held Shift/Ctrl behavior;
 - `tests/fixtures/notebook_frame.digest`: bit-exact 320 × 240 host fixture;
-- strict Windows suite: 30/30; WSL ASan/UBSan/leak suite: 32/32; 95,595
-  explicit checks;
-- Ndless r2022 ARM build: 1,124,477 bytes. The evaluator probe retains 15/15
+- last strict Windows baseline: 45/45; current WSL GCC, ASan/leak, and UBSan
+  suites: 48/48 each; 458,095 explicit checks;
+- Ndless r2022 ARM build: 1,246,500 bytes. The evaluator probe retains 17/17
   public APIs behind the complete physics stack and imports no forbidden
   float/libm/soft-float helper.
 

@@ -32,6 +32,13 @@ size_t phy_palette_entry_count(phy_palette_kind kind, size_t category);
 bool phy_palette_get(phy_palette_kind kind, size_t category, size_t entry,
                      phy_palette_entry *out_entry);
 
+/*
+ * First row of the scrolling window that keeps `selected` visible.  Both
+ * drawing and pointer hit-testing use this exact calculation.
+ */
+size_t phy_palette_first_visible(phy_palette_kind kind, size_t category,
+                                 size_t selected, size_t visible_count);
+
 #ifdef __cplusplus
 }
 #endif

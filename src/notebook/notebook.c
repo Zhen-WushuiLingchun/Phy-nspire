@@ -553,9 +553,9 @@ static bool context_wedged(phy_notebook *notebook)
  * every non-markdown cell marked stale. Bindings do not survive -- stale is
  * the honest display for exactly that.
  *
- * Output expressions longer than the migration buffer lose their expansion
- * and fall back to the descriptor line; their value was going stale either
- * way, and re-running the cell recomputes it.
+ * Output expressions longer than the migration buffer lose their cached tree;
+ * their value was going stale either way, and re-running the cell recomputes
+ * the structured result.
  */
 static phy_status rebuild_context(phy_notebook *notebook)
 {
@@ -650,11 +650,26 @@ phy_status phy_notebook_evaluate(phy_notebook *notebook, size_t input_index)
     if (status == PHY_OK && result == PHY_IR_NULL &&
         value.kind != PHY_VALUE_NONE) {
         /*
-         * A manifold, a group, a curvature bundle: no expansion in the typed
-         * IR, so the cell shows what the object is instead of nothing.
+         * A handle with no finite mathematical expansion still has a precise
+         * constructor. Keep that structured typed IR as the notebook result
+         * instead of degrading the object to an English descriptor line.
          */
-        status = phy_eval_describe(notebook->env, value, description,
-                                   sizeof description);
+        if (command.expression != PHY_IR_NULL) {
+            result = command.expression;
+            if (command.operation == PHY_SOURCE_ASSIGN &&
+                command.target != PHY_IR_NO_SYMBOL) {
+                const phy_ir_ref name = phy_ir_symbol_ref(
+                    notebook->ir, command.target);
+                result = phy_ir_equation(
+                    notebook->ir, name, result);
+            }
+            if (result == PHY_IR_NULL) {
+                status = phy_ir_last_error(notebook->ir);
+            }
+        } else {
+            status = phy_eval_describe(notebook->env, value, description,
+                                       sizeof description);
+        }
     }
 
     input->status = status;
@@ -1433,10 +1448,7 @@ static void draw_editable_body_grid(const phy_surface *surface, int x, int y,
                   COLOR_ACCENT);
 }
 
-/*
- * A physics-object descriptor across the two lines an output card has room
- * for, broken at spaces so a manifold's coordinate tuple stays legible.
- */
+/* Legacy descriptor/diagnostic fallback, wrapped over two card lines. */
 static void draw_wrapped_text(const phy_surface *surface, int x, int y,
                               int width, const char *text, uint16_t color)
 {

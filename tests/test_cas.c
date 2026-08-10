@@ -112,10 +112,132 @@ static phy_status factor_status(fixture *f, const char *text)
     return phy_cas_factor(f->cas, parse(f->ir, text), &out);
 }
 
+static phy_status apart_status(fixture *f, const char *text,
+                               phy_ir_ref *out)
+{
+    return phy_cas_apart(f->cas, parse(f->ir, text), out);
+}
+
+static const char *solved(fixture *f, const char *equation)
+{
+    phy_ir_ref out = PHY_IR_NULL;
+    const phy_ir_ref x =
+        phy_ir_symbol_ref(f->ir, phy_ir_intern(f->ir, "x"));
+    const phy_status status =
+        phy_cas_solve(f->cas, parse(f->ir, equation), x, &out);
+    if (status != PHY_OK) {
+        return phy_status_name(status);
+    }
+    return render(f->ir, out);
+}
+
 static phy_status simplify_status(fixture *f, const char *text)
 {
     phy_ir_ref out = PHY_IR_NULL;
     return phy_cas_simplify(f->cas, parse(f->ir, text), &out);
+}
+
+static void test_exact_polynomial_ideal_operations(void)
+{
+    fixture f = open_fixture();
+    const phy_ir_ref x =
+        phy_ir_symbol_ref(f.ir, phy_ir_intern(f.ir, "x"));
+    const phy_ir_ref y =
+        phy_ir_symbol_ref(f.ir, phy_ir_intern(f.ir, "y"));
+    phy_ir_ref result = PHY_IR_NULL;
+
+    PHY_CHECK_EQ_INT(
+        phy_cas_resultant(
+            f.cas, parse(f.ir, "(+ (^ x 2) 1)"),
+            parse(f.ir, "(+ x 1)"), x, &result),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(render(f.ir, result), "2");
+
+    PHY_CHECK_EQ_INT(
+        phy_cas_resultant(
+            f.cas, parse(f.ir, "(+ (^ x 2) -1)"),
+            parse(f.ir, "(+ x -1)"), x, &result),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(render(f.ir, result), "0");
+
+    PHY_CHECK_EQ_INT(
+        phy_cas_discriminant(
+            f.cas, parse(f.ir, "(+ (^ x 3) (* -2 x) 4)"),
+            x, &result),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(render(f.ir, result), "-400");
+
+    const phy_ir_ref generators[2] = {
+        parse(f.ir, "(+ (* x y) -1)"),
+        parse(f.ir, "(+ (^ y 2) -1)")};
+    const phy_ir_ref variables[2] = {x, y};
+    PHY_CHECK_EQ_INT(
+        phy_cas_groebner_basis(
+            f.cas, generators, 2u, variables, 2u, &result),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(
+        render(f.ir, result),
+        "(fn List (+ -1 (* x y)) (+ -1 (^ y 2)) (+ x (* -1 y)))");
+    close_fixture(&f);
+}
+
+static void test_certified_numeric_ball_entry_points(void)
+{
+    fixture f = open_fixture();
+    phy_ir_ref result = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_n(f.cas, parse(f.ir, "(rat 1 3)"), 12u, &result),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(
+        render(f.ir, result), "(fn Around (rat 1 3) 0)");
+
+    PHY_CHECK_EQ_INT(
+        phy_cas_n(f.cas, parse(f.ir, "(^ 2 (rat 1 2))"), 36u, &result),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(phy_ir_kind_of(f.ir, result), PHY_IR_FUNCTION);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, result)), "Around");
+    phy_ir_exact_view radius_view;
+    PHY_CHECK(phy_ir_exact_decimal_view(
+        f.ir, phy_ir_child(f.ir, result, 1u), &radius_view));
+    PHY_CHECK(radius_view.numerator_length > 0u);
+    PHY_CHECK(!(radius_view.numerator_length == 1u &&
+                radius_view.numerator[0] == '0'));
+    PHY_CHECK(radius_view.numerator[0] != '-');
+    PHY_CHECK(radius_view.denominator_length > 0u);
+    PHY_CHECK(radius_view.denominator[0] != '-');
+
+    PHY_CHECK_EQ_INT(
+        phy_cas_n(f.cas, parse(f.ir, "2"), 37u, &result),
+        PHY_ERR_TERM_LIMIT);
+    PHY_CHECK_EQ_INT(result, PHY_IR_NULL);
+
+    const phy_ir_ref x =
+        phy_ir_symbol_ref(f.ir, phy_ir_intern(f.ir, "x"));
+    PHY_CHECK_EQ_INT(
+        phy_cas_nsolve(
+            f.cas, parse(f.ir, "(= (+ (^ x 5) (* -1 x) -1) 0)"),
+            x, 6u, &result),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, result), 1u);
+    const phy_ir_ref branch = phy_ir_child(f.ir, result, 0u);
+    const phy_ir_ref rule = phy_ir_child(f.ir, branch, 0u);
+    const phy_ir_ref around = phy_ir_child(f.ir, rule, 1u);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, around)), "Around");
+
+    PHY_CHECK_EQ_INT(
+        phy_cas_nsolve(
+            f.cas, parse(f.ir, "(= (+ (^ x 2) 1) 0)"),
+            x, 6u, &result),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, result), 0u);
+    PHY_CHECK_EQ_INT(
+        phy_cas_nsolve(
+            f.cas, parse(f.ir, "(= (^ x 2) 2)"), x, 37u, &result),
+        PHY_ERR_TERM_LIMIT);
+    PHY_CHECK_EQ_INT(result, PHY_IR_NULL);
+    close_fixture(&f);
 }
 
 static phy_cas_decision decide(fixture *f, const char *text)
@@ -236,17 +358,29 @@ static void test_exact_arithmetic(void)
     PHY_CHECK_EQ_STR(normal(&f, "(^ 2 -1)"), "(rat 1 2)");
     PHY_CHECK_EQ_STR(normal(&f, "(^ (rat 2 3) -2)"), "(rat 9 4)");
 
-    /* Exact means exact: leaving int64 is an error, not a wrap and not a
-       silent promotion to double. */
-    PHY_CHECK_EQ_INT(simplify_status(&f, "(* 4611686018427387904 4)"),
-                     PHY_ERR_OVERFLOW);
-    PHY_CHECK_EQ_INT(
-        simplify_status(&f, "(+ 9223372036854775807 9223372036854775807)"),
-        PHY_ERR_OVERFLOW);
-
-    /* An exact power that does not fit stays symbolic instead: unlike a product
-       of two numbers, it is still a normal form. */
-    PHY_CHECK_EQ_STR(normal(&f, "(^ 2 200)"), "(^ 2 200)");
+    /* Exact arithmetic promotes across the old int64 cliff without wrapping
+       or falling back to a double. */
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(* 4611686018427387904 4)"),
+        "18446744073709551616");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(+ 9223372036854775807 9223372036854775807)"),
+        "18446744073709551614");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(^ 2 200)"),
+        "1606938044258990275541962092341162602522202993782792835301376");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(+ (rat 18446744073709551616 3) "
+                   "(rat 18446744073709551616 3))"),
+        "(rat 36893488147419103232 3)");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(* (rat 18446744073709551616 3) "
+                   "(rat 3 18446744073709551616))"),
+        "1");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(+ (* 18446744073709551616 x) "
+                   "(* 18446744073709551616 x))"),
+        "(* 36893488147419103232 x)");
 
     close_fixture(&f);
 }
@@ -368,6 +502,60 @@ static void test_power_rules(void)
     close_fixture(&f);
 }
 
+static void test_exact_gaussian_rationals(void)
+{
+    fixture f = open_fixture();
+
+    /* I is algebraic, not an opaque label: all integral powers reduce modulo
+       four, including negative powers. */
+    PHY_CHECK_EQ_STR(normal(&f, "(^ I 2)"), "-1");
+    PHY_CHECK_EQ_STR(normal(&f, "(^ I 3)"), "(* -1 I)");
+    PHY_CHECK_EQ_STR(normal(&f, "(^ I 4)"), "1");
+    PHY_CHECK_EQ_STR(normal(&f, "(^ I -1)"), "(* -1 I)");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(^ I 18446744073709551616)"), "1");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(^ I -18446744073709551617)"),
+        "(* -1 I)");
+
+    /* Closed Q(i) arithmetic is canonical and exact. */
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(* (+ 1 (* 2 I)) (+ 3 (* -4 I)))"),
+        "(+ 11 (* 2 I))");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(^ (+ 1 I) -1)"),
+        "(+ (rat 1 2) (* (rat -1 2) I))");
+    PHY_CHECK_EQ_STR(
+        normal(&f,
+               "(* (+ 3 (* 4 I)) (^ (+ 1 (* -2 I)) -1))"),
+        "(+ -1 (* 2 I))");
+
+    /* Reader-level complex projections are real symbolic operations over the
+       same kernel, not display-only heads. */
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(fn Re (+ 3 (* 4 I)))"), "3");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(fn Im (+ 3 (* 4 I)))"), "4");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(fn Conjugate (+ 3 (* 4 I)))"),
+        "(+ 3 (* -4 I))");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(fn Abs (+ 3 (* 4 I)))"), "5");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn Re I)"), "0");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn Im I)"), "1");
+
+    /* Promoted coefficients stay arbitrary precision through both parts. */
+    PHY_CHECK_EQ_STR(
+        normal(&f,
+               "(+ 340282366920938463463374607431768211456 "
+               "   (* 340282366920938463463374607431768211457 I) "
+               "   (* -1 I))"),
+        "(+ 340282366920938463463374607431768211456 "
+        "(* 340282366920938463463374607431768211456 I))");
+
+    close_fixture(&f);
+}
+
 static void test_known_functions(void)
 {
     fixture f = open_fixture();
@@ -378,6 +566,10 @@ static void test_known_functions(void)
     PHY_CHECK_EQ_STR(normal(&f, "(fn exp 0)"), "1");
     PHY_CHECK_EQ_STR(normal(&f, "(fn log 1)"), "0");
     PHY_CHECK_EQ_STR(normal(&f, "(fn exp (fn log x))"), "x");
+    PHY_CHECK_EQ_INT(simplify_status(&f, "(fn log 0)"),
+                     PHY_ERR_DOMAIN);
+    PHY_CHECK_EQ_INT(simplify_status(&f, "(fn exp (fn log 0))"),
+                     PHY_ERR_DOMAIN);
     PHY_CHECK_EQ_STR(normal(&f, "(fn exp 1)"), "E");
     PHY_CHECK_EQ_STR(normal(&f, "(fn log E)"), "1");
 
@@ -397,21 +589,31 @@ static void test_known_functions(void)
 
     PHY_CHECK_EQ_STR(normal(&f, "(fn sinh 0)"), "0");
     PHY_CHECK_EQ_STR(normal(&f, "(fn cosh 0)"), "1");
-    PHY_CHECK_EQ_STR(normal(&f, "(fn tanh (* -1 x))"),
-                     "(* -1 (fn tanh x))");
     PHY_CHECK_EQ_STR(normal(&f, "(fn asin 0)"), "0");
     PHY_CHECK_EQ_STR(normal(&f, "(fn acos 0)"),
                      "(* (rat 1 2) Pi)");
     PHY_CHECK_EQ_STR(normal(&f, "(fn acosh 1)"), "0");
+    PHY_CHECK_EQ_INT(simplify_status(&f, "(fn atanh 1)"),
+                     PHY_ERR_DOMAIN);
+    PHY_CHECK_EQ_INT(simplify_status(&f, "(fn atanh -1)"),
+                     PHY_ERR_DOMAIN);
     PHY_CHECK_EQ_STR(normal(&f, "(fn gammafn 1)"), "1");
     PHY_CHECK_EQ_STR(normal(&f, "(fn gammafn 6)"), "120");
     PHY_CHECK_EQ_STR(normal(&f, "(fn gammafn (rat 1 2))"),
                      "(^ Pi (rat 1 2))");
     PHY_CHECK_EQ_INT(simplify_status(&f, "(fn gammafn 0)"),
                      PHY_ERR_DOMAIN);
+    PHY_CHECK_EQ_INT(
+        simplify_status(
+            &f, "(fn gammafn -18446744073709551616)"),
+        PHY_ERR_DOMAIN);
     PHY_CHECK_EQ_STR(normal(&f, "(fn loggamma 2)"), "0");
     PHY_CHECK_EQ_INT(simplify_status(&f, "(fn loggamma 0)"),
                      PHY_ERR_DOMAIN);
+    PHY_CHECK_EQ_INT(
+        simplify_status(
+            &f, "(fn loggamma -18446744073709551616)"),
+        PHY_ERR_DOMAIN);
     PHY_CHECK_EQ_STR(normal(&f, "(fn erf 0)"), "0");
     PHY_CHECK_EQ_STR(normal(&f, "(fn erfc 0)"), "1");
     PHY_CHECK_EQ_STR(normal(&f, "(fn erf (* -1 x))"),
@@ -419,10 +621,32 @@ static void test_known_functions(void)
     PHY_CHECK_EQ_STR(normal(&f, "(fn erfc (* -1 x))"),
                      "(+ 2 (* -1 (fn erfc x)))");
 
-    /* Parity, which is what lets sin(-u) + sin(u) collect. */
-    PHY_CHECK_EQ_STR(normal(&f, "(fn sin (* -1 x))"), "(* -1 (fn sin x))");
-    PHY_CHECK_EQ_STR(normal(&f, "(fn cos (* -1 x))"), "(fn cos x)");
-    PHY_CHECK_EQ_STR(normal(&f, "(fn tan (* -3 x))"), "(* -1 (fn tan (* 3 x)))");
+    /*
+     * Every registered odd/even elementary function is covered here. Keeping
+     * this list exhaustive makes a new function's parity an explicit review
+     * decision instead of an accidental long-if grouping.
+     */
+    static const struct {
+        const char *input;
+        const char *expected;
+    } parity_cases[] = {
+        {"(fn sin (* -1 x))", "(* -1 (fn sin x))"},
+        {"(fn cos (* -1 x))", "(fn cos x)"},
+        {"(fn tan (* -3 x))", "(* -1 (fn tan (* 3 x)))"},
+        {"(fn asin (* -1 x))", "(* -1 (fn asin x))"},
+        {"(fn atan (* -1 x))", "(* -1 (fn atan x))"},
+        {"(fn sinh (* -1 x))", "(* -1 (fn sinh x))"},
+        {"(fn cosh (* -1 x))", "(fn cosh x)"},
+        {"(fn tanh (* -1 x))", "(* -1 (fn tanh x))"},
+        {"(fn asinh (* -1 x))", "(* -1 (fn asinh x))"},
+        {"(fn atanh (* -1 x))", "(* -1 (fn atanh x))"},
+        {"(fn erf (* -1 x))", "(* -1 (fn erf x))"},
+    };
+    for (size_t index = 0u;
+         index < sizeof parity_cases / sizeof parity_cases[0]; ++index) {
+        PHY_CHECK_EQ_STR(normal(&f, parity_cases[index].input),
+                         parity_cases[index].expected);
+    }
     PHY_CHECK_EQ_STR(normal(&f, "(+ (fn sin (* -1 x)) (fn sin x))"), "0");
 
     /* An unknown head is left alone, arguments simplified. */
@@ -434,6 +658,93 @@ static void test_known_functions(void)
      * on one.
      */
     PHY_CHECK_EQ_STR(normal(&f, "(fn log (fn exp x))"), "(fn log (fn exp x))");
+
+    close_fixture(&f);
+}
+
+static void test_exact_discrete_special_functions(void)
+{
+    fixture f = open_fixture();
+
+    /* The integer cases stay in the arbitrary-precision exact domain. */
+    PHY_CHECK_EQ_STR(normal(&f, "(fn factorial 0)"), "1");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn factorial 10)"), "3628800");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(fn factorial 50)"),
+        "30414093201713378043612608166064768844377641568960512000000000000");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn pochhammer (rat 3 2) 4)"),
+                     "(rat 945 16)");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn binomial 100 50)"),
+                     "100891344545564193334812497256");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn binomial -5 3)"), "-35");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn binomial 5 8)"), "0");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn binomial x -1)"), "0");
+
+    /* Finite symbolic products use the same normal-form machinery. */
+    PHY_CHECK_EQ_INT(
+        compare(&f, "(fn pochhammer x 4)",
+                "(* x (+ x 1) (+ x 2) (+ x 3))"),
+        PHY_CAS_ZERO);
+    PHY_CHECK_EQ_INT(
+        compare(&f, "(fn pochhammer x -2)",
+                "(* (^ (+ x -1) -1) (^ (+ x -2) -1))"),
+        PHY_CAS_ZERO);
+    PHY_CHECK_EQ_INT(
+        compare(&f, "(fn binomial x 3)",
+                "(* (rat 1 6) x (+ x -1) (+ x -2))"),
+        PHY_CAS_ZERO);
+    PHY_CHECK_EQ_INT(
+        compare(&f, "(fn pochhammer a (+ n 2))",
+                "(* (fn pochhammer a n) (+ a n) (+ a n 1))"),
+        PHY_CAS_ZERO);
+    PHY_CHECK_EQ_INT(
+        compare(&f, "(fn pochhammer a (+ n -1))",
+                "(* (fn pochhammer a n) (^ (+ a n -1) -1))"),
+        PHY_CAS_ZERO);
+
+    /* Unknown symbolic orders remain structural; proved bad or oversized
+       finite products fail with a typed status instead of guessing. */
+    PHY_CHECK_EQ_STR(normal(&f, "(fn factorial x)"),
+                     "(fn factorial x)");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn pochhammer x n)"),
+                     "(fn pochhammer x n)");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn binomial x k)"),
+                     "(fn binomial x k)");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn bernoulli 0)"), "1");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn bernoulli 1)"), "(rat -1 2)");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn bernoulli 2)"), "(rat 1 6)");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn bernoulli 3)"), "0");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn bernoulli 10)"), "(rat 5 66)");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn harmonic 0)"), "0");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn harmonic 5)"), "(rat 137 60)");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn digamma 1)"),
+                     "(* -1 EulerGamma)");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn digamma 4)"),
+                     "(+ (rat 11 6) (* -1 EulerGamma))");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn digamma (rat 1 2))"),
+                     "(+ (* -2 (fn log 2)) (* -1 EulerGamma))");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn gammafn (rat 5 2))"),
+                     "(* (rat 3 4) (^ Pi (rat 1 2)))");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn gammafn (+ x 3))"),
+                     "(* x (+ 1 x) (+ 2 x) (fn gammafn x))");
+    PHY_CHECK_EQ_STR(normal(&f, "(fn digamma (+ x 2))"),
+                     "(+ (^ x -1) (^ (+ 1 x) -1) (fn digamma x))");
+    PHY_CHECK_EQ_INT(simplify_status(&f, "(fn factorial -1)"),
+                     PHY_ERR_DOMAIN);
+    PHY_CHECK_EQ_INT(simplify_status(&f, "(fn pochhammer 2 -2)"),
+                     PHY_ERR_DOMAIN);
+    PHY_CHECK_EQ_INT(simplify_status(&f, "(fn factorial 513)"),
+                     PHY_ERR_TERM_LIMIT);
+    PHY_CHECK_EQ_INT(simplify_status(&f, "(fn pochhammer x 65)"),
+                     PHY_ERR_TERM_LIMIT);
+    PHY_CHECK_EQ_INT(simplify_status(&f, "(fn binomial x 65)"),
+                     PHY_ERR_TERM_LIMIT);
+    PHY_CHECK_EQ_INT(simplify_status(&f, "(fn bernoulli 65)"),
+                     PHY_ERR_TERM_LIMIT);
+    PHY_CHECK_EQ_INT(simplify_status(&f, "(fn harmonic -1)"),
+                     PHY_ERR_DOMAIN);
+    PHY_CHECK_EQ_INT(simplify_status(&f, "(fn digamma 0)"),
+                     PHY_ERR_DOMAIN);
 
     close_fixture(&f);
 }
@@ -628,6 +939,9 @@ static void test_differentiation(void)
     PHY_CHECK_EQ_STR(derivative(&f, "(fn loggamma x)", "x"),
                      "(fn digamma x)");
     PHY_CHECK_EQ_STR(
+        derivative(&f, "(fn factorial x)", "x"),
+        "(* (+ (^ x -1) (fn digamma x)) (fn factorial x))");
+    PHY_CHECK_EQ_STR(
         derivative(&f, "(fn erf x)", "x"),
         "(* 2 (^ Pi (rat -1 2)) (fn exp (* -1 (^ x 2))))");
     PHY_CHECK_EQ_STR(
@@ -740,6 +1054,34 @@ static void test_exact_symbolic_integration(void)
     PHY_CHECK_EQ_STR(
         antiderivative(&f, "(+ 3 x (^ x 2))", "x"),
         "(+ (* (rat 1 3) (^ x 3)) (* (rat 1 2) (^ x 2)) (* 3 x))");
+
+    /*
+     * Dividing a substitution result by a symbolic slope requires a proof that
+     * the slope is nonzero. Without it, a=0 would turn a defined integrand into
+     * an undefined antiderivative.
+     */
+    PHY_CHECK_EQ_STR(
+        antiderivative(&f, "(fn sin (* a x))", "x"),
+        "(fn Integrate (fn sin (* a x)) x)");
+    PHY_CHECK_EQ_STR(
+        antiderivative(&f, "(* x (fn sin (* a x)))", "x"),
+        "(fn Integrate (* x (fn sin (* a x))) x)");
+    PHY_CHECK_EQ_STR(
+        antiderivative(&f, "(* x (fn sin (^ x 2)))", "x"),
+        "(fn Integrate (* x (fn sin (^ x 2))) x)");
+
+    const phy_ir_symbol a = phy_ir_intern(f.ir, "a");
+    PHY_CHECK_EQ_INT(
+        phy_ir_assume(f.ir, a, PHY_IR_ASSUME_NONZERO), PHY_OK);
+    phy_cas_cache_clear(f.cas);
+    PHY_CHECK_EQ_STR(
+        antiderivative(&f, "(fn sin (* a x))", "x"),
+        "(* -1 (^ a -1) (fn cos (* a x)))");
+    PHY_CHECK_EQ_STR(
+        antiderivative(&f, "(fn sin (* (fn exp a) x))", "x"),
+        "(* -1 (^ (fn exp a) -1) (fn cos (* x (fn exp a))))");
+    PHY_CHECK_EQ_INT(
+        decide(&f, "(fn gammafn x)"), PHY_CAS_NONZERO);
 
     /* Unsupported classes remain explicit symbolic work, not numeric output. */
     PHY_CHECK_EQ_STR(antiderivative(&f, "(fn bessel x)", "x"),
@@ -884,7 +1226,7 @@ static void test_zero_decision_stays_honest(void)
                              "(+ (* (fn sin a) (fn cos b)) "
                              "   (* (fn cos a) (fn sin b)))"),
                      PHY_CAS_UNKNOWN);
-    PHY_CHECK_EQ_INT(compare(&f, "(^ 4 500)", "(^ 2 1000)"), PHY_CAS_UNKNOWN);
+    PHY_CHECK_EQ_INT(compare(&f, "(^ 4 500)", "(^ 2 1000)"), PHY_CAS_ZERO);
     PHY_CHECK_EQ_INT(compare(&f, "(tensor g (idx mu dn) (idx nu dn))",
                              "(tensor g (idx nu dn) (idx mu dn))"),
                      PHY_CAS_UNKNOWN);
@@ -977,6 +1319,135 @@ static void test_reduce_cancels_known_factors(void)
         render(f.ir, reduced),
         "(* (+ (rat 1 2) x) (^ (+ (rat -1 2) x) -1))");
 
+    /*
+     * The Q[x] coefficient domain is exact IR, not int64. This common factor
+     * must cancel even though every nonzero numerator coefficient is 2^100.
+     */
+    PHY_CHECK_EQ_INT(
+        phy_cas_reduce(
+            f.cas,
+            parse(f.ir,
+                  "(* (+ (* 1267650600228229401496703205376 (^ x 2)) "
+                  "       -1267650600228229401496703205376) "
+                  "   (^ (+ 1 (* -2 x) (^ x 2)) -1))"),
+            &reduced),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(
+        render(f.ir, reduced),
+        "(* (+ 1267650600228229401496703205376 "
+        "(* 1267650600228229401496703205376 x)) "
+        "(^ (+ -1 x) -1))");
+
+    /*
+     * LCD coefficients are exact IR as well.  The two denominators have
+     * promoted coefficients 2^100 and 3*2^100; their sum reduces to
+     * 1/(3*2^98*x) without an int64 LCM.
+     */
+    PHY_CHECK_EQ_INT(
+        phy_cas_reduce(
+            f.cas,
+            parse(f.ir,
+                  "(+ (^ (* 1267650600228229401496703205376 x) -1) "
+                  "   (^ (* 3802951800684688204490109616128 x) -1))"),
+            &reduced),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(
+        render(f.ir, reduced),
+        "(* (rat 1 950737950171172051122527404032) (^ x -1))");
+
+    /*
+     * A hidden multivariate factor is recovered by the sparse kernel, then
+     * accepted only after both exact quotient products reproduce the original
+     * expanded polynomials.
+     */
+    PHY_CHECK_EQ_INT(
+        phy_cas_reduce(
+            f.cas,
+            parse(f.ir,
+                  "(* (+ (^ x 2) (* x y) x y) "
+                  "   (^ (+ (* x y) x (^ y 2) y) -1))"),
+            &reduced),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(
+        render(f.ir, reduced),
+        "(* (+ 1 x) (^ (+ 1 y) -1))");
+
+    /*
+     * This common factor has a mixed-radix image of degree 215, beyond the
+     * old degree-48 Kronecker subset. The sparse recursive primitive-PRS
+     * kernel must cancel it without encoding monomials into one exponent.
+     */
+    PHY_CHECK_EQ_INT(
+        phy_cas_reduce(
+            f.cas,
+            parse(f.ir,
+                  "(* (+ (^ x 6) (* (^ x 5) y) (* x (^ y 5)) "
+                  "       (^ y 6) (* x (^ z 5)) (* y (^ z 5))) "
+                  "   (^ (+ (^ x 6) (* x (^ y 5)) (* x (^ z 5)) "
+                  "          (* 2 (^ x 5) z) (* 2 (^ y 5) z) "
+                  "          (* 2 (^ z 6))) -1))"),
+            &reduced),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(
+        render(f.ir, reduced),
+        "(* (+ x y) (^ (+ x (* 2 z)) -1))");
+
+    reduced = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_reduce(
+            f.cas,
+            parse(f.ir,
+                  "(* (+ (^ x 50) (* (^ x 49) y) (* x (^ y 49)) "
+                  "       (^ y 50)) "
+                  "   (^ (+ (^ x 50) (* x (^ y 49)) "
+                  "          (* 2 (^ x 49) y) (* 2 (^ y 50))) -1))"),
+            &reduced),
+        PHY_ERR_TERM_LIMIT);
+    PHY_CHECK_EQ_INT(reduced, PHY_IR_NULL);
+
+    PHY_CHECK_EQ_INT(
+        phy_cas_reduce(
+            f.cas,
+            parse(f.ir,
+                  "(* (+ (^ x 2) (* x y) (* x z) x y z) "
+                  "   (^ (+ (* x z) (* y z) (^ z 2) x y z) -1))"),
+            &reduced),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(
+        render(f.ir, reduced),
+        "(* (+ 1 x) (^ (+ 1 z) -1))");
+
+    PHY_CHECK_EQ_INT(
+        phy_cas_reduce(
+            f.cas,
+            parse(f.ir,
+                  "(* (+ (* 1267650600228229401496703205376 (^ x 2)) "
+                  "       (* 1267650600228229401496703205376 x) "
+                  "       (* x y) y) "
+                  "   (^ (+ (* 1267650600228229401496703205376 x y) "
+                  "          (* 1267650600228229401496703205376 x) "
+                  "          (^ y 2) y) -1))"),
+            &reduced),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(
+        render(f.ir, reduced),
+        "(* (+ 1 x) (^ (+ 1 y) -1))");
+
+    /*
+     * Kronecker images of x+y and x+2y share t, although the multivariate
+     * polynomials are coprime. Product verification must reject that
+     * substitution artefact and leave the quotient exact.
+     */
+    const phy_ir_ref spurious_input = parse(
+        f.ir, "(* (+ x y) (^ (+ x (* 2 y)) -1))");
+    PHY_CHECK_EQ_INT(
+        phy_cas_reduce(f.cas, spurious_input, &reduced), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_cas_equivalent(
+            f.cas, reduced, spurious_input, &decision),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(decision, PHY_CAS_ZERO);
+
     /* 1/x + 1/x^2 combines over x^2, not x^3. */
     PHY_CHECK_EQ_INT(
         phy_cas_reduce(f.cas, parse(f.ir, "(+ (^ x -1) (^ x -2))"),
@@ -1041,6 +1512,20 @@ static void test_exact_univariate_factorization(void)
     PHY_CHECK_EQ_STR(
         factored(&f, "(* (^ x 4) (+ x 1))"),
         "(* (+ 1 x) (^ x 4))");
+    PHY_CHECK_EQ_STR(
+        factored(
+            &f,
+            "(+ (* 1267650600228229401496703205376 (^ x 2)) "
+            "   -1267650600228229401496703205376)"),
+        "(* 1267650600228229401496703205376 "
+        "(+ -1 x) (+ 1 x))");
+    PHY_CHECK_EQ_STR(
+        factored(
+            &f,
+            "(+ (* (rat 1267650600228229401496703205376 3) (^ x 2)) "
+            "   (rat -1267650600228229401496703205376 3))"),
+        "(* (rat 1267650600228229401496703205376 3) "
+        "(+ -1 x) (+ 1 x))");
 
     static const char *const round_trip[] = {
         "(+ (^ x 2) -1)",
@@ -1068,18 +1553,63 @@ static void test_exact_univariate_factorization(void)
                      "(+ 1 x (^ x 3))");
 
     /*
-     * No rational root does not prove a square-free quartic irreducible.
-     * The current bounded kernel refuses rather than returning a partial
-     * factorization as though it were complete.
+     * The modular path now proves high-degree partitions through Berlekamp,
+     * bounded Hensel lifting past a coefficient bound, and exact division.
      */
-    PHY_CHECK_EQ_INT(
-        factor_status(
-            &f, "(* (+ 1 (^ x 2)) (+ 4 (^ x 2)))"),
-        PHY_ERR_UNSUPPORTED);
+    PHY_CHECK_EQ_STR(
+        factored(&f, "(* (+ 1 (^ x 2)) (+ 4 (^ x 2)))"),
+        "(* (+ 1 (^ x 2)) (+ 4 (^ x 2)))");
     PHY_CHECK_EQ_INT(factor_status(&f, "(+ (* x y) x)"),
                      PHY_ERR_UNSUPPORTED);
-    PHY_CHECK_EQ_INT(factor_status(&f, "(+ 1000001 (^ x 2))"),
-                     PHY_ERR_TERM_LIMIT);
+    PHY_CHECK_EQ_STR(factored(&f, "(+ 1000001 (^ x 2))"),
+                     "(+ 1000001 (^ x 2))");
+    PHY_CHECK_EQ_STR(
+        factored(
+            &f,
+            "(+ 1267650600228229401496703205376 (^ x 4))"),
+        "(+ 1267650600228229401496703205376 (^ x 4))");
+
+    PHY_CHECK_EQ_STR(
+        factored(
+            &f,
+            "(* (+ (^ x 4) (* 2 x) 2) "
+            "   (+ (^ x 5) (* 2 x) 2))"),
+        "(* (+ 2 (* 2 x) (^ x 4)) (+ 2 (* 2 x) (^ x 5)))");
+    PHY_CHECK_EQ_STR(
+        factored(
+            &f,
+            "(* (+ (* 2 (^ x 4)) (* 3 x) 3) "
+            "   (+ (* 3 (^ x 5)) (* 2 x) 2))"),
+        "(* 6 (+ (rat 2 3) (* (rat 2 3) x) (^ x 5)) "
+        "(+ (rat 3 2) (* (rat 3 2) x) (^ x 4)))");
+    PHY_CHECK_EQ_STR(
+        factored(
+            &f,
+            "(* (+ (^ x 4) "
+            "       (* 1267650600228229401496703205376 x) 2) "
+            "   (+ (^ x 5) (* 2 x) 2))"),
+        "(* (+ 2 (* 2 x) (^ x 5)) "
+        "(+ 2 (* 1267650600228229401496703205376 x) (^ x 4)))");
+    PHY_CHECK_EQ_STR(
+        factored(&f, "(^ (+ (^ x 4) (* 2 x) 2) 3)"),
+        "(^ (+ 2 (* 2 x) (^ x 4)) 3)");
+    PHY_CHECK_EQ_STR(
+        factored(
+            &f,
+            "(^ (+ (^ x 4) "
+            "       (* 1267650600228229401496703205376 x) 2) 2)"),
+        "(^ (+ 2 (* 1267650600228229401496703205376 x) (^ x 4)) 2)");
+    PHY_CHECK_EQ_STR(
+        factored(
+            &f,
+            "(* (^ (+ (^ x 4) "
+            "          (* 1267650600228229401496703205376 x) 2) 2) "
+            "   (^ (+ (^ x 5) (* 2 x) 2) 3))"),
+        "(* (^ (+ 2 (* 2 x) (^ x 5)) 3) "
+        "(^ (+ 2 (* 1267650600228229401496703205376 x) (^ x 4)) 2))");
+    PHY_CHECK_EQ_STR(
+        factored(&f, "(+ 1 (^ x 8))"),
+        "(+ 1 (^ x 8))");
     PHY_CHECK_EQ_INT(factor_status(&f, "(^ x 49)"),
                      PHY_ERR_UNSUPPORTED);
 
@@ -1096,6 +1626,159 @@ static void test_exact_univariate_factorization(void)
     PHY_CHECK_EQ_STR(factored(&f, "(+ (^ x 2) -1)"),
                      "(* (+ -1 x) (+ 1 x))");
     PHY_CHECK_EQ_INT(phy_cas_bytes_used(f.cas), (long long)stable_bytes);
+
+    close_fixture(&f);
+}
+
+static void test_exact_univariate_partial_fractions(void)
+{
+    fixture f = open_fixture();
+    phy_ir_ref result = PHY_IR_NULL;
+    phy_cas_decision decision = PHY_CAS_UNKNOWN;
+
+    static const char *const cases[] = {
+        "(rat 1 2)",
+        "(* (rat 1 2) x)",
+        "(* (+ (^ x 2) -1) (^ (+ -1 x) -1))",
+        "(* (^ (+ (^ x 2) -1) -1))",
+        "(* (+ (^ x 3) 1) (^ (+ (^ x 2) -1) -1))",
+        "(* (^ x -2) (^ (+ 1 x) -1))",
+        "(* x (^ (+ 1 (^ x 2)) -1))",
+        "(* (+ 1 x) (^ (+ 1 (* 2 (^ x 2)) (^ x 4)) -1))",
+        "(* 1267650600228229401496703205376 "
+        "   (^ (* 3 (+ -1 x) (+ 1 x)) -1))",
+    };
+    for (size_t index = 0u;
+        index < sizeof cases / sizeof cases[0]; ++index) {
+        const phy_ir_ref input = parse(f.ir, cases[index]);
+        const phy_status status =
+            phy_cas_apart(f.cas, input, &result);
+        if (status != PHY_OK) {
+            fprintf(stderr, "  Apart failed for %s: %s\n", cases[index],
+                    phy_status_name(status));
+        }
+        PHY_CHECK_EQ_INT(status, PHY_OK);
+        if (status != PHY_OK) {
+            continue;
+        }
+        PHY_CHECK_EQ_INT(
+            phy_cas_equivalent(f.cas, input, result, &decision),
+            PHY_OK);
+        PHY_CHECK_EQ_INT(decision, PHY_CAS_ZERO);
+    }
+
+    PHY_CHECK_EQ_INT(
+        apart_status(
+            &f, "(^ (+ (^ x 2) -1) -1)", &result),
+        PHY_OK);
+    const char *linear_text = render(f.ir, result);
+    PHY_CHECK(strstr(linear_text, "(^ (+ -1 x) -1)") != NULL);
+    PHY_CHECK(strstr(linear_text, "(^ (+ 1 x) -1)") != NULL);
+
+    PHY_CHECK_EQ_INT(
+        apart_status(
+            &f, "(* (^ x -2) (^ (+ 1 x) -1))", &result),
+        PHY_OK);
+    const char *repeated_text = render(f.ir, result);
+    PHY_CHECK(strstr(repeated_text, "(^ x -2)") != NULL);
+    PHY_CHECK(strstr(repeated_text, "(^ x -1)") != NULL);
+    PHY_CHECK(strstr(repeated_text, "(^ (+ 1 x) -1)") != NULL);
+
+    PHY_CHECK_EQ_INT(
+        apart_status(&f, "(* (^ (+ x y) -1) (^ x -1))", &result),
+        PHY_ERR_UNSUPPORTED);
+    PHY_CHECK_EQ_INT(
+        phy_cas_apart(NULL, parse(f.ir, "x"), &result),
+        PHY_ERR_INVALID_ARGUMENT);
+    PHY_CHECK_EQ_INT(
+        phy_cas_apart(f.cas, PHY_IR_NULL, &result),
+        PHY_ERR_INVALID_ARGUMENT);
+    PHY_CHECK_EQ_INT(
+        phy_cas_apart(f.cas, parse(f.ir, "x"), NULL),
+        PHY_ERR_INVALID_ARGUMENT);
+
+    close_fixture(&f);
+}
+
+static void test_exact_polynomial_solve(void)
+{
+    fixture f = open_fixture();
+
+    PHY_CHECK_EQ_STR(
+        solved(&f, "(= (+ (* 3 x) -2) 0)"),
+        "(fn List (fn List (fn Rule x (rat 2 3))))");
+    PHY_CHECK_EQ_STR(
+        solved(&f, "(= (+ (^ x 2) -2) 0)"),
+        "(fn List "
+        "(fn List (fn Rule x (* -1 (^ 2 (rat 1 2))))) "
+        "(fn List (fn Rule x (^ 2 (rat 1 2)))))");
+    PHY_CHECK_EQ_STR(
+        solved(
+            &f,
+            "(= (* (^ (+ -1 x) 3) (^ (+ 2 x) 2)) 0)"),
+        "(fn List (fn List (fn Rule x -2)) "
+        "(fn List (fn Rule x 1)))");
+    PHY_CHECK_EQ_STR(
+        solved(
+            &f,
+            "(= (* (+ (^ x 2) -1) (^ (+ -1 x) -1)) 0)"),
+        "(fn List (fn List (fn Rule x -1)))");
+    PHY_CHECK_EQ_STR(solved(&f, "(= 1 0)"), "(fn List)");
+    PHY_CHECK_EQ_STR(
+        solved(&f, "(= (+ (^ x 2) 1) 0)"),
+        "(fn List "
+        "(fn List (fn Rule x I)) "
+        "(fn List (fn Rule x (* -1 I))))");
+    PHY_CHECK_EQ_STR(
+        solved(&f, "(= (+ (^ x 2) (* 2 x) 5) 0)"),
+        "(fn List "
+        "(fn List (fn Rule x (+ -1 (* -2 I)))) "
+        "(fn List (fn Rule x (+ -1 (* 2 I)))))");
+    PHY_CHECK_EQ_STR(
+        solved(
+            &f,
+            "(= (* (+ (^ x 2) 1) "
+            "      (^ (+ x (* -1 I)) -1)) 0)"),
+        "(fn List (fn List (fn Rule x (* -1 I))))");
+    PHY_CHECK_EQ_STR(
+        solved(&f, "(= (+ (^ x 3) -2) 0)"),
+        "PHY_ERR_UNSUPPORTED");
+    PHY_CHECK_EQ_STR(
+        solved(
+            &f,
+            "(= (+ (* (rat 1 2) (^ x 3)) "
+            "      (* (rat -3 2) x) (rat 1 2)) 0)"),
+        "(fn List "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 1))) "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 2))) "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 3))))");
+    PHY_CHECK_EQ_STR(
+        solved(&f, "(= (+ (* 2 (^ x 3)) (* -6 x) 2) 0)"),
+        "(fn List "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 1))) "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 2))) "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 3))))");
+    PHY_CHECK_EQ_STR(
+        solved(&f, "(= (+ (^ x 3) (* -3 x) 1) 0)"),
+        "(fn List "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 1))) "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 2))) "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 3))))");
+    PHY_CHECK_EQ_STR(
+        solved(
+            &f,
+            "(= (* (+ (^ x 3) (* -3 x) 1) "
+            "      (^ (+ -2 x) -1)) 0)"),
+        "(fn List "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 1))) "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 2))) "
+        "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 3))))");
+    PHY_CHECK_EQ_STR(
+        solved(
+            &f,
+            "(= (* (+ (^ x 5) (* -1 x) -1) (+ (^ x 2) 1)) 0)"),
+        "PHY_ERR_UNSUPPORTED");
+    PHY_CHECK_EQ_STR(solved(&f, "(= x x)"), "PHY_ERR_UNSUPPORTED");
 
     close_fixture(&f);
 }
@@ -1354,6 +2037,11 @@ static void test_step_budget(void)
     PHY_CHECK_EQ_INT(
         phy_cas_factor(cas, parse(ir, "(+ (^ x 12) -1)"), &out),
         PHY_ERR_TIMEOUT);
+    PHY_CHECK_EQ_INT(
+        phy_cas_solve(
+            cas, parse(ir, "(= (+ (^ x 12) -1) 0)"),
+            phy_ir_symbol_ref(ir, phy_ir_intern(ir, "x")), &out),
+        PHY_ERR_TIMEOUT);
     /* A refused operation must leave the layer usable, not wedged. */
     PHY_CHECK_EQ_INT(phy_cas_validate(cas), PHY_OK);
     PHY_CHECK_EQ_INT(phy_ir_validate(ir), PHY_OK);
@@ -1377,12 +2065,42 @@ static void test_cancellation(void)
     PHY_CHECK(polls > 0u);
     PHY_CHECK_EQ_INT(phy_cas_validate(f.cas), PHY_OK);
 
+    polls = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_cas_solve(
+            f.cas, parse(f.ir, "(= (+ (^ x 5) (* -1 x) -1) 0)"),
+            phy_ir_symbol_ref(f.ir, phy_ir_intern(f.ir, "x")), &out),
+        PHY_ERR_INTERRUPTED);
+    PHY_CHECK(polls > 0u);
+    PHY_CHECK_EQ_INT(phy_cas_validate(f.cas), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_ir_validate(f.ir), PHY_OK);
+
+    polls = 0u;
+    out = PHY_IR_NULL;
+    const phy_ir_ref sparse_input = parse(
+        f.ir,
+        "(* (+ (^ x 31) (* (^ x 30) y) (* x (^ y 30)) (^ y 31)) "
+        "   (^ (+ (^ x 31) (* x (^ y 30)) "
+        "          (* 2 (^ x 30) y) (* 2 (^ y 31))) -1))");
+    PHY_CHECK_EQ_INT(
+        phy_cas_reduce(f.cas, sparse_input, &out),
+        PHY_ERR_INTERRUPTED);
+    PHY_CHECK_EQ_INT(out, PHY_IR_NULL);
+    PHY_CHECK(polls > 0u);
+    PHY_CHECK_EQ_INT(phy_cas_validate(f.cas), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_ir_validate(f.ir), PHY_OK);
+
     /* A hook that declines to cancel costs nothing but the poll. */
     phy_cas_set_cancel(f.cas, never_cancel, NULL);
     PHY_CHECK_EQ_INT(phy_cas_simplify(f.cas, parse(f.ir, "(+ x x)"), &out),
                      PHY_OK);
 
     phy_cas_set_cancel(f.cas, NULL, NULL);
+    PHY_CHECK_EQ_INT(
+        phy_cas_reduce(f.cas, sparse_input, &out), PHY_OK);
+    PHY_CHECK_EQ_STR(
+        render(f.ir, out),
+        "(* (+ x y) (^ (+ x (* 2 y)) -1))");
     close_fixture(&f);
 }
 
@@ -1478,7 +2196,7 @@ static void test_allocation_failure_unwinds_scratch(void)
 {
     PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
 
-    for (unsigned countdown = 1u; countdown <= 60u; countdown++) {
+    for (unsigned countdown = 1u; countdown <= 120u; countdown++) {
         phy_ir_context *ir = phy_ir_context_create(NULL);
         if (ir == NULL) {
             continue;
@@ -1491,11 +2209,17 @@ static void test_allocation_failure_unwinds_scratch(void)
 
         phy_ir_ref expr = PHY_IR_NULL;
         phy_ir_ref factor_expr = PHY_IR_NULL;
+        phy_ir_ref apart_expr = PHY_IR_NULL;
         size_t offset = 0u;
         if (phy_ir_read(ir, "(+ (* 2 x (^ y 2)) (* 3 x (^ y 2)) (fn sin x))",
                         &expr, &offset) == PHY_OK &&
-            phy_ir_read(ir, "(+ (^ x 6) (* -1 (^ x 2)))",
-                        &factor_expr, &offset) == PHY_OK) {
+            phy_ir_read(ir,
+                        "(* (+ (^ x 4) (* 2 x) 2) "
+                        "   (+ (^ x 5) (* 2 x) 2))",
+                        &factor_expr, &offset) == PHY_OK &&
+            phy_ir_read(ir,
+                        "(* (^ x -2) (^ (+ 1 x) -1))",
+                        &apart_expr, &offset) == PHY_OK) {
             phy_host_fail_alloc_after(countdown);
             phy_ir_ref out = PHY_IR_NULL;
             (void)phy_cas_expand(cas, expr, &out);
@@ -1504,11 +2228,231 @@ static void test_allocation_failure_unwinds_scratch(void)
 
             PHY_CHECK_EQ_INT(phy_cas_validate(cas), PHY_OK);
             PHY_CHECK_EQ_INT(phy_ir_validate(ir), PHY_OK);
+
+            phy_host_fail_alloc_after(countdown);
+            (void)phy_cas_apart(cas, apart_expr, &out);
+            phy_host_fail_alloc_after(0u);
+            PHY_CHECK_EQ_INT(phy_cas_validate(cas), PHY_OK);
+            PHY_CHECK_EQ_INT(phy_ir_validate(ir), PHY_OK);
         }
         phy_cas_destroy(cas);
         phy_ir_context_destroy(ir);
     }
 
+    phy_platform_shutdown();
+}
+
+/*
+ * The promoted-number bridge allocates an operation-local exact context,
+ * decimal publication buffers, and possibly new IR pools. Inject failure at
+ * every allocation in that route, then retry in the same contexts. This pins
+ * both scratch unwinding and the "failed cell cannot poison later maths"
+ * contract.
+ */
+static void test_promoted_exact_allocation_failure_is_transactional(void)
+{
+    static const char expression[] =
+        "(+ 340282366920938463463374607431768211456 1)";
+    static const char expected[] =
+        "340282366920938463463374607431768211457";
+
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+
+    phy_ir_context *calibration_ir = phy_ir_context_create(NULL);
+    PHY_CHECK(calibration_ir != NULL);
+    phy_cas *calibration_cas = phy_cas_create(calibration_ir, NULL);
+    PHY_CHECK(calibration_cas != NULL);
+    const phy_ir_ref calibration_expr =
+        parse(calibration_ir, expression);
+    const uint32_t attempts_before = phy_host_alloc_attempts();
+    phy_ir_ref calibration_out = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_simplify(
+            calibration_cas, calibration_expr, &calibration_out),
+        PHY_OK);
+    const uint32_t allocations =
+        phy_host_alloc_attempts() - attempts_before;
+    PHY_CHECK_EQ_STR(
+        render(calibration_ir, calibration_out), expected);
+    phy_cas_destroy(calibration_cas);
+    phy_ir_context_destroy(calibration_ir);
+    PHY_CHECK(allocations > 8u);
+
+    unsigned failures = 0u;
+    for (uint32_t nth = 1u; nth <= allocations; ++nth) {
+        phy_ir_context *ir = phy_ir_context_create(NULL);
+        PHY_CHECK(ir != NULL);
+        phy_cas *cas = phy_cas_create(ir, NULL);
+        PHY_CHECK(cas != NULL);
+        const phy_ir_ref expr = parse(ir, expression);
+
+        phy_host_fail_alloc_after(nth);
+        phy_ir_ref out = PHY_IR_NULL;
+        const phy_status status =
+            phy_cas_simplify(cas, expr, &out);
+        phy_host_fail_alloc_after(0u);
+        if (status != PHY_OK && status != PHY_ERR_OUT_OF_MEMORY &&
+            status != PHY_ERR_MEMORY_LIMIT) {
+            fprintf(stderr, "  promoted CAS alloc #%u returned %s\n",
+                    (unsigned)nth, phy_status_name(status));
+        }
+        PHY_CHECK(status == PHY_OK ||
+                  status == PHY_ERR_OUT_OF_MEMORY ||
+                  status == PHY_ERR_MEMORY_LIMIT);
+        if (status != PHY_OK) {
+            failures++;
+        }
+        PHY_CHECK_EQ_INT(phy_cas_validate(cas), PHY_OK);
+        PHY_CHECK_EQ_INT(phy_ir_validate(ir), PHY_OK);
+
+        phy_ir_clear_error(ir);
+        out = PHY_IR_NULL;
+        PHY_CHECK_EQ_INT(phy_cas_simplify(cas, expr, &out), PHY_OK);
+        PHY_CHECK_EQ_STR(render(ir, out), expected);
+        PHY_CHECK_EQ_INT(phy_cas_validate(cas), PHY_OK);
+        PHY_CHECK_EQ_INT(phy_ir_validate(ir), PHY_OK);
+
+        phy_cas_destroy(cas);
+        phy_ir_context_destroy(ir);
+        phy_telemetry telemetry;
+        phy_telemetry_get(&telemetry);
+        PHY_CHECK_EQ_INT(telemetry.bytes_live, 0);
+    }
+    PHY_CHECK(failures > 4u);
+
+    phy_host_fail_alloc_after(0u);
+    phy_platform_shutdown();
+}
+
+static void test_discrete_function_allocation_failure_is_transactional(void)
+{
+    static const char expression[] = "(fn factorial 50)";
+    static const char expected[] =
+        "30414093201713378043612608166064768844377641568960512000000000000";
+
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    phy_ir_context *calibration_ir = phy_ir_context_create(NULL);
+    PHY_CHECK(calibration_ir != NULL);
+    phy_cas *calibration_cas = phy_cas_create(calibration_ir, NULL);
+    PHY_CHECK(calibration_cas != NULL);
+    const phy_ir_ref calibration_expr = parse(calibration_ir, expression);
+    const uint32_t attempts_before = phy_host_alloc_attempts();
+    phy_ir_ref calibration_out = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_simplify(calibration_cas, calibration_expr, &calibration_out),
+        PHY_OK);
+    const uint32_t allocations =
+        phy_host_alloc_attempts() - attempts_before;
+    PHY_CHECK_EQ_STR(render(calibration_ir, calibration_out), expected);
+    phy_cas_destroy(calibration_cas);
+    phy_ir_context_destroy(calibration_ir);
+    PHY_CHECK(allocations > 8u);
+
+    unsigned failures = 0u;
+    for (uint32_t nth = 1u; nth <= allocations; ++nth) {
+        phy_ir_context *ir = phy_ir_context_create(NULL);
+        PHY_CHECK(ir != NULL);
+        phy_cas *cas = phy_cas_create(ir, NULL);
+        PHY_CHECK(cas != NULL);
+        const phy_ir_ref expr = parse(ir, expression);
+
+        phy_host_fail_alloc_after(nth);
+        phy_ir_ref out = PHY_IR_NULL;
+        const phy_status status = phy_cas_simplify(cas, expr, &out);
+        phy_host_fail_alloc_after(0u);
+        PHY_CHECK(status == PHY_OK ||
+                  status == PHY_ERR_OUT_OF_MEMORY ||
+                  status == PHY_ERR_MEMORY_LIMIT);
+        failures += status == PHY_OK ? 0u : 1u;
+        PHY_CHECK_EQ_INT(phy_cas_validate(cas), PHY_OK);
+        PHY_CHECK_EQ_INT(phy_ir_validate(ir), PHY_OK);
+
+        phy_ir_clear_error(ir);
+        out = PHY_IR_NULL;
+        PHY_CHECK_EQ_INT(phy_cas_simplify(cas, expr, &out), PHY_OK);
+        PHY_CHECK_EQ_STR(render(ir, out), expected);
+        PHY_CHECK_EQ_INT(phy_cas_validate(cas), PHY_OK);
+        PHY_CHECK_EQ_INT(phy_ir_validate(ir), PHY_OK);
+
+        phy_cas_destroy(cas);
+        phy_ir_context_destroy(ir);
+        phy_telemetry telemetry;
+        phy_telemetry_get(&telemetry);
+        PHY_CHECK_EQ_INT(telemetry.bytes_live, 0);
+    }
+    PHY_CHECK(failures > 4u);
+
+    phy_host_fail_alloc_after(0u);
+    phy_platform_shutdown();
+}
+
+static void test_gaussian_allocation_failure_is_transactional(void)
+{
+    static const char expression[] =
+        "(+ 340282366920938463463374607431768211456 "
+        "   (* 340282366920938463463374607431768211457 I) "
+        "   (* -340282366920938463463374607431768211457 I))";
+    static const char expected[] =
+        "340282366920938463463374607431768211456";
+
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    phy_ir_context *calibration_ir = phy_ir_context_create(NULL);
+    PHY_CHECK(calibration_ir != NULL);
+    phy_cas *calibration_cas =
+        phy_cas_create(calibration_ir, NULL);
+    PHY_CHECK(calibration_cas != NULL);
+    const phy_ir_ref calibration_expr =
+        parse(calibration_ir, expression);
+    const uint32_t attempts_before = phy_host_alloc_attempts();
+    phy_ir_ref calibration_out = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_simplify(
+            calibration_cas, calibration_expr, &calibration_out),
+        PHY_OK);
+    const uint32_t allocations =
+        phy_host_alloc_attempts() - attempts_before;
+    PHY_CHECK_EQ_STR(
+        render(calibration_ir, calibration_out), expected);
+    phy_cas_destroy(calibration_cas);
+    phy_ir_context_destroy(calibration_ir);
+    PHY_CHECK(allocations > 12u);
+
+    unsigned failures = 0u;
+    for (uint32_t nth = 1u; nth <= allocations; ++nth) {
+        phy_ir_context *ir = phy_ir_context_create(NULL);
+        PHY_CHECK(ir != NULL);
+        phy_cas *cas = phy_cas_create(ir, NULL);
+        PHY_CHECK(cas != NULL);
+        const phy_ir_ref expr = parse(ir, expression);
+
+        phy_host_fail_alloc_after(nth);
+        phy_ir_ref out = PHY_IR_NULL;
+        const phy_status status =
+            phy_cas_simplify(cas, expr, &out);
+        phy_host_fail_alloc_after(0u);
+        PHY_CHECK(status == PHY_OK ||
+                  status == PHY_ERR_OUT_OF_MEMORY ||
+                  status == PHY_ERR_MEMORY_LIMIT);
+        failures += status == PHY_OK ? 0u : 1u;
+        PHY_CHECK_EQ_INT(phy_cas_validate(cas), PHY_OK);
+        PHY_CHECK_EQ_INT(phy_ir_validate(ir), PHY_OK);
+
+        phy_ir_clear_error(ir);
+        out = PHY_IR_NULL;
+        PHY_CHECK_EQ_INT(
+            phy_cas_simplify(cas, expr, &out), PHY_OK);
+        PHY_CHECK_EQ_STR(render(ir, out), expected);
+        PHY_CHECK_EQ_INT(phy_cas_validate(cas), PHY_OK);
+        PHY_CHECK_EQ_INT(phy_ir_validate(ir), PHY_OK);
+
+        phy_cas_destroy(cas);
+        phy_ir_context_destroy(ir);
+        phy_telemetry telemetry;
+        phy_telemetry_get(&telemetry);
+        PHY_CHECK_EQ_INT(telemetry.bytes_live, 0);
+    }
+    PHY_CHECK(failures > 8u);
+    phy_host_fail_alloc_after(0u);
     phy_platform_shutdown();
 }
 
@@ -1523,7 +2467,9 @@ int main(void)
     PHY_TEST_CASE(test_sums_collect);
     PHY_TEST_CASE(test_products_collect);
     PHY_TEST_CASE(test_power_rules);
+    PHY_TEST_CASE(test_exact_gaussian_rationals);
     PHY_TEST_CASE(test_known_functions);
+    PHY_TEST_CASE(test_exact_discrete_special_functions);
     PHY_TEST_CASE(test_simplify_is_idempotent);
     PHY_TEST_CASE(test_errors_propagate_as_values);
     PHY_TEST_CASE(test_noncommutative_kinds_are_left_alone);
@@ -1539,6 +2485,10 @@ int main(void)
     PHY_TEST_CASE(test_rational_form);
     PHY_TEST_CASE(test_reduce_cancels_known_factors);
     PHY_TEST_CASE(test_exact_univariate_factorization);
+    PHY_TEST_CASE(test_exact_univariate_partial_fractions);
+    PHY_TEST_CASE(test_exact_polynomial_solve);
+    PHY_TEST_CASE(test_exact_polynomial_ideal_operations);
+    PHY_TEST_CASE(test_certified_numeric_ball_entry_points);
     PHY_TEST_CASE(test_trigonometric_identities);
     PHY_TEST_CASE(test_full_simplify);
     PHY_TEST_CASE(test_gr_corpus_sphere_2d);
@@ -1549,5 +2499,8 @@ int main(void)
     PHY_TEST_CASE(test_memoization_pays);
     PHY_TEST_CASE(test_cache_survives_a_tight_byte_ceiling);
     PHY_TEST_CASE(test_allocation_failure_unwinds_scratch);
+    PHY_TEST_CASE(test_promoted_exact_allocation_failure_is_transactional);
+    PHY_TEST_CASE(test_discrete_function_allocation_failure_is_transactional);
+    PHY_TEST_CASE(test_gaussian_allocation_failure_is_transactional);
     return PHY_TEST_REPORT("test_cas");
 }

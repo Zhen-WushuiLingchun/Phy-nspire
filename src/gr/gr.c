@@ -1191,6 +1191,11 @@ phy_status phy_gr_covariant_derivative(phy_cas *cas,
     return PHY_OK;
 }
 
+const phy_tensor *phy_gr_metric(const phy_gr_result *result)
+{
+    return result != NULL ? result->metric : NULL;
+}
+
 const phy_tensor *phy_gr_inverse_metric(const phy_gr_result *result)
 {
     return result != NULL ? result->inverse_metric : NULL;

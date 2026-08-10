@@ -57,6 +57,7 @@ typedef struct {
 #define FILE_BUTTON_HEIGHT 13
 #define MODAL_X 50
 #define MODAL_WIDTH 220
+#define APP_PALETTE_VISIBLE_ITEMS 7u
 
 static void app_ui_clear_status(app_ui *ui)
 {
@@ -239,18 +240,33 @@ static void draw_palette(const phy_surface *surface, const app_ui *ui)
 
     const size_t count = phy_palette_entry_count(
         ui->palette_kind, ui->palette_category);
-    for (size_t i = 0u; i < count; ++i) {
+    const size_t first = phy_palette_first_visible(
+        ui->palette_kind, ui->palette_category, ui->selected,
+        APP_PALETTE_VISIBLE_ITEMS);
+    const size_t limit =
+        first + APP_PALETTE_VISIBLE_ITEMS < count
+            ? first + APP_PALETTE_VISIBLE_ITEMS
+            : count;
+    for (size_t i = first; i < limit; ++i) {
         phy_palette_entry entry;
         if (phy_palette_get(ui->palette_kind, ui->palette_category, i,
                             &entry)) {
-            char visible[33];
-            copy_visible(visible, sizeof visible, entry.label, 31u);
-            draw_modal_row(surface, 70 + (int)i * 18, visible,
+            char visible[30];
+            copy_visible(visible, sizeof visible, entry.label, 27u);
+            draw_modal_row(surface, 70 + (int)(i - first) * 18, visible,
                            ui->selected == i);
         }
     }
+    if (first > 0u) {
+        (void)phy_gfx_draw_text(
+            surface, MODAL_X + MODAL_WIDTH - 18, 70, "^", COLOR_ACCENT);
+    }
+    if (limit < count) {
+        (void)phy_gfx_draw_text(
+            surface, MODAL_X + MODAL_WIDTH - 18, 178, "v", COLOR_ACCENT);
+    }
     (void)phy_gfx_draw_text(surface, MODAL_X + 12, 201,
-                            "LEFT/RIGHT category", COLOR_TEXT_DIM);
+                            "UP/DOWN item  LEFT/RIGHT tab", COLOR_TEXT_DIM);
     (void)phy_gfx_draw_text(surface, MODAL_X + 12, 212,
                             "ENTER insert  ESC cancel", COLOR_TEXT_DIM);
     draw_status(surface, ui, 190);
@@ -552,9 +568,17 @@ static void handle_modal_pointer(app_ui *ui, phy_workspace *workspace,
         }
         const size_t count = phy_palette_entry_count(
             ui->palette_kind, ui->palette_category);
-        for (size_t i = 0u; i < count; ++i) {
+        const size_t first = phy_palette_first_visible(
+            ui->palette_kind, ui->palette_category, ui->selected,
+            APP_PALETTE_VISIBLE_ITEMS);
+        const size_t limit =
+            first + APP_PALETTE_VISIBLE_ITEMS < count
+                ? first + APP_PALETTE_VISIBLE_ITEMS
+                : count;
+        for (size_t i = first; i < limit; ++i) {
             if (pointer_in_rect(event, MODAL_X + 8,
-                                66 + (int)i * 18, MODAL_WIDTH - 16, 17)) {
+                                66 + (int)(i - first) * 18,
+                                MODAL_WIDTH - 16, 17)) {
                 ui->selected = i;
                 activate_palette(ui, phy_workspace_notebook(workspace));
                 return;

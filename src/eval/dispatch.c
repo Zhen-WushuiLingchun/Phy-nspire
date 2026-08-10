@@ -21,6 +21,10 @@
 #include <string.h>
 
 #include "eval_internal.h"
+#include "phy/platform.h"
+
+#define EVAL_ABSTRACT_MAX_SLOTS 64u
+#define EVAL_ABSTRACT_MAX_GENERATORS 64u
 #include "phy/color.h"
 #include "phy/dirac.h"
 #include "phy/mandelstam.h"
@@ -273,11 +277,93 @@ static phy_status publish(phy_env *env, phy_value_kind kind, void *object,
     case PHY_VALUE_CURVATURE:
         value.as.curvature = (phy_gr_result *)object;
         break;
+    case PHY_VALUE_INDEX_SPACE:
+        value.as.index_space = (const phy_index_space *)object;
+        break;
+    case PHY_VALUE_TENSOR_HEAD:
+        value.as.tensor_head = (const phy_abstract_tensor_head *)object;
+        break;
+    case PHY_VALUE_ABSTRACT_TENSOR:
+        value.as.abstract_tensor =
+            (const phy_tensor_monomial *)object;
+        break;
+    case PHY_VALUE_ABSTRACT_EXPRESSION:
+        value.as.abstract_expression =
+            (const phy_tensor_expression *)object;
+        break;
+    case PHY_VALUE_COMPONENT_BASIS:
+        value.as.component_basis =
+            (const phy_component_basis *)object;
+        break;
+    case PHY_VALUE_COMPONENT_TENSOR:
+        value.as.component_tensor =
+            (const phy_component_tensor *)object;
+        break;
+    case PHY_VALUE_VECTOR:
+        value.as.vector = (const phy_vector *)object;
+        break;
+    case PHY_VALUE_MATRIX:
+        value.as.matrix = (const phy_matrix *)object;
+        break;
+    case PHY_VALUE_COORDINATE_MAP:
+        value.as.coordinate_map =
+            (const phy_coordinate_map *)object;
+        break;
+    case PHY_VALUE_BASIS_TRANSITION:
+        value.as.basis_transition =
+            (const phy_basis_transition *)object;
+        break;
+    case PHY_VALUE_ATLAS:
+        value.as.atlas = (phy_atlas *)object;
+        break;
     default:
         return PHY_ERR_INVALID_ARGUMENT;
     }
+    void *owned = object;
+    if (kind == PHY_VALUE_INDEX_SPACE ||
+        kind == PHY_VALUE_TENSOR_HEAD) {
+        /* Both are owned in bulk by env->abstract. */
+        owned = NULL;
+    }
     const phy_status status =
-        eval_register(env, value, object, first, second);
+        eval_register(env, value, owned, first, second);
+    if (status == PHY_OK) {
+        *out_value = value;
+    }
+    return status;
+}
+
+static phy_status publish_many(phy_env *env, phy_value_kind kind,
+                               void *object,
+                               const phy_value *dependencies,
+                               size_t dependency_count,
+                               phy_value *out_value)
+{
+    phy_value value;
+    value.kind = kind;
+    if (kind == PHY_VALUE_COMPONENT_BASIS) {
+        value.as.component_basis =
+            (const phy_component_basis *)object;
+    } else if (kind == PHY_VALUE_COMPONENT_TENSOR) {
+        value.as.component_tensor =
+            (const phy_component_tensor *)object;
+    } else if (kind == PHY_VALUE_COORDINATE_MAP) {
+        value.as.coordinate_map =
+            (const phy_coordinate_map *)object;
+    } else if (kind == PHY_VALUE_BASIS_TRANSITION) {
+        value.as.basis_transition =
+            (const phy_basis_transition *)object;
+    } else if (kind == PHY_VALUE_ATLAS) {
+        value.as.atlas = (phy_atlas *)object;
+    } else if (kind == PHY_VALUE_GR_COMPONENTS) {
+        value.as.gr_components = (const phy_gr_component_view *)object;
+    } else if (kind == PHY_VALUE_QFT_COMPONENTS) {
+        value.as.qft_components = (phy_qft_component_view *)object;
+    } else {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    const phy_status status = eval_register_many(
+        env, value, object, dependencies, dependency_count);
     if (status == PHY_OK) {
         *out_value = value;
     }
@@ -298,6 +384,2100 @@ static phy_status publish_borrowed(phy_env *env, phy_value value,
         *out_value = value;
     }
     return status;
+}
+
+/* ------------------------------------------------------ abstract tensors */
+
+static phy_status ensure_abstract_context(phy_env *env)
+{
+    if (env->abstract != NULL) {
+        return PHY_OK;
+    }
+    return phy_abstract_context_create(
+        env->cas, NULL, &env->abstract);
+}
+
+static phy_status eval_index_space(phy_env *env, phy_ir_ref expr,
+                                   phy_value *out_value)
+{
+    if (env->object_count >= PHY_EVAL_MAX_OBJECTS) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    const size_t count = arg_count(env, expr);
+    if (count < 1u || count > 2u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_ir_ref dimension = PHY_IR_NULL;
+    phy_status status = arg_scalar(env, expr, 0u, &dimension);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_metric_symmetry metric = PHY_METRIC_NONE;
+    if (count == 2u) {
+        const char *keyword = arg_keyword(env, expr, 1u);
+        if (keyword_is(keyword, "NoMetric") ||
+            keyword_is(keyword, "None")) {
+            metric = PHY_METRIC_NONE;
+        } else if (keyword_is(keyword, "SymmetricMetric") ||
+                   keyword_is(keyword, "Symmetric")) {
+            metric = PHY_METRIC_SYMMETRIC;
+        } else if (keyword_is(keyword, "AntisymmetricMetric") ||
+                   keyword_is(keyword, "Antisymmetric")) {
+            metric = PHY_METRIC_ANTISYMMETRIC;
+        } else {
+            return PHY_ERR_PARSE;
+        }
+    }
+    status = ensure_abstract_context(env);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_index_space *space = NULL;
+    status = phy_index_space_create(
+        env->abstract, pending_name(env, "V"), dimension, metric,
+        &space);
+    return status == PHY_OK
+               ? publish(
+                     env, PHY_VALUE_INDEX_SPACE, space, NULL, NULL,
+                     out_value)
+               : status;
+}
+
+static phy_status read_signed_symmetry(
+    phy_env *env, phy_ir_ref ref, size_t rank, uint16_t *out_image,
+    int *out_sign)
+{
+    if (phy_ir_kind_of(env->ir, ref) != PHY_IR_FUNCTION ||
+        arg_count(env, ref) != 2u) {
+        return PHY_ERR_PARSE;
+    }
+    const char *name = phy_ir_symbol_name(
+        env->ir, phy_ir_head(env->ir, ref));
+    if (!keyword_is(name, "Symmetry") &&
+        !keyword_is(name, "SignedPermutation")) {
+        return PHY_ERR_PARSE;
+    }
+    phy_ir_ref raw[EVAL_ABSTRACT_MAX_SLOTS];
+    size_t count = 0u;
+    phy_status status = list_refs(
+        env, arg_ref(env, ref, 0u), raw,
+        EVAL_ABSTRACT_MAX_SLOTS, &count);
+    if (status != PHY_OK || count != rank) {
+        return status != PHY_OK ? status : PHY_ERR_PARSE;
+    }
+    for (size_t slot = 0u; slot < rank; ++slot) {
+        phy_value value;
+        status = eval_node(env, raw[slot], &value);
+        int64_t position = 0;
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (value.kind != PHY_VALUE_SCALAR ||
+            !phy_ir_integer_value(
+                env->ir, value.as.scalar, &position)) {
+            return PHY_ERR_TYPE;
+        }
+        if (position < 1 ||
+            (uint64_t)position > (uint64_t)rank) {
+            return PHY_ERR_DOMAIN;
+        }
+        out_image[slot] = (uint16_t)(position - 1);
+    }
+    phy_value sign;
+    status = eval_node(env, arg_ref(env, ref, 1u), &sign);
+    int64_t integer_sign = 0;
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (sign.kind != PHY_VALUE_SCALAR ||
+        !phy_ir_integer_value(
+            env->ir, sign.as.scalar, &integer_sign)) {
+        return PHY_ERR_TYPE;
+    }
+    if (integer_sign != -1 && integer_sign != 1) {
+        return PHY_ERR_DOMAIN;
+    }
+    *out_sign = (int)integer_sign;
+    return PHY_OK;
+}
+
+static phy_status eval_tensor_head(phy_env *env, phy_ir_ref expr,
+                                   phy_value *out_value)
+{
+    if (env->object_count >= PHY_EVAL_MAX_OBJECTS) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    const size_t count = arg_count(env, expr);
+    if (count < 1u || count > 3u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_ir_ref raw_spaces[EVAL_ABSTRACT_MAX_SLOTS];
+    size_t rank = 0u;
+    phy_status status = list_refs(
+        env, arg_ref(env, expr, 0u), raw_spaces,
+        EVAL_ABSTRACT_MAX_SLOTS, &rank);
+    if (status != PHY_OK) {
+        return status;
+    }
+    const phy_index_space *spaces[EVAL_ABSTRACT_MAX_SLOTS];
+    for (size_t slot = 0u; slot < rank; ++slot) {
+        phy_value space;
+        status = eval_node(env, raw_spaces[slot], &space);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (space.kind != PHY_VALUE_INDEX_SPACE) {
+            return PHY_ERR_TYPE;
+        }
+        spaces[slot] = space.as.index_space;
+    }
+
+    phy_tensor_commutation commutation = PHY_TENSOR_COMMUTING;
+    int shortcut_sign = 0;
+    if (count >= 2u) {
+        const char *keyword = arg_keyword(env, expr, 1u);
+        if (keyword_is(keyword, "Commuting")) {
+            commutation = PHY_TENSOR_COMMUTING;
+        } else if (keyword_is(keyword, "NonCommuting") ||
+                   keyword_is(keyword, "Noncommuting")) {
+            commutation = PHY_TENSOR_NONCOMMUTING;
+        } else if (keyword_is(keyword, "Symmetric")) {
+            shortcut_sign = 1;
+        } else if (keyword_is(keyword, "Antisymmetric")) {
+            shortcut_sign = -1;
+        } else {
+            return PHY_ERR_PARSE;
+        }
+    }
+    if (shortcut_sign != 0 &&
+        (rank != 2u || count == 3u)) {
+        return PHY_ERR_PARSE;
+    }
+    uint16_t images[EVAL_ABSTRACT_MAX_GENERATORS]
+                   [EVAL_ABSTRACT_MAX_SLOTS];
+    const uint16_t *image_views[EVAL_ABSTRACT_MAX_GENERATORS];
+    int signs[EVAL_ABSTRACT_MAX_GENERATORS];
+    size_t generator_count = 0u;
+    if (shortcut_sign != 0) {
+        images[0][0] = 1u;
+        images[0][1] = 0u;
+        image_views[0] = images[0];
+        signs[0] = shortcut_sign;
+        generator_count = 1u;
+    }
+    if (count == 3u) {
+        phy_ir_ref generators[EVAL_ABSTRACT_MAX_GENERATORS];
+        status = list_refs(
+            env, arg_ref(env, expr, 2u), generators,
+            EVAL_ABSTRACT_MAX_GENERATORS, &generator_count);
+        for (size_t which = 0u;
+             which < generator_count && status == PHY_OK; ++which) {
+            status = read_signed_symmetry(
+                env, generators[which], rank, images[which],
+                &signs[which]);
+            image_views[which] = images[which];
+        }
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    status = ensure_abstract_context(env);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_abstract_tensor_head *head = NULL;
+    status = phy_tensor_head_create_with_symmetries(
+        env->abstract, pending_name(env, "T"),
+        rank == 0u ? NULL : spaces, rank, commutation,
+        generator_count == 0u ? NULL : image_views,
+        generator_count == 0u ? NULL : signs, generator_count,
+        &head);
+    return status == PHY_OK
+               ? publish(
+                     env, PHY_VALUE_TENSOR_HEAD, head, NULL, NULL,
+                     out_value)
+               : status;
+}
+
+static phy_status eval_tensor_head_application(
+    phy_env *env, phy_ir_ref expr, const phy_abstract_tensor_head *head,
+    phy_value *out_value)
+{
+    const size_t rank = phy_tensor_head_slot_count(head);
+    if (arg_count(env, expr) != rank ||
+        rank > EVAL_ABSTRACT_MAX_SLOTS) {
+        return rank > EVAL_ABSTRACT_MAX_SLOTS
+                   ? PHY_ERR_TERM_LIMIT
+                   : PHY_ERR_PARSE;
+    }
+    phy_abstract_index indices[EVAL_ABSTRACT_MAX_SLOTS];
+    for (size_t slot = 0u; slot < rank; ++slot) {
+        const phy_ir_ref ref = arg_ref(env, expr, slot);
+        if (phy_ir_kind_of(env->ir, ref) != PHY_IR_INDEX) {
+            return PHY_ERR_TYPE;
+        }
+        phy_ir_variance variance = PHY_IR_INDEX_LOWER;
+        if (!phy_ir_index_variance(env->ir, ref, &variance)) {
+            return PHY_ERR_CORRUPT_DOCUMENT;
+        }
+        const phy_index_space *space =
+            phy_tensor_head_slot_space(head, slot);
+        const phy_ir_symbol explicit_space =
+            phy_ir_index_space(env->ir, ref);
+        if (explicit_space != PHY_IR_NO_SYMBOL &&
+            explicit_space != phy_index_space_symbol(space)) {
+            return PHY_ERR_TYPE;
+        }
+        const char *name = phy_ir_symbol_name(
+            env->ir, phy_ir_head(env->ir, ref));
+        if (name == NULL) {
+            return PHY_ERR_CORRUPT_DOCUMENT;
+        }
+        const phy_status status = phy_abstract_index_make(
+            space, name, variance, &indices[slot]);
+        if (status != PHY_OK) {
+            return status;
+        }
+    }
+    phy_ir_ref one = PHY_IR_NULL;
+    phy_status status = phy_cas_number(
+        env->cas, 1, 1, &one);
+    phy_tensor_monomial *monomial = NULL;
+    const phy_abstract_factor factor = {head, indices, rank};
+    if (status == PHY_OK) {
+        status = phy_tensor_monomial_create(
+            env->abstract, one, &factor, 1u, &monomial);
+    }
+    return status == PHY_OK
+               ? publish(
+                     env, PHY_VALUE_ABSTRACT_TENSOR, monomial, NULL,
+                     NULL, out_value)
+               : status;
+}
+
+static phy_status eval_tensor_canonicalize(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 1u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value input;
+    phy_status status = arg_value(env, expr, 0u, &input);
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (input.kind == PHY_VALUE_ABSTRACT_EXPRESSION) {
+        /*
+         * The only current expression constructor, YoungProject, canonicalizes
+         * and collects every term before publication.
+         */
+        *out_value = input;
+        return PHY_OK;
+    }
+    if (input.kind != PHY_VALUE_ABSTRACT_TENSOR) {
+        return PHY_ERR_TYPE;
+    }
+    phy_tensor_monomial *canonical = NULL;
+    status = phy_tensor_monomial_canonicalize(
+        input.as.abstract_tensor, NULL, &canonical, NULL);
+    return status == PHY_OK
+               ? publish(
+                     env, PHY_VALUE_ABSTRACT_TENSOR, canonical, &input,
+                     NULL, out_value)
+               : status;
+}
+
+static phy_status read_young_tableau(
+    phy_env *env, phy_ir_ref ref, uint16_t *out_slots,
+    uint16_t *out_row_lengths, size_t *out_slot_count,
+    size_t *out_row_count)
+{
+    phy_ir_ref rows[EVAL_ABSTRACT_MAX_SLOTS];
+    size_t row_count = 0u;
+    phy_status status = list_refs(
+        env, ref, rows, EVAL_ABSTRACT_MAX_SLOTS, &row_count);
+    if (status != PHY_OK || row_count == 0u) {
+        return status != PHY_OK ? status : PHY_ERR_PARSE;
+    }
+    size_t slot_count = 0u;
+    for (size_t row = 0u;
+         row < row_count && status == PHY_OK; ++row) {
+        phy_ir_ref cells[EVAL_ABSTRACT_MAX_SLOTS];
+        size_t length = 0u;
+        status = list_refs(
+            env, rows[row], cells,
+            EVAL_ABSTRACT_MAX_SLOTS - slot_count, &length);
+        if (status != PHY_OK || length == 0u ||
+            length > UINT16_MAX) {
+            return status != PHY_OK ? status : PHY_ERR_PARSE;
+        }
+        out_row_lengths[row] = (uint16_t)length;
+        for (size_t cell = 0u; cell < length; ++cell) {
+            phy_value value;
+            status = eval_node(env, cells[cell], &value);
+            int64_t position = 0;
+            if (status != PHY_OK) {
+                return status;
+            }
+            if (value.kind != PHY_VALUE_SCALAR ||
+                !phy_ir_integer_value(
+                    env->ir, value.as.scalar, &position)) {
+                return PHY_ERR_TYPE;
+            }
+            if (position < 1 ||
+                (uint64_t)position >
+                    (uint64_t)EVAL_ABSTRACT_MAX_SLOTS) {
+                return PHY_ERR_DOMAIN;
+            }
+            out_slots[slot_count++] =
+                (uint16_t)(position - 1);
+        }
+    }
+    *out_slot_count = slot_count;
+    *out_row_count = row_count;
+    return PHY_OK;
+}
+
+static phy_status read_young_order(const phy_env *env, phy_ir_ref ref,
+                                   phy_young_order *out_order)
+{
+    if (phy_ir_kind_of(env->ir, ref) != PHY_IR_SYMBOL) {
+        return PHY_ERR_TYPE;
+    }
+    const char *name =
+        phy_ir_symbol_name(env->ir, phy_ir_head(env->ir, ref));
+    if (keyword_is(name, "RowLast") ||
+        keyword_is(name, "RowSymmetryLast")) {
+        *out_order = PHY_YOUNG_ROW_SYMMETRY_LAST;
+        return PHY_OK;
+    }
+    if (keyword_is(name, "ColumnLast") ||
+        keyword_is(name, "ColumnAntisymmetryLast")) {
+        *out_order = PHY_YOUNG_COLUMN_ANTISYMMETRY_LAST;
+        return PHY_OK;
+    }
+    return PHY_ERR_DOMAIN;
+}
+
+static phy_status eval_young_project(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    const size_t count = arg_count(env, expr);
+    if (count < 2u || count > 4u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value input;
+    phy_status status = arg_value(env, expr, 0u, &input);
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (input.kind != PHY_VALUE_ABSTRACT_TENSOR &&
+        input.kind != PHY_VALUE_ABSTRACT_EXPRESSION) {
+        return PHY_ERR_TYPE;
+    }
+    size_t factor = 0u;
+    phy_ir_ref tableau_ref = arg_ref(env, expr, 1u);
+    if (count >= 3u) {
+        phy_ir_ref factor_ref = PHY_IR_NULL;
+        status = arg_scalar(env, expr, 1u, &factor_ref);
+        int64_t one_based = 0;
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (!phy_ir_integer_value(
+                env->ir, factor_ref, &one_based)) {
+            return PHY_ERR_TYPE;
+        }
+        if (one_based < 1) {
+            return PHY_ERR_DOMAIN;
+        }
+        factor = (size_t)(one_based - 1);
+        tableau_ref = arg_ref(env, expr, 2u);
+    }
+    if (input.kind == PHY_VALUE_ABSTRACT_TENSOR &&
+        factor >= phy_tensor_monomial_factor_count(
+                      input.as.abstract_tensor)) {
+        return PHY_ERR_DOMAIN;
+    }
+    phy_young_order order = PHY_YOUNG_ROW_SYMMETRY_LAST;
+    if (count == 4u) {
+        status =
+            read_young_order(env, arg_ref(env, expr, 3u), &order);
+        if (status != PHY_OK) {
+            return status;
+        }
+    }
+    uint16_t slots[EVAL_ABSTRACT_MAX_SLOTS];
+    uint16_t row_lengths[EVAL_ABSTRACT_MAX_SLOTS];
+    size_t slot_count = 0u;
+    size_t row_count = 0u;
+    status = read_young_tableau(
+        env, tableau_ref, slots, row_lengths, &slot_count,
+        &row_count);
+    if (status != PHY_OK) {
+        return status;
+    }
+    const phy_young_tableau tableau = {
+        slots, slot_count, row_lengths, row_count, order};
+    phy_tensor_expression *projected = NULL;
+    status = input.kind == PHY_VALUE_ABSTRACT_TENSOR
+                 ? phy_tensor_monomial_young_project(
+                       input.as.abstract_tensor, factor, &tableau, NULL,
+                       &projected, NULL)
+                 : phy_tensor_expression_young_project(
+                       input.as.abstract_expression, factor, &tableau, NULL,
+                       &projected, NULL);
+    return status == PHY_OK
+               ? publish(
+                     env, PHY_VALUE_ABSTRACT_EXPRESSION, projected,
+                     &input, NULL, out_value)
+               : status;
+}
+
+static phy_status eval_young_declare(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    const size_t count = arg_count(env, expr);
+    if (count < 2u || count > 3u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value head;
+    phy_status status =
+        arg_typed(env, expr, 0u, PHY_VALUE_TENSOR_HEAD, &head);
+    if (status != PHY_OK) {
+        return status;
+    }
+    uint16_t slots[EVAL_ABSTRACT_MAX_SLOTS];
+    uint16_t row_lengths[EVAL_ABSTRACT_MAX_SLOTS];
+    size_t slot_count = 0u;
+    size_t row_count = 0u;
+    status = read_young_tableau(
+        env, arg_ref(env, expr, 1u), slots, row_lengths, &slot_count,
+        &row_count);
+    phy_young_order order = PHY_YOUNG_ROW_SYMMETRY_LAST;
+    if (status == PHY_OK && count == 3u) {
+        status =
+            read_young_order(env, arg_ref(env, expr, 2u), &order);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    const phy_young_tableau tableau = {
+        slots, slot_count, row_lengths, row_count, order};
+    status = phy_tensor_head_set_young_symmetry(
+        (phy_abstract_tensor_head *)(uintptr_t)head.as.tensor_head,
+        &tableau, NULL);
+    if (status == PHY_OK) {
+        *out_value = head;
+    }
+    return status;
+}
+
+static phy_status eval_young_reduce(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 1u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value input;
+    phy_status status = arg_value(env, expr, 0u, &input);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_tensor_expression *source = NULL;
+    bool temporary = false;
+    if (input.kind == PHY_VALUE_ABSTRACT_EXPRESSION) {
+        source = (phy_tensor_expression *)(uintptr_t)
+            input.as.abstract_expression;
+    } else if (input.kind == PHY_VALUE_ABSTRACT_TENSOR) {
+        status = phy_tensor_expression_from_monomial(
+            input.as.abstract_tensor, NULL, &source);
+        temporary = status == PHY_OK;
+    } else {
+        return PHY_ERR_TYPE;
+    }
+    phy_tensor_expression *reduced = NULL;
+    if (status == PHY_OK) {
+        status = phy_tensor_expression_young_reduce(
+            source, NULL, &reduced, NULL);
+    }
+    if (temporary) {
+        phy_tensor_expression_destroy(source);
+    }
+    return status == PHY_OK
+               ? publish(
+                     env, PHY_VALUE_ABSTRACT_EXPRESSION, reduced,
+                     &input, NULL, out_value)
+               : status;
+}
+
+static phy_status eval_garnir_relation(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 3u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value input;
+    phy_status status = arg_typed(
+        env, expr, 0u, PHY_VALUE_ABSTRACT_TENSOR, &input);
+    phy_ir_ref factor_ref = PHY_IR_NULL;
+    phy_ir_ref relation_ref = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = arg_scalar(env, expr, 1u, &factor_ref);
+    }
+    if (status == PHY_OK) {
+        status = arg_scalar(env, expr, 2u, &relation_ref);
+    }
+    int64_t factor = 0;
+    int64_t relation = 0;
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (!phy_ir_integer_value(env->ir, factor_ref, &factor) ||
+        !phy_ir_integer_value(env->ir, relation_ref, &relation)) {
+        return PHY_ERR_TYPE;
+    }
+    if (factor < 1 || relation < 1) {
+        return PHY_ERR_DOMAIN;
+    }
+    phy_tensor_expression *result = NULL;
+    status = phy_tensor_monomial_garnir_relation(
+        input.as.abstract_tensor, (size_t)(factor - 1),
+        (size_t)(relation - 1), NULL, &result, NULL);
+    return status == PHY_OK
+               ? publish(
+                     env, PHY_VALUE_ABSTRACT_EXPRESSION, result,
+                     &input, NULL, out_value)
+               : status;
+}
+
+static phy_status eval_young_dimension(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 2u) {
+        return PHY_ERR_PARSE;
+    }
+    uint16_t slots[EVAL_ABSTRACT_MAX_SLOTS];
+    uint16_t row_lengths[EVAL_ABSTRACT_MAX_SLOTS];
+    size_t slot_count = 0u;
+    size_t row_count = 0u;
+    phy_status status = read_young_tableau(
+        env, arg_ref(env, expr, 0u), slots, row_lengths, &slot_count,
+        &row_count);
+    phy_ir_ref dimension_ref = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = arg_scalar(env, expr, 1u, &dimension_ref);
+    }
+    int64_t dimension = 0;
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (!phy_ir_integer_value(env->ir, dimension_ref, &dimension)) {
+        return PHY_ERR_TYPE;
+    }
+    if (dimension < 0) {
+        return PHY_ERR_DOMAIN;
+    }
+    const phy_young_tableau tableau = {
+        slots, slot_count, row_lengths, row_count,
+        PHY_YOUNG_ROW_SYMMETRY_LAST};
+    uint64_t result = 0u;
+    status = phy_young_gl_dimension(
+        &tableau, (size_t)dimension, &result);
+    if (status != PHY_OK) {
+        return status;
+    }
+    char decimal[21];
+    size_t start = sizeof decimal;
+    do {
+        decimal[--start] = (char)('0' + result % 10u);
+        result /= 10u;
+    } while (result != 0u);
+    const phy_ir_ref scalar = phy_ir_integer_text_n(
+        env->ir, &decimal[start], sizeof decimal - start);
+    if (scalar == PHY_IR_NULL) {
+        return phy_ir_last_error(env->ir);
+    }
+    *out_value = scalar_value(scalar);
+    return PHY_OK;
+}
+
+/* ------------------------------------------ abstract/component frontend */
+
+static phy_status read_component_variance(
+    const phy_env *env, phy_ir_ref ref, phy_ir_variance *out_variance)
+{
+    if (phy_ir_kind_of(env->ir, ref) != PHY_IR_SYMBOL) {
+        return PHY_ERR_TYPE;
+    }
+    const char *name =
+        phy_ir_symbol_name(env->ir, phy_ir_head(env->ir, ref));
+    if (keyword_is(name, "Up") || keyword_is(name, "Upper") ||
+        keyword_is(name, "Contravariant")) {
+        *out_variance = PHY_IR_INDEX_UPPER;
+        return PHY_OK;
+    }
+    if (keyword_is(name, "Down") || keyword_is(name, "Lower") ||
+        keyword_is(name, "Covariant")) {
+        *out_variance = PHY_IR_INDEX_LOWER;
+        return PHY_OK;
+    }
+    return PHY_ERR_DOMAIN;
+}
+
+/*
+ * ComponentBasis[V,{x,y,...}] or ComponentBasis[V,n].
+ *
+ * Coordinates are names, not values. As with Manifold, an already-bound name
+ * is rejected so a later map or derivative cannot silently substitute it.
+ */
+static phy_status eval_component_basis(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 2u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value space;
+    phy_status status = arg_typed(
+        env, expr, 0u, PHY_VALUE_INDEX_SPACE, &space);
+    if (status != PHY_OK) {
+        return status;
+    }
+
+    const phy_ir_ref dimension_or_coordinates =
+        arg_ref(env, expr, 1u);
+    const char *coordinate_names[EVAL_MAX_LIST];
+    size_t dimension = 0u;
+    const char *const *coordinates = NULL;
+    if (phy_ir_kind_of(env->ir, dimension_or_coordinates) ==
+            PHY_IR_FUNCTION &&
+        phy_ir_head(env->ir, dimension_or_coordinates) ==
+            env->list_head) {
+        phy_ir_ref raw[EVAL_MAX_LIST];
+        status = list_refs(env, dimension_or_coordinates, raw,
+                           EVAL_MAX_LIST, &dimension);
+        if (status != PHY_OK || dimension == 0u) {
+            return status != PHY_OK ? status : PHY_ERR_PARSE;
+        }
+        for (size_t axis = 0u; axis < dimension; ++axis) {
+            if (phy_ir_kind_of(env->ir, raw[axis]) != PHY_IR_SYMBOL) {
+                return PHY_ERR_TYPE;
+            }
+            const phy_ir_symbol symbol =
+                phy_ir_head(env->ir, raw[axis]);
+            if (eval_lookup(env, symbol, NULL)) {
+                return PHY_ERR_ASSUMPTION;
+            }
+            coordinate_names[axis] =
+                phy_ir_symbol_name(env->ir, symbol);
+            if (coordinate_names[axis] == NULL) {
+                return PHY_ERR_CORRUPT_DOCUMENT;
+            }
+        }
+        coordinates = coordinate_names;
+    } else {
+        phy_value value;
+        status = eval_node(env, dimension_or_coordinates, &value);
+        int64_t exact_dimension = 0;
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (value.kind != PHY_VALUE_SCALAR ||
+            !phy_ir_integer_value(
+                env->ir, value.as.scalar, &exact_dimension)) {
+            return PHY_ERR_TYPE;
+        }
+        if (exact_dimension <= 0 ||
+            (uint64_t)exact_dimension > (uint64_t)SIZE_MAX) {
+            return PHY_ERR_DOMAIN;
+        }
+        dimension = (size_t)exact_dimension;
+    }
+
+    phy_component_basis *basis = NULL;
+    status = phy_component_basis_create(
+        space.as.index_space, pending_name(env, "e"), dimension,
+        coordinates, NULL, &basis);
+    return status == PHY_OK
+               ? publish_many(
+                     env, PHY_VALUE_COMPONENT_BASIS, basis, &space, 1u,
+                     out_value)
+               : status;
+}
+
+static phy_status eval_tensor_components(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 4u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value head;
+    phy_status status = arg_typed(
+        env, expr, 0u, PHY_VALUE_TENSOR_HEAD, &head);
+    if (status != PHY_OK) {
+        return status;
+    }
+    const size_t rank =
+        phy_tensor_head_slot_count(head.as.tensor_head);
+    if (rank > EVAL_ABSTRACT_MAX_SLOTS) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+
+    phy_ir_ref raw_bases[EVAL_ABSTRACT_MAX_SLOTS];
+    phy_ir_ref raw_valence[EVAL_ABSTRACT_MAX_SLOTS];
+    size_t basis_count = 0u;
+    size_t valence_count = 0u;
+    status = list_refs(
+        env, arg_ref(env, expr, 1u), raw_bases,
+        EVAL_ABSTRACT_MAX_SLOTS, &basis_count);
+    if (status == PHY_OK) {
+        status = list_refs(
+            env, arg_ref(env, expr, 2u), raw_valence,
+            EVAL_ABSTRACT_MAX_SLOTS, &valence_count);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (basis_count != rank || valence_count != rank) {
+        return PHY_ERR_PARSE;
+    }
+
+    phy_value dependencies[EVAL_ABSTRACT_MAX_SLOTS + 1u];
+    dependencies[0] = head;
+    phy_value *basis_values = &dependencies[1];
+    phy_component_basis *bases[EVAL_ABSTRACT_MAX_SLOTS];
+    phy_ir_variance valence[EVAL_ABSTRACT_MAX_SLOTS];
+    for (size_t slot = 0u; slot < rank; ++slot) {
+        status = eval_node(env, raw_bases[slot],
+                           &basis_values[slot]);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (basis_values[slot].kind !=
+            PHY_VALUE_COMPONENT_BASIS) {
+            return PHY_ERR_TYPE;
+        }
+        bases[slot] = (phy_component_basis *)(uintptr_t)
+            basis_values[slot].as.component_basis;
+        status = read_component_variance(
+            env, raw_valence[slot], &valence[slot]);
+        if (status != PHY_OK) {
+            return status;
+        }
+    }
+
+    phy_component_tensor *tensor = NULL;
+    status = phy_component_tensor_create(
+        head.as.tensor_head, rank == 0u ? NULL : bases,
+        rank == 0u ? NULL : valence, NULL, &tensor);
+    if (status != PHY_OK) {
+        return status;
+    }
+
+    phy_ir_ref entries[EVAL_MAX_LIST];
+    size_t entry_count = 0u;
+    status = list_refs(
+        env, arg_ref(env, expr, 3u), entries,
+        EVAL_MAX_LIST, &entry_count);
+    for (size_t entry = 0u;
+         status == PHY_OK && entry < entry_count; ++entry) {
+        phy_ir_ref pair[2];
+        size_t pair_count = 0u;
+        status =
+            list_refs(env, entries[entry], pair, 2u, &pair_count);
+        if (status != PHY_OK || pair_count != 2u) {
+            status = status != PHY_OK ? status : PHY_ERR_PARSE;
+            break;
+        }
+        phy_ir_ref raw_indices[EVAL_ABSTRACT_MAX_SLOTS];
+        size_t index_count = 0u;
+        status = list_refs(
+            env, pair[0], raw_indices, EVAL_ABSTRACT_MAX_SLOTS,
+            &index_count);
+        if (status != PHY_OK || index_count != rank) {
+            status = status != PHY_OK ? status : PHY_ERR_PARSE;
+            break;
+        }
+        uint32_t indices[EVAL_ABSTRACT_MAX_SLOTS];
+        for (size_t slot = 0u;
+             status == PHY_OK && slot < rank; ++slot) {
+            phy_value index;
+            status = eval_node(env, raw_indices[slot], &index);
+            int64_t integer = 0;
+            if (status == PHY_OK &&
+                (index.kind != PHY_VALUE_SCALAR ||
+                 !phy_ir_integer_value(
+                     env->ir, index.as.scalar, &integer))) {
+                status = PHY_ERR_TYPE;
+            }
+            if (status == PHY_OK &&
+                (integer < 0 ||
+                 (uint64_t)integer > UINT32_MAX)) {
+                status = PHY_ERR_DOMAIN;
+            }
+            if (status == PHY_OK &&
+                (uint64_t)integer >=
+                    (uint64_t)phy_component_basis_dimension(
+                        bases[slot])) {
+                status = PHY_ERR_DOMAIN;
+            }
+            if (status == PHY_OK) {
+                indices[slot] = (uint32_t)integer;
+            }
+        }
+        phy_value component = {0};
+        if (status == PHY_OK) {
+            status = eval_node(env, pair[1], &component);
+        }
+        if (status == PHY_OK &&
+            component.kind != PHY_VALUE_SCALAR) {
+            status = PHY_ERR_TYPE;
+        }
+        if (status == PHY_OK) {
+            status = phy_component_tensor_set(
+                tensor, rank == 0u ? NULL : indices,
+                component.as.scalar);
+        }
+    }
+    if (status != PHY_OK) {
+        phy_component_tensor_destroy(tensor);
+        return status;
+    }
+    return publish_many(
+        env, PHY_VALUE_COMPONENT_TENSOR, tensor,
+        dependencies, rank + 1u, out_value);
+}
+
+static phy_status eval_component_value(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 3u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value monomial;
+    phy_status status = arg_value(env, expr, 0u, &monomial);
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (monomial.kind != PHY_VALUE_ABSTRACT_TENSOR &&
+        monomial.kind != PHY_VALUE_ABSTRACT_EXPRESSION) {
+        return PHY_ERR_TYPE;
+    }
+
+    phy_ir_ref raw_tensors[EVAL_MAX_LIST];
+    size_t tensor_count = 0u;
+    status = list_refs(
+        env, arg_ref(env, expr, 1u), raw_tensors,
+        EVAL_MAX_LIST, &tensor_count);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_value tensor_values[EVAL_MAX_LIST];
+    for (size_t i = 0u; i < tensor_count; ++i) {
+        status = eval_node(env, raw_tensors[i], &tensor_values[i]);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (tensor_values[i].kind !=
+            PHY_VALUE_COMPONENT_TENSOR) {
+            return PHY_ERR_TYPE;
+        }
+    }
+
+    phy_ir_ref raw_free[EVAL_ABSTRACT_MAX_SLOTS];
+    size_t free_count = 0u;
+    status = list_refs(
+        env, arg_ref(env, expr, 2u), raw_free,
+        EVAL_ABSTRACT_MAX_SLOTS, &free_count);
+    uint32_t free_indices[EVAL_ABSTRACT_MAX_SLOTS];
+    for (size_t i = 0u;
+         status == PHY_OK && i < free_count; ++i) {
+        phy_value index;
+        status = eval_node(env, raw_free[i], &index);
+        int64_t integer = 0;
+        if (status == PHY_OK &&
+            (index.kind != PHY_VALUE_SCALAR ||
+             !phy_ir_integer_value(
+                 env->ir, index.as.scalar, &integer))) {
+            status = PHY_ERR_TYPE;
+        }
+        if (status == PHY_OK &&
+            (integer < 0 || (uint64_t)integer > UINT32_MAX)) {
+            status = PHY_ERR_DOMAIN;
+        }
+        if (status == PHY_OK) {
+            free_indices[i] = (uint32_t)integer;
+        }
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+
+    phy_component_binding *binding = NULL;
+    status = phy_component_binding_create(
+        env->abstract, NULL, &binding);
+    for (size_t i = 0u;
+         status == PHY_OK && i < tensor_count; ++i) {
+        phy_component_tensor *tensor =
+            (phy_component_tensor *)(uintptr_t)
+                tensor_values[i].as.component_tensor;
+        const size_t rank = phy_component_tensor_rank(tensor);
+        for (size_t slot = 0u;
+             status == PHY_OK && slot < rank; ++slot) {
+            status = phy_component_binding_add_basis(
+                binding, (phy_component_basis *)(uintptr_t)
+                    phy_component_tensor_basis(tensor, slot));
+        }
+        if (status == PHY_OK) {
+            status =
+                phy_component_binding_add_tensor(binding, tensor);
+        }
+    }
+    phy_ir_ref result = PHY_IR_NULL;
+    if (status == PHY_OK &&
+        monomial.kind == PHY_VALUE_ABSTRACT_TENSOR) {
+        status = phy_component_value_monomial(
+            binding, monomial.as.abstract_tensor,
+            free_count == 0u ? NULL : free_indices, free_count,
+            &result, NULL);
+    } else if (status == PHY_OK) {
+        status = phy_component_value_expression(
+            binding, monomial.as.abstract_expression,
+            free_count == 0u ? NULL : free_indices, free_count,
+            &result, NULL);
+    }
+    phy_component_binding_destroy(binding);
+    if (status == PHY_OK) {
+        *out_value = scalar_value(result);
+    }
+    return status;
+}
+
+static phy_status eval_component_lift(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 3u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value source;
+    phy_status status =
+        arg_typed(env, expr, 0u, PHY_VALUE_TENSOR, &source);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_value head;
+    status = arg_typed(
+        env, expr, 1u, PHY_VALUE_TENSOR_HEAD, &head);
+    if (status != PHY_OK) {
+        return status;
+    }
+    const size_t rank =
+        phy_tensor_head_slot_count(head.as.tensor_head);
+    if (rank > EVAL_ABSTRACT_MAX_SLOTS) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    phy_ir_ref raw_bases[EVAL_ABSTRACT_MAX_SLOTS];
+    size_t basis_count = 0u;
+    status = list_refs(
+        env, arg_ref(env, expr, 2u), raw_bases,
+        EVAL_ABSTRACT_MAX_SLOTS, &basis_count);
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (basis_count != rank) {
+        return PHY_ERR_PARSE;
+    }
+
+    phy_value dependencies[EVAL_ABSTRACT_MAX_SLOTS + 2u];
+    dependencies[0] = source;
+    dependencies[1] = head;
+    phy_component_basis *bases[EVAL_ABSTRACT_MAX_SLOTS];
+    for (size_t slot = 0u; slot < rank; ++slot) {
+        status = eval_node(
+            env, raw_bases[slot], &dependencies[slot + 2u]);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (dependencies[slot + 2u].kind !=
+            PHY_VALUE_COMPONENT_BASIS) {
+            return PHY_ERR_TYPE;
+        }
+        bases[slot] = (phy_component_basis *)(uintptr_t)
+            dependencies[slot + 2u].as.component_basis;
+    }
+
+    phy_component_tensor *lifted = NULL;
+    status = phy_component_tensor_import_legacy(
+        source.as.tensor, head.as.tensor_head,
+        rank == 0u ? NULL : bases, NULL, &lifted);
+    return status == PHY_OK
+               ? publish_many(
+                     env, PHY_VALUE_COMPONENT_TENSOR, lifted,
+                     dependencies, rank + 2u, out_value)
+               : status;
+}
+
+/* ----------------------------------------- general-relativity component view */
+
+/*
+ * GRComponents[c] and GRComponents[c,{Weyl,RiemannUpper}].
+ *
+ * One view holds one IndexSpace, one coordinate basis and one realization per
+ * curvature quantity, so that `GRHead[gr,Ricci]` in two different cells names
+ * the same abstract head. Rebuilding the view instead would give two heads of
+ * the same name that no monomial can mix, which is exactly the failure the
+ * typed layer exists to prevent.
+ */
+static phy_status eval_gr_components(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    const size_t count = arg_count(env, expr);
+    if (count < 1u || count > 2u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value bundle;
+    phy_status status =
+        arg_typed(env, expr, 0u, PHY_VALUE_CURVATURE, &bundle);
+    if (status != PHY_OK) {
+        return status;
+    }
+    unsigned options = 0u;
+    if (count == 2u) {
+        phy_ir_ref raw[EVAL_ABSTRACT_MAX_SLOTS];
+        size_t requested = 0u;
+        status = list_refs(env, arg_ref(env, expr, 1u), raw,
+                           EVAL_ABSTRACT_MAX_SLOTS, &requested);
+        if (status != PHY_OK) {
+            return status;
+        }
+        for (size_t which = 0u; which < requested; ++which) {
+            if (phy_ir_kind_of(env->ir, raw[which]) != PHY_IR_SYMBOL) {
+                return PHY_ERR_TYPE;
+            }
+            const char *name = phy_ir_symbol_name(
+                env->ir, phy_ir_head(env->ir, raw[which]));
+            if (keyword_is(name, "Weyl")) {
+                options |= PHY_GR_BRIDGE_WEYL;
+            } else if (keyword_is(name, "RiemannUpper")) {
+                options |= PHY_GR_BRIDGE_RIEMANN_UPPER;
+            } else {
+                return PHY_ERR_PARSE;
+            }
+        }
+    }
+    status = ensure_abstract_context(env);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_gr_component_view *view = NULL;
+    status = phy_gr_component_view_create(
+        env->cas, env->abstract, bundle.as.curvature,
+        pending_name(env, "M"), options, NULL, &view);
+    return status == PHY_OK
+               ? publish_many(env, PHY_VALUE_GR_COMPONENTS, view, &bundle,
+                              1u, out_value)
+               : status;
+}
+
+static phy_status read_gr_quantity(const phy_env *env, phy_ir_ref ref,
+                                   phy_gr_quantity *out_quantity)
+{
+    if (phy_ir_kind_of(env->ir, ref) != PHY_IR_SYMBOL) {
+        return PHY_ERR_TYPE;
+    }
+    const char *name =
+        phy_ir_symbol_name(env->ir, phy_ir_head(env->ir, ref));
+    for (unsigned quantity = 0u;
+         quantity < (unsigned)PHY_GR_QUANTITY_COUNT; ++quantity) {
+        if (keyword_is(name,
+                       phy_gr_quantity_name((phy_gr_quantity)quantity))) {
+            *out_quantity = (phy_gr_quantity)quantity;
+            return PHY_OK;
+        }
+    }
+    return PHY_ERR_PARSE;
+}
+
+/*
+ * GRSpace[gr], GRBasis[gr], GRHead[gr,Ricci] and GRTensor[gr,Ricci].
+ *
+ * All four are borrowed views of objects the GRComponents handle owns, so
+ * each is registered against it and the sweep keeps the owner alive for as
+ * long as any of them is reachable. A quantity the view did not lift is
+ * PHY_ERR_NOT_INITIALIZED rather than a null handle: `Weyl` is absent because
+ * it was not asked for, and saying so is more useful than a type error.
+ */
+static phy_status eval_gr_part(phy_env *env, phy_ir_ref expr, eval_head head,
+                               phy_value *out_value)
+{
+    const bool needs_quantity =
+        head == EVAL_HEAD_GR_HEAD || head == EVAL_HEAD_GR_TENSOR;
+    if (arg_count(env, expr) != (needs_quantity ? 2u : 1u)) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value view;
+    phy_status status =
+        arg_typed(env, expr, 0u, PHY_VALUE_GR_COMPONENTS, &view);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_gr_quantity quantity = PHY_GR_METRIC;
+    if (needs_quantity) {
+        status =
+            read_gr_quantity(env, arg_ref(env, expr, 1u), &quantity);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (!phy_gr_component_view_holds(view.as.gr_components,
+                                         quantity)) {
+            return PHY_ERR_NOT_INITIALIZED;
+        }
+    }
+
+    phy_value part;
+    switch (head) {
+    case EVAL_HEAD_GR_SPACE:
+        part.kind = PHY_VALUE_INDEX_SPACE;
+        part.as.index_space =
+            phy_gr_component_view_space(view.as.gr_components);
+        break;
+    case EVAL_HEAD_GR_BASIS:
+        part.kind = PHY_VALUE_COMPONENT_BASIS;
+        part.as.component_basis =
+            phy_gr_component_view_basis(view.as.gr_components);
+        break;
+    case EVAL_HEAD_GR_HEAD:
+        part.kind = PHY_VALUE_TENSOR_HEAD;
+        part.as.tensor_head =
+            phy_gr_component_view_head(view.as.gr_components, quantity);
+        break;
+    case EVAL_HEAD_GR_TENSOR:
+        part.kind = PHY_VALUE_COMPONENT_TENSOR;
+        part.as.component_tensor =
+            phy_gr_component_view_tensor(view.as.gr_components, quantity);
+        break;
+    default:
+        return PHY_ERR_UNSUPPORTED;
+    }
+    if (eval_value_pointer(&part) == NULL) {
+        return PHY_ERR_CORRUPT_DOCUMENT;
+    }
+    return publish_borrowed(env, part, &view, out_value);
+}
+
+/* ------------------------------------------------------- shared QFT tensor view */
+
+/*
+ * QFTSystem[] keeps N symbolic; QFTSystem[3] additionally instantiates the
+ * exact built-in SU(3) component picture.  Either form always provides the
+ * Lorentz and spinor spaces plus eta components.
+ */
+static phy_status eval_qft_system(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    const size_t count = arg_count(env, expr);
+    if (count > 1u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_ir_ref n = PHY_IR_NULL;
+    phy_status status = PHY_OK;
+    if (count == 1u) {
+        status = arg_scalar(env, expr, 0u, &n);
+    } else {
+        const phy_ir_symbol symbol = phy_ir_intern(env->ir, "N");
+        n = symbol != PHY_IR_NO_SYMBOL
+                ? phy_ir_symbol_ref(env->ir, symbol)
+                : PHY_IR_NULL;
+        if (n == PHY_IR_NULL) {
+            status = phy_ir_last_error(env->ir);
+        }
+    }
+    if (status == PHY_OK) {
+        status = ensure_abstract_context(env);
+    }
+    phy_qft_component_view *view = NULL;
+    if (status == PHY_OK) {
+        status = phy_qft_component_view_create(
+            env->cas, env->abstract, n, NULL, &view);
+    }
+    return status == PHY_OK
+               ? publish_many(
+                     env, PHY_VALUE_QFT_COMPONENTS, view, NULL, 0u,
+                     out_value)
+               : status;
+}
+
+static phy_status read_qft_space(const phy_env *env, phy_ir_ref ref,
+                                 phy_qft_space *out_space)
+{
+    if (phy_ir_kind_of(env->ir, ref) != PHY_IR_SYMBOL) {
+        return PHY_ERR_TYPE;
+    }
+    const char *name =
+        phy_ir_symbol_name(env->ir, phy_ir_head(env->ir, ref));
+    for (unsigned space = 0u; space < (unsigned)PHY_QFT_SPACE_COUNT;
+         ++space) {
+        if (keyword_is(
+                name, phy_qft_space_name((phy_qft_space)space))) {
+            *out_space = (phy_qft_space)space;
+            return PHY_OK;
+        }
+    }
+    return PHY_ERR_PARSE;
+}
+
+static phy_status read_qft_quantity(
+    const phy_env *env, phy_ir_ref ref, phy_qft_quantity *out_quantity)
+{
+    if (phy_ir_kind_of(env->ir, ref) != PHY_IR_SYMBOL) {
+        return PHY_ERR_TYPE;
+    }
+    const char *name =
+        phy_ir_symbol_name(env->ir, phy_ir_head(env->ir, ref));
+    for (unsigned quantity = 0u;
+         quantity < (unsigned)PHY_QFT_QUANTITY_COUNT; ++quantity) {
+        if (keyword_is(
+                name,
+                phy_qft_quantity_name((phy_qft_quantity)quantity))) {
+            *out_quantity = (phy_qft_quantity)quantity;
+            return PHY_OK;
+        }
+    }
+    return PHY_ERR_PARSE;
+}
+
+static phy_status eval_qft_part(phy_env *env, phy_ir_ref expr, eval_head head,
+                                phy_value *out_value)
+{
+    if (arg_count(env, expr) != 2u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value view = {0};
+    phy_status status =
+        arg_typed(env, expr, 0u, PHY_VALUE_QFT_COMPONENTS, &view);
+    if (status != PHY_OK) {
+        return status;
+    }
+    phy_value part = {0};
+    if (head == EVAL_HEAD_QFT_SPACE || head == EVAL_HEAD_QFT_BASIS) {
+        phy_qft_space space = PHY_QFT_SPACE_LORENTZ;
+        status = read_qft_space(env, arg_ref(env, expr, 1u), &space);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (head == EVAL_HEAD_QFT_SPACE) {
+            part.kind = PHY_VALUE_INDEX_SPACE;
+            part.as.index_space = phy_qft_component_view_space(
+                view.as.qft_components, space);
+        } else {
+            part.kind = PHY_VALUE_COMPONENT_BASIS;
+            part.as.component_basis = phy_qft_component_view_basis(
+                view.as.qft_components, space);
+        }
+    } else {
+        phy_qft_quantity quantity = PHY_QFT_MINKOWSKI_METRIC;
+        status = read_qft_quantity(
+            env, arg_ref(env, expr, 1u), &quantity);
+        if (status != PHY_OK) {
+            return status;
+        }
+        if (head == EVAL_HEAD_QFT_HEAD) {
+            part.kind = PHY_VALUE_TENSOR_HEAD;
+            part.as.tensor_head = phy_qft_component_view_head(
+                view.as.qft_components, quantity);
+        } else if (head == EVAL_HEAD_QFT_TENSOR) {
+            status = phy_qft_component_view_materialize(
+                view.as.qft_components, quantity);
+            if (status != PHY_OK) {
+                return status;
+            }
+            part.kind = PHY_VALUE_COMPONENT_TENSOR;
+            part.as.component_tensor = phy_qft_component_view_tensor(
+                view.as.qft_components, quantity);
+        } else {
+            return PHY_ERR_UNSUPPORTED;
+        }
+    }
+    if (eval_value_pointer(&part) == NULL) {
+        return PHY_ERR_NOT_INITIALIZED;
+    }
+    return publish_borrowed(env, part, &view, out_value);
+}
+
+/* ------------------------------------------------ exact linear frontend */
+
+static phy_status publish_linear(
+    phy_env *env, phy_value_kind kind, phy_matrix *matrix,
+    phy_value *out_value)
+{
+    if (kind != PHY_VALUE_MATRIX && kind != PHY_VALUE_VECTOR) {
+        phy_matrix_destroy(matrix);
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    return publish(env, kind, matrix, NULL, NULL, out_value);
+}
+
+static phy_status eval_vector_constructor(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 1u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_ir_ref raw[EVAL_MAX_LIST];
+    size_t length = 0u;
+    phy_status status = list_refs(
+        env, arg_ref(env, expr, 0u), raw, EVAL_MAX_LIST, &length);
+    if (status != PHY_OK || length == 0u) {
+        return status != PHY_OK ? status : PHY_ERR_PARSE;
+    }
+    const size_t bytes = length * sizeof(phy_ir_ref);
+    phy_ir_ref *entries = phy_alloc(bytes);
+    if (entries == NULL) {
+        return PHY_ERR_OUT_OF_MEMORY;
+    }
+    for (size_t index = 0u; status == PHY_OK && index < length; ++index) {
+        phy_value value;
+        status = eval_node(env, raw[index], &value);
+        if (status == PHY_OK && value.kind != PHY_VALUE_SCALAR) {
+            status = PHY_ERR_TYPE;
+        }
+        if (status == PHY_OK) {
+            entries[index] = value.as.scalar;
+        }
+    }
+    phy_vector *vector = NULL;
+    if (status == PHY_OK) {
+        status = phy_vector_create(
+            env->cas, length, entries, NULL, &vector);
+    }
+    phy_free(entries, bytes);
+    return status == PHY_OK
+               ? publish_linear(
+                     env, PHY_VALUE_VECTOR, vector, out_value)
+               : status;
+}
+
+static phy_status eval_matrix_constructor(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 1u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_ir_ref rows[EVAL_MAX_LIST];
+    size_t row_count = 0u;
+    phy_status status = list_refs(
+        env, arg_ref(env, expr, 0u), rows, EVAL_MAX_LIST, &row_count);
+    if (status != PHY_OK || row_count == 0u) {
+        return status != PHY_OK ? status : PHY_ERR_PARSE;
+    }
+    size_t column_count = 0u;
+    for (size_t row = 0u; status == PHY_OK && row < row_count; ++row) {
+        const size_t count =
+            phy_ir_child_count(env->ir, rows[row]);
+        if (phy_ir_kind_of(env->ir, rows[row]) != PHY_IR_FUNCTION ||
+            phy_ir_head(env->ir, rows[row]) != env->list_head ||
+            count == 0u || count > EVAL_MAX_LIST) {
+            status = PHY_ERR_PARSE;
+        } else if (row == 0u) {
+            column_count = count;
+        } else if (count != column_count) {
+            status = PHY_ERR_TYPE;
+        }
+    }
+    if (status != PHY_OK ||
+        row_count > SIZE_MAX / column_count) {
+        return status != PHY_OK ? status : PHY_ERR_TERM_LIMIT;
+    }
+    const size_t entry_count = row_count * column_count;
+    const size_t bytes = entry_count * sizeof(phy_ir_ref);
+    phy_ir_ref *entries = phy_alloc(bytes);
+    if (entries == NULL) {
+        return PHY_ERR_OUT_OF_MEMORY;
+    }
+    for (size_t row = 0u; status == PHY_OK && row < row_count; ++row) {
+        for (size_t column = 0u;
+             status == PHY_OK && column < column_count; ++column) {
+            phy_value value;
+            status = eval_node(
+                env, phy_ir_child(env->ir, rows[row], column), &value);
+            if (status == PHY_OK &&
+                value.kind != PHY_VALUE_SCALAR) {
+                status = PHY_ERR_TYPE;
+            }
+            if (status == PHY_OK) {
+                entries[row * column_count + column] =
+                    value.as.scalar;
+            }
+        }
+    }
+    phy_matrix *matrix = NULL;
+    if (status == PHY_OK) {
+        status = phy_matrix_create(
+            env->cas, row_count, column_count, entries, NULL,
+            &matrix);
+    }
+    phy_free(entries, bytes);
+    return status == PHY_OK
+               ? publish_linear(
+                     env, PHY_VALUE_MATRIX, matrix, out_value)
+               : status;
+}
+
+static phy_status eval_dot(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 2u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value left = {0};
+    phy_value right = {0};
+    phy_status status = arg_value(env, expr, 0u, &left);
+    if (status == PHY_OK) {
+        status = arg_value(env, expr, 1u, &right);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (left.kind == PHY_VALUE_VECTOR &&
+        right.kind == PHY_VALUE_VECTOR) {
+        phy_ir_ref result = PHY_IR_NULL;
+        status = phy_vector_dot(
+            left.as.vector, right.as.vector, &result);
+        if (status == PHY_OK) {
+            *out_value = scalar_value(result);
+        }
+        return status;
+    }
+    if (left.kind != PHY_VALUE_MATRIX ||
+        (right.kind != PHY_VALUE_MATRIX &&
+         right.kind != PHY_VALUE_VECTOR)) {
+        return PHY_ERR_TYPE;
+    }
+    phy_matrix *result = NULL;
+    status = phy_matrix_multiply(
+        left.as.matrix,
+        right.kind == PHY_VALUE_MATRIX
+            ? right.as.matrix
+            : (const phy_matrix *)right.as.vector,
+        &result);
+    return status == PHY_OK
+               ? publish_linear(
+                     env,
+                     right.kind == PHY_VALUE_VECTOR
+                         ? PHY_VALUE_VECTOR
+                         : PHY_VALUE_MATRIX,
+                     result, out_value)
+               : status;
+}
+
+static phy_status eval_linear_unary(
+    phy_env *env, phy_ir_ref expr, eval_head head,
+    phy_value *out_value)
+{
+    if (arg_count(env, expr) != 1u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value target;
+    phy_status status = arg_value(env, expr, 0u, &target);
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (target.kind != PHY_VALUE_MATRIX) {
+        return PHY_ERR_TYPE;
+    }
+    if (head == EVAL_HEAD_DETERMINANT) {
+        phy_ir_ref determinant = PHY_IR_NULL;
+        status = phy_matrix_determinant(
+            target.as.matrix, &determinant);
+        if (status == PHY_OK) {
+            *out_value = scalar_value(determinant);
+        }
+        return status;
+    }
+    if (head == EVAL_HEAD_MATRIX_RANK) {
+        size_t rank = 0u;
+        status = phy_matrix_rank(target.as.matrix, &rank);
+        return status == PHY_OK
+                   ? integer_value(env, (int64_t)rank, out_value)
+                   : status;
+    }
+    phy_matrix *result = NULL;
+    if (head == EVAL_HEAD_TRANSPOSE) {
+        status = phy_matrix_transpose(target.as.matrix, &result);
+    } else if (head == EVAL_HEAD_INVERSE) {
+        status = phy_matrix_inverse(target.as.matrix, &result);
+    } else if (head == EVAL_HEAD_ROW_REDUCE) {
+        size_t rank = 0u;
+        status = phy_matrix_rref(target.as.matrix, &result, &rank);
+    } else {
+        return PHY_ERR_UNSUPPORTED;
+    }
+    return status == PHY_OK
+               ? publish_linear(
+                     env, PHY_VALUE_MATRIX, result, out_value)
+               : status;
+}
+
+static phy_status eval_linear_solve(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 2u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value matrix = {0};
+    phy_value right = {0};
+    phy_status status = arg_typed(
+        env, expr, 0u, PHY_VALUE_MATRIX, &matrix);
+    if (status == PHY_OK) {
+        status = arg_value(env, expr, 1u, &right);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (right.kind != PHY_VALUE_MATRIX &&
+        right.kind != PHY_VALUE_VECTOR) {
+        return PHY_ERR_TYPE;
+    }
+    phy_matrix *solution = NULL;
+    status = phy_matrix_solve(
+        matrix.as.matrix,
+        right.kind == PHY_VALUE_MATRIX
+            ? right.as.matrix
+            : (const phy_matrix *)right.as.vector,
+        &solution);
+    return status == PHY_OK
+               ? publish_linear(
+                     env, right.kind, solution, out_value)
+               : status;
+}
+
+/* -------------------------------------------- maps / transitions / atlas */
+
+static phy_status read_scalar_list_exact(
+    phy_env *env, phy_ir_ref ref, size_t expected,
+    phy_ir_ref *out_values)
+{
+    if (expected > EVAL_MAX_LIST) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    phy_ir_ref raw[EVAL_MAX_LIST];
+    size_t count = 0u;
+    phy_status status =
+        list_refs(env, ref, raw, EVAL_MAX_LIST, &count);
+    if (status != PHY_OK || count != expected) {
+        return status != PHY_OK ? status : PHY_ERR_TYPE;
+    }
+    for (size_t index = 0u;
+         status == PHY_OK && index < count; ++index) {
+        phy_value value;
+        status = eval_node(env, raw[index], &value);
+        if (status == PHY_OK &&
+            value.kind != PHY_VALUE_SCALAR) {
+            status = PHY_ERR_TYPE;
+        }
+        if (status == PHY_OK) {
+            out_values[index] = value.as.scalar;
+        }
+    }
+    return status;
+}
+
+static const phy_coordinate_map *map_from_value(
+    const phy_value *value)
+{
+    if (value->kind == PHY_VALUE_COORDINATE_MAP) {
+        return value->as.coordinate_map;
+    }
+    if (value->kind == PHY_VALUE_BASIS_TRANSITION) {
+        return phy_basis_transition_forward(
+            value->as.basis_transition);
+    }
+    return NULL;
+}
+
+static phy_status eval_coordinate_map(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 3u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value bases[2];
+    phy_status status = arg_typed(
+        env, expr, 0u, PHY_VALUE_COMPONENT_BASIS, &bases[0]);
+    if (status == PHY_OK) {
+        status = arg_typed(
+            env, expr, 1u, PHY_VALUE_COMPONENT_BASIS, &bases[1]);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    const size_t target_dimension =
+        phy_component_basis_dimension(
+            bases[1].as.component_basis);
+    phy_ir_ref components[EVAL_MAX_LIST];
+    status = read_scalar_list_exact(
+        env, arg_ref(env, expr, 2u), target_dimension, components);
+    phy_coordinate_map *map = NULL;
+    if (status == PHY_OK) {
+        status = phy_coordinate_map_create(
+            bases[0].as.component_basis,
+            bases[1].as.component_basis, components, NULL, &map);
+    }
+    return status == PHY_OK
+               ? publish_many(
+                     env, PHY_VALUE_COORDINATE_MAP, map,
+                     bases, 2u, out_value)
+               : status;
+}
+
+static phy_status eval_basis_transition(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 4u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value bases[2];
+    phy_status status = arg_typed(
+        env, expr, 0u, PHY_VALUE_COMPONENT_BASIS, &bases[0]);
+    if (status == PHY_OK) {
+        status = arg_typed(
+            env, expr, 1u, PHY_VALUE_COMPONENT_BASIS, &bases[1]);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    const size_t source_dimension =
+        phy_component_basis_dimension(
+            bases[0].as.component_basis);
+    const size_t target_dimension =
+        phy_component_basis_dimension(
+            bases[1].as.component_basis);
+    if (source_dimension != target_dimension) {
+        return PHY_ERR_TYPE;
+    }
+    phy_ir_ref forward[EVAL_MAX_LIST];
+    phy_ir_ref inverse[EVAL_MAX_LIST];
+    status = read_scalar_list_exact(
+        env, arg_ref(env, expr, 2u), target_dimension, forward);
+    if (status == PHY_OK) {
+        status = read_scalar_list_exact(
+            env, arg_ref(env, expr, 3u), source_dimension, inverse);
+    }
+    phy_basis_transition *transition = NULL;
+    if (status == PHY_OK) {
+        status = phy_basis_transition_create(
+            bases[0].as.component_basis,
+            bases[1].as.component_basis, forward, inverse, NULL,
+            &transition);
+    }
+    return status == PHY_OK
+               ? publish_many(
+                     env, PHY_VALUE_BASIS_TRANSITION, transition,
+                     bases, 2u, out_value)
+               : status;
+}
+
+static phy_status eval_jacobian(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 1u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value owner;
+    phy_status status = arg_value(env, expr, 0u, &owner);
+    const phy_coordinate_map *map =
+        status == PHY_OK ? map_from_value(&owner) : NULL;
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (map == NULL) {
+        return PHY_ERR_TYPE;
+    }
+    phy_matrix *jacobian = NULL;
+    status = phy_matrix_clone(
+        phy_coordinate_map_jacobian(map), &jacobian);
+    return status == PHY_OK
+               ? publish_linear(
+                     env, PHY_VALUE_MATRIX, jacobian, out_value)
+               : status;
+}
+
+static phy_status eval_map_scalar(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 2u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value owner;
+    phy_status status = arg_value(env, expr, 0u, &owner);
+    const phy_coordinate_map *map =
+        status == PHY_OK ? map_from_value(&owner) : NULL;
+    phy_ir_ref scalar = PHY_IR_NULL;
+    if (status == PHY_OK && map == NULL) {
+        status = PHY_ERR_TYPE;
+    }
+    if (status == PHY_OK) {
+        status = arg_scalar(env, expr, 1u, &scalar);
+    }
+    phy_ir_ref result = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = phy_coordinate_map_pullback_scalar(
+            map, scalar, &result);
+    }
+    if (status == PHY_OK) {
+        *out_value = scalar_value(result);
+    }
+    return status;
+}
+
+static phy_status eval_map_vector(
+    phy_env *env, phy_ir_ref expr, bool pushforward,
+    phy_value *out_value)
+{
+    if (arg_count(env, expr) != 2u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value owner = {0};
+    phy_value vector = {0};
+    phy_status status = arg_value(env, expr, 0u, &owner);
+    const phy_coordinate_map *map =
+        status == PHY_OK ? map_from_value(&owner) : NULL;
+    if (status == PHY_OK && map == NULL) {
+        status = PHY_ERR_TYPE;
+    }
+    if (status == PHY_OK) {
+        status = arg_typed(
+            env, expr, 1u, PHY_VALUE_VECTOR, &vector);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    const size_t input_dimension =
+        pushforward
+            ? phy_component_basis_dimension(
+                  phy_coordinate_map_source(map))
+            : phy_component_basis_dimension(
+                  phy_coordinate_map_target(map));
+    const size_t output_dimension =
+        pushforward
+            ? phy_component_basis_dimension(
+                  phy_coordinate_map_target(map))
+            : phy_component_basis_dimension(
+                  phy_coordinate_map_source(map));
+    if (phy_vector_length(vector.as.vector) != input_dimension ||
+        input_dimension > EVAL_MAX_LIST ||
+        output_dimension > EVAL_MAX_LIST) {
+        return input_dimension > EVAL_MAX_LIST ||
+                       output_dimension > EVAL_MAX_LIST
+                   ? PHY_ERR_TERM_LIMIT
+                   : PHY_ERR_TYPE;
+    }
+    phy_ir_ref input[EVAL_MAX_LIST];
+    phy_ir_ref output[EVAL_MAX_LIST];
+    for (size_t axis = 0u;
+         status == PHY_OK && axis < input_dimension; ++axis) {
+        status = phy_vector_get(
+            vector.as.vector, axis, &input[axis]);
+    }
+    if (status == PHY_OK) {
+        status = pushforward
+                     ? phy_coordinate_map_pushforward_vector_along(
+                           map, input, output)
+                     : phy_coordinate_map_pullback_covector(
+                           map, input, output);
+    }
+    phy_vector *result = NULL;
+    if (status == PHY_OK) {
+        status = phy_vector_create(
+            env->cas, output_dimension, output, NULL, &result);
+    }
+    return status == PHY_OK
+               ? publish_linear(
+                     env, PHY_VALUE_VECTOR, result, out_value)
+               : status;
+}
+
+static phy_status component_count_for(
+    size_t dimension, size_t rank, size_t *out_count)
+{
+    size_t count = 1u;
+    for (size_t slot = 0u; slot < rank; ++slot) {
+        if (dimension != 0u && count > 4096u / dimension) {
+            return PHY_ERR_TERM_LIMIT;
+        }
+        count *= dimension;
+    }
+    if (count > 4096u) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    *out_count = count;
+    return PHY_OK;
+}
+
+static void unflatten_component(
+    size_t flat, size_t dimension, size_t rank,
+    uint32_t *out_indices)
+{
+    for (size_t slot = rank; slot-- > 0u;) {
+        out_indices[slot] = (uint32_t)(flat % dimension);
+        flat /= dimension;
+    }
+}
+
+static phy_status eval_component_pullback(
+    phy_env *env, const phy_value *owner,
+    const phy_component_basis *source,
+    const phy_component_basis *target,
+    const phy_value *tensor_value, phy_value *out_value)
+{
+    phy_component_tensor *tensor =
+        (phy_component_tensor *)(uintptr_t)
+            tensor_value->as.component_tensor;
+    const size_t rank = phy_component_tensor_rank(tensor);
+    const size_t dimension =
+        phy_component_basis_dimension(source);
+    if (rank > EVAL_ABSTRACT_MAX_SLOTS ||
+        dimension != phy_component_basis_dimension(target)) {
+        return rank > EVAL_ABSTRACT_MAX_SLOTS
+                   ? PHY_ERR_TERM_LIMIT
+                   : PHY_ERR_TYPE;
+    }
+    phy_component_basis *bases[EVAL_ABSTRACT_MAX_SLOTS];
+    phy_ir_variance valence[EVAL_ABSTRACT_MAX_SLOTS];
+    for (size_t slot = 0u; slot < rank; ++slot) {
+        if (phy_component_tensor_basis(tensor, slot) != target) {
+            return PHY_ERR_TYPE;
+        }
+        bases[slot] = (phy_component_basis *)(uintptr_t)source;
+        valence[slot] = phy_component_tensor_valence(tensor, slot);
+    }
+    size_t count = 0u;
+    phy_status status =
+        component_count_for(dimension, rank, &count);
+    if (status != PHY_OK) {
+        return status;
+    }
+    const size_t bytes = count * sizeof(phy_ir_ref);
+    phy_ir_ref *target_values = phy_alloc(bytes);
+    phy_ir_ref *source_values = phy_alloc(bytes);
+    if (target_values == NULL || source_values == NULL) {
+        if (source_values != NULL) {
+            phy_free(source_values, bytes);
+        }
+        if (target_values != NULL) {
+            phy_free(target_values, bytes);
+        }
+        return PHY_ERR_OUT_OF_MEMORY;
+    }
+    uint32_t indices[EVAL_ABSTRACT_MAX_SLOTS];
+    for (size_t flat = 0u; status == PHY_OK && flat < count; ++flat) {
+        unflatten_component(flat, dimension, rank, indices);
+        status = phy_component_tensor_get(
+            tensor, rank == 0u ? NULL : indices,
+            &target_values[flat]);
+    }
+    if (status == PHY_OK &&
+        owner->kind == PHY_VALUE_BASIS_TRANSITION) {
+        status = phy_basis_transition_pullback_tensor(
+            owner->as.basis_transition, rank,
+            rank == 0u ? NULL : valence,
+            target_values, source_values);
+    } else if (status == PHY_OK &&
+               owner->kind == PHY_VALUE_ATLAS) {
+        status = phy_atlas_pullback_tensor(
+            owner->as.atlas, source, target, rank,
+            rank == 0u ? NULL : valence,
+            target_values, source_values);
+    } else if (status == PHY_OK) {
+        status = PHY_ERR_TYPE;
+    }
+    phy_component_tensor *result = NULL;
+    if (status == PHY_OK) {
+        status = phy_component_tensor_create(
+            phy_component_tensor_head(tensor),
+            rank == 0u ? NULL : bases,
+            rank == 0u ? NULL : valence, NULL, &result);
+    }
+    for (size_t flat = 0u; status == PHY_OK && flat < count; ++flat) {
+        unflatten_component(flat, dimension, rank, indices);
+        status = phy_component_tensor_set(
+            result, rank == 0u ? NULL : indices,
+            source_values[flat]);
+    }
+    phy_free(source_values, bytes);
+    phy_free(target_values, bytes);
+    if (status != PHY_OK) {
+        phy_component_tensor_destroy(result);
+        return status;
+    }
+    const phy_value dependencies[2] = {*owner, *tensor_value};
+    return publish_many(
+        env, PHY_VALUE_COMPONENT_TENSOR, result,
+        dependencies, 2u, out_value);
+}
+
+static phy_status eval_transition_pullback(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 2u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value transition;
+    phy_value tensor;
+    phy_status status = arg_typed(
+        env, expr, 0u, PHY_VALUE_BASIS_TRANSITION,
+        &transition);
+    if (status == PHY_OK) {
+        status = arg_typed(
+            env, expr, 1u, PHY_VALUE_COMPONENT_TENSOR, &tensor);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    const phy_coordinate_map *forward =
+        phy_basis_transition_forward(
+            transition.as.basis_transition);
+    return eval_component_pullback(
+        env, &transition,
+        phy_coordinate_map_source(forward),
+        phy_coordinate_map_target(forward),
+        &tensor, out_value);
+}
+
+static phy_status eval_atlas(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 1u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_ir_ref raw[EVAL_MAX_LIST];
+    size_t count = 0u;
+    phy_status status = list_refs(
+        env, arg_ref(env, expr, 0u), raw, EVAL_MAX_LIST, &count);
+    if (status != PHY_OK || count == 0u) {
+        return status != PHY_OK ? status : PHY_ERR_PARSE;
+    }
+    phy_value charts[EVAL_MAX_LIST];
+    for (size_t index = 0u; status == PHY_OK && index < count; ++index) {
+        status = eval_node(env, raw[index], &charts[index]);
+        if (status == PHY_OK &&
+            charts[index].kind != PHY_VALUE_COMPONENT_BASIS) {
+            status = PHY_ERR_TYPE;
+        }
+    }
+    phy_atlas *atlas = NULL;
+    if (status == PHY_OK) {
+        status = phy_atlas_create(
+            charts[0].as.component_basis, NULL, &atlas);
+    }
+    for (size_t index = 1u;
+         status == PHY_OK && index < count; ++index) {
+        status = phy_atlas_add_chart(
+            atlas, charts[index].as.component_basis);
+    }
+    if (status != PHY_OK) {
+        phy_atlas_destroy(atlas);
+        return status;
+    }
+    return publish_many(
+        env, PHY_VALUE_ATLAS, atlas, charts, count, out_value);
+}
+
+static phy_status eval_atlas_add_transition(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 5u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value atlas = {0};
+    phy_value source = {0};
+    phy_value target = {0};
+    phy_status status =
+        arg_typed(env, expr, 0u, PHY_VALUE_ATLAS, &atlas);
+    if (status == PHY_OK) {
+        status = arg_typed(
+            env, expr, 1u, PHY_VALUE_COMPONENT_BASIS, &source);
+    }
+    if (status == PHY_OK) {
+        status = arg_typed(
+            env, expr, 2u, PHY_VALUE_COMPONENT_BASIS, &target);
+    }
+    if (status != PHY_OK) {
+        return status;
+    }
+    const size_t dimension =
+        phy_component_basis_dimension(source.as.component_basis);
+    if (dimension != phy_component_basis_dimension(
+                         target.as.component_basis)) {
+        return PHY_ERR_TYPE;
+    }
+    phy_ir_ref forward[EVAL_MAX_LIST];
+    phy_ir_ref inverse[EVAL_MAX_LIST];
+    status = read_scalar_list_exact(
+        env, arg_ref(env, expr, 3u), dimension, forward);
+    if (status == PHY_OK) {
+        status = read_scalar_list_exact(
+            env, arg_ref(env, expr, 4u), dimension, inverse);
+    }
+    if (status == PHY_OK) {
+        status = phy_atlas_add_transition(
+            atlas.as.atlas, source.as.component_basis,
+            target.as.component_basis, forward, inverse, NULL);
+    }
+    if (status == PHY_OK) {
+        *out_value = atlas;
+    }
+    return status;
+}
+
+static phy_status eval_atlas_verify(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 1u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value atlas;
+    phy_status status =
+        arg_typed(env, expr, 0u, PHY_VALUE_ATLAS, &atlas);
+    size_t checks = 0u;
+    if (status == PHY_OK) {
+        status = phy_atlas_verify_cocycles(
+            atlas.as.atlas, &checks);
+    }
+    return status == PHY_OK
+               ? integer_value(env, (int64_t)checks, out_value)
+               : status;
+}
+
+static phy_status eval_atlas_pullback(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 4u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value atlas = {0};
+    phy_value source = {0};
+    phy_value target = {0};
+    phy_value tensor = {0};
+    phy_status status =
+        arg_typed(env, expr, 0u, PHY_VALUE_ATLAS, &atlas);
+    if (status == PHY_OK) {
+        status = arg_typed(
+            env, expr, 1u, PHY_VALUE_COMPONENT_BASIS, &source);
+    }
+    if (status == PHY_OK) {
+        status = arg_typed(
+            env, expr, 2u, PHY_VALUE_COMPONENT_BASIS, &target);
+    }
+    if (status == PHY_OK) {
+        status = arg_typed(
+            env, expr, 3u, PHY_VALUE_COMPONENT_TENSOR, &tensor);
+    }
+    return status == PHY_OK
+               ? eval_component_pullback(
+                     env, &atlas, source.as.component_basis,
+                     target.as.component_basis, &tensor, out_value)
+               : status;
 }
 
 /* ------------------------------------------------------------ geometry */
@@ -2317,11 +4497,108 @@ static phy_status eval_component(phy_env *env, phy_ir_ref expr,
         return status;
     }
     const size_t supplied = count - 1u;
+
+    if (target.kind == PHY_VALUE_COMPONENT_TENSOR) {
+        phy_component_tensor *tensor =
+            (phy_component_tensor *)(uintptr_t)
+                target.as.component_tensor;
+        const size_t rank = phy_component_tensor_rank(tensor);
+        if (supplied != rank || rank > EVAL_ABSTRACT_MAX_SLOTS) {
+            return PHY_ERR_PARSE;
+        }
+        uint32_t component_indices[EVAL_ABSTRACT_MAX_SLOTS];
+        for (size_t slot = 0u; slot < rank; ++slot) {
+            phy_ir_ref ref = PHY_IR_NULL;
+            status = arg_scalar(env, expr, slot + 1u, &ref);
+            int64_t integer = 0;
+            if (status != PHY_OK) {
+                return status;
+            }
+            if (!phy_ir_integer_value(env->ir, ref, &integer)) {
+                return PHY_ERR_TYPE;
+            }
+            const size_t dimension =
+                phy_component_basis_dimension(
+                    phy_component_tensor_basis(tensor, slot));
+            if (integer < 0 ||
+                (uint64_t)integer >= (uint64_t)dimension) {
+                return PHY_ERR_DOMAIN;
+            }
+            component_indices[slot] = (uint32_t)integer;
+        }
+        phy_ir_ref value = PHY_IR_NULL;
+        status = phy_component_tensor_get(
+            tensor, rank == 0u ? NULL : component_indices, &value);
+        if (status == PHY_OK) {
+            *out_value = scalar_value(value);
+        }
+        return status;
+    }
+
     unsigned indices[PHY_TENSOR_MAX_RANK + 1u];
     if (supplied > PHY_TENSOR_MAX_RANK + 1u) {
         return PHY_ERR_PARSE;
     }
-
+    if (target.kind == PHY_VALUE_VECTOR) {
+        if (supplied != 1u) {
+            return PHY_ERR_PARSE;
+        }
+        status = arg_unsigned(
+            env, expr, 1u,
+            (unsigned)phy_vector_length(target.as.vector),
+            &indices[0]);
+        phy_ir_ref value = PHY_IR_NULL;
+        if (status == PHY_OK) {
+            status = phy_vector_get(
+                target.as.vector, indices[0], &value);
+        }
+        if (status == PHY_OK) {
+            *out_value = scalar_value(value);
+        }
+        return status;
+    }
+    if (target.kind == PHY_VALUE_MATRIX) {
+        if (supplied != 2u) {
+            return PHY_ERR_PARSE;
+        }
+        status = arg_unsigned(
+            env, expr, 1u,
+            (unsigned)phy_matrix_rows(target.as.matrix),
+            &indices[0]);
+        if (status == PHY_OK) {
+            status = arg_unsigned(
+                env, expr, 2u,
+                (unsigned)phy_matrix_columns(target.as.matrix),
+                &indices[1]);
+        }
+        phy_ir_ref value = PHY_IR_NULL;
+        if (status == PHY_OK) {
+            status = phy_matrix_get(
+                target.as.matrix, indices[0], indices[1], &value);
+        }
+        if (status == PHY_OK) {
+            *out_value = scalar_value(value);
+        }
+        return status;
+    }
+    if (target.kind == PHY_VALUE_COORDINATE_MAP ||
+        target.kind == PHY_VALUE_BASIS_TRANSITION) {
+        if (supplied != 1u) {
+            return PHY_ERR_PARSE;
+        }
+        const phy_coordinate_map *map =
+            map_from_value(&target);
+        const size_t dimension =
+            phy_component_basis_dimension(
+                phy_coordinate_map_target(map));
+        status = arg_unsigned(
+            env, expr, 1u, (unsigned)dimension, &indices[0]);
+        if (status == PHY_OK) {
+            *out_value = scalar_value(
+                phy_coordinate_map_component(map, indices[0]));
+        }
+        return status;
+    }
     if (target.kind == PHY_VALUE_LIE_ELEMENT) {
         if (supplied != 1u) {
             return PHY_ERR_PARSE;
@@ -2428,11 +4705,109 @@ static phy_status eval_measure(phy_env *env, phy_ir_ref expr, eval_head head,
         return PHY_ERR_TYPE;
     }
     if (head == EVAL_HEAD_RANK) {
-        if (target.kind != PHY_VALUE_TENSOR) {
+        if (target.kind == PHY_VALUE_TENSOR) {
+            return integer_value(
+                env, (int64_t)phy_tensor_rank(target.as.tensor),
+                out_value);
+        }
+        if (target.kind == PHY_VALUE_TENSOR_HEAD) {
+            return integer_value(
+                env,
+                (int64_t)phy_tensor_head_slot_count(
+                    target.as.tensor_head),
+                out_value);
+        }
+        if (target.kind == PHY_VALUE_ABSTRACT_TENSOR) {
+            return integer_value(
+                env,
+                (int64_t)phy_tensor_monomial_free_count(
+                    target.as.abstract_tensor),
+                out_value);
+        }
+        if (target.kind == PHY_VALUE_ABSTRACT_EXPRESSION) {
+            const phy_tensor_expression *expression =
+                target.as.abstract_expression;
+            const phy_tensor_monomial *first =
+                phy_tensor_expression_term(expression, 0u);
+            return integer_value(
+                env,
+                first != NULL
+                    ? (int64_t)phy_tensor_monomial_free_count(first)
+                    : 0,
+                out_value);
+        }
+        if (target.kind == PHY_VALUE_COMPONENT_TENSOR) {
+            return integer_value(
+                env,
+                (int64_t)phy_component_tensor_rank(
+                    target.as.component_tensor),
+                out_value);
+        }
+        if (target.kind == PHY_VALUE_VECTOR) {
+            return integer_value(env, 1, out_value);
+        }
+        if (target.kind == PHY_VALUE_MATRIX) {
+            return integer_value(env, 2, out_value);
+        }
+        return PHY_ERR_TYPE;
+    }
+
+    if (head == EVAL_HEAD_DIMENSIONS) {
+        size_t rank = 0u;
+        size_t dimensions[EVAL_ABSTRACT_MAX_SLOTS];
+        if (target.kind == PHY_VALUE_COMPONENT_BASIS) {
+            rank = 1u;
+            dimensions[0] = phy_component_basis_dimension(
+                target.as.component_basis);
+        } else if (target.kind == PHY_VALUE_COMPONENT_TENSOR) {
+            rank = phy_component_tensor_rank(
+                target.as.component_tensor);
+            if (rank > EVAL_ABSTRACT_MAX_SLOTS) {
+                return PHY_ERR_TERM_LIMIT;
+            }
+            for (size_t slot = 0u; slot < rank; ++slot) {
+                dimensions[slot] = phy_component_basis_dimension(
+                    phy_component_tensor_basis(
+                        target.as.component_tensor, slot));
+            }
+        } else if (target.kind == PHY_VALUE_TENSOR) {
+            rank = (size_t)phy_tensor_rank(target.as.tensor);
+            const size_t dimension =
+                (size_t)phy_tensor_dimension(target.as.tensor);
+            for (size_t slot = 0u; slot < rank; ++slot) {
+                dimensions[slot] = dimension;
+            }
+        } else if (target.kind == PHY_VALUE_VECTOR) {
+            rank = 1u;
+            dimensions[0] =
+                phy_vector_length(target.as.vector);
+        } else if (target.kind == PHY_VALUE_MATRIX) {
+            rank = 2u;
+            dimensions[0] =
+                phy_matrix_rows(target.as.matrix);
+            dimensions[1] =
+                phy_matrix_columns(target.as.matrix);
+        } else {
             return PHY_ERR_TYPE;
         }
-        return integer_value(env, (int64_t)phy_tensor_rank(target.as.tensor),
-                             out_value);
+        phy_ir_ref refs[EVAL_ABSTRACT_MAX_SLOTS];
+        for (size_t slot = 0u; slot < rank; ++slot) {
+            if (dimensions[slot] > (size_t)INT64_MAX) {
+                return PHY_ERR_TERM_LIMIT;
+            }
+            refs[slot] =
+                phy_ir_integer(env->ir, (int64_t)dimensions[slot]);
+            if (refs[slot] == PHY_IR_NULL) {
+                return phy_ir_last_error(env->ir);
+            }
+        }
+        const phy_ir_ref list =
+            phy_ir_function(env->ir, env->list_head, refs, rank);
+        if (list == PHY_IR_NULL) {
+            return phy_ir_last_error(env->ir);
+        }
+        *out_value = scalar_value(list);
+        return PHY_OK;
     }
 
     /* Dimension: of the underlying space where there is one, of the algebra
@@ -2448,6 +4823,20 @@ static phy_status eval_measure(phy_env *env, phy_ir_ref expr, eval_head head,
     case PHY_VALUE_TENSOR:
         return integer_value(
             env, (int64_t)phy_tensor_dimension(target.as.tensor), out_value);
+    case PHY_VALUE_INDEX_SPACE:
+        *out_value = scalar_value(
+            phy_index_space_dimension(target.as.index_space));
+        return PHY_OK;
+    case PHY_VALUE_COMPONENT_BASIS:
+        return integer_value(
+            env,
+            (int64_t)phy_component_basis_dimension(
+                target.as.component_basis),
+            out_value);
+    case PHY_VALUE_VECTOR:
+        return integer_value(
+            env, (int64_t)phy_vector_length(target.as.vector),
+            out_value);
     case PHY_VALUE_LIE_FORM:
         return integer_value(
             env,
@@ -2534,6 +4923,80 @@ static phy_status element_is_zero(phy_env *env, const phy_lie_element *element,
     return PHY_OK;
 }
 
+static phy_status linear_is_zero(
+    phy_env *env, const phy_matrix *matrix,
+    phy_cas_decision *out_decision)
+{
+    phy_cas_decision combined = PHY_CAS_ZERO;
+    const size_t rows = phy_matrix_rows(matrix);
+    const size_t columns = phy_matrix_columns(matrix);
+    for (size_t row = 0u; row < rows; ++row) {
+        for (size_t column = 0u; column < columns; ++column) {
+            phy_ir_ref value = PHY_IR_NULL;
+            phy_status status =
+                phy_matrix_get(matrix, row, column, &value);
+            phy_cas_decision decision = PHY_CAS_UNKNOWN;
+            if (status == PHY_OK) {
+                status = phy_cas_is_zero(
+                    env->cas, value, &decision);
+            }
+            if (status != PHY_OK) {
+                return status;
+            }
+            if (decision == PHY_CAS_NONZERO) {
+                *out_decision = PHY_CAS_NONZERO;
+                return PHY_OK;
+            }
+            if (decision == PHY_CAS_UNKNOWN) {
+                combined = PHY_CAS_UNKNOWN;
+            }
+        }
+    }
+    *out_decision = combined;
+    return PHY_OK;
+}
+
+static phy_status linear_equivalent(
+    phy_env *env, const phy_matrix *left, const phy_matrix *right,
+    phy_cas_decision *out_decision)
+{
+    if (phy_matrix_rows(left) != phy_matrix_rows(right) ||
+        phy_matrix_columns(left) != phy_matrix_columns(right)) {
+        return PHY_ERR_TYPE;
+    }
+    phy_cas_decision combined = PHY_CAS_ZERO;
+    for (size_t row = 0u; row < phy_matrix_rows(left); ++row) {
+        for (size_t column = 0u;
+             column < phy_matrix_columns(left); ++column) {
+            phy_ir_ref left_value = PHY_IR_NULL;
+            phy_ir_ref right_value = PHY_IR_NULL;
+            phy_status status = phy_matrix_get(
+                left, row, column, &left_value);
+            if (status == PHY_OK) {
+                status = phy_matrix_get(
+                    right, row, column, &right_value);
+            }
+            phy_cas_decision decision = PHY_CAS_UNKNOWN;
+            if (status == PHY_OK) {
+                status = phy_cas_equivalent(
+                    env->cas, left_value, right_value, &decision);
+            }
+            if (status != PHY_OK) {
+                return status;
+            }
+            if (decision == PHY_CAS_NONZERO) {
+                *out_decision = PHY_CAS_NONZERO;
+                return PHY_OK;
+            }
+            if (decision == PHY_CAS_UNKNOWN) {
+                combined = PHY_CAS_UNKNOWN;
+            }
+        }
+    }
+    *out_decision = combined;
+    return PHY_OK;
+}
+
 static phy_status eval_zero_query(phy_env *env, phy_ir_ref expr,
                                   phy_value *out_value)
 {
@@ -2562,6 +5025,14 @@ static phy_status eval_zero_query(phy_env *env, phy_ir_ref expr,
         break;
     case PHY_VALUE_LIE_ELEMENT:
         status = element_is_zero(env, target.as.element, &decision);
+        break;
+    case PHY_VALUE_VECTOR:
+        status = linear_is_zero(
+            env, (const phy_matrix *)target.as.vector, &decision);
+        break;
+    case PHY_VALUE_MATRIX:
+        status = linear_is_zero(
+            env, target.as.matrix, &decision);
         break;
     default:
         return PHY_ERR_TYPE;
@@ -2602,6 +5073,15 @@ static phy_status eval_equivalent_query(phy_env *env, phy_ir_ref expr,
     case PHY_VALUE_LIE_FORM:
         status = phy_lie_form_equivalent(env->cas, left.as.lie_form,
                                          right.as.lie_form, &decision);
+        break;
+    case PHY_VALUE_VECTOR:
+        status = linear_equivalent(
+            env, (const phy_matrix *)left.as.vector,
+            (const phy_matrix *)right.as.vector, &decision);
+        break;
+    case PHY_VALUE_MATRIX:
+        status = linear_equivalent(
+            env, left.as.matrix, right.as.matrix, &decision);
         break;
     default:
         return PHY_ERR_TYPE;
@@ -2674,6 +5154,83 @@ static phy_status eval_operator(phy_env *env, phy_ir_ref expr,
      */
     *out_handled = which != EVAL_HEAD_COUNT;
     switch (which) {
+    case EVAL_HEAD_INDEX_SPACE:
+        return eval_index_space(env, expr, out_value);
+    case EVAL_HEAD_TENSOR_HEAD:
+        return eval_tensor_head(env, expr, out_value);
+    case EVAL_HEAD_TENSOR_CANONICALIZE:
+        return eval_tensor_canonicalize(env, expr, out_value);
+    case EVAL_HEAD_YOUNG_PROJECT:
+        return eval_young_project(env, expr, out_value);
+    case EVAL_HEAD_YOUNG_DECLARE:
+        return eval_young_declare(env, expr, out_value);
+    case EVAL_HEAD_YOUNG_REDUCE:
+        return eval_young_reduce(env, expr, out_value);
+    case EVAL_HEAD_GARNIR_RELATION:
+        return eval_garnir_relation(env, expr, out_value);
+    case EVAL_HEAD_YOUNG_DIMENSION:
+        return eval_young_dimension(env, expr, out_value);
+    case EVAL_HEAD_COMPONENT_BASIS:
+        return eval_component_basis(env, expr, out_value);
+    case EVAL_HEAD_TENSOR_COMPONENTS:
+        return eval_tensor_components(env, expr, out_value);
+    case EVAL_HEAD_COMPONENT_LIFT:
+        return eval_component_lift(env, expr, out_value);
+    case EVAL_HEAD_COMPONENT_VALUE:
+        return eval_component_value(env, expr, out_value);
+    case EVAL_HEAD_GR_COMPONENTS:
+        return eval_gr_components(env, expr, out_value);
+    case EVAL_HEAD_GR_SPACE:
+    case EVAL_HEAD_GR_BASIS:
+    case EVAL_HEAD_GR_HEAD:
+    case EVAL_HEAD_GR_TENSOR:
+        return eval_gr_part(env, expr, which, out_value);
+    case EVAL_HEAD_QFT_SYSTEM:
+        return eval_qft_system(env, expr, out_value);
+    case EVAL_HEAD_QFT_SPACE:
+    case EVAL_HEAD_QFT_BASIS:
+    case EVAL_HEAD_QFT_HEAD:
+    case EVAL_HEAD_QFT_TENSOR:
+        return eval_qft_part(env, expr, which, out_value);
+
+    case EVAL_HEAD_VECTOR:
+        return eval_vector_constructor(env, expr, out_value);
+    case EVAL_HEAD_MATRIX:
+        return eval_matrix_constructor(env, expr, out_value);
+    case EVAL_HEAD_DOT:
+        return eval_dot(env, expr, out_value);
+    case EVAL_HEAD_TRANSPOSE:
+    case EVAL_HEAD_DETERMINANT:
+    case EVAL_HEAD_INVERSE:
+    case EVAL_HEAD_ROW_REDUCE:
+    case EVAL_HEAD_MATRIX_RANK:
+        return eval_linear_unary(env, expr, which, out_value);
+    case EVAL_HEAD_LINEAR_SOLVE:
+        return eval_linear_solve(env, expr, out_value);
+
+    case EVAL_HEAD_COORDINATE_MAP:
+        return eval_coordinate_map(env, expr, out_value);
+    case EVAL_HEAD_BASIS_TRANSITION:
+        return eval_basis_transition(env, expr, out_value);
+    case EVAL_HEAD_JACOBIAN:
+        return eval_jacobian(env, expr, out_value);
+    case EVAL_HEAD_PULLBACK_SCALAR:
+        return eval_map_scalar(env, expr, out_value);
+    case EVAL_HEAD_PULLBACK_COVECTOR:
+        return eval_map_vector(env, expr, false, out_value);
+    case EVAL_HEAD_PUSHFORWARD_VECTOR:
+        return eval_map_vector(env, expr, true, out_value);
+    case EVAL_HEAD_TRANSITION_PULLBACK:
+        return eval_transition_pullback(env, expr, out_value);
+    case EVAL_HEAD_ATLAS:
+        return eval_atlas(env, expr, out_value);
+    case EVAL_HEAD_ATLAS_ADD_TRANSITION:
+        return eval_atlas_add_transition(env, expr, out_value);
+    case EVAL_HEAD_ATLAS_VERIFY:
+        return eval_atlas_verify(env, expr, out_value);
+    case EVAL_HEAD_ATLAS_PULLBACK:
+        return eval_atlas_pullback(env, expr, out_value);
+
     case EVAL_HEAD_MANIFOLD:
         return eval_manifold(env, expr, out_value);
     case EVAL_HEAD_DIFFERENTIAL_FORM:
@@ -2792,6 +5349,7 @@ static phy_status eval_operator(phy_env *env, phy_ir_ref expr,
         return eval_component(env, expr, out_value);
     case EVAL_HEAD_DEGREE:
     case EVAL_HEAD_DIMENSION:
+    case EVAL_HEAD_DIMENSIONS:
     case EVAL_HEAD_RANK:
         return eval_measure(env, expr, which, out_value);
     case EVAL_HEAD_ZERO_Q:
@@ -2823,7 +5381,14 @@ static phy_status eval_object_sum(phy_env *env, const phy_value *terms,
 {
     phy_value accumulator = terms[0];
     for (size_t i = 1u; i < count; ++i) {
-        if (terms[i].kind != accumulator.kind) {
+        const bool abstract_left =
+            accumulator.kind == PHY_VALUE_ABSTRACT_TENSOR ||
+            accumulator.kind == PHY_VALUE_ABSTRACT_EXPRESSION;
+        const bool abstract_right =
+            terms[i].kind == PHY_VALUE_ABSTRACT_TENSOR ||
+            terms[i].kind == PHY_VALUE_ABSTRACT_EXPRESSION;
+        if (terms[i].kind != accumulator.kind &&
+            !(abstract_left && abstract_right)) {
             return PHY_ERR_TYPE;
         }
         phy_status status = PHY_ERR_TYPE;
@@ -2852,6 +5417,59 @@ static phy_status eval_object_sum(phy_env *env, const phy_value *terms,
                 status = publish(env, PHY_VALUE_LIE_ELEMENT, sum, &accumulator,
                                  &terms[i], &next);
             }
+        } else if (accumulator.kind == PHY_VALUE_VECTOR ||
+                   accumulator.kind == PHY_VALUE_MATRIX) {
+            const phy_matrix *left =
+                accumulator.kind == PHY_VALUE_VECTOR
+                    ? (const phy_matrix *)accumulator.as.vector
+                    : accumulator.as.matrix;
+            const phy_matrix *right =
+                terms[i].kind == PHY_VALUE_VECTOR
+                    ? (const phy_matrix *)terms[i].as.vector
+                    : terms[i].as.matrix;
+            phy_matrix *sum = NULL;
+            status = phy_matrix_add(left, right, &sum);
+            if (status == PHY_OK) {
+                status = publish_linear(
+                    env, accumulator.kind, sum, &next);
+            }
+        } else if (abstract_left && abstract_right) {
+            status = PHY_OK;
+            const phy_tensor_expression *left = NULL;
+            const phy_tensor_expression *right = NULL;
+            phy_tensor_expression *owned_left = NULL;
+            phy_tensor_expression *owned_right = NULL;
+            if (accumulator.kind ==
+                PHY_VALUE_ABSTRACT_EXPRESSION) {
+                left = accumulator.as.abstract_expression;
+            } else {
+                status = phy_tensor_expression_from_monomial(
+                    accumulator.as.abstract_tensor, NULL,
+                    &owned_left);
+                left = owned_left;
+            }
+            if (status == PHY_OK &&
+                terms[i].kind ==
+                    PHY_VALUE_ABSTRACT_EXPRESSION) {
+                right = terms[i].as.abstract_expression;
+            } else if (status == PHY_OK) {
+                status = phy_tensor_expression_from_monomial(
+                    terms[i].as.abstract_tensor, NULL,
+                    &owned_right);
+                right = owned_right;
+            }
+            phy_tensor_expression *sum = NULL;
+            if (status == PHY_OK) {
+                status = phy_tensor_expression_add(
+                    left, right, NULL, &sum);
+            }
+            phy_tensor_expression_destroy(owned_right);
+            phy_tensor_expression_destroy(owned_left);
+            if (status == PHY_OK) {
+                status = publish(
+                    env, PHY_VALUE_ABSTRACT_EXPRESSION, sum,
+                    &accumulator, &terms[i], &next);
+            }
         }
         if (status != PHY_OK) {
             return status;
@@ -2860,6 +5478,124 @@ static phy_status eval_object_sum(phy_env *env, const phy_value *terms,
     }
     *out_value = accumulator;
     return PHY_OK;
+}
+
+static phy_status eval_abstract_product(
+    phy_env *env, const phy_value *values, size_t count,
+    phy_ir_ref scalar, phy_value *out_value)
+{
+    bool has_expression = false;
+    for (size_t index = 0u; index < count; ++index) {
+        if (values[index].kind ==
+            PHY_VALUE_ABSTRACT_EXPRESSION) {
+            has_expression = true;
+        } else if (values[index].kind != PHY_VALUE_SCALAR &&
+                   values[index].kind !=
+                       PHY_VALUE_ABSTRACT_TENSOR) {
+            return PHY_ERR_TYPE;
+        }
+    }
+    if (has_expression) {
+        phy_ir_ref one = PHY_IR_NULL;
+        phy_status status =
+            phy_cas_number(env->cas, 1, 1, &one);
+        phy_tensor_expression *accumulator = NULL;
+        for (size_t index = 0u;
+             index < count && status == PHY_OK; ++index) {
+            if (values[index].kind == PHY_VALUE_SCALAR) {
+                continue;
+            }
+            const phy_tensor_expression *incoming = NULL;
+            phy_tensor_expression *converted = NULL;
+            if (values[index].kind ==
+                PHY_VALUE_ABSTRACT_EXPRESSION) {
+                incoming =
+                    values[index].as.abstract_expression;
+            } else {
+                status = phy_tensor_expression_from_monomial(
+                    values[index].as.abstract_tensor, NULL,
+                    &converted);
+                incoming = converted;
+            }
+            if (status == PHY_OK && accumulator == NULL) {
+                status = phy_tensor_expression_scale(
+                    incoming, one, NULL, &accumulator);
+            } else if (status == PHY_OK) {
+                phy_tensor_expression *product = NULL;
+                status = phy_tensor_expression_multiply(
+                    accumulator, incoming, NULL, &product);
+                phy_tensor_expression_destroy(accumulator);
+                accumulator = product;
+            }
+            phy_tensor_expression_destroy(converted);
+        }
+        phy_tensor_expression *scaled = NULL;
+        if (status == PHY_OK && accumulator != NULL) {
+            status = phy_tensor_expression_scale(
+                accumulator, scalar, NULL, &scaled);
+        } else if (status == PHY_OK) {
+            status = PHY_ERR_TYPE;
+        }
+        phy_tensor_expression_destroy(accumulator);
+        return status == PHY_OK
+                   ? publish(
+                         env, PHY_VALUE_ABSTRACT_EXPRESSION, scaled,
+                         NULL, NULL, out_value)
+                   : status;
+    }
+
+    phy_abstract_factor factors[EVAL_ABSTRACT_MAX_SLOTS];
+    size_t factor_count = 0u;
+    phy_ir_ref coefficients[EVAL_MAX_LIST + 1u];
+    size_t coefficient_count = 0u;
+    coefficients[coefficient_count++] = scalar;
+    for (size_t index = 0u; index < count; ++index) {
+        if (values[index].kind == PHY_VALUE_SCALAR) {
+            continue;
+        }
+        if (values[index].kind != PHY_VALUE_ABSTRACT_TENSOR) {
+            return PHY_ERR_TYPE;
+        }
+        const phy_tensor_monomial *monomial =
+            values[index].as.abstract_tensor;
+        coefficients[coefficient_count++] =
+            phy_tensor_monomial_coefficient(monomial);
+        const size_t incoming =
+            phy_tensor_monomial_factor_count(monomial);
+        if (incoming >
+            EVAL_ABSTRACT_MAX_SLOTS - factor_count) {
+            return PHY_ERR_TERM_LIMIT;
+        }
+        for (size_t which = 0u; which < incoming; ++which) {
+            const phy_abstract_tensor_head *head = NULL;
+            const phy_abstract_index *indices = NULL;
+            size_t index_count = 0u;
+            const phy_status status = phy_tensor_monomial_factor(
+                monomial, which, &head, &indices, &index_count);
+            if (status != PHY_OK) {
+                return status;
+            }
+            factors[factor_count].head = head;
+            factors[factor_count].indices = indices;
+            factors[factor_count].index_count = index_count;
+            ++factor_count;
+        }
+    }
+    phy_ir_ref coefficient = PHY_IR_NULL;
+    phy_status status = phy_cas_mul(
+        env->cas, coefficients, coefficient_count, &coefficient);
+    phy_tensor_monomial *product = NULL;
+    if (status == PHY_OK) {
+        status = phy_tensor_monomial_create(
+            env->abstract, coefficient,
+            factor_count == 0u ? NULL : factors, factor_count,
+            &product);
+    }
+    return status == PHY_OK
+               ? publish(
+                     env, PHY_VALUE_ABSTRACT_TENSOR, product, NULL,
+                     NULL, out_value)
+               : status;
 }
 
 static phy_status eval_object_scale(phy_env *env, phy_value object,
@@ -2886,7 +5622,35 @@ static phy_status eval_object_scale(phy_env *env, phy_value object,
         status = phy_lie_element_scale(object.as.element, scalar, &result);
         return status == PHY_OK ? publish(env, PHY_VALUE_LIE_ELEMENT, result,
                                           &object, NULL, out_value)
-                                : status;
+                                 : status;
+    }
+    if (object.kind == PHY_VALUE_ABSTRACT_TENSOR) {
+        const phy_value values[1] = {object};
+        return eval_abstract_product(
+            env, values, 1u, scalar, out_value);
+    }
+    if (object.kind == PHY_VALUE_ABSTRACT_EXPRESSION) {
+        phy_tensor_expression *scaled = NULL;
+        status = phy_tensor_expression_scale(
+            object.as.abstract_expression, scalar, NULL, &scaled);
+        return status == PHY_OK
+                   ? publish(
+                         env, PHY_VALUE_ABSTRACT_EXPRESSION, scaled,
+                         &object, NULL, out_value)
+                   : status;
+    }
+    if (object.kind == PHY_VALUE_VECTOR ||
+        object.kind == PHY_VALUE_MATRIX) {
+        const phy_matrix *matrix =
+            object.kind == PHY_VALUE_VECTOR
+                ? (const phy_matrix *)object.as.vector
+                : object.as.matrix;
+        phy_matrix *scaled = NULL;
+        status = phy_matrix_scale(matrix, scalar, &scaled);
+        return status == PHY_OK
+                   ? publish_linear(
+                         env, object.kind, scaled, out_value)
+                   : status;
     }
     return PHY_ERR_TYPE;
 }
@@ -2972,9 +5736,6 @@ static phy_status eval_nary(phy_env *env, phy_ir_ref expr, phy_ir_kind kind,
                    ? eval_form_wedge(env, values, count, out_value)
                    : PHY_ERR_TYPE;
     }
-    if (object_count != 1u) {
-        return PHY_ERR_TYPE;
-    }
     phy_ir_ref coefficient = PHY_IR_NULL;
     phy_status status =
         scalar_count == 0u
@@ -2982,6 +5743,15 @@ static phy_status eval_nary(phy_env *env, phy_ir_ref expr, phy_ir_kind kind,
             : phy_cas_mul(env->cas, scalars, scalar_count, &coefficient);
     if (status != PHY_OK) {
         return status;
+    }
+    if (object_count > 1u) {
+        return kind == PHY_IR_MUL
+                   ? eval_abstract_product(
+                         env, values, count, coefficient, out_value)
+                   : PHY_ERR_TYPE;
+    }
+    if (object_count != 1u) {
+        return PHY_ERR_TYPE;
     }
     return eval_object_scale(env, values[object_index], coefficient,
                              out_value);
@@ -2995,6 +5765,15 @@ phy_status eval_node(phy_env *env, phy_ir_ref expr, phy_value *out_value)
         return PHY_ERR_INVALID_ARGUMENT;
     }
     const phy_ir_kind kind = phy_ir_kind_of(env->ir, expr);
+    if (kind == PHY_IR_FUNCTION || kind == PHY_IR_TENSOR) {
+        phy_value bound_head;
+        if (eval_lookup(
+                env, phy_ir_head(env->ir, expr), &bound_head) &&
+            bound_head.kind == PHY_VALUE_TENSOR_HEAD) {
+            return eval_tensor_head_application(
+                env, expr, bound_head.as.tensor_head, out_value);
+        }
+    }
     switch (kind) {
     case PHY_IR_SYMBOL: {
         phy_value bound;

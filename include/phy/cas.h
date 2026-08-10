@@ -7,9 +7,10 @@
  *
  * Four properties define it:
  *
- *   exact            all arithmetic is int64 integers and reduced int64
- *                    rationals. Leaving that range is PHY_ERR_OVERFLOW, never a
- *                    wrap and never a silent promotion to double. PHY_IR_REAL
+ *   exact            integers and reduced rationals use an int64 fast path and
+ *                    a bounded native arbitrary-precision promotion path.
+ *                    Exhausting the configured exact-number budget is a typed
+ *                    error, never a wrap or promotion to double. PHY_IR_REAL
  *                    atoms are carried, not folded -- see "Reals" below;
  *
  *   decidable        phy_cas_is_zero() DECIDES zero on a documented class of
@@ -25,9 +26,10 @@
  *                    expression mentions it.
  *
  * Every entry point returns a phy_status and writes its result through an out
- * parameter. Failure is ordinary here -- a budget runs out, exact arithmetic
- * overflows, a denominator is zero -- and a caller that must distinguish those
- * cases should not have to consult a sticky flag to do it.
+ * parameter. Failure is ordinary here -- a budget runs out, a denominator is
+ * zero, or a bounded polynomial algorithm reaches its degree/recombination
+ * ceiling -- and a caller that must distinguish those cases should not have to
+ * consult a sticky flag to do it.
  *
  * A phy_cas borrows its phy_ir_context; it does not own it. Destroy the CAS
  * before the context. Every input phy_ir_ref must come from that same context;
@@ -227,8 +229,9 @@ phy_status phy_cas_expand(phy_cas *cas, phy_ir_ref expr, phy_ir_ref *out_ref);
  * factors that the next contraction multiplies in, so the denominators
  * accumulate instead of collapsing. In the curvature pipeline that is the
  * difference between a Riemann component of a few dozen nodes and one whose
- * rational form reaches degree 33 with coefficients past the int64 ceiling --
- * which is PHY_ERR_OVERFLOW deciding something that was small four stages ago.
+ * rational form reaches degree 33 with large coefficients. Factored expansion
+ * prevents that avoidable growth even though scalar number folding itself now
+ * promotes beyond the int64 fast path.
  *
  * Both are exact and both are bounded by the IR's term limit.
  */
@@ -280,6 +283,138 @@ phy_status phy_cas_diff(phy_cas *cas, phy_ir_ref expr, phy_ir_ref var,
 phy_status phy_cas_integrate(phy_cas *cas, phy_ir_ref expr, phy_ir_ref var,
                              phy_ir_ref *out_ref);
 
+/* --------------------------------------------------------- formal series */
+
+/*
+ * Exact bounded Taylor/Laurent expansion over Q.
+ *
+ * `order` is Mathematica-style: order 4 retains powers through four and
+ * records O((var-center)^5). Rational functions are expanded at every exact
+ * rational center where a Laurent expansion exists. Supported analytic heads
+ * use exact Maclaurin recurrences and composition; a coefficient that would
+ * require an inexact or presently unsupported constant returns
+ * PHY_ERR_UNSUPPORTED rather than sampling.
+ *
+ * The result is a typed
+ * SeriesData[var,center,valuation,exclusive_order,List[coefficients...]]
+ * operator. It serializes as IR, survives notebook reopen, and retains its
+ * order term. phy_cas_series_normal() reconstructs the finite expression only
+ * from a well-formed SeriesData value; on an ordinary expression it is the
+ * identity.
+ */
+#define PHY_CAS_SERIES_MAX_ORDER 63u
+
+phy_status phy_cas_series(phy_cas *cas, phy_ir_ref expr, phy_ir_ref var,
+                          phy_ir_ref center, unsigned order,
+                          phy_ir_ref *out_ref);
+phy_status phy_cas_series_normal(phy_cas *cas, phy_ir_ref expr,
+                                 phy_ir_ref *out_ref);
+
+/* --------------------------------------------------------------- limits */
+
+typedef enum {
+    /* A finite two-sided limit exists only when both directed limits agree. */
+    PHY_CAS_LIMIT_TWO_SIDED = 0,
+    /* x approaches the point through values greater than the point. */
+    PHY_CAS_LIMIT_FROM_ABOVE,
+    /* x approaches the point through values less than the point. */
+    PHY_CAS_LIMIT_FROM_BELOW
+} phy_cas_limit_direction;
+
+/*
+ * Exact, proof-producing subset of real limits.
+ *
+ * `point` is an exact integer/rational, the symbol Infinity, or -Infinity.
+ * Finite regular points are decided by exact substitution. Removable
+ * singularities, supported analytic compositions and poles are decided from
+ * the same exact Laurent-series leading term used by phy_cas_series().
+ * Infinity is reduced to a one-sided expansion in t=1/x. A pole returns the
+ * canonical symbolic Infinity or -Infinity; unequal left/right results return
+ * PHY_ERR_DOMAIN, and an undecidable/oscillatory case returns
+ * PHY_ERR_UNSUPPORTED. No numeric sampling is used.
+ */
+phy_status phy_cas_limit(phy_cas *cas, phy_ir_ref expr, phy_ir_ref var,
+                         phy_ir_ref point,
+                         phy_cas_limit_direction direction,
+                         phy_ir_ref *out_ref);
+
+/* -------------------------------------------------------------- equations */
+
+/*
+ * Exact bounded solution of one scalar equation in one symbol.
+ *
+ * The current certified class is a rational function over Q[var] whose
+ * reduced numerator factors completely within the degree-48 polynomial
+ * kernel. Linear roots are exact rationals, real quadratic roots are exact
+ * radicals, and real roots of irreducible higher-degree factors are exact
+ * Root[List[a0,...,an], k] descriptors backed by Sturm isolation. Here k is
+ * one-based in increasing order among that factor's real roots; complex-root
+ * ordering is not claimed. Candidate roots at which the reduced denominator
+ * vanishes are excluded. Multiplicity is retained by the factorizer but the
+ * reader-facing solution list contains distinct roots.
+ *
+ * The result uses Mathematica-shaped typed IR:
+ *
+ *     List[List[Rule[var, root]], ...]
+ *
+ * A false constant equation returns an empty List. An identity (infinitely
+ * many solutions), a non-polynomial/transcendental equation, or any factor
+ * requiring an unavailable complex root returns PHY_ERR_UNSUPPORTED. No
+ * numeric root finder is used and no partial solution list is published.
+ */
+phy_status phy_cas_solve(phy_cas *cas, phy_ir_ref equation, phy_ir_ref var,
+                         phy_ir_ref *out_ref);
+
+/*
+ * Exact bounded linear systems.
+ *
+ * `equations` is one equation or List[equation,...]. Variables are distinct
+ * scalar symbols. Linearity is certified by exact reconstruction before
+ * proved-nonzero-pivot RREF. Underdetermined systems return rules for pivot
+ * variables in terms of the original free variables. Inconsistent systems
+ * return an empty List. Every result is substituted into every input equation
+ * and proved before publication.
+ */
+phy_status phy_cas_solve_system(
+    phy_cas *cas, phy_ir_ref equations,
+    const phy_ir_ref *variables, size_t variable_count,
+    phy_ir_ref *out_ref);
+
+/* ------------------------------------------------ exact polynomial ideals */
+
+/*
+ * Exact bounded Q-polynomial operations.  GroebnerBasis uses lexicographic
+ * order with variables ordered exactly as supplied (the first is highest).
+ * The implementation publishes a basis only after Buchberger S-pair and
+ * generator-membership certificates pass.  Resultant uses an exact
+ * Sylvester determinant; Discriminant is certified from Resultant[f,D[f,x],x].
+ */
+phy_status phy_cas_resultant(phy_cas *cas, phy_ir_ref left,
+                             phy_ir_ref right, phy_ir_ref variable,
+                             phy_ir_ref *out_ref);
+phy_status phy_cas_discriminant(phy_cas *cas, phy_ir_ref expression,
+                                phy_ir_ref variable,
+                                phy_ir_ref *out_ref);
+phy_status phy_cas_groebner_basis(
+    phy_cas *cas, const phy_ir_ref *expressions, size_t expression_count,
+    const phy_ir_ref *variables, size_t variable_count,
+    phy_ir_ref *out_ref);
+
+/* ------------------------------------------------ certified numerics */
+
+/*
+ * Real certified numerical evaluation.  Results are Around[midpoint,radius]
+ * with exact rational fields. `decimal_digits` is a requested enclosure
+ * target, not a promise of a binary float.  NSolve currently returns all
+ * certified real roots of a bounded univariate rational polynomial and
+ * verifies rational-function denominators by ball exclusion.
+ */
+phy_status phy_cas_n(phy_cas *cas, phy_ir_ref expression,
+                     unsigned decimal_digits, phy_ir_ref *out_ref);
+phy_status phy_cas_nsolve(phy_cas *cas, phy_ir_ref equation,
+                          phy_ir_ref variable, unsigned decimal_digits,
+                          phy_ir_ref *out_ref);
+
 /* ------------------------------------------------------------ the zero decision */
 
 /*
@@ -322,8 +457,12 @@ typedef enum {
  * The numerator is divided exactly by each of the denominator's own factors
  * wherever the remainder vanishes. A bounded Euclidean GCD over Q[x] then
  * cancels hidden common factors of univariate polynomials through degree 48.
- * Multivariate polynomial GCD is not claimed: a common factor that requires
- * treating another symbol as a coefficient stays explicit.
+ * For two or more variables, a bounded mixed-radix Kronecker image generates
+ * candidates whose encoded degree is at most 48. No decoded candidate is
+ * published unless it and both decoded quotients multiply exactly to the
+ * original expanded polynomials. This is a sound cancellation subset, not a
+ * claim of a complete general multivariate GCD algorithm; unsupported images
+ * stay explicit.
  */
 phy_status phy_cas_rational_form(phy_cas *cas, phy_ir_ref expr,
                                  phy_ir_ref *out_numerator,
@@ -350,14 +489,27 @@ phy_status phy_cas_reduce(phy_cas *cas, phy_ir_ref expr, phy_ir_ref *out_ref);
 
 /*
  * Complete exact factorization over Q[x] on the bounded class documented in
- * docs/CAS.md. The current kernel extracts rational linear factors, performs
- * square-free decomposition, and proves irreducibility of residual factors of
- * degree two or three. A higher-degree square-free residual that cannot yet be
- * split is PHY_ERR_UNSUPPORTED; returning a merely partial product as a
- * successful Factor result would be misleading.
+ * docs/CAS.md. The degree-48 kernel uses modular derivative GCD/CRT for
+ * square-free structure, deterministic Berlekamp factors over a selected
+ * prime, pairwise Hensel lifting beyond a certified coefficient bound, and
+ * exact Zassenhaus recombination. Rational roots remain a fast path. Resource
+ * ceilings return a typed error; a partial product is never published as a
+ * successful Factor result.
  */
 phy_status phy_cas_factor(phy_cas *cas, phy_ir_ref expr,
                           phy_ir_ref *out_ref);
+
+/*
+ * Exact univariate partial fractions over Q[x]. The reader-facing Apart[expr]
+ * selects the expression's unique non-constant symbol, performs polynomial
+ * division, factors the monic denominator with the certified Factor kernel,
+ * and solves the proper-fraction coefficients by exact Gaussian elimination.
+ * The result is verified against the original coefficient system before it is
+ * published. Multivariate and algebraic-extension decompositions return a
+ * typed unsupported error.
+ */
+phy_status phy_cas_apart(phy_cas *cas, phy_ir_ref expr,
+                         phy_ir_ref *out_ref);
 
 /*
  * Decide whether `expr` is zero.

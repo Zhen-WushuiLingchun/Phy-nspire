@@ -28,9 +28,9 @@ Verification:
 - host smoke test — done; the suite covers the platform, relative pointer,
   source language, drawing, notebook, the stateful evaluator, IR, tensor
   storage, differential forms, GR, Lie/QFT foundations, CAS, QFT oracle, and
-  full lifecycle: Windows 30/30, WSL ASan/UBSan/leak 32/32, and 95,595
-  explicit checks;
-- generated `.tns` size report — 1,124,477 bytes, 17.9% of the 6 MiB ceiling,
+  full lifecycle: last strict Windows baseline 45/45, current WSL strict and
+  combined ASan/UBSan/leak runs 48/48 each, and 458,095 explicit checks;
+- generated `.tns` size report — 1,246,500 bytes, 19.8% of the 6 MiB ceiling,
   with the current evaluator and physics stack linked;
 - launch of a Phy-nspire artifact on the real CX II — done on 2026-07-26 with
   the observable CAS smoke screen;
@@ -79,9 +79,13 @@ Output:
   insertion entries; graphical particle/diagram palettes are not yet done;
 - backend-neutral typed expression IR — done, `include/phy/ir.h`, `src/ir`,
   documented in [`docs/IR.md`](IR.md);
-- native scalar algebra and rewriting — done, `include/phy/cas.h`, `src/cas`,
-  documented in [`docs/CAS.md`](CAS.md): exact rational arithmetic, a normal
-  form, expansion, substitution, differentiation, and an exact zero decision;
+- native scalar algebra and rewriting — done for the documented bounded class,
+  `include/phy/cas.h`, `src/cas`, documented in
+  [`docs/CAS.md`](CAS.md): native arbitrary-precision integer/rational atom
+  and Gaussian-rational folding with an `int64` fast path, exact `I`,
+  `Re`/`Im`/`Conjugate`/`Abs`, a normal form, expansion, substitution,
+  differentiation, and an exact zero decision. Polynomial coefficients have
+  been migrated to immutable exact IR refs with arbitrary-precision fallback;
 - native Giac adapter for a small scalar command set — **not needed for the
   scalar operations the tensor and curvature phases require**, which the layer
   above now supplies natively. The backend boundary in
@@ -103,18 +107,18 @@ Verification:
 - cancellation and expression-limit tests — done for the CAS, `tests/test_cas.c`:
   the step budget, the cancellation hook, and the IR's term limit each surface as
   a typed status and leave both layers validating;
-- IR unit tests — done, `tests/test_ir.c`, 2,586 checks covering interning,
+- IR unit tests — done, `tests/test_ir.c`, 2,843 checks covering interning,
   canonical ordering, the construction ceilings, and text round-trips;
-- CAS unit tests — done, `tests/test_cas.c`, 1,226 checks covering the normal
-  form, exact arithmetic and its overflow statuses, differentiation, bounded
+- CAS unit tests — done, `tests/test_cas.c`, 13,851 checks covering the normal
+  form, exact arithmetic and arbitrary-precision promotion, differentiation, bounded
   exact factorization, and the zero decision, including the four `sphere_2d`
   corpus entries whose stated trigonometric form differs from the computed one.
-- notebook tests — done, `tests/test_notebook.c`, 215 checks covering bounded
+- notebook tests — done, `tests/test_notebook.c`, 231 checks covering bounded
   cell storage, exact seeded results, editing, insertion, source/IR agreement,
   stale outputs, Markdown selection, independent run-badge hit testing, 2D
   metrics, nMarkdown LaTeX integration, memory return, and the framebuffer
   fixture;
-- evaluator tests — done, `tests/test_eval.c`, 1,642 checks. The physics cases
+- evaluator tests — done, `tests/test_eval.c`, 3,011 checks. The physics cases
   reproduce, through reader-facing source, results the backend suites already
   certify directly: the U(1) and SU(2) curvature components and vanishing
   Bianchi residuals of `tests/test_yang_mills.c`, the round two-sphere
@@ -125,27 +129,27 @@ Verification:
   combinatorics. The remaining cases cover state flow between cells,
   every typed-error path, the ownership sweep under rebinding and failure, the
   binding ceiling, and save/reopen;
-- formula bridge tests — done, `tests/test_formula.c`, 33 checks covering
+- formula bridge tests — done, `tests/test_formula.c`, 103 checks covering
   initialization, matrices, metrics, RGB565 rendering, and local error
   recovery;
-- source, palette and pointer tests — done: 296 source-language checks
-  including assignment and reserved-head canonicalization, 828 palette checks
+- source, palette and pointer tests — done: 499 source-language checks
+  including assignment and reserved-head canonicalization, 32,397 palette checks
   including every CAS snippet parsing, and 29 relative touchpad checks.
 
 The IR carries no simplification, evaluation, or arithmetic: it is the
 substrate those work on. Dummy-index canonicalization and anything that
 consumes declared symmetries stay in Phase 2.
 
-The real Ndless r2022/ARM GNU toolchain link check is done for the CAS: 29/29
-CAS APIs survive garbage collection and the probe packages to a 68,056-byte
+The real Ndless r2022/ARM GNU toolchain link check is done for the CAS: 40/40
+CAS APIs survive garbage collection and the probe packages to a 197,472-byte
 `.tns` without float formatting, libm, or ARM soft-float dependencies. The
 observable `phy-cas-smoke.tns` then ran seven symbolic cases on the physical
 CX II on 2026-07-26, displayed 7/7 PASS, and returned cleanly to Documents.
 
-The evaluator's real Ndless check now compiles 34 portable sources, retains
-15/15 public evaluator entry points, packages a 156,328-byte isolated probe,
+The evaluator's real Ndless check now compiles 69 portable sources, retains
+17/17 public evaluator entry points, packages a 375,600-byte isolated probe,
 and contains no float formatter, libm call, or ARM soft-float helper. The
-product is 1,124,477 bytes. The independent SU(N) colour probe retains 23/23
+product is 1,246,500 bytes. The independent SU(N) colour probe retains 23/23
 public APIs, 4,924 bytes of layer text, and packages to 52,764 bytes under the
 same no-float rule. These establish ARM link/package and size, not
 physical-device runtime or performance.
@@ -158,9 +162,13 @@ implemented. The differential-form layer over them has also landed — manifolds
 with
   orientation and signature, canonical antisymmetric components, and exact wedge,
   exterior derivative, interior product, Lie derivative and Hodge dual, documented in
-[`docs/GEOMETRY.md`](GEOMETRY.md). Transition maps/pullbacks, abstract
-dummy-index canonicalization, and higher-level covariant form operations remain
-open.
+[`docs/GEOMETRY.md`](GEOMETRY.md). The native library now also has exact
+transition maps, arbitrary p-form pullback, mixed-valence tensor coordinate
+change, a bounded atlas registry, and exact cocycle rejection. Reader-facing
+component bases/tensors, exact dynamic vectors/matrices, maps, verified
+transitions, Jacobian actions, sparse tensor pullback, atlas registration and
+cocycle verification are now exposed. Automatic transition-path composition
+and higher-level covariant form operations remain open.
 
 The layer is now reachable from the notebook: `Manifold`, `ComponentTensor`,
 `DifferentialForm`, `Metric`, `VectorField`, `Wedge`, `ExteriorD`, `InteriorProduct`,
@@ -172,23 +180,33 @@ Output:
 - manifolds, charts, metrics, indices, symmetries, contraction, canonical dummy
   indices, covariant derivatives, and differential forms — forms, contraction,
   raise/lower, coordinate-metric GR, and component tensor covariant
-  derivatives are done; abstract canonical dummy indices and transition-map
-  syntax remain outstanding;
-- the component constructor covers ranks 0 through 4 and every slot-variance
-  pattern inside the dimension-4 native ceiling; unbounded rank remains
-  intentionally out of scope;
-- optional xPerm C integration after independent tests pass.
+  derivatives are done; abstract monoterm dummy canonicalization, bounded
+  Young/Garnir reduction and automatic first-Bianchi reduction are exposed,
+  together with explicit transition-map and atlas syntax;
+- the legacy component constructor covers ranks 0 through 4, while the abstract
+  and sparse component libraries use runtime rank with explicit resource
+  ceilings;
+- xPerm remains an independent reference/oracle rather than a linked runtime
+  dependency; bounded exhaustive `DgS` and SymPy oracle checks are consistency
+  gates rather than a claim of a full optimized xPerm port.
 
-Deferred with a named blocking dependency:
+Deferred with named blocking dependencies:
 
-- pullback along a coordinate map, which needs a validated `phy_map` with
-  provably disjoint coordinate symbols — substituting without that silently
-  captures and returns a wrong answer.
+- independent-component iteration and automatic atlas path composition require
+  a bounded output-shape/path planner;
+- GR now has a checked `ComponentLift` adapter from legacy dense tensor results
+  into the shared sparse abstract/component layer. It proves declared Young
+  projectors component by component, and `GRComponents` exposes Riemann/Weyl
+  heads with verified `(2,2)` declarations. `QFTSystem` now migrates the
+  Lorentz, spinor and two colour index spaces plus the shared invariant heads
+  and available exact component tables. Expression-native GR/QFT producer
+  algorithms remain open; the specialized exact reducers have not been
+  rewritten as generic abstract tensor rewrites.
 
 Verification:
 
 - tensor identities and canonicalization properties — the exterior-calculus
-  identities are done, `tests/test_geom.c`, 4,646 checks: graded commutativity
+  identities are done, `tests/test_geom.c`, 4,644 checks: graded commutativity
   and associativity of the wedge, `d^2 = 0`, both graded Leibniz rules,
   `iota_v iota_v = 0`, and `** = (-1)^{p(n-p)} sign(det g)` at every degree in
   Euclidean and Lorentzian 2D, Euclidean 3D and Minkowski 4D;
@@ -271,6 +289,16 @@ SU(3) components. General colour dummy canonicalization, Fierz/completeness,
 finite dimensionally regulated master integrals, general graph generation,
 gauge fixing/ghosts, Ward identities, and renormalization beyond the bounded
 phi4 one-loop MS/MSbar result remain scoped rather than implemented.
+The shared abstract/component migration has now begun through `QFTSystem`.
+Lorentz, spinor, adjoint-colour and fundamental-colour are distinct
+`IndexSpace` objects; eta, momentum, gamma, delta, f, d, generators, gauge
+potential and field strength are typed heads with their proven monoterm
+symmetries. Exact Minkowski components are bound for symbolic or concrete N,
+and bounded concrete colour views add delta plus the built-in SU(2)/SU(3)
+structure constants. The bridge is already checked against the legacy
+`SUNFComponent` backend. Dirac Clifford reduction, colour traces and loop
+integrals remain specialized exact engines reached through the same frontend;
+they have not been rewritten as one giant generic tensor rewrite system.
 The MVP boundary, the pinned
 conventions, the algorithm specification and the verified identity set are in
 [`docs/references/QFT_GAUGE.md`](references/QFT_GAUGE.md); the contracts that
@@ -305,7 +333,8 @@ from the notebook: `LieGroup`,
 `Phi4Diagrams`, `Phi4Graph`, `Phi4Renormalization`, `Phi4Counterterm`, plus `SUNDelta`,
 `SUNF`, `SUND`, `SUNT`, `SUNTrace`,
 `SUNCommutator`, `SUNCF`, `SUNCA`, and the other bounded `SUN*` commands,
-dispatch onto native backends. Typed master-integral and
+dispatch onto native backends. `QFTSystem`, `QFTSpace`, `QFTBasis`, `QFTHead`
+and `QFTTensor` expose the shared abstract/component picture. Typed master-integral and
 gamma/momentum heads remain output vocabulary, not no-op commands.
 
 Verification:

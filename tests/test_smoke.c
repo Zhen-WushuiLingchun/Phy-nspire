@@ -268,6 +268,41 @@ static void test_palette_frame_can_render(void)
     phy_platform_shutdown();
 }
 
+static void test_palette_scrolls_to_last_entry(void)
+{
+    phy_host_storage_clear();
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    /*
+     * +Math -> MENU -> last CAS category -> UP wraps to its last entry.
+     * With seven visible rows that selection must be drawn on row seven,
+     * rather than disappearing below the 240-pixel framebuffer.
+     */
+    PHY_CHECK(phy_host_push_pointer(PHY_EVENT_POINTER_DOWN, 50, 225));
+    PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_MENU));
+    for (size_t category = 0u; category < 9u; ++category) {
+        PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_RIGHT));
+    }
+    PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_UP));
+
+    phy_app_options options;
+    phy_app_options_defaults(&options);
+    options.max_frames = 13u;
+    phy_app_result result;
+    PHY_CHECK_EQ_INT(phy_app_run(&options, &result), PHY_OK);
+    PHY_CHECK_EQ_INT(result.events_handled, 12);
+    PHY_CHECK_EQ_INT(result.frames_presented, 13);
+
+    const phy_surface surface = {
+        phy_display_pixels(),
+        PHY_SCREEN_WIDTH,
+        PHY_SCREEN_HEIGHT,
+    };
+    PHY_CHECK_EQ_INT(
+        phy_gfx_get_pixel(&surface, 58, 174),
+        PHY_RGB565(75, 166, 255));
+    phy_platform_shutdown();
+}
+
 static void test_baseline_is_deterministic(void)
 {
     const phy_surface surface = {g_scratch, PHY_SCREEN_WIDTH, PHY_SCREEN_HEIGHT};
@@ -340,6 +375,7 @@ int main(void)
     PHY_TEST_CASE(test_first_save_as_from_file_menu);
     PHY_TEST_CASE(test_editing_menu_inserts_cas_template);
     PHY_TEST_CASE(test_palette_frame_can_render);
+    PHY_TEST_CASE(test_palette_scrolls_to_last_entry);
     PHY_TEST_CASE(test_baseline_is_deterministic);
     PHY_TEST_CASE(test_baseline_matches_fixture);
     return PHY_TEST_REPORT("test_smoke");
