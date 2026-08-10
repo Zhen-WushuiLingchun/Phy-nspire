@@ -235,6 +235,10 @@ if(MSVC)
         phy-make-cas-tour PRIVATE _CRT_SECURE_NO_WARNINGS)
 endif()
 
+add_executable(phy-bench-special src/tools/bench_special.c)
+target_link_libraries(phy-bench-special PRIVATE
+    phy_core phy_platform_host phy_warnings)
+
 include(CTest)
 if(BUILD_TESTING)
     set(PHY_FIXTURE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/tests/fixtures")

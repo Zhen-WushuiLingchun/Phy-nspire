@@ -716,40 +716,40 @@ static void test_certified_complex_special_functions(void)
     PHY_CHECK_EQ_INT(
         phy_complex_ball_set_i64(&argument, 1, 1, 1, 1), PHY_OK);
     PHY_CHECK_EQ_INT(phy_complex_ball_erf(&argument, 80u, &result), PHY_OK);
-    set_rat(&lower, 1316151, 1000000);
-    set_rat(&upper, 1316152, 1000000);
+    set_rat(&lower, 13161512816LL, 10000000000LL);
+    set_rat(&upper, 13161512818LL, 10000000000LL);
     check_inside(&result.real, &lower, &upper);
-    set_rat(&lower, 190453, 1000000);
-    set_rat(&upper, 190454, 1000000);
+    set_rat(&lower, 1904534691LL, 10000000000LL);
+    set_rat(&upper, 1904534693LL, 10000000000LL);
     check_inside(&result.imaginary, &lower, &upper);
 
     PHY_CHECK_EQ_INT(
         phy_complex_ball_set_i64(&argument, 1, 3, 1, 4), PHY_OK);
     PHY_CHECK_EQ_INT(
         phy_complex_ball_loggamma(&argument, 80u, &result), PHY_OK);
-    set_rat(&lower, 728387, 1000000);
-    set_rat(&upper, 728388, 1000000);
+    set_rat(&lower, 7283877795LL, 10000000000LL);
+    set_rat(&upper, 7283877796LL, 10000000000LL);
     check_inside(&result.real, &lower, &upper);
-    set_rat(&lower, -673637, 1000000);
-    set_rat(&upper, -673636, 1000000);
+    set_rat(&lower, -6736360632LL, 10000000000LL);
+    set_rat(&upper, -6736360631LL, 10000000000LL);
     check_inside(&result.imaginary, &lower, &upper);
 
     PHY_CHECK_EQ_INT(
         phy_complex_ball_gamma(&argument, 80u, &result), PHY_OK);
-    set_rat(&lower, 1619184, 1000000);
-    set_rat(&upper, 1619185, 1000000);
+    set_rat(&lower, 16191843930LL, 10000000000LL);
+    set_rat(&upper, 16191843932LL, 10000000000LL);
     check_inside(&result.real, &lower, &upper);
-    set_rat(&lower, -1292417, 1000000);
-    set_rat(&upper, -1292416, 1000000);
+    set_rat(&lower, -12924161400LL, 10000000000LL);
+    set_rat(&upper, -12924161390LL, 10000000000LL);
     check_inside(&result.imaginary, &lower, &upper);
 
     PHY_CHECK_EQ_INT(
         phy_complex_ball_digamma(&argument, 80u, &result), PHY_OK);
-    set_rat(&lower, -2017933, 1000000);
-    set_rat(&upper, -2017932, 1000000);
+    set_rat(&lower, -20179324940LL, 10000000000LL);
+    set_rat(&upper, -20179324938LL, 10000000000LL);
     check_inside(&result.real, &lower, &upper);
-    set_rat(&lower, 1708387, 1000000);
-    set_rat(&upper, 1708388, 1000000);
+    set_rat(&lower, 17083870710LL, 10000000000LL);
+    set_rat(&upper, 17083870711LL, 10000000000LL);
     check_inside(&result.imaginary, &lower, &upper);
 
     /* Analytic continuation across Re[z] < 0, away from Gamma poles. */

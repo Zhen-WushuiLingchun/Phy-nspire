@@ -7,6 +7,7 @@
 #include "phy/gfx.h"
 #include "phy/notebook.h"
 #include "phy/platform.h"
+#include "phy/platform_host.h"
 #include "phy_test.h"
 
 #ifndef PHY_FIXTURE_DIR
@@ -261,6 +262,67 @@ static void test_integrate_command_reaches_the_symbolic_evaluator(void)
         "(* (rat -1 2) (fn cos (* 2 x)))");
 
     phy_notebook_destroy(notebook);
+    phy_platform_shutdown();
+}
+
+static void test_wall_timeout_and_escape_cancel_are_typed(void)
+{
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    phy_notebook *notebook = phy_notebook_create();
+    PHY_CHECK(notebook != NULL);
+    PHY_CHECK_EQ_INT(
+        phy_notebook_evaluation_timeout_ms(notebook),
+        PHY_NOTEBOOK_DEFAULT_EVALUATION_TIMEOUT_MS);
+    PHY_CHECK_EQ_INT(
+        phy_notebook_set_evaluation_timeout_ms(notebook, 999u),
+        PHY_ERR_INVALID_ARGUMENT);
+    PHY_CHECK_EQ_INT(
+        phy_notebook_set_evaluation_timeout_ms(notebook, 1000u), PHY_OK);
+
+    size_t timed = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_notebook_add_input(
+            notebook, "N[Gamma[1/3+I/4],10]", &timed), PHY_OK);
+    phy_host_set_clock_autostep_ms(1000u);
+    PHY_CHECK_EQ_INT(
+        phy_notebook_evaluate(notebook, timed), PHY_ERR_TIMEOUT);
+    phy_host_set_clock_autostep_ms(0u);
+
+    size_t interrupted = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_notebook_add_input(
+            notebook, "N[Gamma[1/3+I/4],10]", &interrupted), PHY_OK);
+    PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_DOWN, PHY_KEY_ESC));
+    PHY_CHECK_EQ_INT(
+        phy_notebook_evaluate(notebook, interrupted), PHY_ERR_INTERRUPTED);
+    PHY_CHECK(phy_host_push_key(PHY_EVENT_KEY_UP, PHY_KEY_ESC));
+    phy_host_clear_events();
+
+    phy_notebook_destroy(notebook);
+    phy_platform_shutdown();
+}
+
+static void test_certified_complex_result_frame(void)
+{
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_formula_initialize(), PHY_OK);
+    phy_notebook *notebook = phy_notebook_create();
+    PHY_CHECK(notebook != NULL);
+    size_t input = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_notebook_add_input(notebook, "N[Erf[1+I],10]", &input),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(phy_notebook_evaluate(notebook, input), PHY_OK);
+    PHY_CHECK(phy_notebook_select(notebook, input + 1u));
+    const phy_surface surface = {
+        g_pixels, PHY_SCREEN_WIDTH, PHY_SCREEN_HEIGHT};
+    memset(g_pixels, 0, sizeof g_pixels);
+    phy_notebook_draw(&surface, notebook, -1, -1);
+    PHY_CHECK(phy_gfx_write_ppm(
+        &surface, PHY_ARTIFACT_DIR "/certified_complex_decimal.ppm"));
+
+    phy_notebook_destroy(notebook);
+    phy_formula_shutdown();
     phy_platform_shutdown();
 }
 
@@ -584,6 +646,8 @@ int main(void)
     PHY_TEST_CASE(test_edit_and_insert_use_reader_source);
     PHY_TEST_CASE(test_compound_power_is_not_algebraically_corrupted);
     PHY_TEST_CASE(test_integrate_command_reaches_the_symbolic_evaluator);
+    PHY_TEST_CASE(test_wall_timeout_and_escape_cancel_are_typed);
+    PHY_TEST_CASE(test_certified_complex_result_frame);
     PHY_TEST_CASE(test_template_insertion_and_edit_context);
     PHY_TEST_CASE(test_markdown_latex_uses_native_typesetter);
     PHY_TEST_CASE(test_markdown_mixed_flow_wraps);

@@ -39,6 +39,30 @@
 #define COLOR_ERROR PHY_RGB565(247, 103, 116)
 #define COLOR_POINTER PHY_RGB565(255, 205, 78)
 
+static bool notebook_evaluation_cancelled(void *user)
+{
+    phy_notebook *notebook = (phy_notebook *)user;
+    if (notebook == NULL || !notebook->evaluation_active) {
+        return false;
+    }
+    if (phy_input_cancel_requested()) {
+        return true;
+    }
+    /* Exact arithmetic invokes the shared cancellation hook very frequently.
+       ESC remains immediate, but reading the one-second RTC on every rational
+       limb operation would itself dominate CX II execution time. */
+    if ((notebook->evaluation_clock_polls++ & 255u) != 0u) {
+        return false;
+    }
+    const uint32_t elapsed =
+        phy_clock_ms() - notebook->evaluation_start_ms;
+    if (elapsed >= notebook->evaluation_timeout_ms) {
+        notebook->evaluation_timed_out = true;
+        return true;
+    }
+    return false;
+}
+
 static bool markdown_entire_formula(const char *text,
                                     const char **out_source,
                                     size_t *out_length,
@@ -415,13 +439,34 @@ phy_notebook *phy_notebook_create(void)
     }
     memset(notebook, 0, sizeof *notebook);
     notebook->next_execution = 1u;
+    notebook->evaluation_timeout_ms =
+        PHY_NOTEBOOK_DEFAULT_EVALUATION_TIMEOUT_MS;
 
     if (create_engines(&notebook->ir, &notebook->cas, &notebook->env) !=
         PHY_OK) {
         phy_free(notebook, sizeof *notebook);
         return NULL;
     }
+    phy_cas_set_cancel(
+        notebook->cas, notebook_evaluation_cancelled, notebook);
     return notebook;
+}
+
+phy_status phy_notebook_set_evaluation_timeout_ms(phy_notebook *notebook,
+                                                  uint32_t milliseconds)
+{
+    if (notebook == NULL ||
+        milliseconds < PHY_NOTEBOOK_MIN_EVALUATION_TIMEOUT_MS ||
+        milliseconds > PHY_NOTEBOOK_MAX_EVALUATION_TIMEOUT_MS) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    notebook->evaluation_timeout_ms = milliseconds;
+    return PHY_OK;
+}
+
+uint32_t phy_notebook_evaluation_timeout_ms(const phy_notebook *notebook)
+{
+    return notebook != NULL ? notebook->evaluation_timeout_ms : 0u;
 }
 
 void phy_notebook_destroy(phy_notebook *notebook)
@@ -595,6 +640,8 @@ static phy_status rebuild_context(phy_notebook *notebook)
     notebook->ir = ir;
     notebook->cas = cas;
     notebook->env = env;
+    phy_cas_set_cancel(
+        notebook->cas, notebook_evaluation_cancelled, notebook);
     notebook->generation++;
     return PHY_OK;
 }
@@ -616,6 +663,11 @@ phy_status phy_notebook_evaluate(phy_notebook *notebook, size_t input_index)
     if (input->execution == 0u) {
         input->execution = notebook->next_execution++;
     }
+
+    notebook->evaluation_active = true;
+    notebook->evaluation_timed_out = false;
+    notebook->evaluation_clock_polls = 0u;
+    notebook->evaluation_start_ms = phy_clock_ms();
 
     input->secondary[0] = '\0';
     input->expression = PHY_IR_NULL;
@@ -646,6 +698,10 @@ phy_status phy_notebook_evaluate(phy_notebook *notebook, size_t input_index)
     }
     if (status == PHY_OK) {
         status = phy_eval_value_expression(notebook->env, value, &result);
+    }
+    notebook->evaluation_active = false;
+    if (status == PHY_ERR_INTERRUPTED && notebook->evaluation_timed_out) {
+        status = PHY_ERR_TIMEOUT;
     }
     if (status == PHY_OK && result == PHY_IR_NULL &&
         value.kind != PHY_VALUE_NONE) {

@@ -99,6 +99,15 @@ phy_status phy_display_present(void);
  */
 bool phy_input_poll(phy_event *out_event);
 
+/*
+ * Low-latency cooperative cancellation probe for a calculation that owns the
+ * foreground thread.  Unlike phy_input_poll(), this does not enqueue or
+ * consume a UI event: the Ndless backend samples ESC directly and suppresses
+ * the matching key transition after cancellation, so one held key cancels
+ * the cell without also closing the application.
+ */
+bool phy_input_cancel_requested(void);
+
 /* Monotonic milliseconds since phy_platform_init. */
 uint32_t phy_clock_ms(void);
 void phy_sleep_ms(uint32_t milliseconds);

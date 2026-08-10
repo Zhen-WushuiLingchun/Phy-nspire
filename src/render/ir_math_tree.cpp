@@ -41,6 +41,122 @@ std::string display_decimal(std::string_view value)
     return std::string(value);
 }
 
+std::string trim_unsigned_decimal(std::string value)
+{
+    const auto first = value.find_first_not_of('0');
+    if (first == std::string::npos) {
+        return "0";
+    }
+    value.erase(0U, first);
+    return value;
+}
+
+int compare_unsigned_decimal(std::string_view left, std::string_view right)
+{
+    while (left.size() > 1U && left.front() == '0') left.remove_prefix(1U);
+    while (right.size() > 1U && right.front() == '0') right.remove_prefix(1U);
+    if (left.size() != right.size()) {
+        return left.size() < right.size() ? -1 : 1;
+    }
+    const int ordered = left.compare(right);
+    return ordered < 0 ? -1 : ordered > 0 ? 1 : 0;
+}
+
+void subtract_unsigned_decimal(std::string& left, std::string_view right)
+{
+    int borrow = 0;
+    std::size_t right_index = right.size();
+    for (std::size_t left_index = left.size(); left_index != 0U;) {
+        --left_index;
+        int digit = left[left_index] - '0' - borrow;
+        borrow = 0;
+        if (right_index != 0U) {
+            digit -= right[--right_index] - '0';
+        }
+        if (digit < 0) {
+            digit += 10;
+            borrow = 1;
+        }
+        left[left_index] = static_cast<char>('0' + digit);
+    }
+    left = trim_unsigned_decimal(std::move(left));
+}
+
+char divide_decimal_digit(std::string& remainder,
+                          std::string_view denominator)
+{
+    unsigned digit = 0U;
+    while (compare_unsigned_decimal(remainder, denominator) >= 0) {
+        subtract_unsigned_decimal(remainder, denominator);
+        ++digit;
+    }
+    return static_cast<char>('0' + digit);
+}
+
+/*
+ * Allocation-only base-10 long division for display. It never participates in
+ * a mathematical decision: exact balls stay exact in typed IR. `inexact`
+ * reports a nonzero discarded remainder so the caller can inflate the shown
+ * radius outward instead of presenting a rounded decimal as a certificate.
+ */
+std::string rational_decimal(std::string_view numerator,
+                             std::string_view denominator,
+                             std::size_t fractional_digits,
+                             bool& inexact)
+{
+    bool negative = false;
+    if (!numerator.empty() && numerator.front() == '-') {
+        negative = true;
+        numerator.remove_prefix(1U);
+    }
+    std::string divisor = trim_unsigned_decimal(std::string(denominator));
+    if (divisor == "0") {
+        inexact = true;
+        return "?";
+    }
+    std::string remainder("0");
+    std::string quotient;
+    quotient.reserve(numerator.size() + fractional_digits + 1U);
+    for (char input : numerator) {
+        if (input < '0' || input > '9') {
+            inexact = true;
+            return "?";
+        }
+        if (remainder == "0") remainder.clear();
+        remainder.push_back(input);
+        remainder = trim_unsigned_decimal(std::move(remainder));
+        quotient.push_back(divide_decimal_digit(remainder, divisor));
+    }
+    quotient = trim_unsigned_decimal(std::move(quotient));
+    if (fractional_digits != 0U) {
+        quotient.push_back('.');
+        for (std::size_t index = 0U; index < fractional_digits; ++index) {
+            if (remainder == "0") remainder.clear();
+            remainder.push_back('0');
+            remainder = trim_unsigned_decimal(std::move(remainder));
+            quotient.push_back(divide_decimal_digit(remainder, divisor));
+        }
+    }
+    inexact = remainder != "0";
+    if (negative && quotient != "0") quotient.insert(quotient.begin(), '-');
+    return quotient;
+}
+
+void increment_decimal_ulp(std::string& value)
+{
+    for (std::size_t index = value.size(); index != 0U;) {
+        --index;
+        if (value[index] == '.') continue;
+        if (value[index] < '0' || value[index] > '9') continue;
+        if (value[index] != '9') {
+            value[index]++;
+            return;
+        }
+        value[index] = '0';
+    }
+    value.insert(value.begin(), '1');
+}
+
 std::string_view display_symbol(std::string_view name)
 {
     struct Mapping {
@@ -150,6 +266,8 @@ public:
     }
 
 private:
+    static constexpr std::size_t kBallDisplayDigits = 10U;
+
     void fail(const char *message)
     {
         if (!failed_) {
@@ -470,6 +588,58 @@ private:
                                   arguments_positions)});
         }
         return base;
+    }
+
+    bool around_parts(phy_ir_ref expression, phy_ir_exact_view& midpoint,
+                      phy_ir_exact_view& radius) const
+    {
+        const char *head = phy_ir_symbol_name(
+            context_, phy_ir_head(context_, expression));
+        return phy_ir_kind_of(context_, expression) == PHY_IR_FUNCTION &&
+               head != nullptr && std::string_view(head) == "Around" &&
+               phy_ir_child_count(context_, expression) == 2U &&
+               phy_ir_exact_decimal_view(
+                   context_, phy_ir_child(context_, expression, 0U),
+                   &midpoint) &&
+               phy_ir_exact_decimal_view(
+                   context_, phy_ir_child(context_, expression, 1U),
+                   &radius);
+    }
+
+    MathNodeId decimal_around(phy_ir_ref expression, bool magnitude = false)
+    {
+        phy_ir_exact_view midpoint{};
+        phy_ir_exact_view radius{};
+        if (!around_parts(expression, midpoint, radius)) {
+            return kInvalidMathNode;
+        }
+        std::string_view midpoint_numerator(
+            midpoint.numerator, midpoint.numerator_length);
+        if (magnitude && !midpoint_numerator.empty() &&
+            midpoint_numerator.front() == '-') {
+            midpoint_numerator.remove_prefix(1U);
+        }
+        bool midpoint_inexact = false;
+        bool radius_inexact = false;
+        std::string midpoint_text = rational_decimal(
+            midpoint_numerator,
+            std::string_view(
+                midpoint.denominator, midpoint.denominator_length),
+            kBallDisplayDigits, midpoint_inexact);
+        std::string radius_text = rational_decimal(
+            std::string_view(radius.numerator, radius.numerator_length),
+            std::string_view(radius.denominator, radius.denominator_length),
+            kBallDisplayDigits, radius_inexact);
+        /* Truncating the midpoint moves it by less than one displayed ulp.
+           Add that ulp to the outward-rounded radius. */
+        if (radius_inexact) increment_decimal_ulp(radius_text);
+        increment_decimal_ulp(radius_text);
+        (void)midpoint_inexact;
+        return row({
+            text(MathNodeKind::Symbol, display_decimal(midpoint_text)),
+            text(MathNodeKind::Symbol, u8"±", AtomClass::Binary),
+            text(MathNodeKind::Symbol, radius_text),
+        });
     }
 
     MathNodeId series_data(phy_ir_ref expression, unsigned depth)
@@ -933,34 +1103,42 @@ private:
                 });
             }
             if (head_name == "Around" && count == 2U) {
-                return row({
-                    build(
-                        phy_ir_child(context_, expression, 0U),
-                        depth + 1U, 0),
-                    text(
-                        MathNodeKind::Symbol, u8"±",
-                        AtomClass::Binary),
-                    build(
-                        phy_ir_child(context_, expression, 1U),
-                        depth + 1U, 0),
-                });
+                const MathNodeId decimal = decimal_around(expression);
+                if (decimal != kInvalidMathNode) return decimal;
+                return row({build(phy_ir_child(context_, expression, 0U),
+                                  depth + 1U, 0),
+                            text(MathNodeKind::Symbol, u8"±",
+                                 AtomClass::Binary),
+                            build(phy_ir_child(context_, expression, 1U),
+                                  depth + 1U, 0)});
             }
             if (head_name == "ComplexAround" && count == 2U) {
+                const phy_ir_ref imaginary =
+                    phy_ir_child(context_, expression, 1U);
+                phy_ir_exact_view imaginary_midpoint{};
+                phy_ir_exact_view imaginary_radius{};
+                const bool negative_imaginary =
+                    around_parts(imaginary, imaginary_midpoint,
+                                 imaginary_radius) &&
+                    imaginary_midpoint.numerator_length != 0U &&
+                    imaginary_midpoint.numerator[0] == '-';
+                MathNodeId imaginary_value =
+                    decimal_around(imaginary, negative_imaginary);
+                if (imaginary_value == kInvalidMathNode) {
+                    imaginary_value = build(imaginary, depth + 1U, 0);
+                }
                 return row({
                     build(
                         phy_ir_child(context_, expression, 0U),
                         depth + 1U, 0),
                     text(
-                        MathNodeKind::Symbol, "+",
+                        MathNodeKind::Symbol,
+                        negative_imaginary ? u8"−" : "+",
                         AtomClass::Binary),
                     styled(
                         text(MathNodeKind::Symbol, "i"),
                         MathVariant::Roman),
-                    delimited(
-                        build(
-                            phy_ir_child(context_, expression, 1U),
-                            depth + 1U, 0),
-                        "(", ")"),
+                    delimited(imaginary_value, "(", ")"),
                 });
             }
             if (head_name == "Abs" && count == 1U) {

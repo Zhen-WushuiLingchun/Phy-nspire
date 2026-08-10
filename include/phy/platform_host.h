@@ -44,6 +44,8 @@ bool phy_host_display_was_restored(void);
 
 /* Virtual clock control, so timing-dependent tests stay deterministic. */
 void phy_host_advance_clock_ms(uint32_t milliseconds);
+/* Advance the virtual clock after every read; zero restores a fixed clock. */
+void phy_host_set_clock_autostep_ms(uint32_t milliseconds);
 
 /* Deterministic in-memory notebook directory used by app/storage tests. */
 void phy_host_storage_clear(void);

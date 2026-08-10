@@ -22,6 +22,9 @@ typedef struct {
     unsigned queue_count;
 
     uint32_t clock_ms;
+    uint32_t clock_autostep_ms;
+    bool escape_pressed;
+    bool escape_cancel_latched;
     uint32_t present_count;
     uint32_t alloc_countdown; /* 0 disables; see phy_host_fail_alloc_after */
     uint32_t alloc_attempts;
@@ -81,19 +84,40 @@ phy_status phy_display_present(void)
 
 bool phy_input_poll(phy_event *out_event)
 {
-    if (!g_host.initialized || out_event == NULL || g_host.queue_count == 0) {
+    if (!g_host.initialized || out_event == NULL) {
         return false;
     }
-    *out_event = g_host.queue[g_host.queue_head];
-    g_host.queue_head = (g_host.queue_head + 1) % PHY_HOST_EVENT_QUEUE_CAPACITY;
-    g_host.queue_count--;
-    g_host.telemetry.events_dispatched++;
+    while (g_host.queue_count != 0u) {
+        *out_event = g_host.queue[g_host.queue_head];
+        g_host.queue_head =
+            (g_host.queue_head + 1) % PHY_HOST_EVENT_QUEUE_CAPACITY;
+        g_host.queue_count--;
+        if (g_host.escape_cancel_latched && out_event->key == PHY_KEY_ESC) {
+            if (out_event->kind == PHY_EVENT_KEY_UP) {
+                g_host.escape_cancel_latched = false;
+            }
+            continue;
+        }
+        g_host.telemetry.events_dispatched++;
+        return true;
+    }
+    return false;
+}
+
+bool phy_input_cancel_requested(void)
+{
+    if (!g_host.initialized || !g_host.escape_pressed) {
+        return false;
+    }
+    g_host.escape_cancel_latched = true;
     return true;
 }
 
 uint32_t phy_clock_ms(void)
 {
-    return g_host.clock_ms;
+    const uint32_t current = g_host.clock_ms;
+    g_host.clock_ms += g_host.clock_autostep_ms;
+    return current;
 }
 
 void phy_sleep_ms(uint32_t milliseconds)
@@ -166,6 +190,13 @@ bool phy_host_push_event(const phy_event *event)
 
 bool phy_host_push_key(phy_event_kind kind, phy_key key)
 {
+    if (key == PHY_KEY_ESC) {
+        if (kind == PHY_EVENT_KEY_DOWN) {
+            g_host.escape_pressed = true;
+        } else if (kind == PHY_EVENT_KEY_UP) {
+            g_host.escape_pressed = false;
+        }
+    }
     const phy_event event = {kind, key, 0, 0, '\0'};
     return phy_host_push_event(&event);
 }
@@ -192,6 +223,8 @@ void phy_host_clear_events(void)
 {
     g_host.queue_head = 0;
     g_host.queue_count = 0;
+    g_host.escape_pressed = false;
+    g_host.escape_cancel_latched = false;
 }
 
 unsigned phy_host_pending_event_count(void)
@@ -212,6 +245,11 @@ bool phy_host_display_was_restored(void)
 void phy_host_advance_clock_ms(uint32_t milliseconds)
 {
     g_host.clock_ms += milliseconds;
+}
+
+void phy_host_set_clock_autostep_ms(uint32_t milliseconds)
+{
+    g_host.clock_autostep_ms = milliseconds;
 }
 
 void phy_host_fail_alloc_after(unsigned countdown)

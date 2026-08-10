@@ -149,6 +149,23 @@ void test_discrete_functions_use_mathematical_notation()
     PHY_CHECK(contains_text(tree, "i"));
     PHY_CHECK(!contains_text(tree, "ComplexAround"));
 
+    tree = build_tree(
+        ir,
+        "(fn Around (rat 4 3) (rat 1 100000000000))");
+    PHY_CHECK(contains_text(tree, "1.3333333333"));
+    /* Radius is rounded outward and gains one ulp for midpoint truncation. */
+    PHY_CHECK(contains_text(tree, "0.0000000002"));
+    PHY_CHECK(!contains_text(tree, "100000000000"));
+
+    tree = build_tree(
+        ir,
+        "(fn ComplexAround (fn Around (rat 4 3) 0) "
+        "(fn Around (rat -7 5) (rat 1 100000000000)))");
+    PHY_CHECK(contains_text(tree, "1.4000000000"));
+    PHY_CHECK(contains_text(tree, u8"−"));
+    PHY_CHECK(contains_text(tree, "i"));
+    PHY_CHECK(!contains_text(tree, "-7"));
+
     phy_ir_context_destroy(ir);
 }
 

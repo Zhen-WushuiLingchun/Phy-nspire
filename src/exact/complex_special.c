@@ -571,33 +571,28 @@ static phy_status choose_shift(const phy_complex_ball *argument,
     phy_bigrat base_lower = {0};
     phy_bigrat candidate = {0};
     phy_bigrat shift_value = {0};
-    phy_bigrat target = {0};
     phy_bigrat epsilon = {0};
     phy_status status = phy_bigrat_init(context, &base_lower);
     if (status == PHY_OK) status = phy_bigrat_init(context, &candidate);
     if (status == PHY_OK) status = phy_bigrat_init(context, &shift_value);
-    if (status == PHY_OK) status = phy_bigrat_init(context, &target);
     if (status == PHY_OK) status = phy_bigrat_init(context, &epsilon);
     if (status == PHY_OK) {
         status = phy_real_ball_lower(&argument->real, &base_lower);
     }
-    if (status == PHY_OK) {
-        status = phy_bigrat_set_i64(
-            &target, (int64_t)(rounds / 2u + SPECIAL_GUARD_BITS / 2u), 1);
-    }
     if (status == PHY_OK) status = dyadic_epsilon(context, rounds, &epsilon);
     uint32_t shift = 0u;
-    int target_order = -1;
     int error_order = 1;
     for (; status == PHY_OK && shift <= SPECIAL_MAX_SHIFT; ++shift) {
         status = phy_bigrat_set_i64(&shift_value, (int64_t)shift, 1);
         if (status == PHY_OK) {
             status = phy_bigrat_add(&base_lower, &shift_value, &candidate);
         }
-        if (status == PHY_OK) {
-            status = phy_bigrat_compare(&candidate, &target, &target_order);
-        }
-        if (status == PHY_OK && target_order >= 0) {
+        /* The documented Olver/Arb right-half-plane remainder majorant is
+           already the proof obligation. The former Re[z] >= rounds/2+8
+           precondition was an additional heuristic that shifted a 10-digit
+           request by about 32 recurrence steps even though the exact B_24
+           bound certifies it near 8. */
+        if (status == PHY_OK && phy_bigrat_sign(&candidate) > 0) {
             status = stirling_remainder(&candidate, derivative,
                                         out_remainder);
             if (status == PHY_OK) {
@@ -612,7 +607,6 @@ static phy_status choose_shift(const phy_complex_ball *argument,
     }
     if (status == PHY_OK) *out_shift = shift;
     destroy_bigrat(&epsilon);
-    destroy_bigrat(&target);
     destroy_bigrat(&shift_value);
     destroy_bigrat(&candidate);
     destroy_bigrat(&base_lower);
@@ -846,19 +840,72 @@ phy_status phy_complex_ball_gamma(const phy_complex_ball *argument,
     phy_status status = validate_request(argument, rounds, out_value);
     if (status != PHY_OK) return status;
     phy_exact_context *context = special_context(out_value);
-    phy_complex_ball loggamma = {0};
-    phy_complex_ball result = {0};
-    status = phy_complex_ball_init(context, &loggamma);
-    if (status == PHY_OK) status = phy_complex_ball_init(context, &result);
+    phy_bigrat remainder = {0};
+    status = phy_bigrat_init(context, &remainder);
+    uint32_t shift = 0u;
     if (status == PHY_OK) {
-        status = phy_complex_ball_loggamma(argument, rounds, &loggamma);
+        status = choose_shift(argument, rounds, false, &shift, &remainder);
+    }
+    phy_complex_ball shifted = {0};
+    phy_complex_ball loggamma = {0};
+    phy_complex_ball shifted_gamma = {0};
+    phy_complex_ball product = {0};
+    phy_complex_ball factor = {0};
+    phy_complex_ball next_product = {0};
+    phy_complex_ball result = {0};
+    phy_complex_ball *values[] = {&shifted,       &loggamma,
+                                  &shifted_gamma, &product,
+                                  &factor,        &next_product,
+                                  &result};
+    size_t initialized = 0u;
+    while (status == PHY_OK && initialized < 7u) {
+        status = phy_complex_ball_init(context, values[initialized]);
+        if (status == PHY_OK) initialized++;
     }
     if (status == PHY_OK) {
-        status = phy_complex_ball_exp(&loggamma, rounds, &result);
+        status = shifted_argument(argument, shift, &shifted);
+    }
+    if (status == PHY_OK) {
+        status = stirling_loggamma(
+            &shifted, rounds, &remainder, &loggamma);
+    }
+    if (status == PHY_OK) {
+        status = phy_complex_ball_exp(
+            &loggamma, rounds, &shifted_gamma);
+    }
+    if (status == PHY_OK) {
+        status = phy_complex_ball_set_i64(&product, 1, 1, 0, 1);
+    }
+    for (uint32_t k = 0u; status == PHY_OK && k < shift; ++k) {
+        status = add_integer(argument, (int64_t)k, &factor);
+        bool contains_zero = true;
+        if (status == PHY_OK) {
+            status = phy_complex_ball_contains_zero_checked(
+                &factor, &contains_zero);
+        }
+        if (status == PHY_OK && contains_zero) status = PHY_ERR_DOMAIN;
+        if (status == PHY_OK) {
+            status = phy_complex_ball_multiply(
+                &product, &factor, &next_product);
+        }
+        if (status == PHY_OK) {
+            status = round_complex(
+                &next_product, rounds + SPECIAL_GUARD_BITS, &product);
+        }
+    }
+    if (status == PHY_OK) {
+        status = phy_complex_ball_divide(
+            &shifted_gamma, &product, &result);
+    }
+    if (status == PHY_OK) {
+        status = round_complex(
+            &result, rounds + SPECIAL_GUARD_BITS, &result);
     }
     if (status == PHY_OK) status = phy_complex_ball_copy(&result, out_value);
-    phy_complex_ball_destroy(&result);
-    phy_complex_ball_destroy(&loggamma);
+    while (initialized != 0u) {
+        phy_complex_ball_destroy(values[--initialized]);
+    }
+    destroy_bigrat(&remainder);
     return status;
 }
 

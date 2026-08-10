@@ -76,6 +76,12 @@ struct phy_notebook {
     size_t selected;
     uint32_t next_execution;
 
+    uint32_t evaluation_timeout_ms;
+    uint32_t evaluation_start_ms;
+    uint32_t evaluation_clock_polls;
+    bool evaluation_active;
+    bool evaluation_timed_out;
+
     bool editing;
     size_t edit_index;
     bool edit_secondary;

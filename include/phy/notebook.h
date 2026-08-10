@@ -41,6 +41,9 @@ extern "C" {
  */
 #define PHY_NOTEBOOK_MAX_CELLS 400u
 #define PHY_NOTEBOOK_DOCUMENT_MAX_BYTES (128u * 1024u)
+#define PHY_NOTEBOOK_DEFAULT_EVALUATION_TIMEOUT_MS 300000u
+#define PHY_NOTEBOOK_MIN_EVALUATION_TIMEOUT_MS 1000u
+#define PHY_NOTEBOOK_MAX_EVALUATION_TIMEOUT_MS 3600000u
 
 typedef struct phy_notebook phy_notebook;
 
@@ -79,6 +82,15 @@ typedef struct {
 
 phy_notebook *phy_notebook_create(void);
 void phy_notebook_destroy(phy_notebook *notebook);
+
+/*
+ * Per-cell wall-time guard. The default is five minutes. Values outside one
+ * second through one hour are rejected, so an interactive notebook cannot
+ * accidentally disable its final safety boundary.
+ */
+phy_status phy_notebook_set_evaluation_timeout_ms(phy_notebook *notebook,
+                                                  uint32_t milliseconds);
+uint32_t phy_notebook_evaluation_timeout_ms(const phy_notebook *notebook);
 
 phy_status phy_notebook_add_markdown(phy_notebook *notebook,
                                      const char *heading, const char *body,

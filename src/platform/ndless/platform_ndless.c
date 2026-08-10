@@ -13,6 +13,7 @@
 #include <libndls.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/time.h>
 
 #include "phy/platform.h"
 #include "phy/modifier.h"
@@ -50,7 +51,8 @@ typedef struct {
     bool pointer_pressed;
     phy_pointer_tracker pointer;
 
-    uint32_t clock_ms;
+    uint32_t clock_origin_seconds;
+    bool escape_cancel_latched;
     phy_telemetry telemetry;
 } ndless_state;
 
@@ -176,6 +178,10 @@ phy_status phy_platform_init(void)
     phy_pointer_tracker_init(&g_ndless.pointer, PHY_SCREEN_WIDTH / 2,
                              PHY_SCREEN_HEIGHT / 2);
     phy_modifier_tracker_init(&g_ndless.modifiers);
+    struct timeval now;
+    if (gettimeofday(&now, NULL) == 0) {
+        g_ndless.clock_origin_seconds = (uint32_t)now.tv_sec;
+    }
     g_ndless.initialized = true;
     return PHY_OK;
 }
@@ -233,6 +239,16 @@ static void sample_keys(void)
     for (int i = 0; i < KEY_BINDING_COUNT; ++i) {
         /* isKeyPressed is a macro that takes the address of its argument. */
         const bool down = isKeyPressed(*kKeyBindings[i].key) ? true : false;
+        if (kKeyBindings[i].semantic == PHY_KEY_ESC &&
+            g_ndless.escape_cancel_latched) {
+            /* The held ESC already cancelled a calculation. Swallow both
+               edges so it cannot immediately close the notebook as well. */
+            g_ndless.key_state[i] = down;
+            if (!down) {
+                g_ndless.escape_cancel_latched = false;
+            }
+            continue;
+        }
         if (down != g_ndless.key_state[i]) {
             g_ndless.key_state[i] = down;
             push_key(down ? PHY_EVENT_KEY_DOWN : PHY_EVENT_KEY_UP,
@@ -322,15 +338,29 @@ bool phy_input_poll(phy_event *out_event)
     return true;
 }
 
+bool phy_input_cancel_requested(void)
+{
+    if (!g_ndless.initialized ||
+        !isKeyPressed(KEY_NSPIRE_ESC)) {
+        return false;
+    }
+    g_ndless.escape_cancel_latched = true;
+    return true;
+}
+
 /*
- * Ndless exposes no wall-clock syscall, so this counts the time we explicitly
- * yield. That is sufficient for Phase 0 idle pacing. The wall-time evaluation
- * limits in docs/ARCHITECTURE.md need a real timer source; that arrives with
- * the Phase 1 evaluator, not here.
+ * Ndless' gettimeofday implementation reads the handheld RTC. Its one-second
+ * resolution is intentionally coarse, but unlike the old sleep counter it
+ * advances while a synchronous CAS operation owns the CPU. Unsigned
+ * subtraction by clients preserves elapsed-time checks across wraparound.
  */
 uint32_t phy_clock_ms(void)
 {
-    return g_ndless.clock_ms;
+    struct timeval now;
+    if (gettimeofday(&now, NULL) != 0) {
+        return 0u;
+    }
+    return ((uint32_t)now.tv_sec - g_ndless.clock_origin_seconds) * 1000u;
 }
 
 void phy_sleep_ms(uint32_t milliseconds)
@@ -340,7 +370,6 @@ void phy_sleep_ms(uint32_t milliseconds)
         return;
     }
     msleep(milliseconds);
-    g_ndless.clock_ms += milliseconds;
 }
 
 void *phy_alloc(size_t bytes)

@@ -67,7 +67,10 @@ static const tour_cell kTour[] = {
      "Every displayed rectangle is an outward rational enclosure. "
      "Complex special functions use bounded series or Stirling remainder "
      "proofs, while higher-degree roots are published only after exact "
-     "Pellet--Rouche one-root certificates:"
+     "Pellet--Rouche one-root certificates. On the handheld, ESC cancels "
+     "the active cell and every evaluation has a five-minute wall-time "
+     "limit through the CAS cancellation checkpoints. "
+     "LogGamma is the slowest of the four certified examples:"
      "$$\\mathrm{erf}(1+i),\\quad "
      "\\Gamma\\left(\\frac{1}{3}+\\frac{i}{4}\\right),\\quad "
      "x^5-x-1=0.$$"},
