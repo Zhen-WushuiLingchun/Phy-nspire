@@ -132,7 +132,14 @@ ir)
     # definition by design.
     EXCLUDE='^phy_ir_equal$'
     MIN_ENTRY_POINTS=30
-    SOURCES=("${COMMON_SOURCES[@]}")
+    # Arbitrary-size rational text in the typed IR deliberately delegates
+    # canonical parsing/formatting to the exact kernel.  Keep that dependency
+    # explicit here: the standalone probe must model the current layer graph,
+    # not an older storage-only IR.
+    SOURCES=("${COMMON_SOURCES[@]}"
+             src/exact/context.c
+             src/exact/integer.c
+             src/exact/rational.c)
     ;;
 exact)
     LABEL="exact number"

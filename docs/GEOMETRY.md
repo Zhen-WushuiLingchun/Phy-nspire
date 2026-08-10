@@ -454,7 +454,7 @@ operation that reached `libm` would defeat the reason the CAS computes only in
 exact rationals.
 
 The probe retained 45/45 public APIs, compiled the geometry translation units
-to 8,957 bytes of ARM text, packaged a 62,428-byte dependency-complete `.tns`,
+to 8,957 bytes of ARM text, packaged a 93,740-byte dependency-complete `.tns`,
 and retained no float formatter, libm call, or ARM soft-float helper.
 
 ## Not in the legacy form layer

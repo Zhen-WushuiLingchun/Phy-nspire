@@ -59,7 +59,8 @@ polynomial `Solve` with complex quadratic roots and certified higher-degree
 real roots, verified exact linear and zero-dimensional polynomial systems,
 bounded `Resultant`/`Discriminant`/`GroebnerBasis`, exact
 Bernoulli/Harmonic/Digamma/Gamma recurrences, and a certified real rational-ball
-layer for bounded `N`/univariate-real `NSolve`,
+layer with elementary `Exp`/`Log`/`Sin`/`Cos`/`Tan` support for bounded
+`N`/univariate-real `NSolve`,
 and an exact zero decision;
 the component tensor core with charts, dense storage, valence, signed slot
 symmetries, contraction, metric inversion, index raising/lowering, and
@@ -165,15 +166,15 @@ also checked against the authoritative evaluator and source-command registries:
 every supported operation is discoverable through its ten scrollable
 categories.
 
-The current native build is measured at 1,246,500 bytes, 19.8% of the 6 MiB
+The current native build is measured at 1,252,366 bytes, 19.9% of the 6 MiB
 ceiling. Its evaluator ARM probe links the complete current physics stack,
 retains 17/17 public evaluator entry points, packages to a `.tns`, and imports
 no libm, floating-point formatter, or ARM soft-float helper.
 The QFT abstract/component probe independently retains 14/14 public entry
-points and packages with its dependencies to 94,880 bytes under the same
+points and packages with its dependencies to 101,588 bytes under the same
 no-float rule.
 The separate dynamic-component bridge probe retains 35/35 public entry points,
-packages to a 97,196-byte `.tns`, and also imports no floating-point
+packages to a 111,964-byte `.tns`, and also imports no floating-point
 formatter or parser.
 
 The native CAS smoke artifact has run on the target CX II and shown all seven
@@ -191,7 +192,7 @@ downloaded back byte-identically on 2026-07-30. The previous 1,222,416-byte
 program, including the complete scrollable MENU, was subsequently deployed and
 read back byte-identically on the same date. A later 1,226,713-byte build added
 structured physics-object output and lazy/one-pass SU(3) initialization. The
-current 1,246,500-byte foundation build has not been uploaded in this work
+current 1,252,366-byte foundation build has not been uploaded in this work
 round; its calculator transfer and open/run check remain a separate gate. The
 separate baseline channel-order check remains tracked in
 [docs/BUILD.md](docs/BUILD.md).

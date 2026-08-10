@@ -20,6 +20,18 @@ prove that the divisor ball excludes zero. Allocation failure in that test is
 reported as an error; the convenience Boolean query fails conservatively as
 "contains zero".
 
+`Exp`, `Log`, `Sin`, `Cos`, and `Tan` are also certified over real balls. Every
+intermediate interval is rounded outwards to an exact dyadic grid, so numerator
+and denominator growth remains bounded without losing enclosure. `Sin` and
+`Cos` reduce to `|x| <= 1/16`, use Taylor bounds, and recover with exact
+double-angle identities. `Exp` uses the same reduction followed by repeated
+squaring. `Log` applies square-root reduction until
+`|(x-1)/(x+1)| <= 1/4`, then evaluates the `atanh` series with a geometric tail
+bound; the looser reduction threshold is deliberate because it replaces
+several expensive square roots with more cheap rational terms. `Tan` divides
+the certified sine and cosine balls only after proving the cosine ball excludes
+zero.
+
 All mutating public operations build a temporary result and publish only after
 success. No operation calls `double`, a floating-point formatter, libm, or an
 ARM soft-float helper.
@@ -32,13 +44,14 @@ ARM soft-float helper.
 - exact integers and rationals;
 - `Pi`, `E`, and `EulerGamma` from fixed certified 40-decimal intervals;
 - exact sums, products and signed integer powers;
-- principal real square roots whose input ball is proved nonnegative.
+- principal real square roots whose input ball is proved nonnegative; and
+- real `Exp`, `Log`, `Sin`, `Cos`, and `Tan`, with domain/pole proofs.
 
 The requested precision is capped at 36 decimal digits. Exact inputs may have
 zero radius, so `N[1/3]` deliberately returns `Around[1/3,0]`; decimal display
-is not allowed to discard the exact certificate. Trigonometric, exponential,
-logarithmic, complex and general special-function ball algorithms are not yet
-implemented and return a typed unsupported status.
+is not allowed to discard the exact certificate. Complex arguments, inverse
+trigonometric/hyperbolic functions and general special-function ball algorithms
+remain typed unsupported rather than falling back to floating point.
 
 ## `NSolve`
 
@@ -63,8 +76,8 @@ precision escalation remain explicit future work.
 Host unit tests prove enclosure for arithmetic and irrational square root,
 parser/evaluator/menu integration, MathTree `midpoint +/- radius` display, real
 quintic isolation, empty real-root sets, denominator exclusion, and typed
-precision ceilings. The 2026-08-10 ARM probe retained 17/17 public ball APIs in
-4,988 bytes of layer text, packaged to 19,400 bytes, with no float formatter,
+precision ceilings. The 2026-08-10 ARM probe retained 22/22 public ball APIs in
+14,608 bytes of layer text, packaged to 30,248 bytes, with no float formatter,
 libm call or ARM soft-float helper. Host ASan/UBSan/leak and ARM link acceptance
 do not replace physical CX II timing/heap checks; this document must not treat
 them as a device-runtime measurement.

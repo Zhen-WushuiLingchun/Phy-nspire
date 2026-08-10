@@ -223,28 +223,28 @@ on 2026-08-10:
 
 - exact numbers: 68/68 public APIs retained, 17,680 bytes of layer text, and a
   23,540-byte isolated package;
-- certified real balls: 17/17 public APIs retained, 4,988 bytes of layer text,
-  and a 19,400-byte isolated package;
+- certified real balls: 22/22 public APIs retained, 14,608 bytes of layer text,
+  and a 30,248-byte isolated package;
 - canonical real algebraics: 31/31 public APIs retained, 38,720 bytes of layer
   text, and a 66,572-byte isolated package;
-- scalar CAS: 40/40 public APIs retained, 130,036 bytes of layer text, and a
-  197,464-byte isolated package;
+- scalar CAS: 40/40 public APIs retained, 130,392 bytes of layer text, and a
+  207,616-byte isolated package;
 
-- geometry: 45/45 APIs retained, 8,957 bytes of layer text, 62,428-byte probe
+- geometry: 45/45 APIs retained, 8,957 bytes of layer text, 93,740-byte probe
   package;
-- Yang--Mills: 22/22 APIs retained, 4,524 bytes of layer text, 67,840-byte
+- Yang--Mills: 22/22 APIs retained, 4,524 bytes of layer text, 99,144-byte
   probe package;
-- SU(N) colour: 23/23 APIs retained, 4,924 bytes of layer text, 52,764-byte
+- SU(N) colour: 23/23 APIs retained, 4,924 bytes of layer text, 83,996-byte
   probe package;
 - evaluator plus complete backend stack: 17/17 public evaluator APIs retained
-  from 69 portable sources, 54,355 bytes of evaluator text, 375,600-byte
+  from 69 portable sources, 54,355 bytes of evaluator text, 385,752-byte
   isolated probe;
-- QFT abstract/component bridge: 14/14 APIs retained from 47 portable sources,
-  3,152 bytes of bridge text, 94,880-byte isolated probe;
+- QFT abstract/component bridge: 14/14 APIs retained from 50 portable sources,
+  3,152 bytes of bridge text, 101,588-byte isolated probe;
 - all five isolated probes contain no float formatter, libm call, or ARM
   soft-float helper.
 
-A product build from the same source is 1,246,500 bytes (19.8% of the
+A product build from the same source is 1,252,366 bytes (19.9% of the
 6 MiB ceiling). The product includes nMarkdown/FreeType/HarfBuzz and therefore
 has different retained dependencies from the exact isolated probes; the
 no-float statement above is specifically a property of those native symbolic

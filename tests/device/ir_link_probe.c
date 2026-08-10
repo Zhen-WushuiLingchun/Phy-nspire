@@ -61,10 +61,22 @@ static void probe_builders(phy_ir_context *ctx)
 
     const phy_ir_ref two = phy_ir_integer(ctx, 2);
     const phy_ir_ref half = phy_ir_rational(ctx, 1, 2);
+    const phy_ir_ref wide_integer =
+        phy_ir_integer_text(ctx, "18446744073709551616");
+    const phy_ir_ref wide_integer_n =
+        phy_ir_integer_text_n(ctx, "340282366920938463463374607431768211456", 39u);
+    const phy_ir_ref wide_rational = phy_ir_rational_text(
+        ctx, "18446744073709551616", "3");
+    const phy_ir_ref wide_rational_n = phy_ir_rational_text_n(
+        ctx, "340282366920938463463374607431768211456", 39u, "5", 1u);
     const phy_ir_ref real = phy_ir_real(ctx, 0.5);
     const phy_ir_ref symbol = phy_ir_symbol_ref(ctx, head);
     const phy_ir_ref index = phy_ir_index(ctx, name, PHY_IR_INDEX_LOWER);
     const phy_ir_ref failure = phy_ir_error(ctx, PHY_ERR_TIMEOUT);
+    sink((unsigned)wide_integer);
+    sink((unsigned)wide_integer_n);
+    sink((unsigned)wide_rational);
+    sink((unsigned)wide_rational_n);
 
     const phy_ir_ref pair[2] = {two, symbol};
     const phy_ir_ref sum = phy_ir_add(ctx, pair, 2u);

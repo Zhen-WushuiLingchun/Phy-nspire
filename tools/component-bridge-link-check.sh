@@ -56,7 +56,9 @@ objects=(
     build/arm/src/abstract/head.o
     build/arm/src/abstract/monomial.o
     build/arm/src/abstract/canonical.o
+    build/arm/src/abstract/dgs.o
     build/arm/src/abstract/young.o
+    build/arm/src/abstract/garnir.o
     build/arm/src/component/basis.o
     build/arm/src/component/component.o
     build/arm/src/component/bridge.o
@@ -68,6 +70,7 @@ objects=(
     build/arm/src/exact/rational.o
     build/arm/src/exact/gaussian.o
     build/arm/src/exact/algebraic.o
+    build/arm/src/exact/ball.o
     build/arm/src/cas/num.o
     build/arm/src/cas/big_num.o
     build/arm/src/cas/complex.o
@@ -77,6 +80,8 @@ objects=(
     build/arm/src/cas/solve.o
     build/arm/src/cas/linear_solve.o
     build/arm/src/cas/sparse_poly.o
+    build/arm/src/cas/ball_eval.o
+    build/arm/src/cas/special.o
     build/arm/src/cas/engine.o
     build/arm/src/cas/simplify.o
     build/arm/src/cas/diff.o

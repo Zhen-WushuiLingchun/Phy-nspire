@@ -66,24 +66,24 @@ operation.
 - Assertion-bearing executables: 458,095 checks.
 - Notebook MENU completeness: every supported evaluator/source command is
   present in ten scrollable CAS categories.
-- Ndless r2022 ARM product: 1,246,500 bytes, 19.8% of the 6 MiB ceiling.
+- Ndless r2022 ARM product: 1,252,366 bytes, 19.9% of the 6 MiB ceiling.
 - Rebuilt discrete-function CAS smoke and QFT bench packages link natively at
   88,588 and 61,868 bytes respectively; this is ARM package evidence, not a
   new physical-device run.
 - Isolated exact-number ARM probe: 68/68 public APIs, 17,680 bytes of exact
   number text, 23,540-byte package, and no forbidden numeric dependency.
-- Isolated real-ball ARM probe: 17/17 public APIs, 4,988 bytes of ball text,
-  19,400-byte package, and no forbidden numeric dependency.
+- Isolated real-ball ARM probe: 22/22 public APIs, 14,608 bytes of ball text,
+  30,248-byte package, and no forbidden numeric dependency.
 - Isolated real-algebraic ARM probe: 31/31 public APIs, 38,720 bytes of
   algebraic text and a 66,572-byte package.
-- Isolated CAS ARM probe: 40/40 public APIs, 130,036 bytes of CAS text,
-  197,464-byte package, and no float formatter, libm call, or ARM soft-float
+- Isolated CAS ARM probe: 40/40 public APIs, 130,392 bytes of CAS text,
+  207,616-byte package, and no float formatter, libm call, or ARM soft-float
   helper.
 - Isolated evaluator ARM probe: 17/17 public APIs, 54,355 bytes of evaluator
-  text, 375,600-byte package, and no float formatter, libm call, or ARM
+  text, 385,752-byte package, and no float formatter, libm call, or ARM
   soft-float helper.
 - Isolated QFT abstract/component bridge probe: 14/14 public APIs, 3,152
-  bytes of bridge text, 94,880-byte package, and the same no-float guarantee.
+  bytes of bridge text, 101,588-byte package, and the same no-float guarantee.
 
 These results establish source, host, sanitizer, and ARM-link acceptance. They
 do not establish calculator interaction, timing, or heap headroom until the

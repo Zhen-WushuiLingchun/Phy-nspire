@@ -66,6 +66,29 @@ phy_status phy_real_ball_sqrt(const phy_real_ball *argument,
                               uint32_t rounds,
                               phy_real_ball *out_root);
 
+/*
+ * Certified elementary real functions.  `rounds` controls the bounded
+ * rational range-reduction/Taylor work; callers normally use roughly four
+ * rounds per requested decimal digit.  Every routine is transactional and
+ * returns PHY_ERR_DOMAIN when the whole input ball is not inside the real
+ * function's domain.  Excessive range reduction returns PHY_ERR_TERM_LIMIT.
+ */
+phy_status phy_real_ball_exp(const phy_real_ball *argument,
+                             uint32_t rounds,
+                             phy_real_ball *out_value);
+phy_status phy_real_ball_log(const phy_real_ball *argument,
+                             uint32_t rounds,
+                             phy_real_ball *out_value);
+phy_status phy_real_ball_sin(const phy_real_ball *argument,
+                             uint32_t rounds,
+                             phy_real_ball *out_value);
+phy_status phy_real_ball_cos(const phy_real_ball *argument,
+                             uint32_t rounds,
+                             phy_real_ball *out_value);
+phy_status phy_real_ball_tan(const phy_real_ball *argument,
+                             uint32_t rounds,
+                             phy_real_ball *out_value);
+
 #ifdef __cplusplus
 }
 #endif

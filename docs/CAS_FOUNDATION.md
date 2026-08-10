@@ -230,10 +230,10 @@ analytic continuation remain open.
 - Further analytic rules are added only with exact special values,
   derivatives, symmetries, recurrences, and domain metadata. General-order
   Pochhammer/Binomial derivatives are therefore still explicit.
-- The first separately bounded numeric layer is present: `N` evaluates the
-  supported real exact arithmetic/constants/square-root subset to a certified
-  rational `Around[midpoint,radius]`, and `NSolve` returns certified real root
-  balls. It never silently falls back to binary floating point.
+- The separately bounded numeric layer evaluates real exact arithmetic,
+  constants, square roots, `Exp`, `Log`, `Sin`, `Cos`, and `Tan` to certified
+  rational `Around[midpoint,radius]` values; `NSolve` returns certified real
+  root balls. It never silently falls back to binary floating point.
 - An unsupported transform or integral remains explicit; table lookup never
   masquerades as a general integration algorithm.
 

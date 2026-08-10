@@ -207,6 +207,41 @@ static void test_certified_numeric_ball_entry_points(void)
     PHY_CHECK(radius_view.denominator_length > 0u);
     PHY_CHECK(radius_view.denominator[0] != '-');
 
+    static const char *elementary[] = {
+        "(fn exp 1)",
+        "(fn log 2)",
+        "(fn sin 1)",
+        "(fn cos 1)",
+        "(fn tan 1)"};
+    for (size_t index = 0u;
+         index < sizeof elementary / sizeof elementary[0]; ++index) {
+        const phy_status elementary_status = phy_cas_n(
+            f.cas, parse(f.ir, elementary[index]), 20u, &result);
+        PHY_CHECK_EQ_INT(elementary_status, PHY_OK);
+        PHY_CHECK_EQ_INT(phy_ir_kind_of(f.ir, result), PHY_IR_FUNCTION);
+        PHY_CHECK_EQ_STR(
+            phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, result)), "Around");
+    }
+    PHY_CHECK_EQ_INT(
+        phy_cas_n(f.cas, parse(f.ir, "(fn log 2)"), 36u, &result),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, result)), "Around");
+    PHY_CHECK_EQ_INT(
+        phy_cas_n(f.cas, parse(f.ir, "(fn log -1)"), 20u, &result),
+        PHY_ERR_DOMAIN);
+    PHY_CHECK_EQ_INT(result, PHY_IR_NULL);
+    PHY_CHECK_EQ_INT(
+        phy_cas_n(
+            f.cas, parse(f.ir, "(fn tan (* Pi (rat 1 2)))"), 20u,
+            &result),
+        PHY_ERR_DOMAIN);
+    PHY_CHECK_EQ_INT(result, PHY_IR_NULL);
+    PHY_CHECK_EQ_INT(
+        phy_cas_n(f.cas, parse(f.ir, "(fn sin I)"), 20u, &result),
+        PHY_ERR_UNSUPPORTED);
+    PHY_CHECK_EQ_INT(result, PHY_IR_NULL);
+
     PHY_CHECK_EQ_INT(
         phy_cas_n(f.cas, parse(f.ir, "2"), 37u, &result),
         PHY_ERR_TERM_LIMIT);
