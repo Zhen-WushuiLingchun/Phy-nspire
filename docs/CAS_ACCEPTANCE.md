@@ -110,11 +110,20 @@ Both rollback copies were removed; final listings found no `.upload` or
 `.previous` files and confirmed `examples/` empty. Under this usbipd session a
 fresh detach/attach was required before each new CLI process, so the two files
 were deployed in separate verified sessions with 1000 ms service settling.
-This proves transport integrity only; calculator open/run acceptance remains
-pending for the current unuploaded artifact. On 2026-08-12 the user completed
+This proves transport integrity only; calculator open/run acceptance remained
+pending for that artifact. On 2026-08-12 the user completed
 a full run of the previously deployed tour and reported no observed problem;
 that is physical acceptance of the preceding deployed build, not of later
 host-only changes.
+
+Later on 2026-08-12 the repository CLI used one USB handle to atomically deploy
+and read back the exact 1,291,027-byte Root/Jordan program (SHA-256
+`255c3d73ab74736c5aa0fa3292d4a7fb65e07e46a7828ac14659db23a992c078`)
+and 13,240-byte tour (SHA-256
+`9cdcc5f902aaabe5ae4984f0b5c6f291aaa6fc94d09a5a69823bed62929c74f1`).
+The CLI removed both `.previous` rollback copies, found no stale `.upload`
+file, and confirmed `examples/` empty. This establishes byte-exact deployment;
+opening and exercising these exact artifacts on the CX II remains pending.
 
 ## Explicit non-features
 

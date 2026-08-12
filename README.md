@@ -196,9 +196,12 @@ tour and the then-current 1,221,725-byte program were atomically deployed and
 downloaded back byte-identically on 2026-07-30. The previous 1,222,416-byte
 program, including the complete scrollable MENU, was subsequently deployed and
 read back byte-identically on the same date. A later 1,226,713-byte build added
-structured physics-object output and lazy/one-pass SU(3) initialization. The
-current 1,291,027-byte Root/Jordan build has not been uploaded in this work
-round; its calculator transfer and open/run check remain a separate gate. The
+structured physics-object output and lazy/one-pass SU(3) initialization. On
+2026-08-12 the repository CLI atomically deployed and SHA-256-read-back the
+current 1,291,027-byte Root/Jordan program and 13,240-byte tour in one USB
+session. It removed both rollback copies and confirmed the old `examples/`
+directory empty. Opening and running these exact artifacts on the physical
+calculator remains a separate acceptance gate. The
 separate baseline channel-order check remains tracked in
 [docs/BUILD.md](docs/BUILD.md).
 
