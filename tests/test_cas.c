@@ -40,6 +40,19 @@ static fixture open_fixture(void)
     return f;
 }
 
+static fixture open_algebraic_fixture(void)
+{
+    fixture f;
+    f.ir = phy_ir_context_create(NULL);
+    PHY_CHECK(f.ir != NULL);
+    phy_cas_limits limits;
+    phy_cas_limits_defaults(&limits);
+    limits.max_steps = 1000000u;
+    f.cas = phy_cas_create(f.ir, &limits);
+    PHY_CHECK(f.cas != NULL);
+    return f;
+}
+
 static void close_fixture(fixture *f)
 {
     /* Every operation must leave both layers validating, so the suite asks on
@@ -2751,6 +2764,54 @@ static void test_gaussian_allocation_failure_is_transactional(void)
     phy_platform_shutdown();
 }
 
+static void test_reader_facing_root_arithmetic(void)
+{
+    fixture f = open_algebraic_fixture();
+    static const char sqrt2[] = "(fn Root (fn List -2 0 1) 2)";
+    static const char sqrt3[] = "(fn Root (fn List -3 0 1) 2)";
+
+    PHY_CHECK_EQ_STR(normal(&f, sqrt2), sqrt2);
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(^ (fn Root (fn List -2 0 1) 2) 2)"), "2");
+    PHY_CHECK_EQ_STR(
+        normal(&f,
+               "(+ (fn Root (fn List -2 0 1) 2) "
+               "(* -1 (fn Root (fn List -2 0 1) 2)))"),
+        "0");
+    PHY_CHECK_EQ_STR(
+        normal(&f,
+               "(+ (fn Root (fn List -2 0 1) 2) "
+               "(fn Root (fn List -3 0 1) 2))"),
+        "(fn Root (fn List 1 0 -10 0 1) 4)");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(fn Root (fn List 1 0 1) 1)"), "(* -1 I)");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(fn Root (fn List 1 0 1) 2)"), "I");
+    PHY_CHECK_EQ_STR(
+        normal(&f, "(fn Root (fn List -2 1 -2 1) 3)"), "I");
+    PHY_CHECK_EQ_STR(
+        normal(&f,
+               "(fn Conjugate (fn Root (fn List -2 0 0 1) 3))"),
+        "(fn Root (fn List -2 0 0 1) 2)");
+
+    phy_cas_decision decision = PHY_CAS_UNKNOWN;
+    PHY_CHECK_EQ_INT(
+        phy_cas_equivalent(
+            f.cas,
+            parse(f.ir, "(^ (fn Root (fn List -2 0 1) 2) 2)"),
+            parse(f.ir, "2"), &decision),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(decision, PHY_CAS_ZERO);
+    PHY_CHECK(
+        simplify_status(&f, "(fn Root (fn List -2 0 1) 3)") != PHY_OK);
+    PHY_CHECK_EQ_INT(
+        simplify_status(&f, "(fn Root (fn List -2 (rat 1 2) 1) 1)"),
+        PHY_ERR_TYPE);
+
+    (void)sqrt3;
+    close_fixture(&f);
+}
+
 /* ---------------------------------------------------------------- driver */
 
 int main(void)
@@ -2797,5 +2858,6 @@ int main(void)
     PHY_TEST_CASE(test_promoted_exact_allocation_failure_is_transactional);
     PHY_TEST_CASE(test_discrete_function_allocation_failure_is_transactional);
     PHY_TEST_CASE(test_gaussian_allocation_failure_is_transactional);
+    PHY_TEST_CASE(test_reader_facing_root_arithmetic);
     return PHY_TEST_REPORT("test_cas");
 }

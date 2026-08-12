@@ -388,6 +388,13 @@ preserves the denominator exclusion in
 optionally retain factor multiplicities. The matrix layer uses that form for
 `Eigenvalues`; ordinary `Solve` deliberately returns distinct rules.
 
+Reader and document decoding deliberately keep algebraic values as portable
+`Root[List[a0,...,an],k]` IR. Before exact arithmetic, the CAS validates that
+tree, rebuilds its canonical complex-algebraic certificate, performs bounded
+resultant arithmetic, and publishes only a canonical rational, `I`, or
+primitive-minimal-polynomial `Root`. This makes hand-written and reopened
+roots valid coefficients for exact RREF, eigenspaces and Jordan chains.
+
 `phy_cas_solve_system` and
 `Solve[{equation,...},{variable,...}]` cover exact linear systems with up to
 eight equations and variables. Coefficients are extracted by exact symbolic
@@ -706,14 +713,14 @@ counts are recorded in `CAS_ACCEPTANCE.md` after each clean build.
 
 Built with the pinned Ndless r2022 SDK and ARM GNU 14.3 toolchain using
 `-Os -marm`. The isolated link check compiles the complete scalar layer to
-138,394 bytes of ARM text; its dependency-complete probe packages to 263,376
+143,772 bytes of ARM text; its dependency-complete probe packages to 276,300
 bytes. These figures are deliberately measured by the link-check target rather
 than maintained as a hand-summed per-object table.
 
 The application now calls the CAS and the typed physics backends through
 editable notebook cells. The current product, including persistence,
-nMarkdown's math typesetter, and the reachable evaluator stack, is 1,282,545
-bytes (20.4% of the 6 MiB ceiling).
+nMarkdown's math typesetter, and the reachable evaluator stack, is 1,291,027
+bytes (20.5% of the 6 MiB ceiling).
 
 `make cas-link-check` closes the gap that leaves. It is the same guard as
 `make ir-link-check`, and `tools/link-check.sh` now serves both layers from one
@@ -731,7 +738,7 @@ not the check itself.
 
 `make cas-link-check` has been run with the real Ndless linker and packager:
 all **41/41** public entry points derived from `include/phy/cas.h` survive
-`--gc-sections`; the CAS+IR+platform probe packages to a **263,376-byte `.tns`**;
+`--gc-sections`; the CAS+IR+platform probe packages to a **276,300-byte `.tns`**;
 and no `_dtoa`, `_strtod`, `_printf_float`, libm, `stdio` formatting, or ARM
 soft-float helper reaches the image. Real IR atoms are ordered by their
 IEEE-754 bit keys rather than by executing a floating-point comparison. The

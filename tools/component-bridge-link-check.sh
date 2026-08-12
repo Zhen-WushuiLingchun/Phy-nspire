@@ -76,6 +76,7 @@ objects=(
     build/arm/src/cas/num.o
     build/arm/src/cas/big_num.o
     build/arm/src/cas/complex.o
+    build/arm/src/cas/algebraic.o
     build/arm/src/cas/finite_poly.o
     build/arm/src/cas/series.o
     build/arm/src/cas/limit.o

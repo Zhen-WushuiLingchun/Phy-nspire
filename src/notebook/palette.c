@@ -10,6 +10,7 @@ typedef struct {
 
 static const phy_palette_entry kCasAlgebra[] = {
     {"Simplify[...]", "Simplify[]", 9u},
+    {"Exact algebraic root", "Root[{-2,0,1},2]", sizeof("Root[") - 1u},
     {"FullSimplify[...]", "FullSimplify[]", 13u},
     {"Expand[...]", "Expand[]", 7u},
     {"Together[...]", "Together[]", 9u},
@@ -95,6 +96,12 @@ static const phy_palette_entry kCasLinear[] = {
     {"Characteristic polynomial", "CharacteristicPolynomial[A,x]",
      sizeof("CharacteristicPolynomial[") - 1u},
     {"Exact eigenvalues", "Eigenvalues[A]", sizeof("Eigenvalues[") - 1u},
+    {"Exact eigenvectors", "Eigenvectors[A]", sizeof("Eigenvectors[") - 1u},
+    {"Eigenspace", "Eigenspace[A,lambda]", sizeof("Eigenspace[") - 1u},
+    {"Generalized eigenspace", "GeneralizedEigenspace[A,lambda]",
+     sizeof("GeneralizedEigenspace[") - 1u},
+    {"Jordan decomposition", "JordanDecomposition[A]",
+     sizeof("JordanDecomposition[") - 1u},
     {"Exact inverse", "Inverse[A]", sizeof("Inverse[") - 1u},
     {"Row reduction", "RowReduce[A]", sizeof("RowReduce[") - 1u},
     {"Matrix rank", "MatrixRank[A]", sizeof("MatrixRank[") - 1u},

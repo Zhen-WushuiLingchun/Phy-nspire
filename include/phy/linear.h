@@ -73,6 +73,22 @@ phy_status phy_matrix_characteristic_polynomial(
 phy_status phy_matrix_eigenvalues(
     const phy_matrix *matrix, phy_ir_ref variable,
     phy_ir_ref *out_values);
+/* Columns form exact bases/vectors over the canonical algebraic extension. */
+phy_status phy_matrix_eigenspace(
+    const phy_matrix *matrix, phy_ir_ref eigenvalue,
+    phy_matrix **out_basis, size_t *out_dimension);
+phy_status phy_matrix_generalized_eigenspace(
+    const phy_matrix *matrix, phy_ir_ref eigenvalue,
+    phy_matrix **out_basis, size_t *out_dimension);
+/* n columns align with multiplicity-preserving Eigenvalues; a defective
+ * multiplicity is padded with exact zero columns, matching Wolfram. */
+phy_status phy_matrix_eigenvectors(
+    const phy_matrix *matrix, phy_ir_ref variable,
+    phy_matrix **out_vectors);
+/* Exact A P = P J decomposition with standard Jordan superdiagonals. */
+phy_status phy_matrix_jordan_decomposition(
+    const phy_matrix *matrix, phy_ir_ref variable,
+    phy_matrix **out_transform, phy_matrix **out_jordan);
 phy_status phy_matrix_rref(const phy_matrix *matrix, phy_matrix **out_matrix,
                            size_t *out_rank);
 phy_status phy_matrix_rank(const phy_matrix *matrix, size_t *out_rank);

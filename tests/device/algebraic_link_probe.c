@@ -1,10 +1,9 @@
 /*
  * Device link probe for the certified real/complex algebraic foundation.
  *
- * The notebook does not expose Root objects yet, so --gc-sections can discard
- * this entire layer from the product. Referencing every public entry point
- * here proves that bigint/rational/Sturm code really links and packages under
- * the Ndless ARM ABI without retaining floating-point helpers.
+ * Referencing every public entry point here proves that bigint/rational/Sturm
+ * code really links and packages under the Ndless ARM ABI without retaining
+ * floating-point helpers.
  */
 #include "phy/algebraic.h"
 
@@ -154,6 +153,9 @@ int main(void)
         phy_complex_algebraic *complex_product = 0;
         phy_complex_algebraic *complex_quotient = 0;
         phy_complex_algebraic *complex_power = 0;
+        phy_complex_algebraic *rational_complex = 0;
+        sink((unsigned)phy_complex_algebraic_from_rational(
+            context, half, &rational_complex));
         sink((unsigned)phy_complex_algebraic_from_real(
             left, &lifted));
         sink((unsigned)phy_complex_algebraic_conjugate(
@@ -172,6 +174,7 @@ int main(void)
         sink((unsigned)phy_complex_algebraic_pow_i32(
             selected, 2, &complex_power));
         phy_complex_algebraic_destroy(complex_power);
+        phy_complex_algebraic_destroy(rational_complex);
         phy_complex_algebraic_destroy(complex_quotient);
         phy_complex_algebraic_destroy(complex_product);
         phy_complex_algebraic_destroy(complex_difference);

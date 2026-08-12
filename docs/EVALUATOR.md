@@ -167,6 +167,10 @@ device-oriented ceilings.
 | `Determinant[A]`, `Inverse[A]` | exact determinant and inverse |
 | `CharacteristicPolynomial[A,x]` | exact pivot-free Faddeev--LeVerrier characteristic polynomial |
 | `Eigenvalues[A]` | exact algebraic eigenvalues, repeated by characteristic multiplicity |
+| `Eigenvectors[A]` | exact row-list eigenvectors aligned with `Eigenvalues[A]`; defective multiplicities receive zero rows |
+| `Eigenspace[A,lambda]` | exact row-list basis of `ker(A-lambda I)` |
+| `GeneralizedEigenspace[A,lambda]` | exact row-list basis of `ker((A-lambda I)^n)` |
+| `JordanDecomposition[A]` | exact `{P,J}` satisfying `A.P=P.J`, with standard superdiagonal Jordan blocks |
 | `RowReduce[A]`, `MatrixRank[A]` | exact RREF and algebraic rank |
 | `LinearSolve[A,b]` | exact square nonsingular solve with vector or matrix right side |
 
@@ -532,7 +536,7 @@ its configured arenas.
 
 ## Verification
 
-`tests/test_eval.c`, 3,187 checks. The physics cases deliberately reproduce,
+`tests/test_eval.c`, 3,259 checks. The physics cases deliberately reproduce,
 through reader-facing source, results the backend suites already certify
 directly:
 
@@ -576,9 +580,9 @@ entry a test failure.
 The ARM link check is `make eval-link-check` and
 `tests/device/eval_link_probe.c`: 17 declared entry points, the whole physics
 stack behind one dispatcher, and the same no-float/no-libm/no-soft-float
-standard the CAS and geometry layers are held to. It now links 72 portable
+standard the CAS and geometry layers are held to. It now links 74 portable
 sources, retains 17/17 public evaluator entry points, contains no forbidden
-float/libm/soft-float dependency, and packages as a 443,276-byte isolated
+float/libm/soft-float dependency, and packages as a 462,364-byte isolated
 probe. That probe size includes its dependencies and is not an incremental
 product-size measurement.
 
@@ -587,7 +591,7 @@ future work has now happened: the application genuinely calls the geometry,
 Lie, Yang--Mills, and QFT layers, so `--gc-sections` no longer drops them.
 The preserved `dist-foundation/phy-nspire.tns` baseline is 1,173,026 bytes.
 The current `dist/phy-nspire.tns`, with the abstract tensor evaluator reachable,
-is 1,282,545 bytes (20.4% of the 6 MiB ceiling); the final ELF retains
+is 1,291,027 bytes (20.5% of the 6 MiB ceiling); the final ELF retains
 `phy_index_space_create`, `phy_tensor_head_create_with_symmetries`,
 `phy_tensor_monomial_create`, `phy_tensor_monomial_canonicalize`,
 `phy_tensor_monomial_young_project`, and

@@ -379,12 +379,14 @@ static phy_status durand_kerner_step(phy_exact_context *exact,
     phy_gaussian denominator = {0};
     phy_gaussian difference = {0};
     phy_gaussian product = {0};
+    phy_gaussian leading = {0};
     phy_gaussian correction = {0};
     phy_gaussian candidate = {0};
     phy_status status = phy_gaussian_init(exact, &value);
     if (status == PHY_OK) status = phy_gaussian_init(exact, &denominator);
     if (status == PHY_OK) status = phy_gaussian_init(exact, &difference);
     if (status == PHY_OK) status = phy_gaussian_init(exact, &product);
+    if (status == PHY_OK) status = phy_gaussian_init(exact, &leading);
     if (status == PHY_OK) status = phy_gaussian_init(exact, &correction);
     if (status == PHY_OK) status = phy_gaussian_init(exact, &candidate);
     for (size_t index = 0u; status == PHY_OK && index < degree; ++index) {
@@ -406,6 +408,21 @@ static phy_status durand_kerner_step(phy_exact_context *exact,
                 status = phy_gaussian_copy(&product, &denominator);
             }
         }
+        /* Durand--Kerner's usual denominator is written for a monic
+           polynomial.  For p(z) = a_n product_j(z-r_j), p(z_i) must be
+           divided by a_n product_{j!=i}(z_i-z_j).  Keeping this factor is
+           essential for reversed reciprocal polynomials such as 2 z^3-1. */
+        if (status == PHY_OK) {
+            status = gaussian_set_real(
+                &leading, &coefficients[count - 1u]);
+        }
+        if (status == PHY_OK) {
+            status = phy_gaussian_multiply(
+                &denominator, &leading, &product);
+        }
+        if (status == PHY_OK) {
+            status = phy_gaussian_copy(&product, &denominator);
+        }
         if (status == PHY_OK) {
             status = phy_gaussian_divide(&value, &denominator, &correction);
         }
@@ -419,6 +436,7 @@ static phy_status durand_kerner_step(phy_exact_context *exact,
     }
     phy_gaussian_destroy(&candidate);
     phy_gaussian_destroy(&correction);
+    phy_gaussian_destroy(&leading);
     phy_gaussian_destroy(&product);
     phy_gaussian_destroy(&difference);
     phy_gaussian_destroy(&denominator);

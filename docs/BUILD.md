@@ -219,16 +219,16 @@ which the notebook now genuinely calls. The probes remain the only way to check
 symbol retention against the header and the no-floating-point rule in isolation.
 
 Measured on the pinned ARM toolchain, with the newest bridge probes refreshed
-on 2026-08-10:
+on 2026-08-12:
 
 - exact numbers: 68/68 public APIs retained, 17,680 bytes of layer text, and a
   23,540-byte isolated package;
 - certified real balls: 22/22 public APIs retained, 14,608 bytes of layer text,
   and a 30,248-byte isolated package;
-- canonical real/complex algebraics: 53/53 public APIs retained, 48,836 bytes
-  of layer text, and a 94,588-byte isolated package;
-- scalar CAS: 41/41 public APIs retained, 138,394 bytes of layer text, and a
-  263,376-byte isolated package;
+- canonical real/complex algebraics: 54/54 public APIs retained, 49,080 bytes
+  of layer text, and a 95,012-byte isolated package;
+- scalar CAS: 41/41 public APIs retained, 143,772 bytes of layer text, and a
+  276,300-byte isolated package;
 
 - geometry: 45/45 APIs retained, 8,957 bytes of layer text, 93,740-byte probe
   package;
@@ -237,14 +237,14 @@ on 2026-08-10:
 - SU(N) colour: 23/23 APIs retained, 4,924 bytes of layer text, 83,996-byte
   probe package;
 - evaluator plus complete backend stack: 17/17 public evaluator APIs retained
-  from 72 portable sources, 54,804 bytes of evaluator text, 443,276-byte
+  from 74 portable sources, 55,994 bytes of evaluator text, 462,364-byte
   isolated probe;
 - QFT abstract/component bridge: 14/14 APIs retained from 50 portable sources,
   3,152 bytes of bridge text, 101,588-byte isolated probe;
 - all five isolated probes contain no float formatter, libm call, or ARM
   soft-float helper.
 
-A product build from the same source is 1,282,545 bytes (20.4% of the
+A product build from the same source is 1,291,027 bytes (20.5% of the
 6 MiB ceiling). The product includes nMarkdown/FreeType/HarfBuzz and therefore
 has different retained dependencies from the exact isolated probes; the
 no-float statement above is specifically a property of those native symbolic

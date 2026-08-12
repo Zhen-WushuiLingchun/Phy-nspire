@@ -49,3 +49,35 @@ VerificationTest[
   {2, 2},
   TestID -> "eigenvalue-algebraic-multiplicity"
 ]
+
+VerificationTest[
+  RootReduce[Root[-2 + #^2 &, 2]^2],
+  2,
+  TestID -> "reader-root-power"
+]
+
+VerificationTest[
+  RootReduce[1/Root[-2 + #^2 &, 2]],
+  1/Sqrt[2],
+  TestID -> "reader-root-reciprocal"
+]
+
+VerificationTest[
+  Eigenvectors[{{2, 1}, {0, 2}}],
+  {{1, 0}, {0, 0}},
+  TestID -> "defective-eigenvectors-zero-padding"
+]
+
+VerificationTest[
+  RowReduce[NullSpace[
+    MatrixPower[{{2, 1}, {0, 2}} - 2 IdentityMatrix[2], 2]]],
+  {{1, 0}, {0, 1}},
+  TestID -> "generalized-eigenspace"
+]
+
+VerificationTest[
+  With[{a = {{2, 1}, {0, 2}}, d = JordanDecomposition[{{2, 1}, {0, 2}}]},
+    {d, a . d[[1]] == d[[1]] . d[[2]]}],
+  {{{{1, 0}, {0, 1}}, {{2, 1}, {0, 2}}}, True},
+  TestID -> "jordan-decomposition-convention"
+]

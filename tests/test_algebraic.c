@@ -298,6 +298,60 @@ static void test_complex_conjugation_and_resultant_closure(void)
     fixture_close(&f);
 }
 
+static void test_nonmonic_complex_isolation_and_reciprocal(void)
+{
+    fixture f = fixture_open();
+    /* Reversing x^3-2 for 1/cuberoot(2) produces 2*x^3-1.  The complex
+       isolator must therefore handle a non-unit leading coefficient. */
+    static const char *cubic[] = {"-2", "0", "0", "1"};
+    static const char *reversed[] = {"-1", "0", "0", "2"};
+    phy_complex_algebraic *root = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_complex_algebraic_create_by_index(
+            f.algebraic, cubic, 4u, 1u, &root),
+        PHY_OK);
+    phy_complex_algebraic *one = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_complex_algebraic_from_rational(
+            f.algebraic, rational("1", "1"), &one),
+        PHY_OK);
+    phy_complex_algebraic *inverse = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_complex_algebraic_divide(one, root, &inverse), PHY_OK);
+    PHY_CHECK_EQ_STR(complex_coefficient_text(inverse, 0u), "-1");
+    PHY_CHECK_EQ_STR(complex_coefficient_text(inverse, 1u), "0");
+    PHY_CHECK_EQ_STR(complex_coefficient_text(inverse, 2u), "0");
+    PHY_CHECK_EQ_STR(complex_coefficient_text(inverse, 3u), "2");
+
+    phy_complex_algebraic *nonmonic_roots[3] = {NULL, NULL, NULL};
+    size_t count = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_algebraic_isolate_complex_roots(
+            f.algebraic, reversed, 4u, nonmonic_roots, 3u, &count),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(count, 3);
+    bool found = false;
+    for (size_t index = 0u; index < count; ++index) {
+        bool equal = false;
+        PHY_CHECK_EQ_INT(
+            phy_complex_algebraic_equal(
+                inverse, nonmonic_roots[index], &equal),
+            PHY_OK);
+        found = found || equal;
+        PHY_CHECK_EQ_INT(
+            phy_complex_algebraic_validate(nonmonic_roots[index]),
+            PHY_OK);
+        phy_complex_algebraic_destroy(nonmonic_roots[index]);
+    }
+    PHY_CHECK(found);
+    PHY_CHECK_EQ_INT(phy_complex_algebraic_validate(inverse), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_algebraic_validate(f.algebraic), PHY_OK);
+    phy_complex_algebraic_destroy(inverse);
+    phy_complex_algebraic_destroy(one);
+    phy_complex_algebraic_destroy(root);
+    fixture_close(&f);
+}
+
 static void test_complex_cancellation_and_allocation_are_transactional(void)
 {
     fixture f = fixture_open();
@@ -1626,6 +1680,8 @@ int main(void)
     PHY_ALGEBRAIC_TEST_CASE(test_canonical_complex_root_identity);
     PHY_ALGEBRAIC_TEST_CASE(
         test_complex_conjugation_and_resultant_closure);
+    PHY_ALGEBRAIC_TEST_CASE(
+        test_nonmonic_complex_isolation_and_reciprocal);
     PHY_ALGEBRAIC_TEST_CASE(
         test_complex_cancellation_and_allocation_are_transactional);
     PHY_ALGEBRAIC_TEST_CASE(test_sturm_root_counts);

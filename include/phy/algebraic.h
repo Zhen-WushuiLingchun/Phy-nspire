@@ -245,6 +245,10 @@ phy_status phy_complex_algebraic_conjugate(
 phy_status phy_complex_algebraic_from_real(
     const phy_real_algebraic *value,
     phy_complex_algebraic **out_value);
+/* Construct the canonical complex-algebraic embedding of one exact rational. */
+phy_status phy_complex_algebraic_from_rational(
+    phy_algebraic_context *context, phy_exact_rational_text value,
+    phy_complex_algebraic **out_value);
 
 /* Resultant-closed exact arithmetic over the same algebraic context. */
 phy_status phy_complex_algebraic_add(

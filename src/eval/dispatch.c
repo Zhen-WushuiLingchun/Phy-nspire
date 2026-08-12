@@ -2008,6 +2008,131 @@ static phy_status eval_eigenvalues(
     return status;
 }
 
+static phy_status linear_matrix_list_ref(
+    phy_env *env, const phy_matrix *matrix, phy_ir_ref *out_ref)
+{
+    const size_t rows = phy_matrix_rows(matrix);
+    const size_t columns = phy_matrix_columns(matrix);
+    if (rows > EVAL_MAX_LIST || columns > EVAL_MAX_LIST) {
+        return PHY_ERR_TERM_LIMIT;
+    }
+    phy_ir_ref row_refs[EVAL_MAX_LIST];
+    phy_ir_ref entries[EVAL_MAX_LIST];
+    for (size_t row = 0u; row < rows; ++row) {
+        for (size_t column = 0u; column < columns; ++column) {
+            phy_status status = phy_matrix_get(
+                matrix, row, column, &entries[column]);
+            if (status != PHY_OK) return status;
+        }
+        row_refs[row] = phy_ir_function(
+            env->ir, env->list_head, entries, columns);
+        if (row_refs[row] == PHY_IR_NULL) return phy_ir_last_error(env->ir);
+    }
+    *out_ref = phy_ir_function(env->ir, env->list_head, row_refs, rows);
+    return *out_ref != PHY_IR_NULL ? PHY_OK : phy_ir_last_error(env->ir);
+}
+
+static phy_status exact_eigen_variable(phy_env *env, phy_ir_ref *out_variable)
+{
+    const phy_ir_symbol lambda = phy_ir_intern(env->ir, "$Eigenvalue");
+    *out_variable = lambda == PHY_IR_NO_SYMBOL
+        ? PHY_IR_NULL : phy_ir_symbol_ref(env->ir, lambda);
+    return *out_variable != PHY_IR_NULL ? PHY_OK : PHY_ERR_NODE_LIMIT;
+}
+
+static phy_status eval_eigenvectors(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 1u) return PHY_ERR_PARSE;
+    phy_value matrix = {0};
+    phy_status status = arg_typed(
+        env, expr, 0u, PHY_VALUE_MATRIX, &matrix);
+    phy_ir_ref variable = PHY_IR_NULL;
+    if (status == PHY_OK) status = exact_eigen_variable(env, &variable);
+    phy_matrix *columns = NULL;
+    phy_matrix *rows = NULL;
+    if (status == PHY_OK) {
+        status = phy_matrix_eigenvectors(
+            matrix.as.matrix, variable, &columns);
+    }
+    if (status == PHY_OK) status = phy_matrix_transpose(columns, &rows);
+    phy_matrix_destroy(columns);
+    return status == PHY_OK
+        ? publish_linear(env, PHY_VALUE_MATRIX, rows, out_value) : status;
+}
+
+static phy_status eval_eigenspace(
+    phy_env *env, phy_ir_ref expr, bool generalized,
+    phy_value *out_value)
+{
+    if (arg_count(env, expr) != 2u) return PHY_ERR_PARSE;
+    phy_value matrix = {0};
+    phy_value eigenvalue = {0};
+    phy_status status = arg_typed(
+        env, expr, 0u, PHY_VALUE_MATRIX, &matrix);
+    if (status == PHY_OK) {
+        status = arg_typed(
+            env, expr, 1u, PHY_VALUE_SCALAR, &eigenvalue);
+    }
+    phy_matrix *columns = NULL;
+    size_t dimension = 0u;
+    if (status == PHY_OK) {
+        status = generalized
+            ? phy_matrix_generalized_eigenspace(
+                  matrix.as.matrix, eigenvalue.as.scalar,
+                  &columns, &dimension)
+            : phy_matrix_eigenspace(
+                  matrix.as.matrix, eigenvalue.as.scalar,
+                  &columns, &dimension);
+    }
+    if (status != PHY_OK) return status;
+    if (dimension == 0u) {
+        const phy_ir_ref empty = phy_ir_function(
+            env->ir, env->list_head, NULL, 0u);
+        phy_matrix_destroy(columns);
+        if (empty == PHY_IR_NULL) return phy_ir_last_error(env->ir);
+        *out_value = scalar_value(empty);
+        return PHY_OK;
+    }
+    phy_matrix *rows = NULL;
+    status = phy_matrix_transpose(columns, &rows);
+    phy_matrix_destroy(columns);
+    return status == PHY_OK
+        ? publish_linear(env, PHY_VALUE_MATRIX, rows, out_value) : status;
+}
+
+static phy_status eval_jordan_decomposition(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 1u) return PHY_ERR_PARSE;
+    phy_value matrix = {0};
+    phy_status status = arg_typed(
+        env, expr, 0u, PHY_VALUE_MATRIX, &matrix);
+    phy_ir_ref variable = PHY_IR_NULL;
+    if (status == PHY_OK) status = exact_eigen_variable(env, &variable);
+    phy_matrix *transform = NULL;
+    phy_matrix *jordan = NULL;
+    if (status == PHY_OK) {
+        status = phy_matrix_jordan_decomposition(
+            matrix.as.matrix, variable, &transform, &jordan);
+    }
+    phy_ir_ref parts[2] = {PHY_IR_NULL, PHY_IR_NULL};
+    if (status == PHY_OK) {
+        status = linear_matrix_list_ref(env, transform, &parts[0]);
+    }
+    if (status == PHY_OK) {
+        status = linear_matrix_list_ref(env, jordan, &parts[1]);
+    }
+    phy_matrix_destroy(jordan);
+    phy_matrix_destroy(transform);
+    if (status != PHY_OK) return status;
+    const phy_ir_ref result = phy_ir_function(
+        env->ir, env->list_head, parts, 2u);
+    if (result == PHY_IR_NULL) return phy_ir_last_error(env->ir);
+    *out_value = scalar_value(result);
+    return PHY_OK;
+}
+
 /* -------------------------------------------- maps / transitions / atlas */
 
 static phy_status read_scalar_list_exact(
@@ -5266,6 +5391,14 @@ static phy_status eval_operator(phy_env *env, phy_ir_ref expr,
         return eval_characteristic_polynomial(env, expr, out_value);
     case EVAL_HEAD_EIGENVALUES:
         return eval_eigenvalues(env, expr, out_value);
+    case EVAL_HEAD_EIGENVECTORS:
+        return eval_eigenvectors(env, expr, out_value);
+    case EVAL_HEAD_EIGENSPACE:
+        return eval_eigenspace(env, expr, false, out_value);
+    case EVAL_HEAD_GENERALIZED_EIGENSPACE:
+        return eval_eigenspace(env, expr, true, out_value);
+    case EVAL_HEAD_JORDAN_DECOMPOSITION:
+        return eval_jordan_decomposition(env, expr, out_value);
     case EVAL_HEAD_LINEAR_SOLVE:
         return eval_linear_solve(env, expr, out_value);
 

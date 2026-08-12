@@ -361,6 +361,29 @@ phy_status phy_cas_gaussian_function(phy_cas *cas, phy_ir_symbol head,
                                      phy_ir_ref argument, phy_ir_ref *out_ref,
                                      bool *out_matched);
 
+/* Exact persisted-Root arithmetic and canonical republishing. */
+phy_status phy_cas_algebraic_fold_at(phy_cas *cas, size_t offset,
+                                     size_t count, bool sum,
+                                     phy_ir_ref *out_ref,
+                                     bool *out_matched);
+phy_status phy_cas_algebraic_pow_node(phy_cas *cas, phy_ir_ref base,
+                                      int64_t exponent,
+                                      phy_ir_ref *out_ref,
+                                      bool *out_matched);
+phy_status phy_cas_algebraic_div_node(
+    phy_cas *cas, phy_ir_ref numerator, phy_ir_ref denominator,
+    phy_ir_ref *out_ref, bool *out_matched);
+phy_status phy_cas_algebraic_root_function(
+    phy_cas *cas, phy_ir_symbol head, const phy_ir_ref *arguments,
+    size_t count, phy_ir_ref *out_ref, bool *out_matched);
+phy_status phy_cas_algebraic_function(phy_cas *cas, phy_ir_symbol head,
+                                      phy_ir_ref argument,
+                                      phy_ir_ref *out_ref,
+                                      bool *out_matched);
+phy_status phy_cas_algebraic_decide_zero(
+    phy_cas *cas, phy_ir_ref expression,
+    phy_cas_decision *out_decision, bool *out_matched);
+
 /*
  * Rebuild `kind` from `count` already-simplified operands in the arena,
  * applying that kind's rules. The one place a kind's rule set is selected, so

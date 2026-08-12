@@ -134,8 +134,20 @@ roots still occupy the leading increasing block.
 
 `CharacteristicPolynomial[A,x]` uses the pivot-free Faddeev--LeVerrier
 recurrence over the shared exact CAS, and `Eigenvalues[A]` solves that exact
-polynomial while retaining algebraic multiplicity. Eigenvectors, Jordan form
-and generalized eigenspaces are later milestones.
+polynomial while retaining algebraic multiplicity. Serialized or directly
+typed `Root[List[a0,...,an],k]` trees are validated back into this domain;
+exact rational/`I`/`Root` addition, subtraction, multiplication, division,
+integer powers and conjugation are then canonicalized before a new reader IR
+tree is published. This is also the coefficient field used by exact
+`Eigenspace`, `GeneralizedEigenspace`, `Eigenvectors` and
+`JordanDecomposition`. Jordan publication is gated by exact invertibility of
+`P` and the reconstructed identity `A P = P J`.
+
+The certified complex-root iteration accepts arbitrary nonzero rational
+leading coefficients. Its Durand--Kerner correction divides by
+`a_n product_(j!=i)(z_i-z_j)`, not the monic-only denominator; the regression
+for the reciprocal polynomial `2 x^3-1` protects the `Root` division and
+algebraic-extension matrix paths.
 
 ## Resource model
 
@@ -159,14 +171,14 @@ ceilings cover both root count and all-root isolation.
 Current reproducible evidence:
 
 - `test_exact`: 79,159 checks, zero failures;
-- `test_algebraic`: 157,155 checks, zero failures, including allocation-failure,
+- `test_algebraic`: 157,175 checks, zero failures, including allocation-failure,
   timeout, cancellation, arbitrary-precision, minimal-polynomial selection,
   canonical equality/hash and retry coverage;
 - current WSL GCC Release and ASan/UBSan/leak suites: 48/48 tests each;
 - Ndless exact-number link probe: 68/68 public entry points, 17,680 bytes of
   exact-layer ARM text, 23,540-byte packaged probe;
-- Ndless real/complex-algebraic link probe: 53/53 public entry points, 48,836
-  bytes of algebraic-layer ARM text, 94,588-byte packaged probe;
+- Ndless real/complex-algebraic link probe: 54/54 public entry points, 49,080
+  bytes of algebraic-layer ARM text, 95,012-byte packaged probe;
 - neither ARM probe retains a floating-point formatter, libm call, or
   soft-float helper.
 
@@ -179,8 +191,6 @@ This is a canonical bounded algebraic closure, not a workstation-sized
 algebraic-number package:
 
 - no radical-to-algebraic lowering in the typed IR yet;
-- no reader-facing arithmetic directly on serialized `Root[...]` objects yet;
-- no eigenvectors, Jordan decomposition, or algebraic extension matrices;
 - no asymptotically fast large-degree factor selection.
 
 Every arithmetic call is subject to the documented degree, coefficient, step,

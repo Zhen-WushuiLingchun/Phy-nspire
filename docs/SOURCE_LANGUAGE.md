@@ -123,7 +123,8 @@ Txy = TransitionPullback[tr,Tuv]
 The evaluated object heads are:
 
 - exact linear algebra — `Vector`, `Matrix`, `Dot`, `Transpose`,
-  `Determinant`, `CharacteristicPolynomial`, `Eigenvalues`, `Inverse`,
+  `Determinant`, `CharacteristicPolynomial`, `Eigenvalues`, `Eigenvectors`,
+  `Eigenspace`, `GeneralizedEigenspace`, `JordanDecomposition`, `Inverse`,
   `RowReduce`, `MatrixRank`, `LinearSolve`;
 - abstract/components — `IndexSpace`, `TensorHead`, indexed head application,
   `TensorCanonicalize`, `YoungProject`, `YoungDeclare`, `YoungReduce`,
@@ -232,6 +233,10 @@ scheduling is future work; the explicitly implemented
   transcendental equation returns `PHY_ERR_UNSUPPORTED`; exact simultaneous
   affine and bounded triangular zero-dimensional polynomial systems are
   supported and never return a partial rule list;
+- a directly typed or reopened `Root[{a0,...,an},k]` participates in exact
+  rational/complex addition, subtraction, multiplication, division, integer
+  powers and conjugation. Publication returns a canonical rational, `I`, or
+  primitive-minimal-polynomial `Root`, never a floating approximation;
 - no `a+bi` literal token; exact complex expressions use the protected symbol
   `I`, and the numeric ball layer publishes rectangular complex enclosures;
 - no implicit function application beyond bracket/parenthesis calls;

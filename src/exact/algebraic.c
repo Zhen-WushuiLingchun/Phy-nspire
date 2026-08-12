@@ -6573,6 +6573,33 @@ static phy_status complex_value_from_rational_point(
     return status;
 }
 
+phy_status phy_complex_algebraic_from_rational(
+    phy_algebraic_context *context, phy_exact_rational_text value,
+    phy_complex_algebraic **out_value)
+{
+    if (!context_valid(context) || out_value == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    *out_value = NULL;
+    phy_status status = call_begin(context);
+    phy_bigrat point;
+    memset(&point, 0, sizeof point);
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context->exact, &point);
+    }
+    if (status == PHY_OK) {
+        status = rational_text_read(&point, value);
+    }
+    if (status == PHY_OK) {
+        status = complex_value_from_rational_point(
+            context, &point, out_value);
+    }
+    if (phy_bigrat_validate(&point) == PHY_OK) {
+        phy_bigrat_destroy(&point);
+    }
+    return call_end(context, status);
+}
+
 static phy_status complex_binary_arguments(
     const phy_complex_algebraic *left,
     const phy_complex_algebraic *right,

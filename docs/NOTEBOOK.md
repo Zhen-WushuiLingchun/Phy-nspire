@@ -87,7 +87,7 @@ Inside edit mode, `MENU` opens a context-sensitive insertion palette. Math
 cells expose only reader commands and functions already accepted by the
 current evaluator. They are grouped as Algebra, Functions, Calculus/Syntax,
 Linear Algebra, Tensor/Indices, Differential Geometry, Lie/Yang-Mills, General
-Relativity, QFT/Colour, and Queries/State. `test_palette` checks that all 109
+Relativity, QFT/Colour, and Queries/State. `test_palette` checks that all 113
 registered evaluator heads and all 18 supported source commands occur in at
 least one insertion snippet, and parses every snippet.
 Markdown bodies expose nMarkdown-backed LaTeX templates for layout, calculus,
@@ -143,8 +143,8 @@ braces. Both held modifiers and tap-then-key modifiers are accepted.
 ## Comprehensive CAS tour
 
 [`examples/phy-nspire-cas-tour.tns`](../examples/phy-nspire-cas-tour.tns) is a
-generated, executable notebook rather than a screenshot fixture. Its 206
-source cards contain seventeen Markdown/LaTeX explanations and 189 Math inputs
+generated, executable notebook rather than a screenshot fixture. Its 204
+source cards contain seventeen Markdown/LaTeX explanations and 187 Math inputs
 covering the implemented scalar CAS and calculus, exact dynamic linear
 algebra, abstract/component bridging, verified chart transitions and atlases,
 generic component tensors, manifolds, forms and Hodge operations, coordinate
@@ -157,8 +157,8 @@ that fully evaluated notebook, deserializes it into a fresh empty environment,
 and replays all cells. It then writes a separately round-tripped source-only
 document. This keeps the CX II's `FILE > Open` path free of eager cached-tree
 reconstruction while preserving full generation-time CAS coverage. Running all
-189 Math cells top-to-bottom grows the document to 395 cards. The 400-card
-bound leaves 5 slots for small reader experiments; start a new notebook for
+187 Math cells top-to-bottom grows the document to 391 cards. The 400-card
+bound leaves 9 slots for small reader experiments; start a new notebook for
 extended work rather than appending a long calculation to the acceptance tour.
 
 ## Verification
@@ -180,8 +180,8 @@ extended work rather than appending a long calculation to the acceptance tour.
 - `test_modifier`: 8 checks over tapped and held Shift/Ctrl behavior;
 - `tests/fixtures/notebook_frame.digest`: bit-exact 320 × 240 host fixture;
 - last strict Windows baseline: 45/45; current WSL GCC, ASan/leak, and UBSan
-  suites: 48/48 each; 476,797 explicit checks;
-- Ndless r2022 ARM build: 1,282,545 bytes. The evaluator probe retains 17/17
+  suites: 48/48 each; 478,792 explicit checks;
+- Ndless r2022 ARM build: 1,291,027 bytes. The evaluator probe retains 17/17
   public APIs behind the complete physics stack and imports no forbidden
   float/libm/soft-float helper.
 

@@ -29,8 +29,8 @@ Verification:
   source language, drawing, notebook, the stateful evaluator, IR, tensor
   storage, differential forms, GR, Lie/QFT foundations, CAS, QFT oracle, and
   full lifecycle: last strict Windows baseline 45/45, current WSL strict and
-  combined ASan/UBSan/leak runs 48/48 each, and 476,797 explicit checks;
-- generated `.tns` size report — 1,282,545 bytes, 20.4% of the 6 MiB ceiling,
+  combined ASan/UBSan/leak runs 48/48 each, and 478,792 explicit checks;
+- generated `.tns` size report — 1,291,027 bytes, 20.5% of the 6 MiB ceiling,
   with the current evaluator and physics stack linked;
 - launch of a Phy-nspire artifact on the real CX II — done on 2026-07-26 with
   the observable CAS smoke screen;
@@ -92,8 +92,10 @@ Output:
   resultant add/subtract/multiply/divide/integer-power closure. Bounded exact
   univariate `Solve` now returns all complex roots; exact
   `CharacteristicPolynomial` and multiplicity-preserving `Eigenvalues` share
-  the same root path. Serialized `Root` arithmetic and eigenvectors remain
-  separate later gates;
+  the same root path. Serialized/hand-written `Root` arithmetic now closes
+  through exact add/subtract/multiply/divide/integer powers/conjugation;
+  exact `Eigenspace`, `GeneralizedEigenspace`, Wolfram-compatible
+  `Eigenvectors`, and verified `JordanDecomposition` are reader-facing;
 - native Giac adapter for a small scalar command set — **not needed for the
   scalar operations the tensor and curvature phases require**, which the layer
   above now supplies natively. The backend boundary in
@@ -117,7 +119,7 @@ Verification:
   a typed status and leave both layers validating;
 - IR unit tests — done, `tests/test_ir.c`, 2,843 checks covering interning,
   canonical ordering, the construction ceilings, and text round-trips;
-- CAS unit tests — done, `tests/test_cas.c`, 33,812 checks covering the normal
+- CAS unit tests — done, `tests/test_cas.c`, 33,840 checks covering the normal
   form, exact arithmetic and arbitrary-precision promotion, differentiation, bounded
   exact factorization, and the zero decision, including the four `sphere_2d`
   corpus entries whose stated trigonometric form differs from the computed one.
@@ -126,7 +128,7 @@ Verification:
   stale outputs, Markdown selection, independent run-badge hit testing, 2D
   metrics, nMarkdown LaTeX integration, memory return, and the framebuffer
   fixture;
-- evaluator tests — done, `tests/test_eval.c`, 3,187 checks. The physics cases
+- evaluator tests — done, `tests/test_eval.c`, 3,259 checks. The physics cases
   reproduce, through reader-facing source, results the backend suites already
   certify directly: the U(1) and SU(2) curvature components and vanishing
   Bianchi residuals of `tests/test_yang_mills.c`, the round two-sphere
@@ -149,15 +151,15 @@ substrate those work on. Dummy-index canonicalization and anything that
 consumes declared symmetries stay in Phase 2.
 
 The real Ndless r2022/ARM GNU toolchain link check is done for the CAS: 41/41
-CAS APIs survive garbage collection and the probe packages to a 263,376-byte
+CAS APIs survive garbage collection and the probe packages to a 276,300-byte
 `.tns` without float formatting, libm, or ARM soft-float dependencies. The
 observable `phy-cas-smoke.tns` then ran seven symbolic cases on the physical
 CX II on 2026-07-26, displayed 7/7 PASS, and returned cleanly to Documents.
 
-The evaluator's real Ndless check now compiles 72 portable sources, retains
-17/17 public evaluator entry points, packages a 443,276-byte isolated probe,
+The evaluator's real Ndless check now compiles 74 portable sources, retains
+17/17 public evaluator entry points, packages a 462,364-byte isolated probe,
 and contains no float formatter, libm call, or ARM soft-float helper. The
-product is 1,282,545 bytes. The independent SU(N) colour probe retains 23/23
+product is 1,291,027 bytes. The independent SU(N) colour probe retains 23/23
 public APIs, 4,924 bytes of layer text, and packages to 83,996 bytes under the
 same no-float rule. These establish ARM link/package and size, not
 physical-device runtime or performance.

@@ -28,6 +28,20 @@ static fixture fixture_open(void)
     return f;
 }
 
+static fixture fixture_open_algebraic(void)
+{
+    fixture f = {0};
+    PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
+    f.ir = phy_ir_context_create(NULL);
+    PHY_CHECK(f.ir != NULL);
+    phy_cas_limits limits;
+    phy_cas_limits_defaults(&limits);
+    limits.max_steps = 4000000u;
+    f.cas = phy_cas_create(f.ir, &limits);
+    PHY_CHECK(f.cas != NULL);
+    return f;
+}
+
 static void fixture_close(fixture *f)
 {
     phy_cas_destroy(f->cas);
@@ -377,6 +391,126 @@ static void test_characteristic_polynomial_and_eigenvalues(void)
     fixture_close(&f);
 }
 
+static void test_exact_eigenspaces_and_jordan_decomposition(void)
+{
+    fixture f = fixture_open();
+    static const int64_t defective_values[] = {2, 1, 0, 2};
+    phy_matrix *defective = make_matrix(&f, 2u, 2u, defective_values);
+    const phy_ir_ref two = number(&f, 2, 1);
+
+    phy_matrix *space = NULL;
+    size_t dimension = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_matrix_eigenspace(defective, two, &space, &dimension), PHY_OK);
+    PHY_CHECK_EQ_INT(dimension, 1);
+    PHY_CHECK_EQ_INT(phy_matrix_rows(space), 2);
+    PHY_CHECK_EQ_INT(phy_matrix_columns(space), 1);
+    expect_entry(&f, space, 0u, 0u, 1, 1);
+    expect_entry(&f, space, 1u, 0u, 0, 1);
+    phy_matrix_destroy(space);
+
+    space = NULL;
+    dimension = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_matrix_generalized_eigenspace(
+            defective, two, &space, &dimension),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(dimension, 2);
+    PHY_CHECK_EQ_INT(phy_matrix_rows(space), 2);
+    PHY_CHECK_EQ_INT(phy_matrix_columns(space), 2);
+    phy_matrix_destroy(space);
+
+    const phy_ir_ref variable = phy_ir_symbol_ref(
+        f.ir, phy_ir_intern(f.ir, "lambda"));
+    phy_matrix *vectors = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_matrix_eigenvectors(defective, variable, &vectors), PHY_OK);
+    expect_entry(&f, vectors, 0u, 0u, 1, 1);
+    expect_entry(&f, vectors, 1u, 0u, 0, 1);
+    expect_entry(&f, vectors, 0u, 1u, 0, 1);
+    expect_entry(&f, vectors, 1u, 1u, 0, 1);
+    phy_matrix_destroy(vectors);
+
+    phy_matrix *transform = NULL;
+    phy_matrix *jordan = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_matrix_jordan_decomposition(
+            defective, variable, &transform, &jordan),
+        PHY_OK);
+    expect_entry(&f, transform, 0u, 0u, 1, 1);
+    expect_entry(&f, transform, 1u, 0u, 0, 1);
+    expect_entry(&f, transform, 0u, 1u, 0, 1);
+    expect_entry(&f, transform, 1u, 1u, 1, 1);
+    expect_entry(&f, jordan, 0u, 0u, 2, 1);
+    expect_entry(&f, jordan, 0u, 1u, 1, 1);
+    expect_entry(&f, jordan, 1u, 0u, 0, 1);
+    expect_entry(&f, jordan, 1u, 1u, 2, 1);
+    phy_matrix_destroy(jordan);
+    phy_matrix_destroy(transform);
+
+    static const int64_t mixed_blocks_values[] = {
+        3, 1, 0,
+        0, 3, 0,
+        0, 0, -1};
+    phy_matrix *mixed = make_matrix(&f, 3u, 3u, mixed_blocks_values);
+    transform = NULL;
+    jordan = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_matrix_jordan_decomposition(
+            mixed, variable, &transform, &jordan),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(phy_matrix_rows(transform), 3);
+    PHY_CHECK_EQ_INT(phy_matrix_columns(jordan), 3);
+    phy_matrix_destroy(jordan);
+    phy_matrix_destroy(transform);
+    phy_matrix_destroy(mixed);
+    phy_matrix_destroy(defective);
+    fixture_close(&f);
+}
+
+static void test_nonrational_algebraic_eigenspace(void)
+{
+    fixture f = fixture_open_algebraic();
+    static const int64_t companion_values[] = {
+        0, 0, 2,
+        1, 0, 0,
+        0, 1, 0};
+    phy_matrix *companion = make_matrix(&f, 3u, 3u, companion_values);
+    phy_ir_ref raw = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_ir_read(
+            f.ir, "(fn Root (fn List -2 0 0 1) 1)", &raw, NULL),
+        PHY_OK);
+    phy_ir_ref lambda = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(phy_cas_simplify(f.cas, raw, &lambda), PHY_OK);
+
+    phy_matrix *basis = NULL;
+    size_t dimension = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_matrix_eigenspace(
+            companion, lambda, &basis, &dimension),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(dimension, 1);
+    phy_ir_ref square = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_cas_pow(f.cas, lambda, number(&f, 2, 1), &square), PHY_OK);
+    phy_ir_ref entry = PHY_IR_NULL;
+    phy_cas_decision equal = PHY_CAS_UNKNOWN;
+    PHY_CHECK_EQ_INT(phy_matrix_get(basis, 0u, 0u, &entry), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_cas_equivalent(f.cas, entry, square, &equal), PHY_OK);
+    PHY_CHECK_EQ_INT(equal, PHY_CAS_ZERO);
+    PHY_CHECK_EQ_INT(phy_matrix_get(basis, 1u, 0u, &entry), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_cas_equivalent(f.cas, entry, lambda, &equal), PHY_OK);
+    PHY_CHECK_EQ_INT(equal, PHY_CAS_ZERO);
+    expect_entry(&f, basis, 2u, 0u, 1, 1);
+
+    phy_matrix_destroy(basis);
+    phy_matrix_destroy(companion);
+    fixture_close(&f);
+}
+
 int main(void)
 {
     PHY_TEST_CASE(test_shape_and_exact_entries);
@@ -386,5 +520,7 @@ int main(void)
     PHY_TEST_CASE(test_vectors_and_null_space);
     PHY_TEST_CASE(test_allocation_failure_unwinds);
     PHY_TEST_CASE(test_characteristic_polynomial_and_eigenvalues);
+    PHY_TEST_CASE(test_exact_eigenspaces_and_jordan_decomposition);
+    PHY_TEST_CASE(test_nonrational_algebraic_eigenspace);
     return PHY_TEST_REPORT("linear");
 }

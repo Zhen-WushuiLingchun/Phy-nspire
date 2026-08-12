@@ -8,10 +8,10 @@ evidence.
 ## Executable notebook
 
 [`examples/phy-nspire-cas-tour.tns`](../examples/phy-nspire-cas-tour.tns) is a
-13,280-byte `PHYNB001` notebook with 206 source cards:
+13,240-byte `PHYNB001` notebook with 204 source cards:
 
 - seventeen Markdown cells with nMarkdown LaTeX;
-- 189 editable Math inputs;
+- 187 editable Math inputs;
 - no eagerly persisted output/IR cache.
 
 The generator evaluates a validation copy of the complete document, serializes
@@ -19,14 +19,14 @@ it, opens it in a new notebook with an empty environment, and runs every cell
 again. It separately serializes and reopens the source-only artifact before
 writing it. Generation fails on any parse, evaluation, serialization, reopen,
 or replay error. The source-only form avoids rebuilding the cached input/output
-IR trees during `FILE > Open`; running all inputs produces 189 typed outputs and
-a 395-card session. The inputs touch every currently implemented evaluator
+IR trees during `FILE > Open`; running all inputs produces 187 typed outputs and
+a 391-card session. The inputs touch every currently implemented evaluator
 family at least once:
 
 | Area | Successful reader-facing heads |
 | --- | --- |
 | scalar | bare exact expressions, protected constants and special values, arbitrary-precision Gaussian-rational arithmetic, `Re`, `Im`, `Conjugate`, `Abs`, exact `Factorial`/`Pochhammer`/`Binomial`, assignment, `Simplify`, `FullSimplify`, `Expand`, `Together`, sparse multivariate `Cancel`, bounded exact `Factor`, `Apart`, `Series`, `Normal`, exact finite/directed/infinity `Limit`, exact polynomial and linear-system `Solve`, `Numerator`, `Denominator`, `D`, verified `Integrate`, inverse/hyperbolic/Gamma/error functions |
-| exact linear algebra | dynamic `Vector` / `Matrix`, `Dot`, `Determinant`, `CharacteristicPolynomial`, `Eigenvalues`, `Inverse`, `RowReduce`, `MatrixRank`, `LinearSolve`, `Transpose`, `Dimensions` |
+| exact linear algebra | dynamic `Vector` / `Matrix`, `Dot`, `Determinant`, `CharacteristicPolynomial`, `Eigenvalues`, `Eigenvectors`, `Eigenspace`, `GeneralizedEigenspace`, `JordanDecomposition`, `Inverse`, `RowReduce`, `MatrixRank`, `LinearSolve`, `Transpose`, `Dimensions` |
 | abstract/component bridge | `IndexSpace`, formal exact dimensions, `TensorHead`, `TensorCanonicalize`, `YoungProject`, `YoungDeclare`, `YoungReduce`, `YoungDimension`, exact abstract expression algebra, `ComponentBasis`, `TensorComponents`, checked legacy `ComponentLift`, expression-wide `ComponentValue` |
 | maps and atlases | `CoordinateMap`, verified `BasisTransition`, `Jacobian`, scalar/covector/vector maps, sparse mixed-valence tensor pullback, direct-edge `Atlas` operations |
 | tensor/manifold | `Manifold`, `ComponentTensor`, `Metric`, `VectorField`, `Component`, `Rank`, `Dimension` |
@@ -63,7 +63,7 @@ operation.
 
 - Last recorded Windows strict build and CTest: 45/45.
 - Current WSL GCC Release and combined ASan/UBSan/leak suites: 48/48 each.
-  Focused ball/CAS/evaluator tests contain 39,364, 33,812, and 3,187 checks
+  Focused ball/CAS/evaluator tests contain 39,364, 33,840, and 3,259 checks
   respectively; the precision tranche also visually checked ordinary complex,
   `10^-50`, and `10^50` scientific-notation frames at the native 320x240
   resolution.
@@ -71,13 +71,14 @@ operation.
   requested precision, and clustered polynomial roots: 21/21; this is
   independent cross-check evidence, not a
   native runtime dependency.
-- Canonical complex-algebraic Wolfram oracle: 8/8 for root order, conjugation,
-  minimal polynomials, resultant closure, characteristic polynomials, and
-  eigenvalue multiplicity.
-- Assertion-bearing executables: 476,797 checks.
+- Canonical complex-algebraic Wolfram oracle: 13/13 for root order,
+  conjugation, minimal polynomials, resultant/reader-`Root` closure,
+  characteristic polynomials, eigenvectors, generalized spaces, Jordan
+  conventions, and eigenvalue multiplicity.
+- Assertion-bearing executables: 478,792 checks.
 - Notebook MENU completeness: every supported evaluator/source command is
   present in ten scrollable CAS categories.
-- Ndless r2022 ARM product: 1,282,545 bytes, 20.4% of the 6 MiB ceiling.
+- Ndless r2022 ARM product: 1,291,027 bytes, 20.5% of the 6 MiB ceiling.
 - Rebuilt discrete-function CAS smoke and QFT bench packages link natively at
   88,588 and 61,868 bytes respectively; this is ARM package evidence, not a
   new physical-device run.
@@ -85,13 +86,13 @@ operation.
   number text, 23,540-byte package, and no forbidden numeric dependency.
 - Isolated real/complex-ball ARM probe: 67/67 public APIs, 61,878 bytes of
   ball text, 64,924-byte package, and no forbidden numeric dependency.
-- Isolated real/complex-algebraic ARM probe: 53/53 public APIs, 48,836 bytes
-  of algebraic text and a 94,588-byte package.
-- Isolated CAS ARM probe: 41/41 public APIs, 138,394 bytes of CAS text,
-  263,376-byte package, and no float formatter, libm call, or ARM soft-float
+- Isolated real/complex-algebraic ARM probe: 54/54 public APIs, 49,080 bytes
+  of algebraic text and a 95,012-byte package.
+- Isolated CAS ARM probe: 41/41 public APIs, 143,772 bytes of CAS text,
+  276,300-byte package, and no float formatter, libm call, or ARM soft-float
   helper.
-- Isolated evaluator ARM probe: 17/17 public APIs, 54,804 bytes of evaluator
-  text, 443,276-byte package, and no float formatter, libm call, or ARM
+- Isolated evaluator ARM probe: 17/17 public APIs, 55,994 bytes of evaluator
+  text, 462,364-byte package, and no float formatter, libm call, or ARM
   soft-float helper.
 - Isolated QFT abstract/component bridge probe: 14/14 public APIs, 3,152
   bytes of bridge text, 101,588-byte package, and the same no-float guarantee.

@@ -53,6 +53,8 @@ integer/rational and Gaussian-rational promotion, exact `I`,
 `Re`/`Im`/`Conjugate`/`Abs`, bounded univariate factorization and partial
 fractions, bounded sparse multivariate GCD cancellation, certified
 real-algebraic resultant arithmetic with canonical minimal-polynomial identity,
+canonical complex-algebraic closure and exact arithmetic on directly typed or
+reopened `Root[...]` expressions,
 exact Taylor/Laurent `Series`/`Normal`,
 proof-producing finite, directed and rational-infinity `Limit`, exact bounded
 polynomial `Solve` with complex quadratic roots and certified higher-degree
@@ -103,7 +105,9 @@ change of coordinates across verified transitions.
 `TensorCanonicalize` expose the coordinate-free monoterm layer in notebook
 cells, while `YoungProject` exposes normalized multi-term row/column
 projection and `YoungDeclare`/`YoungReduce` expose the corresponding relation
-module. Exact runtime vectors/matrices, sparse component construction,
+module. Exact runtime vectors/matrices now include algebraic eigenspaces,
+generalized eigenspaces, multiplicity-aligned eigenvectors and verified Jordan
+decompositions. Sparse component construction,
 verified coordinate maps/transitions, Jacobian actions, mixed-valence tensor
 pullback and cocycle-checked atlases are now reader-facing evaluator objects;
 the existing GR pipeline still computes on the legacy dense backend and now
@@ -155,19 +159,19 @@ survived a round trip and nothing computed.
 
 The generated
 [`examples/phy-nspire-cas-tour.tns`](examples/phy-nspire-cas-tour.tns)
-notebook combines seventeen Markdown/LaTeX explanations with 189 executable examples
-that touch every implemented evaluator family. Its distributable form contains 206
+notebook combines seventeen Markdown/LaTeX explanations with 187 executable examples
+that touch every implemented evaluator family. Its distributable form contains 204
 source cells so opening does not eagerly rebuild all cached results; a separate
 fully evaluated copy is serialized, reopened, and replayed during generation.
 
 The last recorded strict Windows host suite passes 45/45. The current WSL GCC
 and combined ASan/UBSan/leak suites pass 48/48, and the assertion-bearing
-executables contain 476,797 explicit checks. The context-sensitive CAS menu is
+executables contain 478,792 explicit checks. The context-sensitive CAS menu is
 also checked against the authoritative evaluator and source-command registries:
 every supported operation is discoverable through its ten scrollable
 categories.
 
-The current native build is measured at 1,282,545 bytes, 20.4% of the 6 MiB
+The current native build is measured at 1,291,027 bytes, 20.5% of the 6 MiB
 ceiling. Its evaluator ARM probe links the complete current physics stack,
 retains 17/17 public evaluator entry points, packages to a `.tns`, and imports
 no libm, floating-point formatter, or ARM soft-float helper.
@@ -193,7 +197,7 @@ downloaded back byte-identically on 2026-07-30. The previous 1,222,416-byte
 program, including the complete scrollable MENU, was subsequently deployed and
 read back byte-identically on the same date. A later 1,226,713-byte build added
 structured physics-object output and lazy/one-pass SU(3) initialization. The
-current 1,282,545-byte complex-algebraic build has not been uploaded in this work
+current 1,291,027-byte Root/Jordan build has not been uploaded in this work
 round; its calculator transfer and open/run check remain a separate gate. The
 separate baseline channel-order check remains tracked in
 [docs/BUILD.md](docs/BUILD.md).

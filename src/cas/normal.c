@@ -1113,6 +1113,14 @@ phy_status phy_cas_decide_zero_node(phy_cas *cas, phy_ir_ref expr,
     phy_ir_ref denominator = PHY_IR_NULL;
     phy_status status = phy_cas_simplify_node(cas, expr, &reduced);
     if (status == PHY_OK) {
+        bool algebraic_matched = false;
+        status = phy_cas_algebraic_decide_zero(
+            cas, reduced, out_decision, &algebraic_matched);
+        if (status != PHY_OK || algebraic_matched) {
+            return status;
+        }
+    }
+    if (status == PHY_OK) {
         status = trig_reduce(cas, reduced, &based);
     }
     /*

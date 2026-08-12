@@ -324,7 +324,9 @@ static const char *const kObjectHeads[] = {
 
     "Vector",       "Matrix",           "Transpose",    "Dot",
     "Determinant",  "CharacteristicPolynomial", "Eigenvalues",
-    "Inverse",      "RowReduce",        "MatrixRank",   "LinearSolve",
+    "Eigenvectors", "Eigenspace", "GeneralizedEigenspace",
+    "JordanDecomposition", "Inverse", "RowReduce", "MatrixRank",
+    "LinearSolve",
 
     "CoordinateMap", "BasisTransition", "Jacobian",
     "PullbackScalar", "PullbackCovector", "PushForwardVector",

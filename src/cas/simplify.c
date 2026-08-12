@@ -970,6 +970,14 @@ phy_status phy_cas_pow_node(phy_cas *cas, phy_ir_ref base, phy_ir_ref exponent,
         if (gaussian_status != PHY_OK || gaussian_matched) {
             return gaussian_status;
         }
+        bool algebraic_matched = false;
+        const phy_status algebraic_status =
+            phy_cas_algebraic_pow_node(
+                cas, base, integer_exponent, out_ref,
+                &algebraic_matched);
+        if (algebraic_status != PHY_OK || algebraic_matched) {
+            return algebraic_status;
+        }
     }
 
     if (integral && integer_exponent == 0) {
@@ -1332,6 +1340,13 @@ static phy_status apply_function(phy_cas *cas, phy_ir_symbol head,
     if (gaussian_status != PHY_OK || gaussian_matched) {
         return gaussian_status;
     }
+    bool algebraic_matched = false;
+    const phy_status algebraic_status =
+        phy_cas_algebraic_function(
+            cas, head, argument, out_ref, &algebraic_matched);
+    if (algebraic_status != PHY_OK || algebraic_matched) {
+        return algebraic_status;
+    }
 
     const phy_cas_function function = phy_cas_function_id(cas, head);
     const phy_cas_function_descriptor *descriptor =
@@ -1509,6 +1524,13 @@ phy_status phy_cas_rebuild_at(phy_cas *cas, phy_ir_kind kind,
     }
     case PHY_IR_FUNCTION:
     {
+        bool root_matched = false;
+        phy_status root_status = phy_cas_algebraic_root_function(
+            cas, head, phy_cas_scratch_at(cas, offset), count,
+            out_ref, &root_matched);
+        if (root_status != PHY_OK || root_matched) {
+            return root_status;
+        }
         const phy_cas_function function = phy_cas_function_id(cas, head);
         const phy_cas_function_descriptor *descriptor =
             phy_cas_function_descriptor_for(function);
@@ -1740,6 +1762,12 @@ phy_status phy_cas_add_at(phy_cas *cas, size_t offset, size_t count,
     if (status != PHY_OK || gaussian_matched) {
         return status;
     }
+    bool algebraic_matched = false;
+    status = phy_cas_algebraic_fold_at(
+        cas, offset, count, true, out_ref, &algebraic_matched);
+    if (status != PHY_OK || algebraic_matched) {
+        return status;
+    }
     const size_t mark = phy_cas_scratch_mark(cas);
     size_t terms, total;
     status = flatten(cas, PHY_IR_ADD, offset, count, &terms, &total);
@@ -1761,6 +1789,12 @@ phy_status phy_cas_mul_at(phy_cas *cas, size_t offset, size_t count,
     phy_status status = phy_cas_gaussian_fold_at(
         cas, offset, count, false, out_ref, &gaussian_matched);
     if (status != PHY_OK || gaussian_matched) {
+        return status;
+    }
+    bool algebraic_matched = false;
+    status = phy_cas_algebraic_fold_at(
+        cas, offset, count, false, out_ref, &algebraic_matched);
+    if (status != PHY_OK || algebraic_matched) {
         return status;
     }
     const size_t mark = phy_cas_scratch_mark(cas);
@@ -1913,8 +1947,12 @@ phy_status phy_cas_div(phy_cas *cas, phy_ir_ref numerator,
         return status;
     }
 
-    phy_ir_ref reduced;
-    status = phy_cas_simplify_node(cas, denominator, &reduced);
+    phy_ir_ref reduced_numerator = PHY_IR_NULL;
+    phy_ir_ref reduced = PHY_IR_NULL;
+    status = phy_cas_simplify_node(cas, numerator, &reduced_numerator);
+    if (status == PHY_OK) {
+        status = phy_cas_simplify_node(cas, denominator, &reduced);
+    }
     if (status != PHY_OK) {
         return status;
     }
@@ -1927,13 +1965,27 @@ phy_status phy_cas_div(phy_cas *cas, phy_ir_ref numerator,
     if (phy_cas_is_integer(cas, reduced, 0)) {
         return PHY_ERR_DOMAIN;
     }
+    if (phy_cas_is_integer(cas, reduced_numerator, 0)) {
+        *out_ref = cas->zero;
+        return PHY_OK;
+    }
+    if (reduced_numerator == reduced) {
+        *out_ref = cas->one;
+        return PHY_OK;
+    }
+    bool algebraic_matched = false;
+    status = phy_cas_algebraic_div_node(
+        cas, reduced_numerator, reduced, out_ref, &algebraic_matched);
+    if (status != PHY_OK || algebraic_matched) {
+        return status;
+    }
 
     phy_ir_ref inverse;
     status = phy_cas_pow_node(cas, reduced, cas->minus_one, &inverse);
     if (status != PHY_OK) {
         return status;
     }
-    const phy_ir_ref factors[2] = {numerator, inverse};
+    const phy_ir_ref factors[2] = {reduced_numerator, inverse};
     return phy_cas_mul_node(cas, factors, 2u, out_ref);
 }
 

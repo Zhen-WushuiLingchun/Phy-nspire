@@ -62,6 +62,7 @@ CAS_SOURCES=(
     src/cas/num.c
     src/cas/big_num.c
     src/cas/complex.c
+    src/cas/algebraic.c
     src/cas/finite_poly.c
     src/cas/series.c
     src/cas/limit.c
@@ -88,6 +89,7 @@ PHYSICS_SOURCES=(
     src/tensor/ops.c
     src/linear/matrix.c
     src/linear/elimination.c
+    src/linear/eigen.c
     src/abstract/index.c
     src/abstract/head.c
     src/abstract/monomial.c

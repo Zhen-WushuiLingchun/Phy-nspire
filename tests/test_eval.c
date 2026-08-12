@@ -2392,9 +2392,45 @@ static void test_dynamic_exact_linear_algebra_frontend(void)
     (void)run(&f, "R = Matrix[{{0,-1},{1,0}}]");
     value = run(&f, "Eigenvalues[R]");
     PHY_CHECK_EQ_STR(expansion(&f, value), "(fn List I (* -1 I))");
+    value = run(&f, "Eigenvectors[R]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_MATRIX);
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List (fn List I 1) (fn List (* -1 I) 1))");
+    value = run(&f, "JordanDecomposition[R]");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List "
+        "(fn List (fn List I (* -1 I)) (fn List 1 1)) "
+        "(fn List (fn List I 0) (fn List 0 (* -1 I))))");
     (void)run(&f, "J = Matrix[{{2,1},{0,2}}]");
     value = run(&f, "Eigenvalues[J]");
     PHY_CHECK_EQ_STR(expansion(&f, value), "(fn List 2 2)");
+    value = run(&f, "Eigenvectors[J]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_MATRIX);
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List (fn List 1 0) (fn List 0 0))");
+    value = run(&f, "Eigenspace[J,2]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_MATRIX);
+    PHY_CHECK_EQ_STR(expansion(&f, value), "(fn List (fn List 1 0))");
+    value = run(&f, "Eigenspace[J,3]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_SCALAR);
+    PHY_CHECK_EQ_STR(expansion(&f, value), "(fn List)");
+    value = run(&f, "GeneralizedEigenspace[J,2]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_MATRIX);
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List (fn List 1 0) (fn List 0 1))");
+    value = run(&f, "JordanDecomposition[J]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_SCALAR);
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List "
+        "(fn List (fn List 1 0) (fn List 0 1)) "
+        "(fn List (fn List 2 1) (fn List 0 2)))");
+    expect_scalar(
+        &f, "Simplify[Root[{-2,0,1},2]^2]", "2");
 
     value = run(&f, "C = 2*A + A");
     PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_MATRIX);
