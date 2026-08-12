@@ -187,7 +187,7 @@ add_library(phy_core STATIC
     src/cas/linear_solve.c
     src/cas/sparse_poly.c
     src/cas/ball_eval.c
-    src/cas/complex_roots.c
+    src/exact/complex_roots.c
     src/cas/engine.c
     src/cas/special.c
     src/cas/simplify.c

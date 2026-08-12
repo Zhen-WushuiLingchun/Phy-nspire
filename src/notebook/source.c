@@ -323,8 +323,8 @@ static const char *const kObjectHeads[] = {
     "QFTHead",      "QFTTensor",
 
     "Vector",       "Matrix",           "Transpose",    "Dot",
-    "Determinant",  "Inverse",          "RowReduce",    "MatrixRank",
-    "LinearSolve",
+    "Determinant",  "CharacteristicPolynomial", "Eigenvalues",
+    "Inverse",      "RowReduce",        "MatrixRank",   "LinearSolve",
 
     "CoordinateMap", "BasisTransition", "Jacobian",
     "PullbackScalar", "PullbackCovector", "PushForwardVector",

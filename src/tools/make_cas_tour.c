@@ -100,11 +100,12 @@ static const tour_cell kTour[] = {
     {TOUR_MARKDOWN, "Exact polynomial equations",
      "$$3x-2=0\\quad x=\\frac{2}{3},\\qquad "
      "x^2-2=0\\quad x=\\pm\\sqrt{2}$$"
-     " Higher-degree factors proved all-real stay exact as ordered "
+     " Higher-degree real and non-real roots stay exact as ordered "
      "$\\operatorname{Root}(\\{a_0,\\ldots,a_n\\},k)$ certificates."},
     {TOUR_INPUT, "Solve[3*x-2==0,x]", NULL},
     {TOUR_INPUT, "Solve[x^2-2==0,x]", NULL},
     {TOUR_INPUT, "Solve[x^2+2*x+5==0,x]", NULL},
+    {TOUR_INPUT, "Solve[x^3-2==0,x]", NULL},
     {TOUR_INPUT, "Solve[x^3-3*x+1==0,x]", NULL},
     {TOUR_INPUT,
      "Solve[{x+y+z==6,2x-y+z==3,x+2y-z==2},{x,y,z}]",
@@ -190,6 +191,8 @@ static const tour_cell kTour[] = {
     {TOUR_INPUT, "Dot[Vector[{1,2,3}],Vector[{4,5,6}]]", NULL},
     {TOUR_INPUT, "lm=Matrix[{{1,2},{3,4}}]", NULL},
     {TOUR_INPUT, "Determinant[lm]", NULL},
+    {TOUR_INPUT, "CharacteristicPolynomial[lm,t]", NULL},
+    {TOUR_INPUT, "Eigenvalues[Matrix[{{0,-1},{1,0}}]]", NULL},
     {TOUR_INPUT, "Inverse[lm]", NULL},
     {TOUR_INPUT, "LinearSolve[Matrix[{{2,1},{1,-1}}],Vector[{5,1}]]",
      NULL},

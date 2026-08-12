@@ -2676,7 +2676,7 @@ static phy_status polynomial_integer_same_roots(
 
 static phy_status algebraic_factor_roots(
     phy_cas *cas, const rational_poly *factor,
-    phy_cas_root_set *roots)
+    uint32_t multiplicity, phy_cas_root_set *roots)
 {
     rational_poly integer;
     phy_status status =
@@ -2736,9 +2736,9 @@ static phy_status algebraic_factor_roots(
     }
     phy_algebraic_set_cancel(
         algebraic, cas->cancelled, cas->cancel_user);
-    phy_real_algebraic *isolated[REDUCE_MAX_DEGREE] = {0};
+    phy_complex_algebraic *isolated[REDUCE_MAX_DEGREE] = {0};
     size_t isolated_count = 0u;
-    status = phy_algebraic_isolate_real_roots(
+    status = phy_algebraic_isolate_complex_roots(
         algebraic, coefficient_text, (size_t)integer.degree + 1u,
         isolated, (size_t)integer.degree, &isolated_count);
     const phy_status charge =
@@ -2747,16 +2747,9 @@ static phy_status algebraic_factor_roots(
         status = charge;
     }
 
-    /*
-     * Solve has complex-domain semantics. Root[...] currently carries a
-     * certified real isolating interval, so publishing only the real subset
-     * of a factor that also has non-real roots would be a silently incomplete
-     * answer. Until complex algebraic Root values land, accept a higher-degree
-     * square-free factor only when every one of its roots is real.
-     */
     if (status == PHY_OK &&
         isolated_count != (size_t)integer.degree) {
-        status = PHY_ERR_UNSUPPORTED;
+        status = PHY_ERR_CORRUPT_DOCUMENT;
     }
     if (status == PHY_OK &&
         isolated_count >
@@ -2771,13 +2764,16 @@ static phy_status algebraic_factor_roots(
      * identities for scalar multiples of one equation.
      */
     phy_ir_ref coefficient_refs[REDUCE_MAX_DEGREE + 1u];
+    const size_t canonical_count =
+        status == PHY_OK && isolated_count != 0u
+            ? phy_complex_algebraic_degree(isolated[0]) + 1u
+            : 0u;
     size_t canonical_text_bytes = 0u;
-    for (int64_t degree = 0;
-         status == PHY_OK && isolated_count != 0u &&
-         degree <= integer.degree; ++degree) {
+    for (size_t degree = 0u;
+         status == PHY_OK && degree < canonical_count; ++degree) {
         size_t required = 0u;
-        status = phy_real_algebraic_write_coefficient(
-            isolated[0], (size_t)degree, NULL, 0u, &required);
+        status = phy_complex_algebraic_write_coefficient(
+            isolated[0], degree, NULL, 0u, &required);
         if (status == PHY_OK &&
             (required == 0u ||
              canonical_text_bytes > (size_t)-1 - required)) {
@@ -2788,21 +2784,20 @@ static phy_status algebraic_factor_roots(
         }
     }
     char *canonical_text_storage = NULL;
-    if (status == PHY_OK && isolated_count != 0u) {
+    if (status == PHY_OK && canonical_count != 0u) {
         status = phy_cas_temp_alloc(
             cas, canonical_text_bytes,
             (void **)&canonical_text_storage);
     }
     char *canonical_cursor = canonical_text_storage;
-    for (int64_t degree = 0;
-         status == PHY_OK && isolated_count != 0u &&
-         degree <= integer.degree; ++degree) {
+    for (size_t degree = 0u;
+         status == PHY_OK && degree < canonical_count; ++degree) {
         size_t written = 0u;
         const size_t capacity =
             canonical_text_bytes -
             (size_t)(canonical_cursor - canonical_text_storage);
-        status = phy_real_algebraic_write_coefficient(
-            isolated[0], (size_t)degree, canonical_cursor, capacity,
+        status = phy_complex_algebraic_write_coefficient(
+            isolated[0], degree, canonical_cursor, capacity,
             &written);
         if (status == PHY_OK &&
             (written == 0u || written > capacity ||
@@ -2819,18 +2814,18 @@ static phy_status algebraic_factor_roots(
         }
     }
     const phy_ir_symbol list_head =
-        status == PHY_OK && isolated_count != 0u
+        status == PHY_OK && canonical_count != 0u
             ? phy_ir_intern(cas->ir, "List")
                          : PHY_IR_NO_SYMBOL;
     const phy_ir_symbol root_head =
-        status == PHY_OK && isolated_count != 0u
+        status == PHY_OK && canonical_count != 0u
             ? phy_ir_intern(cas->ir, "Root")
                          : PHY_IR_NO_SYMBOL;
     phy_ir_ref coefficient_list = PHY_IR_NULL;
-    if (status == PHY_OK && isolated_count != 0u) {
+    if (status == PHY_OK && canonical_count != 0u) {
         coefficient_list = phy_ir_function(
             cas->ir, list_head, coefficient_refs,
-            (size_t)integer.degree + 1u);
+            canonical_count);
         if (list_head == PHY_IR_NO_SYMBOL ||
             root_head == PHY_IR_NO_SYMBOL ||
             coefficient_list == PHY_IR_NULL) {
@@ -2840,8 +2835,10 @@ static phy_status algebraic_factor_roots(
     for (size_t index = 0u;
          index < isolated_count && status == PHY_OK; ++index) {
         phy_ir_ref ordinal = PHY_IR_NULL;
+        const uint32_t root_index =
+            phy_complex_algebraic_root_index(isolated[index]);
         status = phy_cas_number_node(
-            cas, (phy_cas_rat){(int64_t)index + 1, 1}, &ordinal);
+            cas, (phy_cas_rat){(int64_t)root_index, 1}, &ordinal);
         const phy_ir_ref arguments[2] = {coefficient_list, ordinal};
         phy_ir_ref root = PHY_IR_NULL;
         if (status == PHY_OK) {
@@ -2854,8 +2851,12 @@ static phy_status algebraic_factor_roots(
         if (status == PHY_OK) {
             roots->values[roots->count] = root;
             roots->certified_algebraic[roots->count] = true;
+            roots->multiplicities[roots->count] = multiplicity;
             roots->count++;
         }
+    }
+    for (size_t index = 0u; index < isolated_count; ++index) {
+        phy_complex_algebraic_destroy(isolated[index]);
     }
     phy_algebraic_context_destroy(algebraic);
     phy_cas_temp_free(
@@ -2870,6 +2871,7 @@ static void sort_and_deduplicate_roots(phy_cas *cas,
     for (size_t index = 1u; index < roots->count; ++index) {
         const phy_ir_ref key = roots->values[index];
         const bool certified = roots->certified_algebraic[index];
+        const uint32_t multiplicity = roots->multiplicities[index];
         size_t position = index;
         while (position > 0u &&
                phy_ir_compare(
@@ -2877,10 +2879,13 @@ static void sort_and_deduplicate_roots(phy_cas *cas,
             roots->values[position] = roots->values[position - 1u];
             roots->certified_algebraic[position] =
                 roots->certified_algebraic[position - 1u];
+            roots->multiplicities[position] =
+                roots->multiplicities[position - 1u];
             position--;
         }
         roots->values[position] = key;
         roots->certified_algebraic[position] = certified;
+        roots->multiplicities[position] = multiplicity;
     }
     size_t unique = 0u;
     for (size_t index = 0u; index < roots->count; ++index) {
@@ -2889,7 +2894,13 @@ static void sort_and_deduplicate_roots(phy_cas *cas,
             roots->values[unique] = roots->values[index];
             roots->certified_algebraic[unique] =
                 roots->certified_algebraic[index];
+            roots->multiplicities[unique] =
+                roots->multiplicities[index];
             unique++;
+        } else if (UINT32_MAX - roots->multiplicities[unique - 1u] >=
+                   roots->multiplicities[index]) {
+            roots->multiplicities[unique - 1u] +=
+                roots->multiplicities[index];
         }
     }
     roots->count = unique;
@@ -2965,6 +2976,7 @@ phy_status phy_cas_polynomial_roots_node(phy_cas *cas,
             status = linear_root(
                 cas, &factor, &roots.values[roots.count]);
             if (status == PHY_OK) {
+                roots.multiplicities[roots.count] = record->multiplicity;
                 roots.count++;
             }
         } else if (factor.degree == 2) {
@@ -2977,10 +2989,13 @@ phy_status phy_cas_polynomial_roots_node(phy_cas *cas,
             }
             for (size_t root = 0u;
                  root < count && status == PHY_OK; ++root) {
-                roots.values[roots.count++] = pair[root];
+                roots.values[roots.count] = pair[root];
+                roots.multiplicities[roots.count] = record->multiplicity;
+                roots.count++;
             }
         } else {
-            status = algebraic_factor_roots(cas, &factor, &roots);
+            status = algebraic_factor_roots(
+                cas, &factor, record->multiplicity, &roots);
         }
     }
     phy_cas_temp_free(cas, workspace, bytes);
@@ -2990,6 +3005,50 @@ phy_status phy_cas_polynomial_roots_node(phy_cas *cas,
     sort_and_deduplicate_roots(cas, &roots);
     *out_roots = roots;
     return PHY_OK;
+}
+
+phy_status phy_cas_polynomial_roots(
+    phy_cas *cas, phy_ir_ref polynomial, phy_ir_ref variable,
+    bool repeat_multiplicity, phy_ir_ref *out_ref)
+{
+    if (cas == NULL || out_ref == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    *out_ref = PHY_IR_NULL;
+    phy_cas_begin(cas);
+    phy_cas_root_set roots = {0};
+    phy_status status = phy_cas_polynomial_roots_node(
+        cas, polynomial, variable, &roots);
+    phy_ir_ref values[PHY_CAS_POLYNOMIAL_MAX_ROOTS];
+    size_t count = 0u;
+    for (size_t index = 0u;
+         status == PHY_OK && index < roots.count; ++index) {
+        const uint32_t copies = repeat_multiplicity
+            ? roots.multiplicities[index] : 1u;
+        if (copies == 0u || copies >
+                PHY_CAS_POLYNOMIAL_MAX_ROOTS - count) {
+            status = PHY_ERR_TERM_LIMIT;
+            break;
+        }
+        for (uint32_t copy = 0u; copy < copies; ++copy) {
+            values[count++] = roots.values[index];
+        }
+    }
+    if (status == PHY_OK) {
+        const phy_ir_symbol list_head = phy_ir_intern(cas->ir, "List");
+        if (list_head == PHY_IR_NO_SYMBOL) {
+            status = phy_cas_ir_failure(cas);
+        } else {
+            const phy_ir_ref result = phy_ir_function(
+                cas->ir, list_head, values, count);
+            if (result == PHY_IR_NULL) {
+                status = phy_cas_ir_failure(cas);
+            } else {
+                *out_ref = result;
+            }
+        }
+    }
+    return status;
 }
 
 phy_status phy_cas_polynomials_coprime_node(

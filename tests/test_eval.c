@@ -407,8 +407,15 @@ static void test_solve_reader_and_evaluator(void)
         "(fn List "
         "(fn List (fn Rule x (+ -1 (* -2 I)))) "
         "(fn List (fn Rule x (+ -1 (* 2 I)))))");
-    expect_status(
-        &f, "Solve[x^5-x-1==0,x]", PHY_ERR_UNSUPPORTED);
+    value = run(&f, "Solve[x^5-x-1==0,x]");
+    PHY_CHECK_EQ_STR(
+        expansion(&f, value),
+        "(fn List "
+        "(fn List (fn Rule x (fn Root (fn List -1 -1 0 0 0 1) 1))) "
+        "(fn List (fn Rule x (fn Root (fn List -1 -1 0 0 0 1) 2))) "
+        "(fn List (fn Rule x (fn Root (fn List -1 -1 0 0 0 1) 3))) "
+        "(fn List (fn Rule x (fn Root (fn List -1 -1 0 0 0 1) 4))) "
+        "(fn List (fn Rule x (fn Root (fn List -1 -1 0 0 0 1) 5))))");
     value = run(&f, "Solve[x^3-3x+1==0,x]");
     PHY_CHECK_EQ_STR(
         expansion(&f, value),
@@ -416,9 +423,9 @@ static void test_solve_reader_and_evaluator(void)
         "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 1))) "
         "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 2))) "
         "(fn List (fn Rule x (fn Root (fn List 1 -3 0 1) 3))))");
-    expect_status(
-        &f, "Solve[(x^5-x-1)(x^2+1)==0,x]",
-        PHY_ERR_UNSUPPORTED);
+    value = run(&f, "Solve[(x^5-x-1)(x^2+1)==0,x]");
+    PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_SCALAR);
+    PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, value.as.scalar), 7);
     expect_status(&f, "Solve[x==x,x]", PHY_ERR_UNSUPPORTED);
     expect_status(&f, "Solve[x,x]", PHY_ERR_TYPE);
 
@@ -2353,6 +2360,9 @@ static void test_dynamic_exact_linear_algebra_frontend(void)
     expect_scalar(&f, "Rank[A]", "2");
     expect_scalar(&f, "MatrixRank[A]", "2");
     expect_scalar(&f, "Determinant[A]", "-2");
+    expect_scalar(
+        &f, "CharacteristicPolynomial[A,x]",
+        "(+ (^ x 2) (* -5 x) -2)");
     value = run(&f, "Dimensions[A]");
     PHY_CHECK_EQ_STR(expansion(&f, value), "(fn List 2 2)");
     expect_scalar(&f, "Component[A,1,0]", "3");
@@ -2378,6 +2388,13 @@ static void test_dynamic_exact_linear_algebra_frontend(void)
     PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_MATRIX);
     expect_scalar(&f, "Component[AA,0,0]", "7");
     expect_scalar(&f, "Component[AA,1,1]", "22");
+
+    (void)run(&f, "R = Matrix[{{0,-1},{1,0}}]");
+    value = run(&f, "Eigenvalues[R]");
+    PHY_CHECK_EQ_STR(expansion(&f, value), "(fn List I (* -1 I))");
+    (void)run(&f, "J = Matrix[{{2,1},{0,2}}]");
+    value = run(&f, "Eigenvalues[J]");
+    PHY_CHECK_EQ_STR(expansion(&f, value), "(fn List 2 2)");
 
     value = run(&f, "C = 2*A + A");
     PHY_CHECK_EQ_INT(value.kind, PHY_VALUE_MATRIX);

@@ -143,8 +143,8 @@ braces. Both held modifiers and tap-then-key modifiers are accepted.
 ## Comprehensive CAS tour
 
 [`examples/phy-nspire-cas-tour.tns`](../examples/phy-nspire-cas-tour.tns) is a
-generated, executable notebook rather than a screenshot fixture. Its 196
-source cards contain sixteen Markdown/LaTeX explanations and 180 Math inputs
+generated, executable notebook rather than a screenshot fixture. Its 206
+source cards contain seventeen Markdown/LaTeX explanations and 189 Math inputs
 covering the implemented scalar CAS and calculus, exact dynamic linear
 algebra, abstract/component bridging, verified chart transitions and atlases,
 generic component tensors, manifolds, forms and Hodge operations, coordinate
@@ -157,8 +157,8 @@ that fully evaluated notebook, deserializes it into a fresh empty environment,
 and replays all cells. It then writes a separately round-tripped source-only
 document. This keeps the CX II's `FILE > Open` path free of eager cached-tree
 reconstruction while preserving full generation-time CAS coverage. Running all
-180 Math cells top-to-bottom grows the document to 376 cards. The 400-card
-bound leaves 24 slots for small reader experiments; start a new notebook for
+189 Math cells top-to-bottom grows the document to 395 cards. The 400-card
+bound leaves 5 slots for small reader experiments; start a new notebook for
 extended work rather than appending a long calculation to the acceptance tour.
 
 ## Verification
@@ -180,8 +180,8 @@ extended work rather than appending a long calculation to the acceptance tour.
 - `test_modifier`: 8 checks over tapped and held Shift/Ctrl behavior;
 - `tests/fixtures/notebook_frame.digest`: bit-exact 320 × 240 host fixture;
 - last strict Windows baseline: 45/45; current WSL GCC, ASan/leak, and UBSan
-  suites: 48/48 each; 475,909 explicit checks;
-- Ndless r2022 ARM build: 1,252,366 bytes. The evaluator probe retains 17/17
+  suites: 48/48 each; 476,797 explicit checks;
+- Ndless r2022 ARM build: 1,282,545 bytes. The evaluator probe retains 17/17
   public APIs behind the complete physics stack and imports no forbidden
   float/libm/soft-float helper.
 

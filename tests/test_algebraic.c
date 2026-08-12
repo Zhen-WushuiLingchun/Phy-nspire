@@ -14,6 +14,8 @@ typedef struct {
     phy_algebraic_context *algebraic;
 } fixture;
 
+static bool cancel_now(void *user);
+
 static phy_exact_rational_text rational(const char *numerator,
                                         const char *denominator)
 {
@@ -90,6 +92,33 @@ static const char *coefficient_text(const phy_real_algebraic *value,
     return status == PHY_OK ? buffer : "<write failed>";
 }
 
+static const char *complex_coefficient_text(
+    const phy_complex_algebraic *value, size_t degree)
+{
+    static char buffers[4][4096];
+    static unsigned next;
+    char *buffer = buffers[next++ & 3u];
+    size_t required = 0u;
+    const phy_status status = phy_complex_algebraic_write_coefficient(
+        value, degree, buffer, sizeof buffers[0], &required);
+    return status == PHY_OK ? buffer : "<write failed>";
+}
+
+static const char *complex_imaginary_bound_text(
+    const phy_complex_algebraic *value, bool upper)
+{
+    static char buffers[4][4096];
+    static unsigned next;
+    char *buffer = buffers[next++ & 3u];
+    size_t required = 0u;
+    const phy_status status = upper
+        ? phy_complex_algebraic_write_imaginary_upper(
+              value, buffer, sizeof buffers[0], &required)
+        : phy_complex_algebraic_write_imaginary_lower(
+              value, buffer, sizeof buffers[0], &required);
+    return status == PHY_OK ? buffer : "<write failed>";
+}
+
 static void test_context_lifecycle(void)
 {
     PHY_CHECK_EQ_INT(phy_platform_init(), PHY_OK);
@@ -111,6 +140,196 @@ static void test_context_lifecycle(void)
     limits.max_metadata_bytes = 1u;
     PHY_CHECK(phy_algebraic_context_create(&limits) == NULL);
     phy_platform_shutdown();
+}
+
+static void test_canonical_complex_root_identity(void)
+{
+    fixture f = fixture_open();
+    static const char *quadratic[] = {"1", "0", "1"};
+    phy_complex_algebraic *roots[2] = {NULL, NULL};
+    size_t count = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_algebraic_isolate_complex_roots(
+            f.algebraic, quadratic, 3u, roots, 2u, &count),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(count, 2);
+    for (size_t index = 0u; index < count; ++index) {
+        PHY_CHECK_EQ_INT(
+            phy_complex_algebraic_validate(roots[index]), PHY_OK);
+        PHY_CHECK_EQ_INT(
+            phy_complex_algebraic_root_index(roots[index]), index + 1u);
+        PHY_CHECK(!phy_complex_algebraic_is_real(roots[index]));
+        PHY_CHECK_EQ_STR(complex_coefficient_text(roots[index], 0u), "1");
+        PHY_CHECK_EQ_STR(complex_coefficient_text(roots[index], 1u), "0");
+        PHY_CHECK_EQ_STR(complex_coefficient_text(roots[index], 2u), "1");
+    }
+    PHY_CHECK(complex_imaginary_bound_text(roots[0], true)[0] == '-');
+    PHY_CHECK(complex_imaginary_bound_text(roots[1], false)[0] != '-');
+
+    static const char *reducible[] = {"-2", "1", "-2", "1"};
+    phy_complex_algebraic *same_positive_i = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_complex_algebraic_create_by_index(
+            f.algebraic, reducible, 4u, 3u, &same_positive_i),
+        PHY_OK);
+    bool equal = false;
+    PHY_CHECK_EQ_INT(
+        phy_complex_algebraic_equal(
+            roots[1], same_positive_i, &equal), PHY_OK);
+    PHY_CHECK(equal);
+    uint64_t direct_hash = 0u;
+    uint64_t reducible_hash = 1u;
+    PHY_CHECK_EQ_INT(
+        phy_complex_algebraic_hash(roots[1], &direct_hash), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_complex_algebraic_hash(
+            same_positive_i, &reducible_hash), PHY_OK);
+    PHY_CHECK_EQ_INT(direct_hash, reducible_hash);
+    PHY_CHECK_EQ_INT(phy_algebraic_validate(f.algebraic), PHY_OK);
+
+    phy_complex_algebraic_destroy(same_positive_i);
+    phy_complex_algebraic_destroy(roots[1]);
+    phy_complex_algebraic_destroy(roots[0]);
+    fixture_close(&f);
+}
+
+static void test_complex_conjugation_and_resultant_closure(void)
+{
+    fixture f = fixture_open();
+    static const char *i_polynomial[] = {"1", "0", "1"};
+    phy_complex_algebraic *minus_i = NULL;
+    phy_complex_algebraic *plus_i = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_complex_algebraic_create_by_index(
+            f.algebraic, i_polynomial, 3u, 1u, &minus_i), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_algebraic_validate(f.algebraic), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_complex_algebraic_create_by_index(
+            f.algebraic, i_polynomial, 3u, 2u, &plus_i), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_algebraic_validate(f.algebraic), PHY_OK);
+
+    phy_complex_algebraic *conjugate = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_complex_algebraic_conjugate(plus_i, &conjugate), PHY_OK);
+    bool equal = false;
+    PHY_CHECK_EQ_INT(
+        phy_complex_algebraic_equal(minus_i, conjugate, &equal), PHY_OK);
+    PHY_CHECK(equal);
+    PHY_CHECK_EQ_INT(phy_algebraic_validate(f.algebraic), PHY_OK);
+
+    phy_complex_algebraic *zero = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_complex_algebraic_add(plus_i, minus_i, &zero), PHY_OK);
+    PHY_CHECK(phy_complex_algebraic_is_rational(zero));
+    PHY_CHECK_EQ_INT(phy_complex_algebraic_degree(zero), 1);
+    PHY_CHECK_EQ_STR(complex_coefficient_text(zero, 0u), "0");
+    PHY_CHECK_EQ_STR(complex_coefficient_text(zero, 1u), "1");
+    PHY_CHECK_EQ_INT(phy_algebraic_validate(f.algebraic), PHY_OK);
+
+    phy_complex_algebraic *minus_one = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_complex_algebraic_multiply(plus_i, plus_i, &minus_one),
+        PHY_OK);
+    PHY_CHECK(phy_complex_algebraic_is_rational(minus_one));
+    PHY_CHECK_EQ_STR(complex_coefficient_text(minus_one, 0u), "1");
+    PHY_CHECK_EQ_STR(complex_coefficient_text(minus_one, 1u), "1");
+    PHY_CHECK_EQ_INT(phy_algebraic_validate(f.algebraic), PHY_OK);
+
+    phy_complex_algebraic *one = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_complex_algebraic_divide(plus_i, plus_i, &one), PHY_OK);
+    PHY_CHECK_EQ_STR(complex_coefficient_text(one, 0u), "-1");
+    PHY_CHECK_EQ_STR(complex_coefficient_text(one, 1u), "1");
+    phy_complex_algebraic *fourth_power = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_complex_algebraic_pow_i32(plus_i, 4, &fourth_power), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_complex_algebraic_equal(one, fourth_power, &equal), PHY_OK);
+    PHY_CHECK(equal);
+
+    static const char *sqrt2_polynomial[] = {"-2", "0", "1"};
+    phy_complex_algebraic *sqrt2 = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_complex_algebraic_create_by_index(
+            f.algebraic, sqrt2_polynomial, 3u, 2u, &sqrt2), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_algebraic_validate(f.algebraic), PHY_OK);
+    phy_real_algebraic *real_sqrt2 = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_real_algebraic_create(
+            f.algebraic, sqrt2_polynomial, 3u,
+            rational("1", "1"), rational("2", "1"), &real_sqrt2),
+        PHY_OK);
+    phy_complex_algebraic *lifted_sqrt2 = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_complex_algebraic_from_real(real_sqrt2, &lifted_sqrt2),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_complex_algebraic_equal(sqrt2, lifted_sqrt2, &equal), PHY_OK);
+    PHY_CHECK(equal);
+    phy_complex_algebraic *sum = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_complex_algebraic_add(sqrt2, plus_i, &sum), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_complex_algebraic_degree(sum), 4);
+    PHY_CHECK_EQ_STR(complex_coefficient_text(sum, 0u), "9");
+    PHY_CHECK_EQ_STR(complex_coefficient_text(sum, 1u), "0");
+    PHY_CHECK_EQ_STR(complex_coefficient_text(sum, 2u), "-2");
+    PHY_CHECK_EQ_STR(complex_coefficient_text(sum, 3u), "0");
+    PHY_CHECK_EQ_STR(complex_coefficient_text(sum, 4u), "1");
+    PHY_CHECK_EQ_INT(phy_complex_algebraic_validate(minus_i), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_complex_algebraic_validate(plus_i), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_complex_algebraic_validate(conjugate), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_complex_algebraic_validate(zero), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_complex_algebraic_validate(minus_one), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_complex_algebraic_validate(sqrt2), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_complex_algebraic_validate(sum), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_algebraic_validate(f.algebraic), PHY_OK);
+
+    phy_complex_algebraic_destroy(sum);
+    phy_complex_algebraic_destroy(lifted_sqrt2);
+    phy_real_algebraic_destroy(real_sqrt2);
+    phy_complex_algebraic_destroy(sqrt2);
+    phy_complex_algebraic_destroy(fourth_power);
+    phy_complex_algebraic_destroy(one);
+    phy_complex_algebraic_destroy(minus_one);
+    phy_complex_algebraic_destroy(zero);
+    phy_complex_algebraic_destroy(conjugate);
+    phy_complex_algebraic_destroy(plus_i);
+    phy_complex_algebraic_destroy(minus_i);
+    fixture_close(&f);
+}
+
+static void test_complex_cancellation_and_allocation_are_transactional(void)
+{
+    fixture f = fixture_open();
+    static const char *polynomial[] = {"1", "0", "1"};
+    unsigned calls = 0u;
+    phy_algebraic_set_cancel(f.algebraic, cancel_now, &calls);
+    phy_complex_algebraic *value = NULL;
+    PHY_CHECK_EQ_INT(
+        phy_complex_algebraic_create_by_index(
+            f.algebraic, polynomial, 3u, 1u, &value),
+        PHY_ERR_INTERRUPTED);
+    PHY_CHECK(value == NULL);
+    PHY_CHECK(calls > 0u);
+    PHY_CHECK_EQ_INT(phy_algebraic_validate(f.algebraic), PHY_OK);
+
+    phy_algebraic_set_cancel(f.algebraic, NULL, NULL);
+    phy_host_fail_alloc_after(1u);
+    const phy_status failed = phy_complex_algebraic_create_by_index(
+        f.algebraic, polynomial, 3u, 1u, &value);
+    phy_host_fail_alloc_after(0u);
+    PHY_CHECK(
+        failed == PHY_ERR_OUT_OF_MEMORY ||
+        failed == PHY_ERR_MEMORY_LIMIT);
+    PHY_CHECK(value == NULL);
+    PHY_CHECK_EQ_INT(phy_algebraic_validate(f.algebraic), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_complex_algebraic_create_by_index(
+            f.algebraic, polynomial, 3u, 1u, &value), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_complex_algebraic_validate(value), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_algebraic_validate(f.algebraic), PHY_OK);
+    phy_complex_algebraic_destroy(value);
+    fixture_close(&f);
 }
 
 static void test_sturm_root_counts(void)
@@ -695,8 +914,6 @@ static void test_rational_transform_edge_cases(void)
     phy_real_algebraic_destroy(one);
     fixture_close(&f);
 }
-
-static bool cancel_now(void *user);
 
 static void test_resultant_arithmetic_closure(void)
 {
@@ -1406,6 +1623,11 @@ int main(void)
         }                                                                     \
     } while (0)
     PHY_ALGEBRAIC_TEST_CASE(test_context_lifecycle);
+    PHY_ALGEBRAIC_TEST_CASE(test_canonical_complex_root_identity);
+    PHY_ALGEBRAIC_TEST_CASE(
+        test_complex_conjugation_and_resultant_closure);
+    PHY_ALGEBRAIC_TEST_CASE(
+        test_complex_cancellation_and_allocation_are_transactional);
     PHY_ALGEBRAIC_TEST_CASE(test_sturm_root_counts);
     PHY_ALGEBRAIC_TEST_CASE(test_create_normalizes_and_certifies);
     PHY_ALGEBRAIC_TEST_CASE(

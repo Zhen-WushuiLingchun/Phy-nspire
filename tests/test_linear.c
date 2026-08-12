@@ -304,6 +304,79 @@ static void test_allocation_failure_unwinds(void)
     fixture_close(&f);
 }
 
+static void test_characteristic_polynomial_and_eigenvalues(void)
+{
+    fixture f = fixture_open();
+    const phy_ir_ref x = phy_ir_symbol_ref(
+        f.ir, phy_ir_intern(f.ir, "x"));
+    PHY_CHECK(x != PHY_IR_NULL);
+
+    static const int64_t rotation_values[] = {0, -1, 1, 0};
+    phy_matrix *rotation = make_matrix(&f, 2u, 2u, rotation_values);
+    phy_ir_ref characteristic = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_matrix_characteristic_polynomial(
+            rotation, x, &characteristic), PHY_OK);
+    phy_ir_ref expected = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_ir_read(f.ir, "(+ 1 (^ x 2))", &expected, NULL), PHY_OK);
+    phy_cas_decision equal = PHY_CAS_UNKNOWN;
+    PHY_CHECK_EQ_INT(
+        phy_cas_equivalent(
+            f.cas, characteristic, expected, &equal), PHY_OK);
+    PHY_CHECK_EQ_INT(equal, PHY_CAS_ZERO);
+    phy_ir_ref eigenvalues = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_matrix_eigenvalues(rotation, x, &eigenvalues), PHY_OK);
+    char text[512];
+    size_t length = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_ir_write(f.ir, eigenvalues, text, sizeof text, &length),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(text, "(fn List I (* -1 I))");
+    phy_matrix_destroy(rotation);
+
+    static const int64_t repeated_values[] = {2, 1, 0, 2};
+    phy_matrix *repeated = make_matrix(&f, 2u, 2u, repeated_values);
+    characteristic = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_matrix_characteristic_polynomial(
+            repeated, x, &characteristic), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_ir_write(f.ir, characteristic, text, sizeof text, &length),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(text, "(+ 4 (* -4 x) (^ x 2))");
+    eigenvalues = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_matrix_eigenvalues(repeated, x, &eigenvalues), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_ir_write(f.ir, eigenvalues, text, sizeof text, &length),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(text, "(fn List 2 2)");
+    phy_matrix_destroy(repeated);
+
+    static const int64_t companion_values[] = {
+        0, 0, 2,
+        1, 0, 0,
+        0, 1, 0};
+    phy_matrix *companion = make_matrix(
+        &f, 3u, 3u, companion_values);
+    eigenvalues = PHY_IR_NULL;
+    PHY_CHECK_EQ_INT(
+        phy_matrix_eigenvalues(companion, x, &eigenvalues), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_ir_write(f.ir, eigenvalues, text, sizeof text, &length),
+        PHY_OK);
+    PHY_CHECK_EQ_STR(
+        text,
+        "(fn List "
+        "(fn Root (fn List -2 0 0 1) 1) "
+        "(fn Root (fn List -2 0 0 1) 2) "
+        "(fn Root (fn List -2 0 0 1) 3))");
+    phy_matrix_destroy(companion);
+    fixture_close(&f);
+}
+
 int main(void)
 {
     PHY_TEST_CASE(test_shape_and_exact_entries);
@@ -312,5 +385,6 @@ int main(void)
     PHY_TEST_CASE(test_exact_linear_solve_and_limits);
     PHY_TEST_CASE(test_vectors_and_null_space);
     PHY_TEST_CASE(test_allocation_failure_unwinds);
+    PHY_TEST_CASE(test_characteristic_polynomial_and_eigenvalues);
     return PHY_TEST_REPORT("linear");
 }

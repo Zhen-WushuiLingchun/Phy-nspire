@@ -29,8 +29,8 @@ Verification:
   source language, drawing, notebook, the stateful evaluator, IR, tensor
   storage, differential forms, GR, Lie/QFT foundations, CAS, QFT oracle, and
   full lifecycle: last strict Windows baseline 45/45, current WSL strict and
-  combined ASan/UBSan/leak runs 48/48 each, and 475,909 explicit checks;
-- generated `.tns` size report — 1,252,366 bytes, 19.9% of the 6 MiB ceiling,
+  combined ASan/UBSan/leak runs 48/48 each, and 476,797 explicit checks;
+- generated `.tns` size report — 1,282,545 bytes, 20.4% of the 6 MiB ceiling,
   with the current evaluator and physics stack linked;
 - launch of a Phy-nspire artifact on the real CX II — done on 2026-07-26 with
   the observable CAS smoke screen;
@@ -86,6 +86,14 @@ Output:
   `Re`/`Im`/`Conjugate`/`Abs`, a normal form, expansion, substitution,
   differentiation, and an exact zero decision. Polynomial coefficients have
   been migrated to immutable exact IR refs with arbitrary-precision fallback;
+- canonical real/complex algebraic closure — done for primitive irreducible
+  minimal polynomials, exact real intervals/complex rectangles, deterministic
+  all-root identity, equality/hash/conjugation, explicit real lifting and
+  resultant add/subtract/multiply/divide/integer-power closure. Bounded exact
+  univariate `Solve` now returns all complex roots; exact
+  `CharacteristicPolynomial` and multiplicity-preserving `Eigenvalues` share
+  the same root path. Serialized `Root` arithmetic and eigenvectors remain
+  separate later gates;
 - native Giac adapter for a small scalar command set — **not needed for the
   scalar operations the tensor and curvature phases require**, which the layer
   above now supplies natively. The backend boundary in
@@ -140,16 +148,16 @@ The IR carries no simplification, evaluation, or arithmetic: it is the
 substrate those work on. Dummy-index canonicalization and anything that
 consumes declared symmetries stay in Phase 2.
 
-The real Ndless r2022/ARM GNU toolchain link check is done for the CAS: 40/40
-CAS APIs survive garbage collection and the probe packages to a 207,616-byte
+The real Ndless r2022/ARM GNU toolchain link check is done for the CAS: 41/41
+CAS APIs survive garbage collection and the probe packages to a 263,376-byte
 `.tns` without float formatting, libm, or ARM soft-float dependencies. The
 observable `phy-cas-smoke.tns` then ran seven symbolic cases on the physical
 CX II on 2026-07-26, displayed 7/7 PASS, and returned cleanly to Documents.
 
-The evaluator's real Ndless check now compiles 69 portable sources, retains
-17/17 public evaluator entry points, packages a 385,752-byte isolated probe,
+The evaluator's real Ndless check now compiles 72 portable sources, retains
+17/17 public evaluator entry points, packages a 443,276-byte isolated probe,
 and contains no float formatter, libm call, or ARM soft-float helper. The
-product is 1,252,366 bytes. The independent SU(N) colour probe retains 23/23
+product is 1,282,545 bytes. The independent SU(N) colour probe retains 23/23
 public APIs, 4,924 bytes of layer text, and packages to 83,996 bytes under the
 same no-float rule. These establish ARM link/package and size, not
 physical-device runtime or performance.

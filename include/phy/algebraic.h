@@ -21,6 +21,7 @@ extern "C" {
 
 typedef struct phy_algebraic_context phy_algebraic_context;
 typedef struct phy_real_algebraic phy_real_algebraic;
+typedef struct phy_complex_algebraic phy_complex_algebraic;
 
 typedef struct {
     const char *numerator;
@@ -182,6 +183,89 @@ phy_status phy_real_algebraic_refine(
 phy_status phy_real_algebraic_compare(
     phy_real_algebraic *left, phy_real_algebraic *right,
     int *out_comparison);
+
+/*
+ * Canonical complex algebraic numbers.
+ *
+ * Identity is the primitive irreducible positive-leading minimal polynomial
+ * plus a one-based ordinal among all of its complex roots.  The retained
+ * exact rational rectangle is a refinable certificate, not part of identity.
+ * Real roots occupy the leading increasing block, so every historic real
+ * Root[p,k] keeps the same ordinal after lifting to this domain.
+ */
+phy_status phy_algebraic_isolate_complex_roots(
+    phy_algebraic_context *context,
+    const char *const *coefficients, size_t coefficient_count,
+    phy_complex_algebraic **out_values, size_t value_capacity,
+    size_t *out_count);
+
+/* Construct the selected one-based all-complex root of a defining
+ * polynomial. Reducible and non-square-free input is canonicalized to the
+ * selected root's irreducible minimal polynomial before publication. */
+phy_status phy_complex_algebraic_create_by_index(
+    phy_algebraic_context *context,
+    const char *const *coefficients, size_t coefficient_count,
+    uint32_t root_index, phy_complex_algebraic **out_value);
+
+void phy_complex_algebraic_destroy(phy_complex_algebraic *value);
+phy_status phy_complex_algebraic_validate(
+    const phy_complex_algebraic *value);
+size_t phy_complex_algebraic_degree(
+    const phy_complex_algebraic *value);
+uint32_t phy_complex_algebraic_root_index(
+    const phy_complex_algebraic *value);
+bool phy_complex_algebraic_is_real(
+    const phy_complex_algebraic *value);
+bool phy_complex_algebraic_is_rational(
+    const phy_complex_algebraic *value);
+phy_status phy_complex_algebraic_write_coefficient(
+    const phy_complex_algebraic *value, size_t degree, char *buffer,
+    size_t capacity, size_t *out_required);
+phy_status phy_complex_algebraic_write_real_lower(
+    const phy_complex_algebraic *value, char *buffer, size_t capacity,
+    size_t *out_required);
+phy_status phy_complex_algebraic_write_real_upper(
+    const phy_complex_algebraic *value, char *buffer, size_t capacity,
+    size_t *out_required);
+phy_status phy_complex_algebraic_write_imaginary_lower(
+    const phy_complex_algebraic *value, char *buffer, size_t capacity,
+    size_t *out_required);
+phy_status phy_complex_algebraic_write_imaginary_upper(
+    const phy_complex_algebraic *value, char *buffer, size_t capacity,
+    size_t *out_required);
+
+phy_status phy_complex_algebraic_equal(
+    const phy_complex_algebraic *left,
+    const phy_complex_algebraic *right, bool *out_equal);
+phy_status phy_complex_algebraic_hash(
+    const phy_complex_algebraic *value, uint64_t *out_hash);
+phy_status phy_complex_algebraic_conjugate(
+    const phy_complex_algebraic *value,
+    phy_complex_algebraic **out_value);
+phy_status phy_complex_algebraic_from_real(
+    const phy_real_algebraic *value,
+    phy_complex_algebraic **out_value);
+
+/* Resultant-closed exact arithmetic over the same algebraic context. */
+phy_status phy_complex_algebraic_add(
+    const phy_complex_algebraic *left,
+    const phy_complex_algebraic *right,
+    phy_complex_algebraic **out_value);
+phy_status phy_complex_algebraic_subtract(
+    const phy_complex_algebraic *left,
+    const phy_complex_algebraic *right,
+    phy_complex_algebraic **out_value);
+phy_status phy_complex_algebraic_multiply(
+    const phy_complex_algebraic *left,
+    const phy_complex_algebraic *right,
+    phy_complex_algebraic **out_value);
+phy_status phy_complex_algebraic_divide(
+    const phy_complex_algebraic *left,
+    const phy_complex_algebraic *right,
+    phy_complex_algebraic **out_value);
+phy_status phy_complex_algebraic_pow_i32(
+    const phy_complex_algebraic *base, int32_t exponent,
+    phy_complex_algebraic **out_value);
 
 #ifdef __cplusplus
 }

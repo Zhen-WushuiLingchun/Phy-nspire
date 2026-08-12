@@ -65,6 +65,14 @@ phy_status phy_matrix_transpose(const phy_matrix *matrix,
 
 phy_status phy_matrix_determinant(const phy_matrix *matrix,
                                   phy_ir_ref *out_value);
+/* Exact det(variable I - matrix), expanded in the shared scalar CAS. */
+phy_status phy_matrix_characteristic_polynomial(
+    const phy_matrix *matrix, phy_ir_ref variable,
+    phy_ir_ref *out_polynomial);
+/* Exact algebraic eigenvalues with algebraic multiplicity. */
+phy_status phy_matrix_eigenvalues(
+    const phy_matrix *matrix, phy_ir_ref variable,
+    phy_ir_ref *out_values);
 phy_status phy_matrix_rref(const phy_matrix *matrix, phy_matrix **out_matrix,
                            size_t *out_rank);
 phy_status phy_matrix_rank(const phy_matrix *matrix, size_t *out_rank);
@@ -102,4 +110,3 @@ phy_status phy_vector_dot(const phy_vector *left, const phy_vector *right,
 #endif
 
 #endif /* PHY_LINEAR_H */
-

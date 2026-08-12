@@ -1,8 +1,10 @@
-# Certified real algebraic foundation
+# Certified real and complex algebraic foundation
 
-`include/phy/algebraic.h` and `src/exact/algebraic.c` provide the certified
-real-root layer underneath polynomial `Solve`, radical comparison, and future
-denominator rationalization.
+`include/phy/algebraic.h` and `src/exact/algebraic.c` provide two strict exact
+domains over one bounded bigint/rational kernel: canonical real algebraic
+values and canonical complex algebraic values. They underlie polynomial
+`Solve`, exact characteristic roots, radical comparison, and resultant-closed
+algebraic arithmetic.
 
 ## Representation
 
@@ -22,9 +24,17 @@ normalizes the interval. Equality and hashing depend only on the normalized
 minimal polynomial and real-root index; caller interval choices and allocator
 identity are irrelevant.
 
-This is the real-algebraic analogue of the canonical identity used by FLINT
-`qqbar`. It intentionally stops short of FLINT's complex enclosure and complete
-complex-algebraic arithmetic.
+The complex domain uses the same primitive irreducible positive-leading
+minimal polynomial and a one-based ordinal among **all** roots. Real roots form
+the leading increasing block; non-real roots follow in deterministic order
+from pairwise-disjoint certified rational rectangles. A rectangle is an
+executable certificate and does not participate in equality or hashing. Thus
+re-isolation, reducible defining polynomials, allocator identity and source
+precision cannot change value identity.
+
+This is the bounded calculator analogue of the canonical identity used by
+FLINT `qqbar`. The real type remains a strict subdomain and is lifted only by
+an explicit API.
 
 References:
 
@@ -51,8 +61,11 @@ Construction:
 8. bisects from a deterministic Cauchy bound until the canonical dyadic cell
    for that indexed root is obtained.
 
-No floating-point sample participates in root existence, ordering, or
-equality.
+For complex roots, deterministic Durand--Kerner centres are candidate data
+only. Every retained rectangle passes an exact Pellet--Rouche one-root test,
+all rectangles are pairwise disjoint, and the exact Sturm count fixes the real
+root block. No floating-point sample participates in root existence, identity,
+ordering, equality, or hashing.
 
 ## Operations now available
 
@@ -75,6 +88,18 @@ equality.
 - exact addition, subtraction, multiplication and division between two
   certified real algebraic values;
 - exact signed integer powers, with zero and negative-power domain checks.
+
+The complex domain additionally provides:
+
+- isolation of every distinct complex root of a square-free defining
+  polynomial;
+- canonicalization of reducible input to the selected root's minimal
+  polynomial and all-complex ordinal;
+- exact rational rectangle accessors, structural validation, equality and
+  stable hashing;
+- explicit real-to-complex lifting and exact conjugation;
+- resultant-closed addition, subtraction, multiplication, division and signed
+  integer powers.
 
 Each rational transform constructs a candidate integer polynomial, selects its
 irreducible factor, normalizes the root identity and interval, and runs the
@@ -99,12 +124,18 @@ interval-selected irreducible factor is canonicalized first. This closes
 addition, subtraction, multiplication and division under exact equality and
 hashing for the supported bounded real-algebraic domain.
 
-The scalar Q[x] factorizer now uses this API for irreducible factors of degree
-three or more. Reader-facing `Solve` emits
+The scalar Q[x] factorizer now uses the complex API for irreducible factors of
+degree three or more. Reader-facing `Solve` emits
 `Root[List[a0,...,an],k]`, where coefficients are in increasing degree order
-and `k` is one-based among that factor's increasing real roots. This is a
-certified real-root convention; the project does not yet claim Mathematica's
-ordering over all complex roots.
+and `k` is one-based among all roots of the canonical minimal polynomial. This
+completes bounded rational univariate `Solve` over the complex algebraic
+closure. Existing real `Root` ordinals remain source-compatible because real
+roots still occupy the leading increasing block.
+
+`CharacteristicPolynomial[A,x]` uses the pivot-free Faddeev--LeVerrier
+recurrence over the shared exact CAS, and `Eigenvalues[A]` solves that exact
+polynomial while retaining algebraic multiplicity. Eigenvectors, Jordan form
+and generalized eigenspaces are later milestones.
 
 ## Resource model
 
@@ -116,8 +147,9 @@ The algebraic context has independent ceilings for:
 - comparison/refinement rounds;
 - coefficient-handle and polynomial-array metadata.
 
-Cancellation reaches both the Sturm layer and the bigint/rational layer.
-Creation, all-root isolation, and refinement are transactional.
+Cancellation reaches the Sturm, complex-certificate, factorization and
+bigint/rational layers. Creation, all-root isolation, arithmetic and refinement
+are transactional.
 Allocation-failure injection walks every allocation in both a representative
 single-root certificate and a quintic all-root isolation. It verifies that a
 failed call publishes no object, the context still validates, a retry succeeds,
@@ -127,15 +159,14 @@ ceilings cover both root count and all-root isolation.
 Current reproducible evidence:
 
 - `test_exact`: 79,159 checks, zero failures;
-- `test_algebraic`: 157,070 checks, zero failures, including allocation-failure,
+- `test_algebraic`: 157,155 checks, zero failures, including allocation-failure,
   timeout, cancellation, arbitrary-precision, minimal-polynomial selection,
   canonical equality/hash and retry coverage;
-- strict Windows suite: 34/34 tests;
-- ASan/UBSan/leak suite: 36/36 tests;
+- current WSL GCC Release and ASan/UBSan/leak suites: 48/48 tests each;
 - Ndless exact-number link probe: 68/68 public entry points, 17,680 bytes of
   exact-layer ARM text, 23,540-byte packaged probe;
-- Ndless real-algebraic link probe: 31/31 public entry points, 38,720 bytes of
-  algebraic-layer ARM text, 66,572-byte packaged probe;
+- Ndless real/complex-algebraic link probe: 53/53 public entry points, 48,836
+  bytes of algebraic-layer ARM text, 94,588-byte packaged probe;
 - neither ARM probe retains a floating-point formatter, libm call, or
   soft-float helper.
 
@@ -144,12 +175,12 @@ acceptance remain separate evidence.
 
 ## Deliberate omissions
 
-This is a canonical bounded **real** algebraic closure, not a complete complex
+This is a canonical bounded algebraic closure, not a workstation-sized
 algebraic-number package:
 
-- no complex isolating rectangles;
-- no radical-to-algebraic lowering in the typed IR;
+- no radical-to-algebraic lowering in the typed IR yet;
 - no reader-facing arithmetic directly on serialized `Root[...]` objects yet;
+- no eigenvectors, Jordan decomposition, or algebraic extension matrices;
 - no asymptotically fast large-degree factor selection.
 
 Every arithmetic call is subject to the documented degree, coefficient, step,

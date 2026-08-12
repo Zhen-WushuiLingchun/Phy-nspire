@@ -159,12 +159,12 @@ directions is `PHY_ERR_DOMAIN`. Oscillatory, branch-sensitive, or otherwise
 undecidable cases remain typed unsupported rather than being sampled.
 `Solve[equation,x]` now reuses the bounded Q[x] factorizer and returns exact
 distinct rational, real or complex quadratic-radical, or certified
-higher-degree all-real factors, excluding denominator zeros. A certified affine
-fallback also handles proved constant coefficients over `Q(i)`. Higher real
-roots are typed
-`Root[List[a0,...,an],k]` values with `k` ordered among the factor's real roots
-by exact Sturm isolation. An unresolved complex factor of degree at least
-three, identity, nonlinear multivariate or transcendental equation fails
+higher-degree real and non-real algebraic roots, excluding denominator zeros.
+A certified affine fallback also handles proved constant coefficients over
+`Q(i)`. Higher roots are typed `Root[List[a0,...,an],k]` values with `k`
+using the factor's canonical all-complex order: increasing isolated real roots
+first, then certified non-real rectangles in deterministic order. An identity,
+nonlinear multivariate or transcendental equation fails
 transactionally with a typed unsupported result; no partial root list is
 published. Exact simultaneous affine systems through eight
 equations/variables use verified exact RREF over the shared scalar domain;

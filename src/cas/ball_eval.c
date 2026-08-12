@@ -4,7 +4,7 @@
 
 #include "phy/algebraic.h"
 #include "phy/ball.h"
-#include "complex_roots.h"
+#include "../exact/complex_roots.h"
 #include "sparse_poly.h"
 
 #define BALL_MAX_DECIMAL_DIGITS 36u

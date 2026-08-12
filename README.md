@@ -155,19 +155,19 @@ survived a round trip and nothing computed.
 
 The generated
 [`examples/phy-nspire-cas-tour.tns`](examples/phy-nspire-cas-tour.tns)
-notebook combines sixteen Markdown/LaTeX explanations with 180 executable examples
-that touch every implemented evaluator family. Its distributable form contains 196
+notebook combines seventeen Markdown/LaTeX explanations with 189 executable examples
+that touch every implemented evaluator family. Its distributable form contains 206
 source cells so opening does not eagerly rebuild all cached results; a separate
 fully evaluated copy is serialized, reopened, and replayed during generation.
 
 The last recorded strict Windows host suite passes 45/45. The current WSL GCC
 and combined ASan/UBSan/leak suites pass 48/48, and the assertion-bearing
-executables contain 475,909 explicit checks. The context-sensitive CAS menu is
+executables contain 476,797 explicit checks. The context-sensitive CAS menu is
 also checked against the authoritative evaluator and source-command registries:
 every supported operation is discoverable through its ten scrollable
 categories.
 
-The current native build is measured at 1,252,366 bytes, 19.9% of the 6 MiB
+The current native build is measured at 1,282,545 bytes, 20.4% of the 6 MiB
 ceiling. Its evaluator ARM probe links the complete current physics stack,
 retains 17/17 public evaluator entry points, packages to a `.tns`, and imports
 no libm, floating-point formatter, or ARM soft-float helper.
@@ -193,7 +193,7 @@ downloaded back byte-identically on 2026-07-30. The previous 1,222,416-byte
 program, including the complete scrollable MENU, was subsequently deployed and
 read back byte-identically on the same date. A later 1,226,713-byte build added
 structured physics-object output and lazy/one-pass SU(3) initialization. The
-current 1,252,366-byte foundation build has not been uploaded in this work
+current 1,282,545-byte complex-algebraic build has not been uploaded in this work
 round; its calculator transfer and open/run check remain a separate gate. The
 separate baseline channel-order check remains tracked in
 [docs/BUILD.md](docs/BUILD.md).

@@ -446,6 +446,7 @@ typedef struct {
     size_t count;
     phy_ir_ref values[PHY_CAS_POLYNOMIAL_MAX_ROOTS];
     bool certified_algebraic[PHY_CAS_POLYNOMIAL_MAX_ROOTS];
+    uint32_t multiplicities[PHY_CAS_POLYNOMIAL_MAX_ROOTS];
 } phy_cas_root_set;
 
 phy_status phy_cas_polynomial_roots_node(phy_cas *cas,

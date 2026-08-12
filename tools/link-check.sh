@@ -69,7 +69,7 @@ CAS_SOURCES=(
     src/cas/linear_solve.c
     src/cas/sparse_poly.c
     src/cas/ball_eval.c
-    src/cas/complex_roots.c
+    src/exact/complex_roots.c
     src/cas/special.c
     src/cas/engine.c
     src/cas/simplify.c
@@ -184,11 +184,11 @@ cas)
     SOURCES=("${COMMON_SOURCES[@]}" "${CAS_SOURCES[@]}")
     ;;
 algebraic)
-    LABEL="real algebraic"
+    LABEL="real and complex algebraic"
     PROBE="tests/device/algebraic_link_probe.c"
     HEADER="include/phy/algebraic.h"
     OBJECT_GLOB="src_exact_algebraic.o"
-    SYMBOL_RE='phy_(algebraic|real_algebraic)_'
+    SYMBOL_RE='phy_(algebraic|real_algebraic|complex_algebraic)_'
     EXCLUDE='^$'
     MIN_ENTRY_POINTS=15
     SOURCES=("${COMMON_SOURCES[@]}"
@@ -196,8 +196,11 @@ algebraic)
              src/exact/integer.c
              src/exact/rational.c
              src/exact/gaussian.c
+             src/exact/ball.c
+             src/exact/complex_ball.c
              src/exact/algebraic.c
-             src/cas/finite_poly.c)
+             src/cas/finite_poly.c
+             src/exact/complex_roots.c)
     ;;
 geom)
     LABEL="geometry"

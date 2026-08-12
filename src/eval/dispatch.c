@@ -1951,6 +1951,63 @@ static phy_status eval_linear_solve(
                : status;
 }
 
+static phy_status eval_characteristic_polynomial(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 2u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value matrix = {0};
+    phy_value variable = {0};
+    phy_status status = arg_typed(
+        env, expr, 0u, PHY_VALUE_MATRIX, &matrix);
+    if (status == PHY_OK) {
+        status = arg_typed(
+            env, expr, 1u, PHY_VALUE_SCALAR, &variable);
+    }
+    if (status == PHY_OK &&
+        phy_ir_kind_of(env->ir, variable.as.scalar) != PHY_IR_SYMBOL) {
+        status = PHY_ERR_TYPE;
+    }
+    phy_ir_ref polynomial = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = phy_matrix_characteristic_polynomial(
+            matrix.as.matrix, variable.as.scalar, &polynomial);
+    }
+    if (status == PHY_OK) {
+        *out_value = scalar_value(polynomial);
+    }
+    return status;
+}
+
+static phy_status eval_eigenvalues(
+    phy_env *env, phy_ir_ref expr, phy_value *out_value)
+{
+    if (arg_count(env, expr) != 1u) {
+        return PHY_ERR_PARSE;
+    }
+    phy_value matrix = {0};
+    phy_status status = arg_typed(
+        env, expr, 0u, PHY_VALUE_MATRIX, &matrix);
+    const phy_ir_symbol lambda = status == PHY_OK
+        ? phy_ir_intern(env->ir, "$Eigenvalue")
+        : PHY_IR_NO_SYMBOL;
+    const phy_ir_ref variable = lambda != PHY_IR_NO_SYMBOL
+        ? phy_ir_symbol_ref(env->ir, lambda) : PHY_IR_NULL;
+    if (status == PHY_OK && variable == PHY_IR_NULL) {
+        status = PHY_ERR_NODE_LIMIT;
+    }
+    phy_ir_ref values = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = phy_matrix_eigenvalues(
+            matrix.as.matrix, variable, &values);
+    }
+    if (status == PHY_OK) {
+        *out_value = scalar_value(values);
+    }
+    return status;
+}
+
 /* -------------------------------------------- maps / transitions / atlas */
 
 static phy_status read_scalar_list_exact(
@@ -5205,6 +5262,10 @@ static phy_status eval_operator(phy_env *env, phy_ir_ref expr,
     case EVAL_HEAD_ROW_REDUCE:
     case EVAL_HEAD_MATRIX_RANK:
         return eval_linear_unary(env, expr, which, out_value);
+    case EVAL_HEAD_CHARACTERISTIC_POLYNOMIAL:
+        return eval_characteristic_polynomial(env, expr, out_value);
+    case EVAL_HEAD_EIGENVALUES:
+        return eval_eigenvalues(env, expr, out_value);
     case EVAL_HEAD_LINEAR_SOLVE:
         return eval_linear_solve(env, expr, out_value);
 

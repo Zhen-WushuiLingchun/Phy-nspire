@@ -123,7 +123,8 @@ Txy = TransitionPullback[tr,Tuv]
 The evaluated object heads are:
 
 - exact linear algebra — `Vector`, `Matrix`, `Dot`, `Transpose`,
-  `Determinant`, `Inverse`, `RowReduce`, `MatrixRank`, `LinearSolve`;
+  `Determinant`, `CharacteristicPolynomial`, `Eigenvalues`, `Inverse`,
+  `RowReduce`, `MatrixRank`, `LinearSolve`;
 - abstract/components — `IndexSpace`, `TensorHead`, indexed head application,
   `TensorCanonicalize`, `YoungProject`, `YoungDeclare`, `YoungReduce`,
   `GarnirRelation`, `YoungDimension`, `ComponentBasis`,
@@ -185,7 +186,7 @@ semantics implicitly.
 | `Limit[expr,{x,a}]` | exact finite two-sided limit when both directions agree |
 | `Limit[expr,{x,a,FromAbove}]`, `Limit[expr,{x,a,FromBelow}]` | exact directed finite limit; `Direction->"FromAbove"` and `Direction->"FromBelow"` are equivalent spellings |
 | `Limit[expr,{x,Infinity}]`, `Limit[expr,{x,-Infinity}]` | exact rational/Laurent infinity limit through the certified `t=1/x` transform |
-| `Solve[equation,x]` | exact distinct roots for bounded reduced Q[x] equations: rational/constant affine roots, real or complex quadratic radicals, and certified `Root[{a0,...,an},k]` values when a higher irreducible factor is proved all-real; denominator roots are excluded |
+| `Solve[equation,x]` | exact distinct roots for bounded reduced Q[x] equations: rational/constant affine roots, real or complex quadratic radicals, and certified real or non-real `Root[{a0,...,an},k]` values for higher irreducible factors; denominator roots are excluded |
 | `Solve[{equation,...},{x,...}]` | exact linear systems through eight equations/variables, then bounded zero-dimensional sparse polynomial systems when a verified triangular Gröbner basis is obtained; every solution is substituted back |
 | `Resultant[f,g,x]` | exact bounded Sylvester resultant over the shared rational polynomial domain |
 | `Discriminant[f,x]` | exact derivative/resultant discriminant with the conventional leading-coefficient/sign normalization |
@@ -222,11 +223,11 @@ scheduling is future work; the explicitly implemented
   bounded univariate rational-polynomial class, including higher-degree
   non-real roots;
 - `Solve` publishes exact rational/constant affine roots, real and complex
-  quadratic radicals, and certified roots of higher-degree all-real factors.
-  `Root[{a0,...,an},k]` uses increasing coefficient
-  order and a one-based index among that factor's increasing real roots; full
-  complex-algebraic root ordering is deferred. An unresolved non-real factor
-  of degree at least three, identity with
+  quadratic radicals, and certified roots of higher-degree factors.
+  `Root[{a0,...,an},k]` uses increasing coefficient order and a one-based
+  canonical all-complex root index: real roots first in increasing order,
+  followed by certified non-real roots in deterministic rectangle order. An
+  identity with
   infinitely many solutions, nonlinear multivariate equation, or
   transcendental equation returns `PHY_ERR_UNSUPPORTED`; exact simultaneous
   affine and bounded triangular zero-dimensional polynomial systems are

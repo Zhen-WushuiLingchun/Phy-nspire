@@ -10,12 +10,16 @@
 #include <string.h>
 
 #include "phy/algebraic.h"
+#include "phy/ball.h"
 #include "phy/platform.h"
+#include "complex_roots.h"
 #include "finite_poly.h"
 
 #define PHY_ALGEBRAIC_CONTEXT_MAGIC 0x414c4743u /* ALGC */
 #define PHY_REAL_ALGEBRAIC_MAGIC 0x52414c47u    /* RALG */
+#define PHY_COMPLEX_ALGEBRAIC_MAGIC 0x43414c47u /* CALG */
 #define PHY_ALGEBRAIC_MAX_DEGREE 256u
+#define PHY_COMPLEX_ALGEBRAIC_ISOLATION_BITS 24u
 
 struct phy_algebraic_context {
     phy_algebraic_limits limits;
@@ -28,6 +32,8 @@ struct phy_algebraic_context {
     void *cancel_user;
     phy_real_algebraic *values;
     size_t value_count;
+    phy_complex_algebraic *complex_values;
+    size_t complex_value_count;
     uint32_t magic;
 };
 
@@ -45,6 +51,22 @@ struct phy_real_algebraic {
     bool linked;
     phy_real_algebraic *previous;
     phy_real_algebraic *next;
+    uint32_t magic;
+};
+
+struct phy_complex_algebraic {
+    phy_algebraic_context *context;
+    phy_bigint *coefficients;
+    size_t coefficient_count;
+    size_t coefficient_capacity;
+    phy_complex_ball rectangle;
+    bool rectangle_initialized;
+    bool real;
+    bool rational;
+    uint32_t root_index;
+    bool linked;
+    phy_complex_algebraic *previous;
+    phy_complex_algebraic *next;
     uint32_t magic;
 };
 
@@ -79,6 +101,14 @@ static bool value_valid_handle(const phy_real_algebraic *value)
 {
     return value != NULL &&
            value->magic == PHY_REAL_ALGEBRAIC_MAGIC &&
+           context_valid(value->context);
+}
+
+static bool complex_value_valid_handle(
+    const phy_complex_algebraic *value)
+{
+    return value != NULL &&
+           value->magic == PHY_COMPLEX_ALGEBRAIC_MAGIC &&
            context_valid(value->context);
 }
 
@@ -287,6 +317,54 @@ static void destroy_value_internal(phy_real_algebraic *value)
     metadata_free(context, value, sizeof *value);
 }
 
+static void release_complex_value_fields(phy_complex_algebraic *value)
+{
+    if (value == NULL || !context_valid(value->context)) {
+        return;
+    }
+    phy_algebraic_context *context = value->context;
+    if (value->rectangle_initialized) {
+        phy_complex_ball_destroy(&value->rectangle);
+        value->rectangle_initialized = false;
+    }
+    if (value->coefficients != NULL) {
+        for (size_t index = 0u;
+             index < value->coefficient_capacity; ++index) {
+            phy_bigint_destroy(&value->coefficients[index]);
+        }
+        size_t bytes = 0u;
+        if (checked_multiply(value->coefficient_capacity,
+                             sizeof(phy_bigint), &bytes)) {
+            metadata_free(context, value->coefficients, bytes);
+        }
+        value->coefficients = NULL;
+    }
+    value->coefficient_count = 0u;
+    value->coefficient_capacity = 0u;
+}
+
+static void destroy_complex_value_internal(phy_complex_algebraic *value)
+{
+    if (value == NULL || !context_valid(value->context)) {
+        return;
+    }
+    phy_algebraic_context *context = value->context;
+    if (value->linked) {
+        if (value->previous != NULL) {
+            value->previous->next = value->next;
+        } else {
+            context->complex_values = value->next;
+        }
+        if (value->next != NULL) {
+            value->next->previous = value->previous;
+        }
+        context->complex_value_count--;
+    }
+    release_complex_value_fields(value);
+    value->magic = 0u;
+    metadata_free(context, value, sizeof *value);
+}
+
 void phy_algebraic_context_destroy(phy_algebraic_context *context)
 {
     if (!context_valid(context)) {
@@ -294,6 +372,9 @@ void phy_algebraic_context_destroy(phy_algebraic_context *context)
     }
     while (context->values != NULL) {
         destroy_value_internal(context->values);
+    }
+    while (context->complex_values != NULL) {
+        destroy_complex_value_internal(context->complex_values);
     }
     phy_exact_context_destroy(context->exact);
     context->exact = NULL;
@@ -1166,6 +1247,69 @@ static phy_status raw_value_from_certificate(
         return PHY_OK;
     }
     release_value_fields(value);
+    metadata_free(context, value, sizeof *value);
+    return status;
+}
+
+static phy_status raw_complex_value_from_certificate(
+    phy_algebraic_context *context, const phy_bigint *coefficients,
+    size_t coefficient_count, const phy_complex_ball *rectangle,
+    uint32_t root_index, bool real, bool rational,
+    phy_complex_algebraic **out_value)
+{
+    *out_value = NULL;
+    phy_complex_algebraic *value = NULL;
+    phy_status status =
+        metadata_allocate(context, sizeof *value, (void **)&value);
+    if (status != PHY_OK) {
+        return status;
+    }
+    value->context = context;
+    size_t bytes = 0u;
+    if (!checked_multiply(
+            coefficient_count, sizeof(phy_bigint), &bytes)) {
+        status = PHY_ERR_MEMORY_LIMIT;
+    }
+    if (status == PHY_OK) {
+        status = metadata_allocate(
+            context, bytes, (void **)&value->coefficients);
+    }
+    if (status == PHY_OK) {
+        value->coefficient_capacity = coefficient_count;
+        value->coefficient_count = coefficient_count;
+    }
+    for (size_t index = 0u;
+         index < coefficient_count && status == PHY_OK; ++index) {
+        status = phy_bigint_init(
+            context->exact, &value->coefficients[index]);
+        if (status == PHY_OK) {
+            status = phy_bigint_copy(
+                &coefficients[index], &value->coefficients[index]);
+        }
+    }
+    if (status == PHY_OK) {
+        status = phy_complex_ball_init(context->exact, &value->rectangle);
+        value->rectangle_initialized = status == PHY_OK;
+    }
+    if (status == PHY_OK) {
+        status = phy_complex_ball_copy(rectangle, &value->rectangle);
+    }
+    if (status == PHY_OK) {
+        value->root_index = root_index;
+        value->real = real;
+        value->rational = rational;
+        value->magic = PHY_COMPLEX_ALGEBRAIC_MAGIC;
+        value->linked = true;
+        value->next = context->complex_values;
+        if (context->complex_values != NULL) {
+            context->complex_values->previous = value;
+        }
+        context->complex_values = value;
+        context->complex_value_count++;
+        *out_value = value;
+        return PHY_OK;
+    }
+    release_complex_value_fields(value);
     metadata_free(context, value, sizeof *value);
     return status;
 }
@@ -4060,7 +4204,33 @@ phy_status phy_algebraic_validate(
         previous = value;
         count++;
     }
-    return count == context->value_count &&
+    if (count != context->value_count) {
+        return PHY_ERR_CORRUPT_DOCUMENT;
+    }
+    count = 0u;
+    const phy_complex_algebraic *complex_previous = NULL;
+    for (const phy_complex_algebraic *value = context->complex_values;
+         value != NULL; value = value->next) {
+        if (value->previous != complex_previous ||
+            value->context != context ||
+            phy_complex_algebraic_validate(value) != PHY_OK ||
+            count >= context->complex_value_count) {
+            return PHY_ERR_CORRUPT_DOCUMENT;
+        }
+        size_t coefficient_bytes = 0u;
+        if (!checked_multiply(
+                value->coefficient_capacity, sizeof(phy_bigint),
+                &coefficient_bytes) ||
+            expected_bytes > (size_t)-1 - sizeof *value ||
+            expected_bytes + sizeof *value >
+                (size_t)-1 - coefficient_bytes) {
+            return PHY_ERR_CORRUPT_DOCUMENT;
+        }
+        expected_bytes += sizeof *value + coefficient_bytes;
+        complex_previous = value;
+        count++;
+    }
+    return count == context->complex_value_count &&
                    expected_bytes == context->metadata_bytes
                ? PHY_OK
                : PHY_ERR_CORRUPT_DOCUMENT;
@@ -5458,6 +5628,1265 @@ phy_status phy_real_algebraic_pow_i32(
         *out_value = result;
     } else {
         phy_real_algebraic_destroy(result);
+    }
+    return call_end(context, status);
+}
+
+/* ------------------------------------------------ canonical complex algebraic */
+
+typedef struct {
+    phy_complex_ball *items;
+    bool *real_flags;
+    size_t count;
+    size_t capacity;
+    size_t items_bytes;
+    size_t flags_bytes;
+} complex_root_boxes;
+
+static void complex_root_boxes_destroy(
+    phy_algebraic_context *context, complex_root_boxes *boxes)
+{
+    if (boxes == NULL) {
+        return;
+    }
+    if (boxes->items != NULL) {
+        for (size_t index = 0u; index < boxes->capacity; ++index) {
+            if (phy_complex_ball_validate(&boxes->items[index]) == PHY_OK) {
+                phy_complex_ball_destroy(&boxes->items[index]);
+            }
+        }
+        metadata_free(context, boxes->items, boxes->items_bytes);
+    }
+    if (boxes->real_flags != NULL) {
+        metadata_free(context, boxes->real_flags, boxes->flags_bytes);
+    }
+    memset(boxes, 0, sizeof *boxes);
+}
+
+static phy_status complex_root_boxes_allocate(
+    phy_algebraic_context *context, size_t degree,
+    complex_root_boxes *out_boxes)
+{
+    memset(out_boxes, 0, sizeof *out_boxes);
+    if (degree == 0u ||
+        !checked_multiply(degree, sizeof(phy_complex_ball),
+                          &out_boxes->items_bytes) ||
+        !checked_multiply(degree, sizeof(bool),
+                          &out_boxes->flags_bytes)) {
+        return PHY_ERR_MEMORY_LIMIT;
+    }
+    phy_status status = metadata_allocate(
+        context, out_boxes->items_bytes, (void **)&out_boxes->items);
+    if (status == PHY_OK) {
+        status = metadata_allocate(
+            context, out_boxes->flags_bytes,
+            (void **)&out_boxes->real_flags);
+    }
+    if (status == PHY_OK) {
+        out_boxes->capacity = degree;
+    }
+    size_t initialized = 0u;
+    while (status == PHY_OK && initialized < degree) {
+        status = phy_complex_ball_init(
+            context->exact, &out_boxes->items[initialized]);
+        if (status == PHY_OK) {
+            initialized++;
+        }
+    }
+    if (status != PHY_OK) {
+        out_boxes->capacity = initialized;
+        complex_root_boxes_destroy(context, out_boxes);
+    }
+    return status;
+}
+
+static phy_status real_ball_interval(
+    const phy_real_ball *ball, phy_bigrat *lower, phy_bigrat *upper)
+{
+    phy_status status = phy_real_ball_lower(ball, lower);
+    return status == PHY_OK ? phy_real_ball_upper(ball, upper) : status;
+}
+
+static phy_status complex_rectangles_intersect(
+    phy_algebraic_context *context, const phy_complex_ball *left,
+    const phy_complex_ball *right, bool *out_intersect)
+{
+    phy_bigrat values[8];
+    memset(values, 0, sizeof values);
+    size_t initialized = 0u;
+    phy_status status = PHY_OK;
+    while (status == PHY_OK && initialized < 8u) {
+        status = phy_bigrat_init(context->exact, &values[initialized]);
+        if (status == PHY_OK) {
+            initialized++;
+        }
+    }
+    if (status == PHY_OK) {
+        status = real_ball_interval(
+            &left->real, &values[0], &values[1]);
+    }
+    if (status == PHY_OK) {
+        status = real_ball_interval(
+            &right->real, &values[2], &values[3]);
+    }
+    if (status == PHY_OK) {
+        status = real_ball_interval(
+            &left->imaginary, &values[4], &values[5]);
+    }
+    if (status == PHY_OK) {
+        status = real_ball_interval(
+            &right->imaginary, &values[6], &values[7]);
+    }
+    int comparison = 0;
+    bool intersect = true;
+    if (status == PHY_OK) {
+        status = phy_bigrat_compare(&values[1], &values[2], &comparison);
+        intersect = comparison >= 0;
+    }
+    if (status == PHY_OK && intersect) {
+        status = phy_bigrat_compare(&values[3], &values[0], &comparison);
+        intersect = comparison >= 0;
+    }
+    if (status == PHY_OK && intersect) {
+        status = phy_bigrat_compare(&values[5], &values[6], &comparison);
+        intersect = comparison >= 0;
+    }
+    if (status == PHY_OK && intersect) {
+        status = phy_bigrat_compare(&values[7], &values[4], &comparison);
+        intersect = comparison >= 0;
+    }
+    for (size_t index = 0u; index < initialized; ++index) {
+        phy_bigrat_destroy(&values[index]);
+    }
+    if (status == PHY_OK) {
+        *out_intersect = intersect;
+    }
+    return status;
+}
+
+static phy_status complex_box_order(
+    phy_algebraic_context *context,
+    const phy_complex_ball *left, bool left_real,
+    const phy_complex_ball *right, bool right_real,
+    int *out_order)
+{
+    if (left_real != right_real) {
+        *out_order = left_real ? -1 : 1;
+        return PHY_OK;
+    }
+    phy_bigrat difference;
+    phy_bigrat radius_sum;
+    memset(&difference, 0, sizeof difference);
+    memset(&radius_sum, 0, sizeof radius_sum);
+    phy_status status = phy_bigrat_init(context->exact, &difference);
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context->exact, &radius_sum);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_subtract(
+            &left->real.midpoint, &right->real.midpoint, &difference);
+    }
+    if (status == PHY_OK && phy_bigrat_sign(&difference) < 0) {
+        status = phy_bigrat_negate(&difference, &difference);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_add(
+            &left->real.radius, &right->real.radius, &radius_sum);
+    }
+    int separated = 0;
+    if (status == PHY_OK) {
+        status = phy_bigrat_compare(
+            &difference, &radius_sum, &separated);
+    }
+    int comparison = 0;
+    if (status == PHY_OK && separated > 0) {
+        status = phy_bigrat_compare(
+            &left->real.midpoint, &right->real.midpoint, &comparison);
+    } else if (status == PHY_OK) {
+        status = phy_bigrat_compare(
+            &left->imaginary.midpoint, &right->imaginary.midpoint,
+            &comparison);
+    }
+    if (phy_bigrat_validate(&radius_sum) == PHY_OK) {
+        phy_bigrat_destroy(&radius_sum);
+    }
+    if (phy_bigrat_validate(&difference) == PHY_OK) {
+        phy_bigrat_destroy(&difference);
+    }
+    if (status == PHY_OK) {
+        *out_order = comparison;
+    }
+    return status;
+}
+
+static phy_status complex_root_boxes_sort(
+    phy_algebraic_context *context, complex_root_boxes *boxes)
+{
+    phy_complex_ball temporary;
+    memset(&temporary, 0, sizeof temporary);
+    phy_status status = phy_complex_ball_init(
+        context->exact, &temporary);
+    for (size_t index = 1u; index < boxes->count; ++index) {
+        size_t position = index;
+        int order = 0;
+        if (status == PHY_OK && position != 0u) {
+            status = complex_box_order(
+                context, &boxes->items[position],
+                boxes->real_flags[position],
+                &boxes->items[position - 1u],
+                boxes->real_flags[position - 1u], &order);
+        }
+        while (status == PHY_OK && position != 0u && order < 0) {
+            status = phy_complex_ball_copy(
+                &boxes->items[position], &temporary);
+            if (status == PHY_OK) {
+                status = phy_complex_ball_copy(
+                    &boxes->items[position - 1u],
+                    &boxes->items[position]);
+            }
+            if (status == PHY_OK) {
+                status = phy_complex_ball_copy(
+                    &temporary, &boxes->items[position - 1u]);
+            }
+            const bool flag = boxes->real_flags[position];
+            boxes->real_flags[position] =
+                boxes->real_flags[position - 1u];
+            boxes->real_flags[position - 1u] = flag;
+            position--;
+            order = 0;
+            if (position != 0u) {
+                status = complex_box_order(
+                    context, &boxes->items[position],
+                    boxes->real_flags[position],
+                    &boxes->items[position - 1u],
+                    boxes->real_flags[position - 1u], &order);
+            }
+        }
+    }
+    if (phy_complex_ball_validate(&temporary) == PHY_OK) {
+        phy_complex_ball_destroy(&temporary);
+    }
+    return status;
+}
+
+static phy_status polynomial_real_root_count(
+    phy_algebraic_context *context, const phy_bigint *coefficients,
+    size_t coefficient_count, uint32_t *out_count)
+{
+    phy_bigrat lower;
+    phy_bigrat upper;
+    memset(&lower, 0, sizeof lower);
+    memset(&upper, 0, sizeof upper);
+    phy_status status = phy_bigrat_init(context->exact, &lower);
+    if (status == PHY_OK) {
+        status = phy_bigrat_init(context->exact, &upper);
+    }
+    if (status == PHY_OK) {
+        status = cauchy_interval(
+            context, coefficients, coefficient_count, &lower, &upper);
+    }
+    if (status == PHY_OK) {
+        status = root_count_for_coefficients(
+            context, coefficients, coefficient_count,
+            &lower, &upper, out_count);
+    }
+    if (phy_bigrat_validate(&upper) == PHY_OK) {
+        phy_bigrat_destroy(&upper);
+    }
+    if (phy_bigrat_validate(&lower) == PHY_OK) {
+        phy_bigrat_destroy(&lower);
+    }
+    return status;
+}
+
+static phy_status complex_root_boxes_build(
+    phy_algebraic_context *context, const phy_bigint *coefficients,
+    size_t coefficient_count, complex_root_boxes *out_boxes)
+{
+    const size_t degree = coefficient_count - 1u;
+    phy_status status = complex_root_boxes_allocate(
+        context, degree, out_boxes);
+    if (status != PHY_OK) {
+        return status;
+    }
+    if (degree == 1u) {
+        phy_bigrat root;
+        memset(&root, 0, sizeof root);
+        status = phy_bigrat_init(context->exact, &root);
+        if (status == PHY_OK) {
+            status = rational_root_of_linear(
+                context, coefficients, &root);
+        }
+        if (status == PHY_OK) {
+            status = phy_real_ball_set_exact(
+                &out_boxes->items[0].real, &root);
+        }
+        if (status == PHY_OK) {
+            status = phy_real_ball_set_i64(
+                &out_boxes->items[0].imaginary, 0, 1);
+        }
+        if (phy_bigrat_validate(&root) == PHY_OK) {
+            phy_bigrat_destroy(&root);
+        }
+        if (status == PHY_OK) {
+            out_boxes->real_flags[0] = true;
+            out_boxes->count = 1u;
+        }
+        if (status != PHY_OK) {
+            complex_root_boxes_destroy(context, out_boxes);
+        }
+        return status;
+    }
+
+    phy_bigrat *rational = NULL;
+    size_t rational_bytes = 0u;
+    if (!checked_multiply(
+            coefficient_count, sizeof(phy_bigrat), &rational_bytes)) {
+        status = PHY_ERR_MEMORY_LIMIT;
+    } else if (status == PHY_OK) {
+        status = metadata_allocate(
+            context, rational_bytes, (void **)&rational);
+    }
+    size_t rational_initialized = 0u;
+    while (status == PHY_OK &&
+           rational_initialized < coefficient_count) {
+        status = phy_bigrat_init(
+            context->exact, &rational[rational_initialized]);
+        if (status == PHY_OK) {
+            rational_initialized++;
+        }
+    }
+    for (size_t index = 0u;
+         status == PHY_OK && index < coefficient_count; ++index) {
+        status = phy_bigrat_set_bigint(
+            &coefficients[index], &rational[index]);
+    }
+
+    uint32_t expected_real = 0u;
+    if (status == PHY_OK) {
+        status = polynomial_real_root_count(
+            context, coefficients, coefficient_count, &expected_real);
+    }
+    bool classified = false;
+    for (uint32_t attempt = 0u;
+         status == PHY_OK && !classified && attempt < 4u; ++attempt) {
+        size_t count = 0u;
+        const uint32_t bits =
+            PHY_COMPLEX_ALGEBRAIC_ISOLATION_BITS + attempt * 32u;
+        status = phy_complex_roots_isolate(
+            context->exact, rational, coefficient_count, bits,
+            out_boxes->items, out_boxes->capacity, &count);
+        uint32_t observed_real = 0u;
+        for (size_t index = 0u;
+             status == PHY_OK && index < count; ++index) {
+            bool contains_zero = false;
+            status = phy_real_ball_contains_zero_checked(
+                &out_boxes->items[index].imaginary, &contains_zero);
+            if (status == PHY_OK) {
+                out_boxes->real_flags[index] = contains_zero;
+                observed_real += contains_zero ? 1u : 0u;
+            }
+        }
+        if (status == PHY_OK && count == degree &&
+            observed_real == expected_real) {
+            out_boxes->count = count;
+            classified = true;
+        }
+    }
+    if (status == PHY_OK && !classified) {
+        status = PHY_ERR_TERM_LIMIT;
+    }
+    if (status == PHY_OK) {
+        status = complex_root_boxes_sort(context, out_boxes);
+    }
+    for (size_t index = 0u; index < rational_initialized; ++index) {
+        phy_bigrat_destroy(&rational[index]);
+    }
+    if (rational != NULL) {
+        metadata_free(context, rational, rational_bytes);
+    }
+    if (status != PHY_OK) {
+        complex_root_boxes_destroy(context, out_boxes);
+    }
+    return status;
+}
+
+static phy_status select_complex_minimal_polynomial(
+    phy_algebraic_context *context,
+    const algebraic_integer_polynomial *polynomial,
+    const phy_complex_ball *selected,
+    algebraic_integer_polynomial *out_minimal)
+{
+    algebraic_integer_polynomial factor;
+    algebraic_integer_polynomial quotient;
+    memset(&factor, 0, sizeof factor);
+    memset(&quotient, 0, sizeof quotient);
+    bool irreducible = false;
+    phy_status status = algebraic_split_square_free(
+        context, polynomial, &factor, &quotient, &irreducible);
+    if (status == PHY_OK && irreducible) {
+        status = integer_polynomial_copy(
+            context, polynomial, out_minimal);
+    } else if (status == PHY_OK) {
+        phy_complex_ball accumulator;
+        phy_complex_ball coefficient;
+        memset(&accumulator, 0, sizeof accumulator);
+        memset(&coefficient, 0, sizeof coefficient);
+        status = phy_complex_ball_init(context->exact, &accumulator);
+        if (status == PHY_OK) {
+            status = phy_complex_ball_init(context->exact, &coefficient);
+        }
+        bool factor_contains_zero = false;
+        bool quotient_contains_zero = false;
+        const algebraic_integer_polynomial *parts[2] = {
+            &factor, &quotient};
+        bool *contains[2] = {
+            &factor_contains_zero, &quotient_contains_zero};
+        phy_bigrat rational;
+        memset(&rational, 0, sizeof rational);
+        if (status == PHY_OK) {
+            status = phy_bigrat_init(context->exact, &rational);
+        }
+        for (size_t part = 0u; status == PHY_OK && part < 2u; ++part) {
+            status = phy_complex_ball_set_i64(
+                &accumulator, 0, 1, 0, 1);
+            for (size_t index = parts[part]->count;
+                 status == PHY_OK && index-- != 0u;) {
+                status = phy_complex_ball_multiply(
+                    &accumulator, selected, &accumulator);
+                if (status == PHY_OK) {
+                    status = phy_bigrat_set_bigint(
+                        &parts[part]->coefficients[index], &rational);
+                }
+                if (status == PHY_OK) {
+                    status = phy_real_ball_set_exact(
+                        &coefficient.real, &rational);
+                }
+                if (status == PHY_OK) {
+                    status = phy_real_ball_set_i64(
+                        &coefficient.imaginary, 0, 1);
+                }
+                if (status == PHY_OK) {
+                    status = phy_complex_ball_add(
+                        &accumulator, &coefficient, &accumulator);
+                }
+            }
+            if (status == PHY_OK) {
+                status = phy_complex_ball_contains_zero_checked(
+                    &accumulator, contains[part]);
+            }
+        }
+        if (phy_bigrat_validate(&rational) == PHY_OK) {
+            phy_bigrat_destroy(&rational);
+        }
+        if (phy_complex_ball_validate(&coefficient) == PHY_OK) {
+            phy_complex_ball_destroy(&coefficient);
+        }
+        if (phy_complex_ball_validate(&accumulator) == PHY_OK) {
+            phy_complex_ball_destroy(&accumulator);
+        }
+        if (status == PHY_OK &&
+            factor_contains_zero == quotient_contains_zero) {
+            status = PHY_ERR_TERM_LIMIT;
+        }
+        if (status == PHY_OK) {
+            const algebraic_integer_polynomial *chosen =
+                factor_contains_zero ? &factor : &quotient;
+            status = select_complex_minimal_polynomial(
+                context, chosen, selected, out_minimal);
+        }
+    }
+    integer_polynomial_destroy(context, &quotient);
+    integer_polynomial_destroy(context, &factor);
+    return status;
+}
+
+static phy_status canonical_complex_value_from_certificate(
+    phy_algebraic_context *context, const phy_bigint *coefficients,
+    size_t coefficient_count, const phy_complex_ball *selected,
+    phy_complex_algebraic **out_value)
+{
+    *out_value = NULL;
+    algebraic_integer_polynomial input;
+    algebraic_integer_polynomial minimal;
+    memset(&input, 0, sizeof input);
+    memset(&minimal, 0, sizeof minimal);
+    phy_status status = integer_polynomial_copy_from_coefficients(
+        context, coefficients, coefficient_count, &input);
+    if (status == PHY_OK) {
+        status = select_complex_minimal_polynomial(
+            context, &input, selected, &minimal);
+    }
+    complex_root_boxes roots;
+    memset(&roots, 0, sizeof roots);
+    if (status == PHY_OK) {
+        status = complex_root_boxes_build(
+            context, minimal.coefficients, minimal.count, &roots);
+    }
+    size_t selected_index = 0u;
+    size_t matches = 0u;
+    for (size_t index = 0u;
+         status == PHY_OK && index < roots.count; ++index) {
+        bool intersects = false;
+        status = complex_rectangles_intersect(
+            context, selected, &roots.items[index], &intersects);
+        if (intersects) {
+            selected_index = index;
+            matches++;
+        }
+    }
+    if (status == PHY_OK && matches != 1u) {
+        status = PHY_ERR_TERM_LIMIT;
+    }
+    if (status == PHY_OK) {
+        const bool real = roots.real_flags[selected_index];
+        status = raw_complex_value_from_certificate(
+            context, minimal.coefficients, minimal.count,
+            &roots.items[selected_index], (uint32_t)selected_index + 1u,
+            real, real && minimal.count == 2u, out_value);
+    }
+    complex_root_boxes_destroy(context, &roots);
+    integer_polynomial_destroy(context, &minimal);
+    integer_polynomial_destroy(context, &input);
+    return status;
+}
+
+static phy_status square_free_integer_coefficients(
+    phy_algebraic_context *context, const phy_bigint *coefficients,
+    size_t coefficient_count, phy_bigint **out_coefficients,
+    size_t *out_count, size_t *out_capacity)
+{
+    rational_polynomial input;
+    rational_polynomial square_free;
+    memset(&input, 0, sizeof input);
+    memset(&square_free, 0, sizeof square_free);
+    phy_status status = rational_polynomial_from_integers(
+        context, coefficients, coefficient_count, &input);
+    if (status == PHY_OK) {
+        status = rational_polynomial_square_free(
+            context, &input, &square_free);
+    }
+    if (status == PHY_OK) {
+        status = rational_polynomial_to_primitive_integers(
+            context, &square_free, out_coefficients,
+            out_count, out_capacity);
+    }
+    rational_polynomial_destroy(context, &square_free);
+    rational_polynomial_destroy(context, &input);
+    return status;
+}
+
+phy_status phy_complex_algebraic_create_by_index(
+    phy_algebraic_context *context,
+    const char *const *coefficient_text, size_t coefficient_count,
+    uint32_t root_index, phy_complex_algebraic **out_value)
+{
+    if (!context_valid(context) || out_value == NULL || root_index == 0u) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    *out_value = NULL;
+    phy_status status = call_begin(context);
+    phy_bigint *loaded = NULL;
+    size_t loaded_count = 0u;
+    size_t loaded_capacity = 0u;
+    if (status == PHY_OK) {
+        status = load_canonical_coefficients(
+            context, coefficient_text, coefficient_count, &loaded,
+            &loaded_count, &loaded_capacity);
+    }
+    phy_bigint *square_free = NULL;
+    size_t square_free_count = 0u;
+    size_t square_free_capacity = 0u;
+    if (status == PHY_OK) {
+        status = square_free_integer_coefficients(
+            context, loaded, loaded_count, &square_free,
+            &square_free_count, &square_free_capacity);
+    }
+    complex_root_boxes roots;
+    memset(&roots, 0, sizeof roots);
+    if (status == PHY_OK) {
+        status = complex_root_boxes_build(
+            context, square_free, square_free_count, &roots);
+    }
+    if (status == PHY_OK && root_index > roots.count) {
+        status = PHY_ERR_INVALID_ARGUMENT;
+    }
+    if (status == PHY_OK) {
+        status = canonical_complex_value_from_certificate(
+            context, square_free, square_free_count,
+            &roots.items[root_index - 1u], out_value);
+    }
+    complex_root_boxes_destroy(context, &roots);
+    destroy_coefficient_array(
+        context, square_free, square_free_capacity);
+    destroy_coefficient_array(context, loaded, loaded_capacity);
+    return call_end(context, status);
+}
+
+phy_status phy_algebraic_isolate_complex_roots(
+    phy_algebraic_context *context,
+    const char *const *coefficient_text, size_t coefficient_count,
+    phy_complex_algebraic **out_values, size_t value_capacity,
+    size_t *out_count)
+{
+    if (!context_valid(context) || out_values == NULL ||
+        out_count == NULL || value_capacity == 0u) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    *out_count = 0u;
+    for (size_t index = 0u; index < value_capacity; ++index) {
+        out_values[index] = NULL;
+    }
+    phy_status status = call_begin(context);
+    phy_bigint *loaded = NULL;
+    size_t loaded_count = 0u;
+    size_t loaded_capacity = 0u;
+    if (status == PHY_OK) {
+        status = load_canonical_coefficients(
+            context, coefficient_text, coefficient_count, &loaded,
+            &loaded_count, &loaded_capacity);
+    }
+    phy_bigint *square_free = NULL;
+    size_t square_free_count = 0u;
+    size_t square_free_capacity = 0u;
+    if (status == PHY_OK) {
+        status = square_free_integer_coefficients(
+            context, loaded, loaded_count, &square_free,
+            &square_free_count, &square_free_capacity);
+    }
+    complex_root_boxes roots;
+    memset(&roots, 0, sizeof roots);
+    if (status == PHY_OK) {
+        status = complex_root_boxes_build(
+            context, square_free, square_free_count, &roots);
+    }
+    if (status == PHY_OK && roots.count > value_capacity) {
+        status = PHY_ERR_TERM_LIMIT;
+    }
+    size_t created = 0u;
+    while (status == PHY_OK && created < roots.count) {
+        status = canonical_complex_value_from_certificate(
+            context, square_free, square_free_count,
+            &roots.items[created], &out_values[created]);
+        if (status == PHY_OK) {
+            created++;
+        }
+    }
+    if (status != PHY_OK) {
+        for (size_t index = 0u; index < created; ++index) {
+            phy_complex_algebraic_destroy(out_values[index]);
+            out_values[index] = NULL;
+        }
+    } else {
+        *out_count = created;
+    }
+    complex_root_boxes_destroy(context, &roots);
+    destroy_coefficient_array(
+        context, square_free, square_free_capacity);
+    destroy_coefficient_array(context, loaded, loaded_capacity);
+    return call_end(context, status);
+}
+
+void phy_complex_algebraic_destroy(phy_complex_algebraic *value)
+{
+    if (complex_value_valid_handle(value)) {
+        destroy_complex_value_internal(value);
+    }
+}
+
+phy_status phy_complex_algebraic_validate(
+    const phy_complex_algebraic *value)
+{
+    if (!complex_value_valid_handle(value) || !value->linked ||
+        value->coefficients == NULL || value->coefficient_count < 2u ||
+        value->coefficient_count > value->coefficient_capacity ||
+        value->root_index == 0u ||
+        value->root_index >= value->coefficient_count ||
+        !value->rectangle_initialized ||
+        phy_complex_ball_validate(&value->rectangle) != PHY_OK ||
+        phy_bigint_sign(
+            &value->coefficients[value->coefficient_count - 1u]) <= 0) {
+        return PHY_ERR_CORRUPT_DOCUMENT;
+    }
+    for (size_t index = 0u;
+         index < value->coefficient_capacity; ++index) {
+        if (phy_bigint_validate(&value->coefficients[index]) != PHY_OK) {
+            return PHY_ERR_CORRUPT_DOCUMENT;
+        }
+    }
+    bool imaginary_contains_zero = false;
+    phy_status status = phy_real_ball_contains_zero_checked(
+        &value->rectangle.imaginary, &imaginary_contains_zero);
+    return status == PHY_OK &&
+                   value->real == imaginary_contains_zero &&
+                   (!value->rational ||
+                    (value->real && value->coefficient_count == 2u))
+               ? PHY_OK
+               : PHY_ERR_CORRUPT_DOCUMENT;
+}
+
+size_t phy_complex_algebraic_degree(
+    const phy_complex_algebraic *value)
+{
+    return complex_value_valid_handle(value) &&
+                   value->coefficient_count != 0u
+               ? value->coefficient_count - 1u
+               : 0u;
+}
+
+uint32_t phy_complex_algebraic_root_index(
+    const phy_complex_algebraic *value)
+{
+    return complex_value_valid_handle(value) ? value->root_index : 0u;
+}
+
+bool phy_complex_algebraic_is_real(const phy_complex_algebraic *value)
+{
+    return complex_value_valid_handle(value) && value->real;
+}
+
+bool phy_complex_algebraic_is_rational(
+    const phy_complex_algebraic *value)
+{
+    return complex_value_valid_handle(value) && value->rational;
+}
+
+phy_status phy_complex_algebraic_write_coefficient(
+    const phy_complex_algebraic *value, size_t degree, char *buffer,
+    size_t capacity, size_t *out_required)
+{
+    if (!complex_value_valid_handle(value) ||
+        degree >= value->coefficient_count) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    return phy_bigint_write(
+        &value->coefficients[degree], buffer, capacity, out_required);
+}
+
+static phy_status complex_value_write_bound(
+    const phy_complex_algebraic *value, bool imaginary, bool upper,
+    char *buffer, size_t capacity, size_t *out_required)
+{
+    if (!complex_value_valid_handle(value)) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    phy_algebraic_context *context = value->context;
+    phy_bigrat bound;
+    memset(&bound, 0, sizeof bound);
+    phy_status status = phy_bigrat_init(context->exact, &bound);
+    const phy_real_ball *ball = imaginary
+        ? &value->rectangle.imaginary : &value->rectangle.real;
+    if (status == PHY_OK) {
+        status = upper ? phy_real_ball_upper(ball, &bound)
+                       : phy_real_ball_lower(ball, &bound);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_write(
+            &bound, buffer, capacity, out_required);
+    }
+    if (phy_bigrat_validate(&bound) == PHY_OK) {
+        phy_bigrat_destroy(&bound);
+    }
+    return status;
+}
+
+phy_status phy_complex_algebraic_write_real_lower(
+    const phy_complex_algebraic *value, char *buffer, size_t capacity,
+    size_t *out_required)
+{
+    return complex_value_write_bound(
+        value, false, false, buffer, capacity, out_required);
+}
+
+phy_status phy_complex_algebraic_write_real_upper(
+    const phy_complex_algebraic *value, char *buffer, size_t capacity,
+    size_t *out_required)
+{
+    return complex_value_write_bound(
+        value, false, true, buffer, capacity, out_required);
+}
+
+phy_status phy_complex_algebraic_write_imaginary_lower(
+    const phy_complex_algebraic *value, char *buffer, size_t capacity,
+    size_t *out_required)
+{
+    return complex_value_write_bound(
+        value, true, false, buffer, capacity, out_required);
+}
+
+phy_status phy_complex_algebraic_write_imaginary_upper(
+    const phy_complex_algebraic *value, char *buffer, size_t capacity,
+    size_t *out_required)
+{
+    return complex_value_write_bound(
+        value, true, true, buffer, capacity, out_required);
+}
+
+phy_status phy_complex_algebraic_equal(
+    const phy_complex_algebraic *left,
+    const phy_complex_algebraic *right, bool *out_equal)
+{
+    if (!complex_value_valid_handle(left) ||
+        !complex_value_valid_handle(right) || out_equal == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    bool equal = left->root_index == right->root_index &&
+                 left->coefficient_count == right->coefficient_count;
+    for (size_t index = 0u;
+         equal && index < left->coefficient_count; ++index) {
+        equal = phy_bigint_compare(
+                    &left->coefficients[index],
+                    &right->coefficients[index]) == 0;
+    }
+    *out_equal = equal;
+    return PHY_OK;
+}
+
+phy_status phy_complex_algebraic_hash(
+    const phy_complex_algebraic *value, uint64_t *out_hash)
+{
+    if (!complex_value_valid_handle(value) || out_hash == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    uint64_t hash = UINT64_C(14695981039346656037);
+    hash = algebraic_hash_u32(
+        hash, (uint32_t)value->coefficient_count);
+    for (size_t coefficient = 0u;
+         coefficient < value->coefficient_count; ++coefficient) {
+        const phy_bigint *integer = &value->coefficients[coefficient];
+        hash = algebraic_hash_u32(
+            hash, integer->sign < 0 ? UINT32_C(0xffffffff)
+                                    : (uint32_t)integer->sign);
+        hash = algebraic_hash_u32(hash, (uint32_t)integer->count);
+        for (size_t limb = 0u; limb < integer->count; ++limb) {
+            hash = algebraic_hash_u32(hash, integer->limbs[limb]);
+        }
+    }
+    *out_hash = algebraic_hash_u32(hash, value->root_index);
+    return PHY_OK;
+}
+
+phy_status phy_complex_algebraic_from_real(
+    const phy_real_algebraic *value,
+    phy_complex_algebraic **out_value)
+{
+    if (!value_valid_handle(value) || out_value == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    *out_value = NULL;
+    phy_algebraic_context *context = value->context;
+    phy_status status = call_begin(context);
+    phy_complex_ball rectangle;
+    memset(&rectangle, 0, sizeof rectangle);
+    if (status == PHY_OK) {
+        status = phy_complex_ball_init(context->exact, &rectangle);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_set_interval(
+            &rectangle.real, &value->lower, &value->upper);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_set_i64(&rectangle.imaginary, 0, 1);
+    }
+    if (status == PHY_OK) {
+        status = raw_complex_value_from_certificate(
+            context, value->coefficients, value->coefficient_count,
+            &rectangle, value->root_index, true, value->rational,
+            out_value);
+    }
+    if (phy_complex_ball_validate(&rectangle) == PHY_OK) {
+        phy_complex_ball_destroy(&rectangle);
+    }
+    return call_end(context, status);
+}
+
+phy_status phy_complex_algebraic_conjugate(
+    const phy_complex_algebraic *value,
+    phy_complex_algebraic **out_value)
+{
+    if (!complex_value_valid_handle(value) || out_value == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    *out_value = NULL;
+    phy_algebraic_context *context = value->context;
+    phy_status status = call_begin(context);
+    phy_complex_ball conjugate;
+    memset(&conjugate, 0, sizeof conjugate);
+    if (status == PHY_OK) {
+        status = phy_complex_ball_init(context->exact, &conjugate);
+    }
+    if (status == PHY_OK) {
+        status = phy_complex_ball_conjugate(
+            &value->rectangle, &conjugate);
+    }
+    if (status == PHY_OK) {
+        status = canonical_complex_value_from_certificate(
+            context, value->coefficients, value->coefficient_count,
+            &conjugate, out_value);
+    }
+    if (phy_complex_ball_validate(&conjugate) == PHY_OK) {
+        phy_complex_ball_destroy(&conjugate);
+    }
+    return call_end(context, status);
+}
+
+static phy_status complex_value_from_rational_point(
+    phy_algebraic_context *context, const phy_bigrat *point,
+    phy_complex_algebraic **out_value)
+{
+    phy_bigint *coefficients = NULL;
+    phy_status status = allocate_coefficient_array(
+        context, 2u, &coefficients);
+    if (status == PHY_OK) {
+        status = phy_bigint_negate(
+            phy_bigrat_numerator(point), &coefficients[0]);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigint_copy(
+            phy_bigrat_denominator(point), &coefficients[1]);
+    }
+    size_t count = 0u;
+    if (status == PHY_OK) {
+        status = canonicalize_coefficient_array(
+            context, coefficients, 2u, &count);
+    }
+    phy_complex_ball rectangle;
+    memset(&rectangle, 0, sizeof rectangle);
+    if (status == PHY_OK) {
+        status = phy_complex_ball_init(context->exact, &rectangle);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_set_exact(&rectangle.real, point);
+    }
+    if (status == PHY_OK) {
+        status = phy_real_ball_set_i64(&rectangle.imaginary, 0, 1);
+    }
+    if (status == PHY_OK) {
+        status = raw_complex_value_from_certificate(
+            context, coefficients, count, &rectangle, 1u,
+            true, true, out_value);
+    }
+    if (phy_complex_ball_validate(&rectangle) == PHY_OK) {
+        phy_complex_ball_destroy(&rectangle);
+    }
+    destroy_coefficient_array(context, coefficients, 2u);
+    return status;
+}
+
+static phy_status complex_binary_arguments(
+    const phy_complex_algebraic *left,
+    const phy_complex_algebraic *right,
+    phy_complex_algebraic **out_value)
+{
+    if (!complex_value_valid_handle(left) ||
+        !complex_value_valid_handle(right) ||
+        left->context != right->context || out_value == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    *out_value = NULL;
+    return PHY_OK;
+}
+
+static phy_status complex_resultant_binary(
+    const phy_complex_algebraic *left,
+    const phy_complex_algebraic *right,
+    algebraic_binary_operation operation,
+    phy_complex_algebraic **out_value)
+{
+    phy_algebraic_context *context = left->context;
+    phy_real_algebraic left_polynomial;
+    phy_real_algebraic right_polynomial;
+    memset(&left_polynomial, 0, sizeof left_polynomial);
+    memset(&right_polynomial, 0, sizeof right_polynomial);
+    left_polynomial.context = context;
+    left_polynomial.coefficients = left->coefficients;
+    left_polynomial.coefficient_count = left->coefficient_count;
+    right_polynomial.context = context;
+    right_polynomial.coefficients = right->coefficients;
+    right_polynomial.coefficient_count = right->coefficient_count;
+
+    rational_polynomial resultant;
+    rational_polynomial square_free;
+    memset(&resultant, 0, sizeof resultant);
+    memset(&square_free, 0, sizeof square_free);
+    phy_status status = resultant_polynomial(
+        context, &left_polynomial, &right_polynomial,
+        operation, &resultant);
+    if (status == PHY_OK) {
+        status = rational_polynomial_square_free(
+            context, &resultant, &square_free);
+    }
+    phy_bigint *coefficients = NULL;
+    size_t coefficient_count = 0u;
+    size_t coefficient_capacity = 0u;
+    if (status == PHY_OK) {
+        status = rational_polynomial_to_primitive_integers(
+            context, &square_free, &coefficients,
+            &coefficient_count, &coefficient_capacity);
+    }
+    phy_complex_ball certificate;
+    memset(&certificate, 0, sizeof certificate);
+    if (status == PHY_OK) {
+        status = phy_complex_ball_init(context->exact, &certificate);
+    }
+    if (status == PHY_OK) {
+        status = operation == ALGEBRAIC_BINARY_SUM
+            ? phy_complex_ball_add(
+                  &left->rectangle, &right->rectangle, &certificate)
+            : phy_complex_ball_multiply(
+                  &left->rectangle, &right->rectangle, &certificate);
+    }
+    if (status == PHY_OK) {
+        status = canonical_complex_value_from_certificate(
+            context, coefficients, coefficient_count,
+            &certificate, out_value);
+    }
+    if (phy_complex_ball_validate(&certificate) == PHY_OK) {
+        phy_complex_ball_destroy(&certificate);
+    }
+    destroy_coefficient_array(
+        context, coefficients, coefficient_capacity);
+    rational_polynomial_destroy(context, &square_free);
+    rational_polynomial_destroy(context, &resultant);
+    return status;
+}
+
+static phy_status complex_negate(
+    const phy_complex_algebraic *value,
+    phy_complex_algebraic **out_value)
+{
+    phy_algebraic_context *context = value->context;
+    phy_bigint *coefficients = NULL;
+    phy_status status = allocate_coefficient_array(
+        context, value->coefficient_count, &coefficients);
+    for (size_t index = 0u;
+         status == PHY_OK && index < value->coefficient_count; ++index) {
+        status = (index & 1u) != 0u
+            ? phy_bigint_negate(
+                  &value->coefficients[index], &coefficients[index])
+            : phy_bigint_copy(
+                  &value->coefficients[index], &coefficients[index]);
+    }
+    size_t count = 0u;
+    if (status == PHY_OK) {
+        status = canonicalize_coefficient_array(
+            context, coefficients, value->coefficient_count, &count);
+    }
+    phy_complex_ball certificate;
+    phy_complex_ball minus_one;
+    memset(&certificate, 0, sizeof certificate);
+    memset(&minus_one, 0, sizeof minus_one);
+    if (status == PHY_OK) {
+        status = phy_complex_ball_init(context->exact, &certificate);
+    }
+    if (status == PHY_OK) {
+        status = phy_complex_ball_init(context->exact, &minus_one);
+    }
+    if (status == PHY_OK) {
+        status = phy_complex_ball_set_i64(&minus_one, -1, 1, 0, 1);
+    }
+    if (status == PHY_OK) {
+        status = phy_complex_ball_multiply(
+            &value->rectangle, &minus_one, &certificate);
+    }
+    if (status == PHY_OK) {
+        status = canonical_complex_value_from_certificate(
+            context, coefficients, count, &certificate, out_value);
+    }
+    if (phy_complex_ball_validate(&minus_one) == PHY_OK) {
+        phy_complex_ball_destroy(&minus_one);
+    }
+    if (phy_complex_ball_validate(&certificate) == PHY_OK) {
+        phy_complex_ball_destroy(&certificate);
+    }
+    destroy_coefficient_array(
+        context, coefficients, value->coefficient_count);
+    return status;
+}
+
+static phy_status complex_reciprocal(
+    const phy_complex_algebraic *value,
+    phy_complex_algebraic **out_value)
+{
+    bool contains_zero = false;
+    phy_status status = phy_complex_ball_contains_zero_checked(
+        &value->rectangle, &contains_zero);
+    if (status != PHY_OK || contains_zero) {
+        return status != PHY_OK ? status : PHY_ERR_DOMAIN;
+    }
+    phy_algebraic_context *context = value->context;
+    phy_bigint *coefficients = NULL;
+    status = allocate_coefficient_array(
+        context, value->coefficient_count, &coefficients);
+    for (size_t index = 0u;
+         status == PHY_OK && index < value->coefficient_count; ++index) {
+        status = phy_bigint_copy(
+            &value->coefficients[value->coefficient_count - 1u - index],
+            &coefficients[index]);
+    }
+    size_t count = 0u;
+    if (status == PHY_OK) {
+        status = canonicalize_coefficient_array(
+            context, coefficients, value->coefficient_count, &count);
+    }
+    phy_complex_ball one;
+    phy_complex_ball certificate;
+    memset(&one, 0, sizeof one);
+    memset(&certificate, 0, sizeof certificate);
+    if (status == PHY_OK) {
+        status = phy_complex_ball_init(context->exact, &one);
+    }
+    if (status == PHY_OK) {
+        status = phy_complex_ball_init(context->exact, &certificate);
+    }
+    if (status == PHY_OK) {
+        status = phy_complex_ball_set_i64(&one, 1, 1, 0, 1);
+    }
+    if (status == PHY_OK) {
+        status = phy_complex_ball_divide(
+            &one, &value->rectangle, &certificate);
+    }
+    if (status == PHY_OK) {
+        status = canonical_complex_value_from_certificate(
+            context, coefficients, count, &certificate, out_value);
+    }
+    if (phy_complex_ball_validate(&certificate) == PHY_OK) {
+        phy_complex_ball_destroy(&certificate);
+    }
+    if (phy_complex_ball_validate(&one) == PHY_OK) {
+        phy_complex_ball_destroy(&one);
+    }
+    destroy_coefficient_array(
+        context, coefficients, value->coefficient_count);
+    return status;
+}
+
+phy_status phy_complex_algebraic_add(
+    const phy_complex_algebraic *left,
+    const phy_complex_algebraic *right,
+    phy_complex_algebraic **out_value)
+{
+    phy_status status = complex_binary_arguments(left, right, out_value);
+    if (status != PHY_OK) return status;
+    phy_algebraic_context *context = left->context;
+    status = call_begin(context);
+    if (status == PHY_OK) {
+        status = complex_resultant_binary(
+            left, right, ALGEBRAIC_BINARY_SUM, out_value);
+    }
+    return call_end(context, status);
+}
+
+phy_status phy_complex_algebraic_subtract(
+    const phy_complex_algebraic *left,
+    const phy_complex_algebraic *right,
+    phy_complex_algebraic **out_value)
+{
+    phy_status status = complex_binary_arguments(left, right, out_value);
+    if (status != PHY_OK) return status;
+    phy_algebraic_context *context = left->context;
+    status = call_begin(context);
+    phy_complex_algebraic *negative = NULL;
+    if (status == PHY_OK) status = complex_negate(right, &negative);
+    if (status == PHY_OK) {
+        status = complex_resultant_binary(
+            left, negative, ALGEBRAIC_BINARY_SUM, out_value);
+    }
+    phy_complex_algebraic_destroy(negative);
+    return call_end(context, status);
+}
+
+phy_status phy_complex_algebraic_multiply(
+    const phy_complex_algebraic *left,
+    const phy_complex_algebraic *right,
+    phy_complex_algebraic **out_value)
+{
+    phy_status status = complex_binary_arguments(left, right, out_value);
+    if (status != PHY_OK) return status;
+    phy_algebraic_context *context = left->context;
+    status = call_begin(context);
+    if (status == PHY_OK) {
+        status = complex_resultant_binary(
+            left, right, ALGEBRAIC_BINARY_PRODUCT, out_value);
+    }
+    return call_end(context, status);
+}
+
+phy_status phy_complex_algebraic_divide(
+    const phy_complex_algebraic *left,
+    const phy_complex_algebraic *right,
+    phy_complex_algebraic **out_value)
+{
+    phy_status status = complex_binary_arguments(left, right, out_value);
+    if (status != PHY_OK) return status;
+    phy_algebraic_context *context = left->context;
+    status = call_begin(context);
+    phy_complex_algebraic *inverse = NULL;
+    if (status == PHY_OK) status = complex_reciprocal(right, &inverse);
+    if (status == PHY_OK) {
+        status = complex_resultant_binary(
+            left, inverse, ALGEBRAIC_BINARY_PRODUCT, out_value);
+    }
+    phy_complex_algebraic_destroy(inverse);
+    return call_end(context, status);
+}
+
+phy_status phy_complex_algebraic_pow_i32(
+    const phy_complex_algebraic *base, int32_t exponent,
+    phy_complex_algebraic **out_value)
+{
+    if (!complex_value_valid_handle(base) || out_value == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    *out_value = NULL;
+    phy_algebraic_context *context = base->context;
+    phy_status status = call_begin(context);
+    phy_complex_algebraic *factor = NULL;
+    if (status == PHY_OK && exponent < 0) {
+        status = complex_reciprocal(base, &factor);
+    } else if (status == PHY_OK) {
+        status = raw_complex_value_from_certificate(
+            context, base->coefficients, base->coefficient_count,
+            &base->rectangle, base->root_index, base->real,
+            base->rational, &factor);
+    }
+    phy_bigrat one;
+    memset(&one, 0, sizeof one);
+    if (status == PHY_OK) status = phy_bigrat_init(context->exact, &one);
+    if (status == PHY_OK) status = phy_bigrat_set_i64(&one, 1, 1);
+    phy_complex_algebraic *result = NULL;
+    if (status == PHY_OK) {
+        status = complex_value_from_rational_point(context, &one, &result);
+    }
+    uint32_t power = exponent < 0
+        ? (uint32_t)(-(int64_t)exponent) : (uint32_t)exponent;
+    while (status == PHY_OK && power != 0u) {
+        if ((power & 1u) != 0u) {
+            phy_complex_algebraic *next = NULL;
+            status = complex_resultant_binary(
+                result, factor, ALGEBRAIC_BINARY_PRODUCT, &next);
+            if (status == PHY_OK) {
+                phy_complex_algebraic_destroy(result);
+                result = next;
+            }
+        }
+        power >>= 1u;
+        if (status == PHY_OK && power != 0u) {
+            phy_complex_algebraic *next = NULL;
+            status = complex_resultant_binary(
+                factor, factor, ALGEBRAIC_BINARY_PRODUCT, &next);
+            if (status == PHY_OK) {
+                phy_complex_algebraic_destroy(factor);
+                factor = next;
+            }
+        }
+    }
+    if (phy_bigrat_validate(&one) == PHY_OK) phy_bigrat_destroy(&one);
+    phy_complex_algebraic_destroy(factor);
+    if (status == PHY_OK) {
+        *out_value = result;
+    } else {
+        phy_complex_algebraic_destroy(result);
     }
     return call_end(context, status);
 }

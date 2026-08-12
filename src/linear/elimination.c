@@ -259,6 +259,153 @@ phy_status phy_matrix_determinant(const phy_matrix *matrix,
     return status;
 }
 
+phy_status phy_matrix_characteristic_polynomial(
+    const phy_matrix *matrix, phy_ir_ref variable,
+    phy_ir_ref *out_polynomial)
+{
+    if (matrix == NULL || out_polynomial == NULL ||
+        matrix->rows != matrix->columns ||
+        phy_ir_kind_of(phy_cas_ir(matrix->cas), variable) !=
+            PHY_IR_SYMBOL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    *out_polynomial = PHY_IR_NULL;
+    if (matrix->rows > SIZE_MAX / sizeof(phy_ir_ref) - 1u) {
+        return PHY_ERR_MEMORY_LIMIT;
+    }
+    const size_t coefficient_bytes =
+        (matrix->rows + 1u) * sizeof(phy_ir_ref);
+    phy_ir_ref *coefficients = phy_alloc(coefficient_bytes);
+    if (coefficients == NULL) {
+        return PHY_ERR_OUT_OF_MEMORY;
+    }
+    phy_status status = phy_linear_one(matrix->cas, &coefficients[0]);
+    phy_matrix *b = NULL;
+    if (status == PHY_OK) {
+        status = phy_matrix_create(
+            matrix->cas, matrix->rows, matrix->columns, NULL,
+            &matrix->limits, &b);
+    }
+    for (size_t row = 0u;
+         status == PHY_OK && row < matrix->rows; ++row) {
+        status = phy_matrix_set(b, row, row, coefficients[0]);
+    }
+
+    /* Division-free in the spectral variable and pivot-free in the matrix:
+       Faddeev--LeVerrier computes the coefficients of det(x I - A) over the
+       characteristic-zero exact CAS. It avoids treating x-a as a provably
+       nonzero numerical pivot. */
+    for (size_t order = 1u;
+         status == PHY_OK && order <= matrix->rows; ++order) {
+        phy_matrix *product = NULL;
+        status = phy_matrix_multiply(matrix, b, &product);
+        phy_ir_ref trace = PHY_IR_NULL;
+        if (status == PHY_OK) {
+            status = phy_linear_zero(matrix->cas, &trace);
+        }
+        for (size_t diagonal = 0u;
+             status == PHY_OK && diagonal < matrix->rows; ++diagonal) {
+            phy_ir_ref entry = PHY_IR_NULL;
+            status = phy_matrix_get(
+                product, diagonal, diagonal, &entry);
+            if (status == PHY_OK) {
+                const phy_ir_ref terms[2] = {trace, entry};
+                status = phy_cas_add(
+                    matrix->cas, terms, 2u, &trace);
+            }
+        }
+        phy_ir_ref negative_trace = PHY_IR_NULL;
+        phy_ir_ref divisor = PHY_IR_NULL;
+        if (status == PHY_OK) {
+            status = phy_cas_neg(
+                matrix->cas, trace, &negative_trace);
+        }
+        if (status == PHY_OK) {
+            status = phy_cas_number(
+                matrix->cas, (int64_t)order, 1, &divisor);
+        }
+        if (status == PHY_OK) {
+            status = phy_cas_div(
+                matrix->cas, negative_trace, divisor,
+                &coefficients[order]);
+        }
+        for (size_t diagonal = 0u;
+             status == PHY_OK && diagonal < matrix->rows; ++diagonal) {
+            phy_ir_ref entry = PHY_IR_NULL;
+            status = phy_matrix_get(
+                product, diagonal, diagonal, &entry);
+            if (status == PHY_OK) {
+                const phy_ir_ref terms[2] = {
+                    entry, coefficients[order]};
+                status = phy_cas_add(
+                    matrix->cas, terms, 2u, &entry);
+            }
+            if (status == PHY_OK) {
+                status = phy_matrix_set(product, diagonal, diagonal, entry);
+            }
+        }
+        phy_matrix_destroy(b);
+        b = product;
+        if (status != PHY_OK) {
+            phy_matrix_destroy(product);
+            b = NULL;
+        }
+    }
+
+    phy_ir_ref sum = PHY_IR_NULL;
+    if (status == PHY_OK) {
+        status = phy_linear_zero(matrix->cas, &sum);
+    }
+    for (size_t order = 0u;
+         status == PHY_OK && order <= matrix->rows; ++order) {
+        const size_t exponent = matrix->rows - order;
+        phy_ir_ref power = coefficients[0];
+        if (exponent == 1u) {
+            power = variable;
+        } else if (exponent > 1u) {
+            phy_ir_ref exponent_ref = PHY_IR_NULL;
+            status = phy_cas_number(
+                matrix->cas, (int64_t)exponent, 1, &exponent_ref);
+            if (status == PHY_OK) {
+                status = phy_cas_pow(
+                    matrix->cas, variable, exponent_ref, &power);
+            }
+        }
+        phy_ir_ref term = coefficients[order];
+        if (status == PHY_OK && exponent != 0u) {
+            const phy_ir_ref factors[2] = {coefficients[order], power};
+            status = phy_cas_mul(matrix->cas, factors, 2u, &term);
+        }
+        if (status == PHY_OK) {
+            const phy_ir_ref terms[2] = {sum, term};
+            status = phy_cas_add(matrix->cas, terms, 2u, &sum);
+        }
+    }
+    if (status == PHY_OK) {
+        status = phy_cas_expand(matrix->cas, sum, out_polynomial);
+    }
+    phy_matrix_destroy(b);
+    phy_free(coefficients, coefficient_bytes);
+    return status;
+}
+
+phy_status phy_matrix_eigenvalues(
+    const phy_matrix *matrix, phy_ir_ref variable,
+    phy_ir_ref *out_values)
+{
+    if (out_values == NULL) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    *out_values = PHY_IR_NULL;
+    phy_ir_ref polynomial = PHY_IR_NULL;
+    phy_status status = phy_matrix_characteristic_polynomial(
+        matrix, variable, &polynomial);
+    return status == PHY_OK
+        ? phy_cas_polynomial_roots(
+              matrix->cas, polynomial, variable, true, out_values)
+        : status;
+}
+
 static phy_status augmented_rref(const phy_matrix *left,
                                  const phy_matrix *right,
                                  phy_matrix **out_augmented, size_t *out_rank,

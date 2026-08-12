@@ -360,14 +360,14 @@ factorizer rather than maintaining a second polynomial representation.
 The equation is converted to one reduced rational numerator and denominator.
 Every numerator factor must be completely certified by the bounded factorizer.
 Linear roots remain exact constants, real quadratic roots remain exact radicals
-through the typed power node, non-real quadratic roots are exact principal
-radicals times `I`. An irreducible higher-degree factor is accepted only when
-Sturm isolation proves that all of its roots are real; those roots are
-represented as `Root[List[a0,...,an],k]`. The coefficient list is
-in increasing degree order. `k` is one-based in increasing order among the
-factor's roots, as proved by one exact Sturm chain and disjoint rational
-isolating intervals. A higher factor with any non-real root is rejected rather
-than publishing an incomplete real subset. Multiplicity stays in the factor
+through the typed power node, and non-real quadratic roots are exact principal
+radicals times `I`. Every irreducible higher-degree factor is represented by
+`Root[List[a0,...,an],k]`. The coefficient list is the primitive irreducible
+positive-leading minimal polynomial in increasing degree order. `k` is
+one-based among all roots: the increasing real block first, followed by
+deterministically ordered pairwise-disjoint exact complex rectangles. Root
+existence uses Sturm and Pellet--Rouche certificates; approximate candidate
+centres never authorize publication. Multiplicity stays in the factor
 workspace while the returned
 `List[List[Rule[x,root]],...]` contains distinct roots.
 
@@ -382,8 +382,11 @@ equations return an empty list, while an identity returns
 representation. A certified affine fallback also solves a reduced `a*x+b`
 when `a` and `b` are proved scalar constants, including `Q(i)`; this is what
 preserves the denominator exclusion in
-`(x^2+1)/(x-I)==0`. General non-real roots of degree three and above still need
-the complex-algebraic extension.
+`(x^2+1)/(x-I)==0`.
+
+`phy_cas_polynomial_roots` exposes the same exact root path as a `List` and can
+optionally retain factor multiplicities. The matrix layer uses that form for
+`Eigenvalues`; ordinary `Solve` deliberately returns distinct rules.
 
 `phy_cas_solve_system` and
 `Solve[{equation,...},{variable,...}]` cover exact linear systems with up to
@@ -703,14 +706,14 @@ counts are recorded in `CAS_ACCEPTANCE.md` after each clean build.
 
 Built with the pinned Ndless r2022 SDK and ARM GNU 14.3 toolchain using
 `-Os -marm`. The isolated link check compiles the complete scalar layer to
-130,392 bytes of ARM text; its dependency-complete probe packages to 207,616
+138,394 bytes of ARM text; its dependency-complete probe packages to 263,376
 bytes. These figures are deliberately measured by the link-check target rather
 than maintained as a hand-summed per-object table.
 
 The application now calls the CAS and the typed physics backends through
 editable notebook cells. The current product, including persistence,
-nMarkdown's math typesetter, and the reachable evaluator stack, is 1,252,366
-bytes (19.9% of the 6 MiB ceiling).
+nMarkdown's math typesetter, and the reachable evaluator stack, is 1,282,545
+bytes (20.4% of the 6 MiB ceiling).
 
 `make cas-link-check` closes the gap that leaves. It is the same guard as
 `make ir-link-check`, and `tools/link-check.sh` now serves both layers from one
@@ -727,8 +730,8 @@ dependency through its own gcd and its check passes, which is good evidence but
 not the check itself.
 
 `make cas-link-check` has been run with the real Ndless linker and packager:
-all **40/40** public entry points derived from `include/phy/cas.h` survive
-`--gc-sections`; the CAS+IR+platform probe packages to a **207,616-byte `.tns`**;
+all **41/41** public entry points derived from `include/phy/cas.h` survive
+`--gc-sections`; the CAS+IR+platform probe packages to a **263,376-byte `.tns`**;
 and no `_dtoa`, `_strtod`, `_printf_float`, libm, `stdio` formatting, or ARM
 soft-float helper reaches the image. Real IR atoms are ordered by their
 IEEE-754 bit keys rather than by executing a floating-point comparison. The

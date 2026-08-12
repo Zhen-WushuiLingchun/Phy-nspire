@@ -1,5 +1,5 @@
 /*
- * Device link probe for the certified real-algebraic foundation.
+ * Device link probe for the certified real/complex algebraic foundation.
  *
  * The notebook does not expose Root objects yet, so --gc-sections can discard
  * this entire layer from the product. Referencing every public entry point
@@ -121,6 +121,68 @@ int main(void)
         left, right, &comparison));
     sink((unsigned)(comparison + 1));
 
+    static const char *complex_polynomial[] = {"1", "0", "1"};
+    phy_complex_algebraic *complex_roots[2] = {0, 0};
+    size_t complex_count = 0u;
+    sink((unsigned)phy_algebraic_isolate_complex_roots(
+        context, complex_polynomial, 3u, complex_roots, 2u,
+        &complex_count));
+    sink((unsigned)complex_count);
+    phy_complex_algebraic *selected = 0;
+    sink((unsigned)phy_complex_algebraic_create_by_index(
+        context, complex_polynomial, 3u, 2u, &selected));
+    if (selected != 0) {
+        sink((unsigned)phy_complex_algebraic_validate(selected));
+        sink((unsigned)phy_complex_algebraic_degree(selected));
+        sink(phy_complex_algebraic_root_index(selected));
+        sink(phy_complex_algebraic_is_real(selected) ? 1u : 0u);
+        sink(phy_complex_algebraic_is_rational(selected) ? 1u : 0u);
+        sink((unsigned)phy_complex_algebraic_write_coefficient(
+            selected, 0u, 0, 0u, &required));
+        sink((unsigned)phy_complex_algebraic_write_real_lower(
+            selected, 0, 0u, &required));
+        sink((unsigned)phy_complex_algebraic_write_real_upper(
+            selected, 0, 0u, &required));
+        sink((unsigned)phy_complex_algebraic_write_imaginary_lower(
+            selected, 0, 0u, &required));
+        sink((unsigned)phy_complex_algebraic_write_imaginary_upper(
+            selected, 0, 0u, &required));
+        phy_complex_algebraic *lifted = 0;
+        phy_complex_algebraic *conjugate = 0;
+        phy_complex_algebraic *complex_sum = 0;
+        phy_complex_algebraic *complex_difference = 0;
+        phy_complex_algebraic *complex_product = 0;
+        phy_complex_algebraic *complex_quotient = 0;
+        phy_complex_algebraic *complex_power = 0;
+        sink((unsigned)phy_complex_algebraic_from_real(
+            left, &lifted));
+        sink((unsigned)phy_complex_algebraic_conjugate(
+            selected, &conjugate));
+        sink((unsigned)phy_complex_algebraic_equal(
+            selected, selected, &equal));
+        sink((unsigned)phy_complex_algebraic_hash(selected, &hash));
+        sink((unsigned)phy_complex_algebraic_add(
+            selected, selected, &complex_sum));
+        sink((unsigned)phy_complex_algebraic_subtract(
+            selected, selected, &complex_difference));
+        sink((unsigned)phy_complex_algebraic_multiply(
+            selected, selected, &complex_product));
+        sink((unsigned)phy_complex_algebraic_divide(
+            selected, selected, &complex_quotient));
+        sink((unsigned)phy_complex_algebraic_pow_i32(
+            selected, 2, &complex_power));
+        phy_complex_algebraic_destroy(complex_power);
+        phy_complex_algebraic_destroy(complex_quotient);
+        phy_complex_algebraic_destroy(complex_product);
+        phy_complex_algebraic_destroy(complex_difference);
+        phy_complex_algebraic_destroy(complex_sum);
+        phy_complex_algebraic_destroy(conjugate);
+        phy_complex_algebraic_destroy(lifted);
+    }
+    phy_complex_algebraic_destroy(selected);
+    for (size_t index = 0u; index < complex_count; ++index) {
+        phy_complex_algebraic_destroy(complex_roots[index]);
+    }
     phy_real_algebraic_destroy(right);
     phy_real_algebraic_destroy(left);
     phy_algebraic_context_destroy(context);

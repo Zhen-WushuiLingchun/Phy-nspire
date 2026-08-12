@@ -125,6 +125,8 @@ static void probe_rewrites(phy_cas *cas, phy_ir_context *ir)
     sink((unsigned)phy_cas_n(cas, two, 8u, &out));
     sink((unsigned)phy_cas_nsolve(
         cas, equation, solve_variables[0], 8u, &out));
+    sink((unsigned)phy_cas_polynomial_roots(
+        cas, expr, solve_variables[0], true, &out));
 
     const phy_cas_rule rule = {phy_ir_symbol_ref(ir, phy_ir_intern(ir, "x")),
                                phy_ir_integer(ir, 3)};

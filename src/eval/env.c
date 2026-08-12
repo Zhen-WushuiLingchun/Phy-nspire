@@ -29,8 +29,8 @@ static const char *const kEvalHeadNames[EVAL_HEAD_COUNT] = {
     "QFTHead",      "QFTTensor",
 
     "Vector",       "Matrix",           "Transpose",   "Dot",
-    "Determinant",  "Inverse",          "RowReduce",   "MatrixRank",
-    "LinearSolve",
+    "Determinant",  "CharacteristicPolynomial", "Eigenvalues",
+    "Inverse",      "RowReduce",        "MatrixRank",  "LinearSolve",
 
     "CoordinateMap", "BasisTransition",  "Jacobian",
     "PullbackScalar", "PullbackCovector", "PushForwardVector",

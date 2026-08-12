@@ -2027,7 +2027,10 @@ static void test_exact_polynomial_solve(void)
         "(fn List (fn List (fn Rule x (* -1 I))))");
     PHY_CHECK_EQ_STR(
         solved(&f, "(= (+ (^ x 3) -2) 0)"),
-        "PHY_ERR_UNSUPPORTED");
+        "(fn List "
+        "(fn List (fn Rule x (fn Root (fn List -2 0 0 1) 1))) "
+        "(fn List (fn Rule x (fn Root (fn List -2 0 0 1) 2))) "
+        "(fn List (fn Rule x (fn Root (fn List -2 0 0 1) 3))))");
     PHY_CHECK_EQ_STR(
         solved(
             &f,
@@ -2062,7 +2065,14 @@ static void test_exact_polynomial_solve(void)
         solved(
             &f,
             "(= (* (+ (^ x 5) (* -1 x) -1) (+ (^ x 2) 1)) 0)"),
-        "PHY_ERR_UNSUPPORTED");
+        "(fn List "
+        "(fn List (fn Rule x I)) "
+        "(fn List (fn Rule x (* -1 I))) "
+        "(fn List (fn Rule x (fn Root (fn List -1 -1 0 0 0 1) 1))) "
+        "(fn List (fn Rule x (fn Root (fn List -1 -1 0 0 0 1) 2))) "
+        "(fn List (fn Rule x (fn Root (fn List -1 -1 0 0 0 1) 3))) "
+        "(fn List (fn Rule x (fn Root (fn List -1 -1 0 0 0 1) 4))) "
+        "(fn List (fn Rule x (fn Root (fn List -1 -1 0 0 0 1) 5))))");
     PHY_CHECK_EQ_STR(solved(&f, "(= x x)"), "PHY_ERR_UNSUPPORTED");
 
     close_fixture(&f);

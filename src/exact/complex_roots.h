@@ -1,5 +1,5 @@
-#ifndef PHY_CAS_COMPLEX_ROOTS_H
-#define PHY_CAS_COMPLEX_ROOTS_H
+#ifndef PHY_EXACT_COMPLEX_ROOTS_H
+#define PHY_EXACT_COMPLEX_ROOTS_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -21,4 +21,4 @@ phy_status phy_complex_roots_isolate(
     size_t coefficient_count, uint32_t bits, phy_complex_ball *roots,
     size_t root_capacity, size_t *out_root_count);
 
-#endif /* PHY_CAS_COMPLEX_ROOTS_H */
+#endif /* PHY_EXACT_COMPLEX_ROOTS_H */
