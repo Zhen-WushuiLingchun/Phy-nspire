@@ -11,7 +11,10 @@
  * ascending (constant first). Returned rectangles are pairwise disjoint and
  * each is certified to contain exactly one zero by a square-boundary
  * Rouché/Pellet test. Approximate Durand-Kerner centers are never trusted
- * without this certificate.
+ * without this certificate. If the requested output grid is too coarse to
+ * separate clustered roots, the candidate grid is refined through a fixed
+ * number of deterministic escalation levels; exhaustion remains a typed
+ * resource error and never publishes a partial root list.
  */
 phy_status phy_complex_roots_isolate(
     phy_exact_context *exact, const phy_bigrat *coefficients,

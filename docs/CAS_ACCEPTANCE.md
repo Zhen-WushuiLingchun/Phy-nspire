@@ -62,29 +62,33 @@ operation.
 ## Automated evidence
 
 - Last recorded Windows strict build and CTest: 45/45.
-- Current WSL GCC Release suite: 48/48. Focused ball/CAS/evaluator
-  ASan/UBSan/leak runs passed 39,364, 32,811, and 3,187 checks respectively.
-- Wolfram development oracle for complex branches, special functions, and
-  polynomial roots: 19/19; this is independent cross-check evidence, not a
+- Current WSL GCC Release and combined ASan/UBSan/leak suites: 48/48 each.
+  Focused ball/CAS/evaluator tests contain 39,364, 33,812, and 3,187 checks
+  respectively; the precision tranche also visually checked ordinary complex,
+  `10^-50`, and `10^50` scientific-notation frames at the native 320x240
+  resolution.
+- Wolfram development oracle for complex branches, special functions,
+  requested precision, and clustered polynomial roots: 21/21; this is
+  independent cross-check evidence, not a
   native runtime dependency.
-- Assertion-bearing executables: 458,095 checks.
+- Assertion-bearing executables: 475,909 checks.
 - Notebook MENU completeness: every supported evaluator/source command is
   present in ten scrollable CAS categories.
-- Ndless r2022 ARM product: 1,271,953 bytes, 20.2% of the 6 MiB ceiling.
+- Ndless r2022 ARM product: 1,278,195 bytes, 20.3% of the 6 MiB ceiling.
 - Rebuilt discrete-function CAS smoke and QFT bench packages link natively at
   88,588 and 61,868 bytes respectively; this is ARM package evidence, not a
   new physical-device run.
 - Isolated exact-number ARM probe: 68/68 public APIs, 17,680 bytes of exact
   number text, 23,540-byte package, and no forbidden numeric dependency.
-- Isolated real/complex-ball ARM probe: 67/67 public APIs, 61,478 bytes of
-  ball text, 64,532-byte package, and no forbidden numeric dependency.
+- Isolated real/complex-ball ARM probe: 67/67 public APIs, 61,878 bytes of
+  ball text, 64,924-byte package, and no forbidden numeric dependency.
 - Isolated real-algebraic ARM probe: 31/31 public APIs, 38,720 bytes of
   algebraic text and a 66,572-byte package.
-- Isolated CAS ARM probe: 40/40 public APIs, 144,058 bytes of CAS text,
-  253,668-byte package, and no float formatter, libm call, or ARM soft-float
+- Isolated CAS ARM probe: 40/40 public APIs, 145,894 bytes of CAS text,
+  255,908-byte package, and no float formatter, libm call, or ARM soft-float
   helper.
 - Isolated evaluator ARM probe: 17/17 public APIs, 54,355 bytes of evaluator
-  text, 431,804-byte package, and no float formatter, libm call, or ARM
+  text, 434,236-byte package, and no float formatter, libm call, or ARM
   soft-float helper.
 - Isolated QFT abstract/component bridge probe: 14/14 public APIs, 3,152
   bytes of bridge text, 101,588-byte package, and the same no-float guarantee.
@@ -103,7 +107,10 @@ Both rollback copies were removed; final listings found no `.upload` or
 fresh detach/attach was required before each new CLI process, so the two files
 were deployed in separate verified sessions with 1000 ms service settling.
 This proves transport integrity only; calculator open/run acceptance remains
-pending.
+pending for the current unuploaded artifact. On 2026-08-12 the user completed
+a full run of the previously deployed tour and reported no observed problem;
+that is physical acceptance of the preceding deployed build, not of later
+host-only changes.
 
 ## Explicit non-features
 

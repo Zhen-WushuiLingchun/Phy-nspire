@@ -481,7 +481,7 @@ static void test_polynomial_ideal_reader_and_evaluator(void)
         "(fn List (+ -1 (* x y)) (+ -1 (^ y 2)) (+ x (* -1 y)))");
     expect_status(
         &f, "GroebnerBasis[{Sin[x]},{x}]", PHY_ERR_UNSUPPORTED);
-    expect_scalar(&f, "N[1/3,12]", "(fn Around (rat 1 3) 0)");
+    expect_scalar(&f, "N[1/3,12]", "(fn Around (rat 1 3) 0 12)");
     phy_value value;
     static const char *elementary[] = {
         "N[Exp[1],20]",
@@ -1997,7 +1997,7 @@ static void test_abstract_tensor_frontend_and_canonicalization(void)
     expect_scalar(&f, "Dimension[N]", "n");
     /* Call syntax remains the certified numeric command even when N is a
        valid bound index-space name in the same notebook. */
-    expect_scalar(&f, "N[1/3,8]", "(fn Around (rat 1 3) 0)");
+    expect_scalar(&f, "N[1/3,8]", "(fn Around (rat 1 3) 0 8)");
 
     /* Reset destroys the bulk-owned abstract context and permits clean reuse. */
     phy_env_reset(f.env);

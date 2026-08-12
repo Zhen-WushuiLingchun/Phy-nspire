@@ -107,6 +107,29 @@ static phy_notebook *make_sample(void)
         phy_notebook_add_input(notebook, "Apart[1/(x^2-1)]", &apart),
         PHY_OK);
     PHY_CHECK_EQ_INT(phy_notebook_evaluate(notebook, apart), PHY_OK);
+    size_t numeric = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_notebook_add_input(notebook, "N[Pi,20]", &numeric), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_notebook_evaluate(notebook, numeric), PHY_OK);
+    phy_notebook_cell_view numeric_output;
+    PHY_CHECK(phy_notebook_cell(notebook, numeric + 1u, &numeric_output));
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(
+            phy_notebook_ir(notebook),
+            phy_ir_head(
+                phy_notebook_ir(notebook), numeric_output.expression)),
+        "Around");
+    PHY_CHECK_EQ_INT(
+        phy_ir_child_count(
+            phy_notebook_ir(notebook), numeric_output.expression),
+        3u);
+    int64_t digits = 0;
+    PHY_CHECK(phy_ir_integer_value(
+        phy_notebook_ir(notebook),
+        phy_ir_child(
+            phy_notebook_ir(notebook), numeric_output.expression, 2u),
+        &digits));
+    PHY_CHECK_EQ_INT(digits, 20);
     return notebook;
 }
 

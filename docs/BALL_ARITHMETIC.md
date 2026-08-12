@@ -48,9 +48,18 @@ ARM soft-float helper.
 
 ## `N`
 
-`N[expr]` and `N[expr,digits]` return `Around[midpoint,radius]` for real values
-and `ComplexAround[real_ball,imaginary_ball]` for non-real values. The current
-certified evaluator covers:
+`N[expr]` and `N[expr,digits]` return
+`Around[midpoint,radius,digits]` for real values and
+`ComplexAround[real_ball,imaginary_ball]` for non-real values. Before
+publication every component is checked exactly against the mixed
+significant-digit contract
+
+`radius <= 10^-digits max(1,abs(midpoint))`.
+
+If the first certified enclosure is too wide, `N` performs at most three
+bounded precision attempts; failure to meet the contract is a typed resource
+error, never a lower-precision result carrying the requested label. The
+current certified evaluator covers:
 
 - exact integers and rationals;
 - `Pi`, `E`, and `EulerGamma` from fixed certified 40-decimal intervals;
@@ -62,10 +71,11 @@ certified evaluator covers:
   unresolved poles.
 
 The requested precision is capped at 36 decimal digits. Exact inputs may have
-zero radius, so `N[1/3]` deliberately returns `Around[1/3,0]`; decimal display
-is not allowed to discard the exact certificate. Inputs outside those bounded
-resource/domain contracts remain typed unsupported or resource-limited rather
-than falling back to floating point.
+zero radius, so `N[1/3,12]` deliberately returns
+`Around[1/3,0,12]`; the display backend uses the third field for significant
+digits while retaining the exact midpoint and certificate. Inputs outside
+those bounded resource/domain contracts remain typed unsupported or
+resource-limited rather than falling back to floating point.
 
 ## `NSolve`
 
@@ -90,10 +100,13 @@ square-root rectangles are certified, and the original denominator is checked
 over each complex rectangle before publication.
 
 The complex path is bounded to square-free univariate rational polynomials of
-degree at most 48 and 64 candidate iterations. Repeated factors are removed
-exactly, so each distinct root is returned once. Multivariate numerical
-systems, transcendental equations and open-ended adaptive precision escalation
-remain explicit future work.
+degree at most 48. It uses at most four deterministic certification levels,
+16 guard bits per level and 64 candidate iterations per level. The first level
+uses the requested grid; only unresolved or colliding roots pay for the finer
+fallback grid, whose centres are retained while exact certificate boxes
+shrink. Repeated factors are removed exactly, so each distinct root is
+returned once. Multivariate numerical systems, transcendental equations and
+open-ended precision escalation remain explicit future work.
 
 ## Acceptance boundary
 

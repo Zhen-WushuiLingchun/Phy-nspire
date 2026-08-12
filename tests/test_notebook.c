@@ -321,6 +321,36 @@ static void test_certified_complex_result_frame(void)
     PHY_CHECK(phy_gfx_write_ppm(
         &surface, PHY_ARTIFACT_DIR "/certified_complex_decimal.ppm"));
 
+    size_t tiny_input = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_notebook_add_input(
+            notebook,
+            "N[1/100000000000000000000000000000000000000000000000000,20]",
+            &tiny_input),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_notebook_evaluate(notebook, tiny_input), PHY_OK);
+    PHY_CHECK(phy_notebook_select(notebook, tiny_input + 1u));
+    memset(g_pixels, 0, sizeof g_pixels);
+    phy_notebook_draw(&surface, notebook, -1, -1);
+    PHY_CHECK(phy_gfx_write_ppm(
+        &surface, PHY_ARTIFACT_DIR "/certified_tiny_decimal.ppm"));
+
+    size_t large_input = 0u;
+    PHY_CHECK_EQ_INT(
+        phy_notebook_add_input(
+            notebook,
+            "N[100000000000000000000000000000000000000000000000000,20]",
+            &large_input),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_notebook_evaluate(notebook, large_input), PHY_OK);
+    PHY_CHECK(phy_notebook_select(notebook, large_input + 1u));
+    memset(g_pixels, 0, sizeof g_pixels);
+    phy_notebook_draw(&surface, notebook, -1, -1);
+    PHY_CHECK(phy_gfx_write_ppm(
+        &surface, PHY_ARTIFACT_DIR "/certified_large_decimal.ppm"));
+
     phy_notebook_destroy(notebook);
     phy_formula_shutdown();
     phy_platform_shutdown();

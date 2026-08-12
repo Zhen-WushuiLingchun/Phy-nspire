@@ -29,7 +29,7 @@ Verification:
   source language, drawing, notebook, the stateful evaluator, IR, tensor
   storage, differential forms, GR, Lie/QFT foundations, CAS, QFT oracle, and
   full lifecycle: last strict Windows baseline 45/45, current WSL strict and
-  combined ASan/UBSan/leak runs 48/48 each, and 458,095 explicit checks;
+  combined ASan/UBSan/leak runs 48/48 each, and 475,909 explicit checks;
 - generated `.tns` size report — 1,252,366 bytes, 19.9% of the 6 MiB ceiling,
   with the current evaluator and physics stack linked;
 - launch of a Phy-nspire artifact on the real CX II — done on 2026-07-26 with
@@ -109,16 +109,16 @@ Verification:
   a typed status and leave both layers validating;
 - IR unit tests — done, `tests/test_ir.c`, 2,843 checks covering interning,
   canonical ordering, the construction ceilings, and text round-trips;
-- CAS unit tests — done, `tests/test_cas.c`, 13,851 checks covering the normal
+- CAS unit tests — done, `tests/test_cas.c`, 33,812 checks covering the normal
   form, exact arithmetic and arbitrary-precision promotion, differentiation, bounded
   exact factorization, and the zero decision, including the four `sphere_2d`
   corpus entries whose stated trigonometric form differs from the computed one.
-- notebook tests — done, `tests/test_notebook.c`, 231 checks covering bounded
+- notebook tests — done, `tests/test_notebook.c`, 257 checks covering bounded
   cell storage, exact seeded results, editing, insertion, source/IR agreement,
   stale outputs, Markdown selection, independent run-badge hit testing, 2D
   metrics, nMarkdown LaTeX integration, memory return, and the framebuffer
   fixture;
-- evaluator tests — done, `tests/test_eval.c`, 3,011 checks. The physics cases
+- evaluator tests — done, `tests/test_eval.c`, 3,187 checks. The physics cases
   reproduce, through reader-facing source, results the backend suites already
   certify directly: the U(1) and SU(2) curvature components and vanishing
   Bianchi residuals of `tests/test_yang_mills.c`, the round two-sphere

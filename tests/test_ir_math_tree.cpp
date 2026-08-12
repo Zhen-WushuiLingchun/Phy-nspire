@@ -166,6 +166,30 @@ void test_discrete_functions_use_mathematical_notation()
     PHY_CHECK(contains_text(tree, "i"));
     PHY_CHECK(!contains_text(tree, "-7"));
 
+    tree = build_tree(
+        ir,
+        "(fn Around (rat 1 3) "
+        "(rat 1 1000000000000000000000000000000) 20)");
+    PHY_CHECK(contains_text(tree, "0.33333333333333333333"));
+    PHY_CHECK(!contains_text(tree, "Around"));
+
+    tree = build_tree(
+        ir,
+        "(fn Around "
+        "(rat 1 100000000000000000000000000000000000000000000000000) "
+        "(rat 1 10000000000000000000000000000000000000000000000000000000000000000000000) "
+        "20)");
+    PHY_CHECK(contains_text(tree, "1.0000000000000000000e-50"));
+    PHY_CHECK(!contains_text(tree, "0.0000000000"));
+
+    tree = build_tree(
+        ir,
+        "(fn Around "
+        "100000000000000000000000000000000000000000000000000 "
+        "0 20)");
+    PHY_CHECK(contains_text(tree, "1.0000000000000000000e50"));
+    PHY_CHECK(!contains_text(tree, "100000000000000000000000000000"));
+
     phy_ir_context_destroy(ir);
 }
 

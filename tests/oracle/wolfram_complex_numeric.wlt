@@ -147,6 +147,24 @@ VerificationTest[
 ]
 
 VerificationTest[
+  {Precision[N[Pi, 30]], Precision[N[Exp[Sin[1] + Sqrt[2]], 20]]},
+  {30., 20.},
+  SameTest -> (And @@ Thread[Abs[#1 - #2] < 10^-10] &),
+  TestID -> "requested-significant-digit-contract"
+]
+
+VerificationTest[
+  With[{roots =
+      x /. NSolve[(x^2 + 10^-40) (x - 1) == 0, x,
+                   WorkingPrecision -> 80]},
+    Length[roots] == 3 &&
+      Max[Abs[N[(#^2 + 10^-40) (# - 1), 60] & /@ roots]] < 10^-55
+  ],
+  True,
+  TestID -> "clustered-conjugate-root-count-and-residual"
+]
+
+VerificationTest[
   FullSimplify[
     Exp[Log[x]],
     Assumptions -> Element[x, Reals] && x > 0

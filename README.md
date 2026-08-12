@@ -162,7 +162,7 @@ fully evaluated copy is serialized, reopened, and replayed during generation.
 
 The last recorded strict Windows host suite passes 45/45. The current WSL GCC
 and combined ASan/UBSan/leak suites pass 48/48, and the assertion-bearing
-executables contain 458,095 explicit checks. The context-sensitive CAS menu is
+executables contain 475,909 explicit checks. The context-sensitive CAS menu is
 also checked against the authoritative evaluator and source-command registries:
 every supported operation is discoverable through its ten scrollable
 categories.

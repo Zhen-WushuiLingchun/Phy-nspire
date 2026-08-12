@@ -411,16 +411,20 @@ points. They evaluate exact arithmetic, constants, integer powers, principal
 square roots/logarithms, trigonometric/hyperbolic functions and their inverses
 through exact rational real or rectangular complex balls. Bounded complex
 `Erf`/`Erfc` and `Gamma`/`LogGamma`/`Digamma` are included. Real results use
-`Around[midpoint,radius]`; non-real
-results use `ComplexAround[real_ball,imaginary_ball]`. Requested precision is
-capped at 36 decimal digits.
+`Around[midpoint,radius,digits]`; non-real results use
+`ComplexAround[real_ball,imaginary_ball]`. Every real component is published
+only after an exact rational proof of
+`radius <= 10^-digits max(1,abs(midpoint))`; up to three bounded attempts may
+tighten an enclosure. Requested precision is capped at 36 decimal digits.
 `phy_cas_nsolve`/`NSolve[equation,x]` isolates every real root of a bounded
 univariate rational polynomial by exact Sturm arithmetic when all roots are
 real. Otherwise, an exact quadratic fast path or rational Durand--Kerner
 candidates plus exact Pellet--Rouche tests certify one root per disjoint
 rectangle and prove completeness by the square-free degree. Every branch is
-checked against the reduced denominator. Degree is capped at 48 and candidate
-iterations at 64; multivariate numerical solving remains unsupported.
+checked against the reduced denominator. Degree is capped at 48; clustered
+roots may use four bounded 16-bit certification levels with at most 64
+candidate iterations per level. Multivariate numerical solving remains
+unsupported.
 
 ### Why trigonometry is reduced, and to what
 

@@ -6,6 +6,8 @@
 #define COMPLEX_ROOT_MAX_DEGREE 48u
 #define COMPLEX_ROOT_MAX_ITERATIONS 64u
 #define COMPLEX_ROOT_GUARD_BITS 8u
+#define COMPLEX_ROOT_MAX_ESCALATIONS 4u
+#define COMPLEX_ROOT_ESCALATION_BITS 16u
 
 static void destroy_bigrat(phy_bigrat *value)
 {
@@ -675,55 +677,85 @@ phy_status phy_complex_roots_isolate(
         status = cauchy_radius(exact, coefficients, coefficient_count,
                                &enclosure);
     }
-    if (status == PHY_OK) {
-        status = seed_centers(exact, &enclosure, degree, centers);
-    }
-    const uint32_t point_bits =
-        bits > UINT32_MAX - COMPLEX_ROOT_GUARD_BITS
-            ? UINT32_MAX
-            : bits + COMPLEX_ROOT_GUARD_BITS;
-    if (status == PHY_OK) status = dyadic_epsilon(exact, bits, &radius);
     bool certified = false;
-    for (uint32_t iteration = 0u;
-         status == PHY_OK && iteration < COMPLEX_ROOT_MAX_ITERATIONS;
-         ++iteration) {
-        /*
-         * Coarse Durand--Kerner iterates do not benefit from carrying the
-         * final dyadic precision.  Raising it gradually avoids spending most
-         * of the exact-operation budget on the deliberately rough starting
-         * polygon.  The result remains certified by the exact Pellet/Rouche
-         * test below; these iterates are only candidate centres.
-         */
-        const uint32_t adaptive_bits =
-            iteration > (UINT32_MAX - 24u) / 8u
-                ? UINT32_MAX
-                : 24u + iteration * 8u;
-        const uint32_t iteration_bits =
-            adaptive_bits < point_bits ? adaptive_bits : point_bits;
-        status = durand_kerner_step(exact, coefficients, coefficient_count,
-                                    centers, next, iteration_bits);
+    bool reseed_centers = true;
+    uint32_t certificate_bits = bits;
+    for (uint32_t escalation = 0u;
+         status == PHY_OK && !certified &&
+         escalation < COMPLEX_ROOT_MAX_ESCALATIONS; ++escalation) {
+        /* The first level is the economical requested-precision attempt.  A
+           coarse grid may collapse a close conjugate pair; that is a signal
+           to reseed once on the full fallback grid.  Later levels retain
+           those high-precision centres while their exact certificate boxes
+           shrink, but never treat the approximations as authority. */
+        if (reseed_centers) {
+            status = seed_centers(exact, &enclosure, degree, centers);
+            reseed_centers = false;
+        }
         if (status == PHY_OK) {
-            for (size_t index = 0u; index < degree; ++index) {
-                status = phy_gaussian_copy(&next[index], &centers[index]);
-                if (status != PHY_OK) break;
+            status = dyadic_epsilon(exact, certificate_bits, &radius);
+        }
+        const uint32_t remaining_span = escalation == 0u
+            ? 0u
+            : (COMPLEX_ROOT_MAX_ESCALATIONS - escalation - 1u) *
+                  COMPLEX_ROOT_ESCALATION_BITS;
+        const uint32_t solve_bits =
+            certificate_bits >
+                    UINT32_MAX - remaining_span - COMPLEX_ROOT_GUARD_BITS
+                ? UINT32_MAX
+                : certificate_bits + remaining_span +
+                      COMPLEX_ROOT_GUARD_BITS;
+        for (uint32_t iteration = 0u;
+             status == PHY_OK && !certified &&
+             iteration < COMPLEX_ROOT_MAX_ITERATIONS; ++iteration) {
+            status = durand_kerner_step(
+                exact, coefficients, coefficient_count, centers, next,
+                solve_bits);
+            if (status == PHY_OK) {
+                for (size_t index = 0u; index < degree; ++index) {
+                    status = phy_gaussian_copy(
+                        &next[index], &centers[index]);
+                    if (status != PHY_OK) break;
+                }
+            }
+            if (status != PHY_OK || iteration < 3u ||
+                (iteration & 3u) != 3u) {
+                continue;
+            }
+            bool disjoint = false;
+            status = boxes_disjoint(
+                exact, centers, degree, &radius, &disjoint);
+            if (status != PHY_OK || !disjoint) continue;
+            certified = true;
+            for (size_t index = 0u;
+                 status == PHY_OK && certified && index < degree; ++index) {
+                bool one = false;
+                status = pellet_one(
+                    exact, coefficients, coefficient_count, &centers[index],
+                    &radius, &one);
+                certified = one;
             }
         }
-        if (status != PHY_OK || iteration_bits != point_bits ||
-            iteration < 3u || (iteration & 3u) != 3u) {
-            continue;
+        if (status == PHY_ERR_DOMAIN &&
+            escalation + 1u < COMPLEX_ROOT_MAX_ESCALATIONS) {
+            status = PHY_OK;
+            reseed_centers = true;
         }
-        bool disjoint = false;
-        status = boxes_disjoint(exact, centers, degree, &radius, &disjoint);
-        if (status != PHY_OK || !disjoint) continue;
-        certified = true;
-        for (size_t index = 0u;
-             status == PHY_OK && certified && index < degree; ++index) {
-            bool one = false;
-            status = pellet_one(exact, coefficients, coefficient_count,
-                                &centers[index], &radius, &one);
-            certified = one;
+        if (status == PHY_OK && !certified && escalation == 0u) {
+            /* The first failed level used the economical requested-precision
+               grid.  Reseed once on the full fallback grid; later levels
+               retain those centers so close roots receive more convergence
+               iterations while their certificate boxes shrink. */
+            reseed_centers = true;
         }
-        if (status == PHY_OK && certified) break;
+        if (status == PHY_OK && !certified &&
+            escalation + 1u < COMPLEX_ROOT_MAX_ESCALATIONS) {
+            certificate_bits =
+                certificate_bits >
+                        UINT32_MAX - COMPLEX_ROOT_ESCALATION_BITS
+                    ? UINT32_MAX
+                    : certificate_bits + COMPLEX_ROOT_ESCALATION_BITS;
+        }
     }
     if (status == PHY_OK && !certified) status = PHY_ERR_TERM_LIMIT;
     if (status == PHY_OK) {

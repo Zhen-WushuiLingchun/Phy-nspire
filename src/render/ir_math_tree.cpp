@@ -157,6 +157,180 @@ void increment_decimal_ulp(std::string& value)
     value.insert(value.begin(), '1');
 }
 
+void increment_unsigned_integer(std::string& value)
+{
+    for (std::size_t index = value.size(); index != 0U;) {
+        --index;
+        if (value[index] != '9') {
+            value[index]++;
+            return;
+        }
+        value[index] = '0';
+    }
+    value.insert(value.begin(), '1');
+}
+
+void divide_unsigned_decimal(std::string_view numerator,
+                             std::string_view denominator,
+                             std::string& quotient,
+                             std::string& remainder)
+{
+    quotient.clear();
+    remainder = "0";
+    const std::string divisor =
+        trim_unsigned_decimal(std::string(denominator));
+    for (char input : numerator) {
+        if (remainder == "0") remainder.clear();
+        remainder.push_back(input);
+        remainder = trim_unsigned_decimal(std::move(remainder));
+        quotient.push_back(divide_decimal_digit(remainder, divisor));
+    }
+    quotient = trim_unsigned_decimal(std::move(quotient));
+}
+
+std::int64_t rational_decimal_exponent(std::string numerator,
+                                       std::string denominator)
+{
+    numerator = trim_unsigned_decimal(std::move(numerator));
+    denominator = trim_unsigned_decimal(std::move(denominator));
+    if (numerator == "0") return 0;
+    std::int64_t exponent =
+        static_cast<std::int64_t>(numerator.size()) -
+        static_cast<std::int64_t>(denominator.size());
+    if (exponent >= 0) {
+        std::string threshold = denominator;
+        threshold.append(static_cast<std::size_t>(exponent), '0');
+        if (compare_unsigned_decimal(numerator, threshold) < 0) --exponent;
+    } else {
+        std::string scaled = numerator;
+        scaled.append(static_cast<std::size_t>(-exponent), '0');
+        if (compare_unsigned_decimal(scaled, denominator) < 0) --exponent;
+    }
+    return exponent;
+}
+
+struct SignificantDecimal {
+    std::string text;
+    std::int64_t unit_exponent = 0;
+    bool inexact = false;
+};
+
+SignificantDecimal rational_significant_decimal(
+    std::string_view numerator_view, std::string_view denominator_view,
+    std::size_t digits)
+{
+    SignificantDecimal result;
+    bool negative = false;
+    if (!numerator_view.empty() && numerator_view.front() == '-') {
+        negative = true;
+        numerator_view.remove_prefix(1U);
+    }
+    std::string numerator =
+        trim_unsigned_decimal(std::string(numerator_view));
+    std::string denominator =
+        trim_unsigned_decimal(std::string(denominator_view));
+    if (numerator == "0") {
+        result.text = "0";
+        result.unit_exponent = -static_cast<std::int64_t>(digits);
+        return result;
+    }
+    const std::int64_t exponent =
+        rational_decimal_exponent(numerator, denominator);
+    result.unit_exponent =
+        exponent - static_cast<std::int64_t>(digits) + 1;
+    const bool scientific =
+        exponent < -4 || exponent >= static_cast<std::int64_t>(digits);
+    if (scientific) {
+        if (exponent >= 0) {
+            denominator.append(static_cast<std::size_t>(exponent), '0');
+        } else {
+            numerator.append(static_cast<std::size_t>(-exponent), '0');
+        }
+        result.text = rational_decimal(
+            numerator, denominator, digits - 1U, result.inexact);
+        result.text.append("e");
+        result.text.append(std::to_string(exponent));
+    } else {
+        const std::size_t fractional = static_cast<std::size_t>(
+            static_cast<std::int64_t>(digits) - exponent - 1);
+        result.text = rational_decimal(
+            numerator, denominator, fractional, result.inexact);
+    }
+    if (negative && result.text != "0") result.text.insert(0U, 1U, '-');
+    return result;
+}
+
+std::string scaled_integer_decimal(std::string coefficient,
+                                   std::int64_t power,
+                                   std::size_t digits)
+{
+    coefficient = trim_unsigned_decimal(std::move(coefficient));
+    if (coefficient == "0") return "0";
+    if (coefficient.size() > digits) {
+        const std::size_t dropped = coefficient.size() - digits;
+        const bool discarded_nonzero =
+            coefficient.find_first_not_of('0', digits) != std::string::npos;
+        coefficient.resize(digits);
+        if (discarded_nonzero) increment_unsigned_integer(coefficient);
+        power += static_cast<std::int64_t>(dropped);
+    }
+    while (coefficient.size() > 1U && coefficient.back() == '0') {
+        coefficient.pop_back();
+        ++power;
+    }
+    const std::int64_t exponent =
+        static_cast<std::int64_t>(coefficient.size()) - 1 + power;
+    if (exponent < -4 || exponent >= static_cast<std::int64_t>(digits)) {
+        std::string text(1U, coefficient.front());
+        if (coefficient.size() > 1U) {
+            text.push_back('.');
+            text.append(coefficient.data() + 1U, coefficient.size() - 1U);
+        }
+        text.push_back('e');
+        text.append(std::to_string(exponent));
+        return text;
+    }
+    if (power >= 0) {
+        coefficient.append(static_cast<std::size_t>(power), '0');
+        return coefficient;
+    }
+    const std::int64_t point =
+        static_cast<std::int64_t>(coefficient.size()) + power;
+    if (point > 0) {
+        coefficient.insert(static_cast<std::size_t>(point), 1U, '.');
+        return coefficient;
+    }
+    std::string text("0.");
+    text.append(static_cast<std::size_t>(-point), '0');
+    text.append(coefficient);
+    return text;
+}
+
+std::string outward_radius_decimal(
+    std::string_view numerator_view, std::string_view denominator_view,
+    std::int64_t unit_exponent, std::size_t digits,
+    bool midpoint_inexact)
+{
+    std::string numerator =
+        trim_unsigned_decimal(std::string(numerator_view));
+    std::string denominator =
+        trim_unsigned_decimal(std::string(denominator_view));
+    if (unit_exponent >= 0) {
+        denominator.append(
+            static_cast<std::size_t>(unit_exponent), '0');
+    } else {
+        numerator.append(static_cast<std::size_t>(-unit_exponent), '0');
+    }
+    std::string coefficient;
+    std::string remainder;
+    divide_unsigned_decimal(
+        numerator, denominator, coefficient, remainder);
+    if (remainder != "0") increment_unsigned_integer(coefficient);
+    if (midpoint_inexact) increment_unsigned_integer(coefficient);
+    return scaled_integer_decimal(
+        coefficient, unit_exponent, digits);
+}
+
 std::string_view display_symbol(std::string_view name)
 {
     struct Mapping {
@@ -266,7 +440,7 @@ public:
     }
 
 private:
-    static constexpr std::size_t kBallDisplayDigits = 10U;
+    static constexpr std::size_t kLegacyBallDisplayDigits = 10U;
 
     void fail(const char *message)
     {
@@ -591,26 +765,46 @@ private:
     }
 
     bool around_parts(phy_ir_ref expression, phy_ir_exact_view& midpoint,
-                      phy_ir_exact_view& radius) const
+                      phy_ir_exact_view& radius, std::size_t& digits,
+                      bool& precision_bearing) const
     {
         const char *head = phy_ir_symbol_name(
             context_, phy_ir_head(context_, expression));
-        return phy_ir_kind_of(context_, expression) == PHY_IR_FUNCTION &&
-               head != nullptr && std::string_view(head) == "Around" &&
-               phy_ir_child_count(context_, expression) == 2U &&
-               phy_ir_exact_decimal_view(
-                   context_, phy_ir_child(context_, expression, 0U),
-                   &midpoint) &&
-               phy_ir_exact_decimal_view(
-                   context_, phy_ir_child(context_, expression, 1U),
-                   &radius);
+        const std::size_t count = phy_ir_child_count(context_, expression);
+        if (phy_ir_kind_of(context_, expression) != PHY_IR_FUNCTION ||
+            head == nullptr || std::string_view(head) != "Around" ||
+            (count != 2U && count != 3U) ||
+            !phy_ir_exact_decimal_view(
+                context_, phy_ir_child(context_, expression, 0U),
+                &midpoint) ||
+            !phy_ir_exact_decimal_view(
+                context_, phy_ir_child(context_, expression, 1U),
+                &radius)) {
+            return false;
+        }
+        precision_bearing = count == 3U;
+        digits = kLegacyBallDisplayDigits;
+        if (precision_bearing) {
+            int64_t requested = 0;
+            if (!phy_ir_integer_value(
+                    context_, phy_ir_child(context_, expression, 2U),
+                    &requested) || requested < 1 || requested > 36) {
+                return false;
+            }
+            digits = static_cast<std::size_t>(requested);
+        }
+        return true;
     }
 
     MathNodeId decimal_around(phy_ir_ref expression, bool magnitude = false)
     {
         phy_ir_exact_view midpoint{};
         phy_ir_exact_view radius{};
-        if (!around_parts(expression, midpoint, radius)) {
+        std::size_t digits = 0U;
+        bool precision_bearing = false;
+        if (!around_parts(
+                expression, midpoint, radius, digits,
+                precision_bearing)) {
             return kInvalidMathNode;
         }
         std::string_view midpoint_numerator(
@@ -620,21 +814,41 @@ private:
             midpoint_numerator.remove_prefix(1U);
         }
         bool midpoint_inexact = false;
-        bool radius_inexact = false;
-        std::string midpoint_text = rational_decimal(
-            midpoint_numerator,
-            std::string_view(
-                midpoint.denominator, midpoint.denominator_length),
-            kBallDisplayDigits, midpoint_inexact);
-        std::string radius_text = rational_decimal(
-            std::string_view(radius.numerator, radius.numerator_length),
-            std::string_view(radius.denominator, radius.denominator_length),
-            kBallDisplayDigits, radius_inexact);
-        /* Truncating the midpoint moves it by less than one displayed ulp.
-           Add that ulp to the outward-rounded radius. */
-        if (radius_inexact) increment_decimal_ulp(radius_text);
-        increment_decimal_ulp(radius_text);
-        (void)midpoint_inexact;
+        std::string midpoint_text;
+        std::string radius_text;
+        if (precision_bearing) {
+            SignificantDecimal midpoint_decimal =
+                rational_significant_decimal(
+                    midpoint_numerator,
+                    std::string_view(
+                        midpoint.denominator,
+                        midpoint.denominator_length),
+                    digits);
+            midpoint_inexact = midpoint_decimal.inexact;
+            midpoint_text = std::move(midpoint_decimal.text);
+            radius_text = outward_radius_decimal(
+                std::string_view(
+                    radius.numerator, radius.numerator_length),
+                std::string_view(
+                    radius.denominator, radius.denominator_length),
+                midpoint_decimal.unit_exponent, digits,
+                midpoint_inexact);
+        } else {
+            bool radius_inexact = false;
+            midpoint_text = rational_decimal(
+                midpoint_numerator,
+                std::string_view(
+                    midpoint.denominator, midpoint.denominator_length),
+                digits, midpoint_inexact);
+            radius_text = rational_decimal(
+                std::string_view(
+                    radius.numerator, radius.numerator_length),
+                std::string_view(
+                    radius.denominator, radius.denominator_length),
+                digits, radius_inexact);
+            if (radius_inexact) increment_decimal_ulp(radius_text);
+            increment_decimal_ulp(radius_text);
+        }
         return row({
             text(MathNodeKind::Symbol, display_decimal(midpoint_text)),
             text(MathNodeKind::Symbol, u8"±", AtomClass::Binary),
@@ -1102,7 +1316,7 @@ private:
                         depth + 1U, 0),
                 });
             }
-            if (head_name == "Around" && count == 2U) {
+            if (head_name == "Around" && (count == 2U || count == 3U)) {
                 const MathNodeId decimal = decimal_around(expression);
                 if (decimal != kInvalidMathNode) return decimal;
                 return row({build(phy_ir_child(context_, expression, 0U),
@@ -1117,9 +1331,12 @@ private:
                     phy_ir_child(context_, expression, 1U);
                 phy_ir_exact_view imaginary_midpoint{};
                 phy_ir_exact_view imaginary_radius{};
+                std::size_t imaginary_digits = 0U;
+                bool imaginary_precision = false;
                 const bool negative_imaginary =
                     around_parts(imaginary, imaginary_midpoint,
-                                 imaginary_radius) &&
+                                 imaginary_radius, imaginary_digits,
+                                 imaginary_precision) &&
                     imaginary_midpoint.numerator_length != 0U &&
                     imaginary_midpoint.numerator[0] == '-';
                 MathNodeId imaginary_value =

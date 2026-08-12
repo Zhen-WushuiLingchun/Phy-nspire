@@ -11,6 +11,7 @@
 #define BALL_DEFAULT_DECIMAL_DIGITS 16u
 #define BALL_MAX_POLYNOMIAL_DEGREE 48u
 #define BALL_EXACT_STEP_MULTIPLIER 64u
+#define BALL_PRECISION_ATTEMPTS 3u
 
 static const char kDecimalScale40[] =
     "10000000000000000000000000000000000000000";
@@ -43,6 +44,89 @@ static void destroy_bigrat(phy_bigrat *value)
     if (phy_bigint_is_initialized(phy_bigrat_numerator(value))) {
         phy_bigrat_destroy(value);
     }
+}
+
+static phy_status decimal_unit(phy_exact_context *exact, unsigned digits,
+                               phy_bigrat *out)
+{
+    phy_bigint ten = {0};
+    phy_bigint power = {0};
+    phy_bigrat scale = {0};
+    phy_status status = phy_bigint_init(exact, &ten);
+    if (status == PHY_OK) status = phy_bigint_init(exact, &power);
+    if (status == PHY_OK) status = phy_bigrat_init(exact, &scale);
+    if (status == PHY_OK) status = phy_bigint_set_i64(&ten, 10);
+    if (status == PHY_OK) status = phy_bigint_pow_u32(&ten, digits, &power);
+    if (status == PHY_OK) status = phy_bigrat_set_bigint(&power, &scale);
+    if (status == PHY_OK) status = phy_bigrat_set_i64(out, 1, 1);
+    if (status == PHY_OK) status = phy_bigrat_divide(out, &scale, out);
+    destroy_bigrat(&scale);
+    if (phy_bigint_is_initialized(&power)) phy_bigint_destroy(&power);
+    if (phy_bigint_is_initialized(&ten)) phy_bigint_destroy(&ten);
+    return status;
+}
+
+/* Checked mixed significant-digit contract used by every numerical entry
+   point: radius <= 10^-digits max(1, |midpoint|).  All comparisons remain in
+   Q; this predicate never estimates the accuracy through floating point. */
+static phy_status ball_meets_precision(const phy_real_ball *ball,
+                                       unsigned digits, bool *out_meets)
+{
+    if (ball == NULL || out_meets == NULL || digits == 0u) {
+        return PHY_ERR_INVALID_ARGUMENT;
+    }
+    *out_meets = false;
+    phy_exact_context *exact =
+        phy_bigrat_numerator(&ball->midpoint)->context;
+    phy_bigrat magnitude = {0};
+    phy_bigrat one = {0};
+    phy_bigrat unit = {0};
+    phy_bigrat tolerance = {0};
+    phy_status status = phy_bigrat_init(exact, &magnitude);
+    if (status == PHY_OK) status = phy_bigrat_init(exact, &one);
+    if (status == PHY_OK) status = phy_bigrat_init(exact, &unit);
+    if (status == PHY_OK) status = phy_bigrat_init(exact, &tolerance);
+    if (status == PHY_OK) {
+        status = phy_bigrat_sign(&ball->midpoint) < 0
+                     ? phy_bigrat_negate(&ball->midpoint, &magnitude)
+                     : phy_bigrat_copy(&ball->midpoint, &magnitude);
+    }
+    if (status == PHY_OK) status = phy_bigrat_set_i64(&one, 1, 1);
+    int order = 0;
+    if (status == PHY_OK) {
+        status = phy_bigrat_compare(&magnitude, &one, &order);
+    }
+    if (status == PHY_OK && order < 0) {
+        status = phy_bigrat_copy(&one, &magnitude);
+    }
+    if (status == PHY_OK) status = decimal_unit(exact, digits, &unit);
+    if (status == PHY_OK) {
+        status = phy_bigrat_multiply(&magnitude, &unit, &tolerance);
+    }
+    if (status == PHY_OK) {
+        status = phy_bigrat_compare(&ball->radius, &tolerance, &order);
+    }
+    if (status == PHY_OK) *out_meets = order <= 0;
+    destroy_bigrat(&tolerance);
+    destroy_bigrat(&unit);
+    destroy_bigrat(&one);
+    destroy_bigrat(&magnitude);
+    return status;
+}
+
+static phy_status complex_ball_meets_precision(
+    const phy_complex_ball *ball, unsigned digits, bool *out_meets)
+{
+    bool real_meets = false;
+    bool imaginary_meets = false;
+    phy_status status = ball_meets_precision(
+        &ball->real, digits, &real_meets);
+    if (status == PHY_OK) {
+        status = ball_meets_precision(
+            &ball->imaginary, digits, &imaginary_meets);
+    }
+    if (status == PHY_OK) *out_meets = real_meets && imaginary_meets;
+    return status;
 }
 
 static phy_status ball_set_interval_text(phy_real_ball *ball,
@@ -454,9 +538,10 @@ static phy_status eval_complex_ball_node(
 }
 
 static phy_status publish_ball(phy_cas *cas, const phy_real_ball *ball,
+                               unsigned decimal_digits,
                                phy_ir_ref *out_ref)
 {
-    phy_ir_ref arguments[2] = {PHY_IR_NULL, PHY_IR_NULL};
+    phy_ir_ref arguments[3] = {PHY_IR_NULL, PHY_IR_NULL, PHY_IR_NULL};
     phy_status status = phy_cas_exact_publish_bigrat(
         cas, &ball->midpoint, &arguments[0]);
     if (status == PHY_OK) {
@@ -464,8 +549,12 @@ static phy_status publish_ball(phy_cas *cas, const phy_real_ball *ball,
             cas, &ball->radius, &arguments[1]);
     }
     if (status == PHY_OK) {
+        arguments[2] = phy_ir_integer(cas->ir, (int64_t)decimal_digits);
+        if (arguments[2] == PHY_IR_NULL) status = phy_cas_ir_failure(cas);
+    }
+    if (status == PHY_OK) {
         const phy_ir_symbol around = phy_ir_intern(cas->ir, "Around");
-        *out_ref = phy_ir_function(cas->ir, around, arguments, 2u);
+        *out_ref = phy_ir_function(cas->ir, around, arguments, 3u);
         if (*out_ref == PHY_IR_NULL) {
             status = phy_cas_ir_failure(cas);
         }
@@ -475,16 +564,19 @@ static phy_status publish_ball(phy_cas *cas, const phy_real_ball *ball,
 
 static phy_status publish_complex_ball(phy_cas *cas,
                                        const phy_complex_ball *ball,
+                                       unsigned decimal_digits,
                                        phy_ir_ref *out_ref)
 {
     if (phy_bigrat_sign(&ball->imaginary.midpoint) == 0 &&
         phy_bigrat_sign(&ball->imaginary.radius) == 0) {
-        return publish_ball(cas, &ball->real, out_ref);
+        return publish_ball(cas, &ball->real, decimal_digits, out_ref);
     }
     phy_ir_ref arguments[2] = {PHY_IR_NULL, PHY_IR_NULL};
-    phy_status status = publish_ball(cas, &ball->real, &arguments[0]);
+    phy_status status = publish_ball(
+        cas, &ball->real, decimal_digits, &arguments[0]);
     if (status == PHY_OK) {
-        status = publish_ball(cas, &ball->imaginary, &arguments[1]);
+        status = publish_ball(
+            cas, &ball->imaginary, decimal_digits, &arguments[1]);
     }
     if (status == PHY_OK) {
         const phy_ir_symbol complex_around =
@@ -517,37 +609,64 @@ phy_status phy_cas_n(phy_cas *cas, phy_ir_ref expression,
     }
     phy_cas_begin(cas);
     phy_exact_context *exact = ball_exact_operation_context(cas);
-    if (exact == NULL) {
-        return PHY_ERR_OUT_OF_MEMORY;
+    if (exact == NULL) return PHY_ERR_OUT_OF_MEMORY;
+    uint32_t rounds = decimal_digits * 4u + 8u;
+    bool precise = false;
+    for (unsigned attempt = 0u;
+         status == PHY_OK && attempt < BALL_PRECISION_ATTEMPTS && !precise;
+         ++attempt) {
+        phy_real_ball value = {0};
+        status = phy_real_ball_init(exact, &value);
+        if (status == PHY_OK) {
+            status = eval_ball_node(
+                cas, exact, simplified, PHY_IR_NULL, NULL, rounds, &value);
+        }
+        if (status == PHY_OK) {
+            status = ball_meets_precision(&value, decimal_digits, &precise);
+        }
+        if (status == PHY_OK && precise) {
+            status = publish_ball(
+                cas, &value, decimal_digits, out_ref);
+        }
+        phy_real_ball_destroy(&value);
+        if (status == PHY_OK && !precise) {
+            rounds = rounds > UINT32_MAX / 2u ? UINT32_MAX : rounds * 2u;
+        }
     }
-    phy_real_ball value;
-    memset(&value, 0, sizeof value);
-    status = phy_real_ball_init(exact, &value);
-    if (status == PHY_OK) {
-        status = eval_ball_node(
-            cas, exact, simplified, PHY_IR_NULL, NULL,
-            decimal_digits * 4u + 8u, &value);
-    }
-    if (status == PHY_OK) status = publish_ball(cas, &value, out_ref);
-    phy_real_ball_destroy(&value);
     phy_exact_context_destroy(exact);
+    if (status == PHY_OK && !precise) status = PHY_ERR_TERM_LIMIT;
     if (status == PHY_ERR_UNSUPPORTED || status == PHY_ERR_DOMAIN) {
-        phy_cas_begin(cas);
         exact = ball_exact_operation_context(cas);
         if (exact == NULL) return PHY_ERR_OUT_OF_MEMORY;
-        phy_complex_ball complex_value;
-        memset(&complex_value, 0, sizeof complex_value);
-        status = phy_complex_ball_init(exact, &complex_value);
-        if (status == PHY_OK) {
-            status = eval_complex_ball_node(
-                cas, exact, simplified, PHY_IR_NULL, NULL,
-                decimal_digits * 4u + 8u, &complex_value);
+        status = PHY_OK;
+        precise = false;
+        rounds = decimal_digits * 4u + 8u;
+        for (unsigned attempt = 0u;
+             status == PHY_OK && attempt < BALL_PRECISION_ATTEMPTS &&
+             !precise; ++attempt) {
+            phy_complex_ball complex_value = {0};
+            status = phy_complex_ball_init(exact, &complex_value);
+            if (status == PHY_OK) {
+                status = eval_complex_ball_node(
+                    cas, exact, simplified, PHY_IR_NULL, NULL,
+                    rounds, &complex_value);
+            }
+            if (status == PHY_OK) {
+                status = complex_ball_meets_precision(
+                    &complex_value, decimal_digits, &precise);
+            }
+            if (status == PHY_OK && precise) {
+                status = publish_complex_ball(
+                    cas, &complex_value, decimal_digits, out_ref);
+            }
+            phy_complex_ball_destroy(&complex_value);
+            if (status == PHY_OK && !precise) {
+                rounds = rounds > UINT32_MAX / 2u
+                             ? UINT32_MAX : rounds * 2u;
+            }
         }
-        if (status == PHY_OK) {
-            status = publish_complex_ball(cas, &complex_value, out_ref);
-        }
-        phy_complex_ball_destroy(&complex_value);
         phy_exact_context_destroy(exact);
+        if (status == PHY_OK && !precise) status = PHY_ERR_TERM_LIMIT;
     }
     return status;
 }
@@ -884,7 +1003,14 @@ static phy_status nsolve_complex_quadratic(
         }
         phy_ir_ref around = PHY_IR_NULL;
         if (status == PHY_OK) {
-            status = publish_complex_ball(cas, &roots[index], &around);
+            bool precise = false;
+            status = complex_ball_meets_precision(
+                &roots[index], decimal_digits, &precise);
+            if (status == PHY_OK && !precise) status = PHY_ERR_TERM_LIMIT;
+            if (status == PHY_OK) {
+                status = publish_complex_ball(
+                    cas, &roots[index], decimal_digits, &around);
+            }
         }
         if (status == PHY_OK) {
             const phy_ir_ref rule_arguments[2] = {variable, around};
@@ -976,7 +1102,14 @@ static phy_status nsolve_general_complex(
         }
         phy_ir_ref around = PHY_IR_NULL;
         if (status == PHY_OK) {
-            status = publish_complex_ball(cas, &roots[index], &around);
+            bool precise = false;
+            status = complex_ball_meets_precision(
+                &roots[index], decimal_digits, &precise);
+            if (status == PHY_OK && !precise) status = PHY_ERR_TERM_LIMIT;
+            if (status == PHY_OK) {
+                status = publish_complex_ball(
+                    cas, &roots[index], decimal_digits, &around);
+            }
         }
         if (status == PHY_OK) {
             const phy_ir_ref rule_arguments[2] = {variable, around};
@@ -1129,10 +1262,18 @@ phy_status phy_cas_nsolve(phy_cas *cas, phy_ir_ref equation,
         if (status == PHY_OK) {
             status = phy_real_ball_init(exact, &denominator_ball);
         }
-        if (status == PHY_OK) {
+        bool precise = false;
+        for (unsigned attempt = 0u;
+             status == PHY_OK && attempt < BALL_PRECISION_ATTEMPTS &&
+             !precise; ++attempt) {
             status = algebraic_value_ball(
                 cas, roots[index], exact, decimal_digits, &root_ball);
+            if (status == PHY_OK) {
+                status = ball_meets_precision(
+                    &root_ball, decimal_digits, &precise);
+            }
         }
+        if (status == PHY_OK && !precise) status = PHY_ERR_TERM_LIMIT;
         if (status == PHY_OK) {
             status = eval_ball_node(
                 cas, exact, denominator, variable, &root_ball,
@@ -1148,7 +1289,8 @@ phy_status phy_cas_nsolve(phy_cas *cas, phy_ir_ref equation,
         }
         phy_ir_ref around = PHY_IR_NULL;
         if (status == PHY_OK) {
-            status = publish_ball(cas, &root_ball, &around);
+            status = publish_ball(
+                cas, &root_ball, decimal_digits, &around);
         }
         if (status == PHY_OK) {
             const phy_ir_ref rule_arguments[2] = {variable, around};

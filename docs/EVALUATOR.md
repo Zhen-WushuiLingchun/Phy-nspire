@@ -530,7 +530,7 @@ its configured arenas.
 
 ## Verification
 
-`tests/test_eval.c`, 3,011 checks. The physics cases deliberately reproduce,
+`tests/test_eval.c`, 3,187 checks. The physics cases deliberately reproduce,
 through reader-facing source, results the backend suites already certify
 directly:
 

@@ -180,7 +180,7 @@ extended work rather than appending a long calculation to the acceptance tour.
 - `test_modifier`: 8 checks over tapped and held Shift/Ctrl behavior;
 - `tests/fixtures/notebook_frame.digest`: bit-exact 320 × 240 host fixture;
 - last strict Windows baseline: 45/45; current WSL GCC, ASan/leak, and UBSan
-  suites: 48/48 each; 458,095 explicit checks;
+  suites: 48/48 each; 475,909 explicit checks;
 - Ndless r2022 ARM build: 1,252,366 bytes. The evaluator probe retains 17/17
   public APIs behind the complete physics stack and imports no forbidden
   float/libm/soft-float helper.

@@ -17,6 +17,7 @@
 #include <string.h>
 
 #include "phy/cas.h"
+#include "phy/exact.h"
 #include "phy/ir.h"
 #include "phy/platform.h"
 #include "phy/platform_host.h"
@@ -71,6 +72,113 @@ static const char *render(phy_ir_context *ir, phy_ir_ref ref)
         return "<write failed>";
     }
     return g_text;
+}
+
+static void expect_around_digits(phy_ir_context *ir, phy_ir_ref around,
+                                 int64_t expected_digits)
+{
+    PHY_CHECK_EQ_STR(
+        phy_ir_symbol_name(ir, phy_ir_head(ir, around)), "Around");
+    PHY_CHECK_EQ_INT(phy_ir_child_count(ir, around), 3u);
+    int64_t digits = 0;
+    PHY_CHECK(phy_ir_integer_value(
+        ir, phy_ir_child(ir, around, 2u), &digits));
+    PHY_CHECK_EQ_INT(digits, expected_digits);
+
+    phy_ir_exact_view midpoint_view;
+    phy_ir_exact_view radius_view;
+    PHY_CHECK(phy_ir_exact_decimal_view(
+        ir, phy_ir_child(ir, around, 0u), &midpoint_view));
+    PHY_CHECK(phy_ir_exact_decimal_view(
+        ir, phy_ir_child(ir, around, 1u), &radius_view));
+    char midpoint_numerator[256];
+    char midpoint_denominator[256];
+    char radius_numerator[256];
+    char radius_denominator[256];
+    PHY_CHECK(midpoint_view.numerator_length < sizeof midpoint_numerator);
+    PHY_CHECK(midpoint_view.denominator_length < sizeof midpoint_denominator);
+    PHY_CHECK(radius_view.numerator_length < sizeof radius_numerator);
+    PHY_CHECK(radius_view.denominator_length < sizeof radius_denominator);
+    memcpy(midpoint_numerator, midpoint_view.numerator,
+           midpoint_view.numerator_length);
+    midpoint_numerator[midpoint_view.numerator_length] = '\0';
+    memcpy(midpoint_denominator, midpoint_view.denominator,
+           midpoint_view.denominator_length);
+    midpoint_denominator[midpoint_view.denominator_length] = '\0';
+    memcpy(radius_numerator, radius_view.numerator,
+           radius_view.numerator_length);
+    radius_numerator[radius_view.numerator_length] = '\0';
+    memcpy(radius_denominator, radius_view.denominator,
+           radius_view.denominator_length);
+    radius_denominator[radius_view.denominator_length] = '\0';
+
+    phy_exact_context *exact = phy_exact_context_create(NULL);
+    PHY_CHECK(exact != NULL);
+    phy_bigrat midpoint = {0};
+    phy_bigrat radius = {0};
+    phy_bigrat magnitude = {0};
+    phy_bigrat unit = {0};
+    phy_bigrat bound = {0};
+    PHY_CHECK_EQ_INT(phy_bigrat_init(exact, &midpoint), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_bigrat_init(exact, &radius), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_bigrat_init(exact, &magnitude), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_bigrat_init(exact, &unit), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_bigrat_init(exact, &bound), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_bigrat_read(
+            &midpoint, midpoint_numerator, midpoint_denominator),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_bigrat_read(&radius, radius_numerator, radius_denominator),
+        PHY_OK);
+    if (phy_bigrat_sign(&midpoint) < 0) {
+        PHY_CHECK_EQ_INT(phy_bigrat_negate(&midpoint, &magnitude), PHY_OK);
+    } else {
+        PHY_CHECK_EQ_INT(phy_bigrat_copy(&midpoint, &magnitude), PHY_OK);
+    }
+    char decimal_denominator[64] = "1";
+    PHY_CHECK(expected_digits > 0 &&
+              (size_t)expected_digits + 1u < sizeof decimal_denominator);
+    memset(decimal_denominator + 1, '0', (size_t)expected_digits);
+    decimal_denominator[(size_t)expected_digits + 1u] = '\0';
+    PHY_CHECK_EQ_INT(
+        phy_bigrat_read(&unit, "1", decimal_denominator), PHY_OK);
+    phy_bigrat one = {0};
+    PHY_CHECK_EQ_INT(phy_bigrat_init(exact, &one), PHY_OK);
+    PHY_CHECK_EQ_INT(phy_bigrat_set_i64(&one, 1, 1), PHY_OK);
+    int comparison = 0;
+    PHY_CHECK_EQ_INT(
+        phy_bigrat_compare(&magnitude, &one, &comparison), PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_bigrat_multiply(
+            &unit, comparison < 0 ? &one : &magnitude, &bound),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(
+        phy_bigrat_compare(&radius, &bound, &comparison), PHY_OK);
+    PHY_CHECK(comparison <= 0);
+    phy_bigrat_destroy(&one);
+    phy_bigrat_destroy(&bound);
+    phy_bigrat_destroy(&unit);
+    phy_bigrat_destroy(&magnitude);
+    phy_bigrat_destroy(&radius);
+    phy_bigrat_destroy(&midpoint);
+    PHY_CHECK_EQ_INT(phy_exact_validate(exact), PHY_OK);
+    phy_exact_context_destroy(exact);
+}
+
+static void expect_numeric_digits(phy_ir_context *ir, phy_ir_ref value,
+                                  int64_t expected_digits)
+{
+    const char *head = phy_ir_symbol_name(ir, phy_ir_head(ir, value));
+    if (head != NULL && strcmp(head, "ComplexAround") == 0) {
+        PHY_CHECK_EQ_INT(phy_ir_child_count(ir, value), 2u);
+        expect_around_digits(
+            ir, phy_ir_child(ir, value, 0u), expected_digits);
+        expect_around_digits(
+            ir, phy_ir_child(ir, value, 1u), expected_digits);
+        return;
+    }
+    expect_around_digits(ir, value, expected_digits);
 }
 
 /* Simplify `text`, and report the normal form as serialized text. */
@@ -189,7 +297,8 @@ static void test_certified_numeric_ball_entry_points(void)
         phy_cas_n(f.cas, parse(f.ir, "(rat 1 3)"), 12u, &result),
         PHY_OK);
     PHY_CHECK_EQ_STR(
-        render(f.ir, result), "(fn Around (rat 1 3) 0)");
+        render(f.ir, result), "(fn Around (rat 1 3) 0 12)");
+    expect_numeric_digits(f.ir, result, 12);
 
     PHY_CHECK_EQ_INT(
         phy_cas_n(f.cas, parse(f.ir, "(^ 2 (rat 1 2))"), 36u, &result),
@@ -197,6 +306,7 @@ static void test_certified_numeric_ball_entry_points(void)
     PHY_CHECK_EQ_INT(phy_ir_kind_of(f.ir, result), PHY_IR_FUNCTION);
     PHY_CHECK_EQ_STR(
         phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, result)), "Around");
+    expect_numeric_digits(f.ir, result, 36);
     phy_ir_exact_view radius_view;
     PHY_CHECK(phy_ir_exact_decimal_view(
         f.ir, phy_ir_child(f.ir, result, 1u), &radius_view));
@@ -206,6 +316,17 @@ static void test_certified_numeric_ball_entry_points(void)
     PHY_CHECK(radius_view.numerator[0] != '-');
     PHY_CHECK(radius_view.denominator_length > 0u);
     PHY_CHECK(radius_view.denominator[0] != '-');
+
+    PHY_CHECK_EQ_INT(
+        phy_cas_n(f.cas, parse(f.ir, "Pi"), 30u, &result), PHY_OK);
+    expect_numeric_digits(f.ir, result, 30);
+    PHY_CHECK_EQ_INT(
+        phy_cas_n(
+            f.cas,
+            parse(f.ir, "(fn exp (+ (fn sin 1) (^ 2 (rat 1 2))))"),
+            20u, &result),
+        PHY_OK);
+    expect_numeric_digits(f.ir, result, 20);
 
     static const char *elementary[] = {
         "(fn exp 1)",
@@ -319,6 +440,7 @@ static void test_certified_numeric_ball_entry_points(void)
         PHY_CHECK_EQ_STR(
             phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, around)),
             "ComplexAround");
+        expect_numeric_digits(f.ir, around, 6);
     }
 
     PHY_CHECK_EQ_INT(
@@ -337,6 +459,7 @@ static void test_certified_numeric_ball_entry_points(void)
             phy_ir_symbol_name(
                 f.ir, phy_ir_head(f.ir, complex_around)),
             "ComplexAround");
+        expect_numeric_digits(f.ir, complex_around, 6);
     }
     PHY_CHECK_EQ_INT(
         phy_cas_nsolve(
@@ -351,6 +474,7 @@ static void test_certified_numeric_ball_entry_points(void)
         PHY_CHECK_EQ_STR(
             phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, around)),
             "ComplexAround");
+        expect_numeric_digits(f.ir, around, 8);
     }
     PHY_CHECK_EQ_INT(
         phy_cas_nsolve(
@@ -370,6 +494,28 @@ static void test_certified_numeric_ball_entry_points(void)
         const phy_ir_ref around = phy_ir_child(f.ir, rule_ref, 1u);
         PHY_CHECK_EQ_STR(
             phy_ir_symbol_name(f.ir, phy_ir_head(f.ir, around)), "Around");
+        expect_numeric_digits(f.ir, around, 8);
+    }
+
+    /* A close conjugate pair forces the general (degree-three) complex
+       isolator to use a radius finer than the originally requested 16-digit
+       output grid. Candidate precision may escalate, but publication still
+       requires exact pairwise-disjoint Pellet--Rouche certificates. */
+    PHY_CHECK_EQ_INT(
+        phy_cas_nsolve(
+            f.cas,
+            parse(f.ir,
+                  "(= (* (+ (^ x 2) "
+                  "(rat 1 10000000000000000000000000000000000000000)) "
+                  "(+ x -1)) 0)"),
+            x, 16u, &result),
+        PHY_OK);
+    PHY_CHECK_EQ_INT(phy_ir_child_count(f.ir, result), 3u);
+    for (size_t index = 0u; index < 3u; ++index) {
+        const phy_ir_ref branch = phy_ir_child(f.ir, result, index);
+        const phy_ir_ref rule_ref = phy_ir_child(f.ir, branch, 0u);
+        expect_numeric_digits(
+            f.ir, phy_ir_child(f.ir, rule_ref, 1u), 16);
     }
     PHY_CHECK_EQ_INT(
         phy_cas_nsolve(
